@@ -52,6 +52,12 @@ RIGHTIST_SOURCES = [
     ("Hoover Institution", "https://www.hoover.org"),
 ]
 
+PEOPLE_SOURCES = [
+    ("Reddit", "https://www.reddit.com"),
+    ("X (formerly Twitter)", "https://x.com"),
+    ("Threads", "https://www.threads.net"),
+]
+
 FACT_CHECK_SOURCES = [
     ("Reuters Fact Check", "https://www.reuters.com/fact-check"),
     ("AP Fact Check", "https://apnews.com/hub/ap-fact-check"),
@@ -85,9 +91,11 @@ class PipelineState(TypedDict):
     left_claims: List[Claim]
     centrist_claims: List[Claim]
     right_claims: List[Claim]
+    people_claims: List[Claim]
     left_sources: List[Source]
     centrist_sources: List[Source]
     right_sources: List[Source]
+    people_sources: List[Source]
     fact_sources: List[Source]
     fact_checks: List[FactCheckResult]
     synthesis: str
@@ -190,6 +198,8 @@ def build_claims(state: PipelineState, lens: str, sources: List[Source]) -> List
         reference_sources = LEFTIST_SOURCES
     elif lens == "centrist":
         reference_sources = CENTRIST_SOURCES
+    elif lens == "people":
+        reference_sources = PEOPLE_SOURCES
     else:
         reference_sources = RIGHTIST_SOURCES
     reference_block = "\n".join(f"- {name} ({url})" for name, url in reference_sources)
@@ -242,15 +252,30 @@ def right_expert(state: PipelineState) -> PipelineState:
     }
 
 
+def people_expert(state: PipelineState) -> PipelineState:
+    return {
+        **state,
+        "people_claims": build_claims(state, "people", state["people_sources"]),
+    }
+
+
 def fact_checker(state: PipelineState) -> PipelineState:
     logger.info(
         "Fact checking: claims=%d",
-        len(state["left_claims"]) + len(state["centrist_claims"]) + len(state["right_claims"]),
+        len(state["left_claims"])
+        + len(state["centrist_claims"])
+        + len(state["right_claims"])
+        + len(state["people_claims"]),
     )
     source_block = "\n".join(
         f"{s.id}: {s.title} - {s.notes} ({s.url})" for s in state["fact_sources"]
     )
-    claims = state["left_claims"] + state["centrist_claims"] + state["right_claims"]
+    claims = (
+        state["left_claims"]
+        + state["centrist_claims"]
+        + state["right_claims"]
+        + state["people_claims"]
+    )
     claims_block = "\n".join(
         f"- {c.text} (Sources: {', '.join(c.source_ids) if c.source_ids else 'none'})"
         for c in claims
@@ -297,7 +322,12 @@ def summarizer_judge(state: PipelineState) -> PipelineState:
     logger.info("Summarizing: fact_checks=%d", len(state["fact_checks"]))
     claims_block = "\n".join(
         f"- {c.text} (Sources: {', '.join(c.source_ids) if c.source_ids else 'none'})"
-        for c in state["left_claims"] + state["centrist_claims"] + state["right_claims"]
+        for c in (
+            state["left_claims"]
+            + state["centrist_claims"]
+            + state["right_claims"]
+            + state["people_claims"]
+        )
     )
     fact_block = "\n".join(
         f"- {r.verdict}: {r.claim.text} — {r.rationale}" for r in state["fact_checks"]
@@ -353,6 +383,7 @@ def _merge_sources(state: PipelineState) -> List[Source]:
         state["left_sources"]
         + state["centrist_sources"]
         + state["right_sources"]
+        + state["people_sources"]
         + state["fact_sources"]
     ):
         if src.url not in dedup:
@@ -380,12 +411,17 @@ def supervisor_finalize(state: PipelineState) -> PipelineState:
     output.append(render_reference_list(RIGHTIST_SOURCES))
     output.append(render_claims(state["right_claims"]))
     output.append("")
-    output.append("5. ✅ Fact Check Results")
+    output.append("5. 🟢 People's Perspective")
+    output.append("Preferred references:")
+    output.append(render_reference_list(PEOPLE_SOURCES))
+    output.append(render_claims(state["people_claims"]))
+    output.append("")
+    output.append("6. ✅ Fact Check Results")
     output.append("Preferred references:")
     output.append(render_reference_list(FACT_CHECK_SOURCES))
     output.append(render_fact_checks(state["fact_checks"]))
     output.append("")
-    output.append("6. ⚖️ Synthesis & Best-Supported Conclusion")
+    output.append("7. ⚖️ Synthesis & Best-Supported Conclusion")
     output.append(state["synthesis"])
     return {**state, "final_output": "\n".join(output)}
 
@@ -411,12 +447,17 @@ def build_graph(
         lambda state: {**state, "right_sources": web_searcher(state, "right", RIGHTIST_SOURCES, seed_sources)},
     )
     graph.add_node(
+        "people_searcher",
+        lambda state: {**state, "people_sources": web_searcher(state, "people", PEOPLE_SOURCES, seed_sources)},
+    )
+    graph.add_node(
         "fact_searcher",
         lambda state: {**state, "fact_sources": web_searcher(state, "fact", FACT_CHECK_SOURCES, seed_sources)},
     )
     graph.add_node("left_expert", leftist_expert)
     graph.add_node("centrist_expert", centrist_expert)
     graph.add_node("right_expert", right_expert)
+    graph.add_node("people_expert", people_expert)
     graph.add_node("fact_checker", fact_checker)
     graph.add_node("summarizer_judge", summarizer_judge)
     graph.add_node("supervisor", supervisor_finalize)
@@ -427,7 +468,9 @@ def build_graph(
     graph.add_edge("centrist_searcher", "centrist_expert")
     graph.add_edge("centrist_expert", "right_searcher")
     graph.add_edge("right_searcher", "right_expert")
-    graph.add_edge("right_expert", "fact_searcher")
+    graph.add_edge("right_expert", "people_searcher")
+    graph.add_edge("people_searcher", "people_expert")
+    graph.add_edge("people_expert", "fact_searcher")
     graph.add_edge("fact_searcher", "fact_checker")
     graph.add_edge("fact_checker", "summarizer_judge")
     graph.add_edge("summarizer_judge", "supervisor")
@@ -446,9 +489,11 @@ def run_pipeline(
         "left_claims": [],
         "centrist_claims": [],
         "right_claims": [],
+        "people_claims": [],
         "left_sources": [],
         "centrist_sources": [],
         "right_sources": [],
+        "people_sources": [],
         "fact_sources": [],
         "fact_checks": [],
         "synthesis": "",
