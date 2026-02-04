@@ -58,6 +58,29 @@ FACT_CHECK_SOURCES = [
     ("FactCheck.org", "https://www.factcheck.org"),
 ]
 
+POLISH_INFOSPHERE_SOURCES: Dict[str, List[tuple[str, str]]] = {
+    "left": [
+        ("Krytyka Polityczna", "https://krytykapolityczna.pl"),
+        ("OKO.press", "https://oko.press"),
+        ("Krytyka", "https://krytyka.info"),
+    ],
+    "centrist": [
+        ("Polityka", "https://www.polityka.pl"),
+        ("Rzeczpospolita", "https://www.rp.pl"),
+        ("TVN24", "https://tvn24.pl"),
+    ],
+    "right": [
+        ("Do Rzeczy", "https://dorzeczy.pl"),
+        ("wPolityce", "https://wpolityce.pl"),
+        ("Gazeta Polska", "https://www.gazetapolska.pl"),
+    ],
+    "fact": [
+        ("Demagog", "https://demagog.org.pl"),
+        ("OKO.press Fakt-checking", "https://oko.press/temat/fake-news"),
+        ("AFP Sprawdzamy", "https://sprawdzam.afp.com"),
+    ],
+}
+
 
 @dataclass
 class Source:
@@ -140,6 +163,11 @@ def _build_biased_query(query: str, references: List[tuple[str, str]]) -> str:
     return f"{query} ({site_filter})"
 
 
+def _reference_sources(agent_key: str, references: List[tuple[str, str]]) -> List[tuple[str, str]]:
+    polish_sources = POLISH_INFOSPHERE_SOURCES.get(agent_key, [])
+    return references + polish_sources
+
+
 def web_searcher(
     state: PipelineState,
     agent_key: str,
@@ -159,7 +187,10 @@ def web_searcher(
 
     logger.info("Web searcher (%s): querying Tavily", agent_key)
     client = TavilyClient(api_key=tavily_key)
-    biased_query = _build_biased_query(state["query"], references)
+    biased_query = _build_biased_query(
+        state["query"],
+        _reference_sources(agent_key, references),
+    )
     response = client.search(biased_query, max_results=6, search_depth="advanced")
     sources: List[Source] = []
     for idx, item in enumerate(response.get("results", []), start=1):
@@ -188,11 +219,17 @@ def build_claims(state: PipelineState, lens: str, sources: List[Source]) -> List
     )
     if lens == "leftist":
         reference_sources = LEFTIST_SOURCES
+        agent_key = "left"
     elif lens == "centrist":
         reference_sources = CENTRIST_SOURCES
+        agent_key = "centrist"
     else:
         reference_sources = RIGHTIST_SOURCES
-    reference_block = "\n".join(f"- {name} ({url})" for name, url in reference_sources)
+        agent_key = "right"
+    reference_block = "\n".join(
+        f"- {name} ({url})"
+        for name, url in _reference_sources(agent_key, reference_sources)
+    )
     user = f"""
 Query: {state['query']}
 
@@ -367,22 +404,24 @@ def supervisor_finalize(state: PipelineState) -> PipelineState:
     output.append("")
     output.append("2. 🔴 Left Perspective")
     output.append("Preferred references:")
-    output.append(render_reference_list(LEFTIST_SOURCES))
+    output.append(render_reference_list(_reference_sources("left", LEFTIST_SOURCES)))
     output.append(render_claims(state["left_claims"]))
     output.append("")
     output.append("3. 🟡 Centrist Perspective")
     output.append("Preferred references:")
-    output.append(render_reference_list(CENTRIST_SOURCES))
+    output.append(
+        render_reference_list(_reference_sources("centrist", CENTRIST_SOURCES))
+    )
     output.append(render_claims(state["centrist_claims"]))
     output.append("")
     output.append("4. 🔵 Right Perspective")
     output.append("Preferred references:")
-    output.append(render_reference_list(RIGHTIST_SOURCES))
+    output.append(render_reference_list(_reference_sources("right", RIGHTIST_SOURCES)))
     output.append(render_claims(state["right_claims"]))
     output.append("")
     output.append("5. ✅ Fact Check Results")
     output.append("Preferred references:")
-    output.append(render_reference_list(FACT_CHECK_SOURCES))
+    output.append(render_reference_list(_reference_sources("fact", FACT_CHECK_SOURCES)))
     output.append(render_fact_checks(state["fact_checks"]))
     output.append("")
     output.append("6. ⚖️ Synthesis & Best-Supported Conclusion")
