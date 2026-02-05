@@ -58,6 +58,9 @@ FACT_CHECK_SOURCES = [
     ("FactCheck.org", "https://www.factcheck.org"),
 ]
 
+ReferenceSource = tuple[str, str]
+DynamicReferences = Optional[Union[List[ReferenceSource], Dict[str, List[ReferenceSource]]]]
+
 
 @dataclass
 class Source:
@@ -140,11 +143,42 @@ def _build_biased_query(query: str, references: List[tuple[str, str]]) -> str:
     return f"{query} ({site_filter})"
 
 
+def _dynamic_references_for_agent(
+    dynamic_references: DynamicReferences,
+    agent_key: str,
+) -> List[ReferenceSource]:
+    if isinstance(dynamic_references, list):
+        return dynamic_references
+    if isinstance(dynamic_references, dict):
+        return dynamic_references.get(agent_key, [])
+    return []
+
+
+def _merge_reference_sources(
+    base_references: List[ReferenceSource],
+    dynamic_references: DynamicReferences,
+    agent_key: str,
+) -> List[ReferenceSource]:
+    merged: List[ReferenceSource] = []
+    seen_urls: set[str] = set()
+
+    for name, url in base_references + _dynamic_references_for_agent(dynamic_references, agent_key):
+        cleaned_name = (name or "").strip()
+        cleaned_url = (url or "").strip()
+        if not cleaned_name or not cleaned_url or cleaned_url in seen_urls:
+            continue
+        seen_urls.add(cleaned_url)
+        merged.append((cleaned_name, cleaned_url))
+
+    return merged
+
+
 def web_searcher(
     state: PipelineState,
     agent_key: str,
-    references: List[tuple[str, str]],
+    references: List[ReferenceSource],
     seed_sources: Optional[Union[List[Source], Dict[str, List[Source]]]] = None,
+    dynamic_references: DynamicReferences = None,
 ) -> List[Source]:
     seeded = _seed_for_agent(seed_sources, agent_key)
     if seeded:
@@ -159,7 +193,12 @@ def web_searcher(
 
     logger.info("Web searcher (%s): querying Tavily", agent_key)
     client = TavilyClient(api_key=tavily_key)
-    biased_query = _build_biased_query(state["query"], references)
+    effective_references = _merge_reference_sources(
+        references,
+        dynamic_references,
+        agent_key,
+    )
+    biased_query = _build_biased_query(state["query"], effective_references)
     response = client.search(biased_query, max_results=6, search_depth="advanced")
     sources: List[Source] = []
     for idx, item in enumerate(response.get("results", []), start=1):
@@ -391,28 +430,62 @@ def supervisor_finalize(state: PipelineState) -> PipelineState:
 
 
 def build_graph(
-    seed_sources: Optional[Union[List[Source], Dict[str, List[Source]]]] = None
+    seed_sources: Optional[Union[List[Source], Dict[str, List[Source]]]] = None,
+    dynamic_references: DynamicReferences = None,
 ):
     graph = StateGraph(PipelineState)
 
     graph.add_node(
         "left_searcher",
-        lambda state: {**state, "left_sources": web_searcher(state, "left", LEFTIST_SOURCES, seed_sources)},
+        lambda state: {
+            **state,
+            "left_sources": web_searcher(
+                state,
+                "left",
+                LEFTIST_SOURCES,
+                seed_sources,
+                dynamic_references,
+            ),
+        },
     )
     graph.add_node(
         "centrist_searcher",
         lambda state: {
             **state,
-            "centrist_sources": web_searcher(state, "centrist", CENTRIST_SOURCES, seed_sources),
+            "centrist_sources": web_searcher(
+                state,
+                "centrist",
+                CENTRIST_SOURCES,
+                seed_sources,
+                dynamic_references,
+            ),
         },
     )
     graph.add_node(
         "right_searcher",
-        lambda state: {**state, "right_sources": web_searcher(state, "right", RIGHTIST_SOURCES, seed_sources)},
+        lambda state: {
+            **state,
+            "right_sources": web_searcher(
+                state,
+                "right",
+                RIGHTIST_SOURCES,
+                seed_sources,
+                dynamic_references,
+            ),
+        },
     )
     graph.add_node(
         "fact_searcher",
-        lambda state: {**state, "fact_sources": web_searcher(state, "fact", FACT_CHECK_SOURCES, seed_sources)},
+        lambda state: {
+            **state,
+            "fact_sources": web_searcher(
+                state,
+                "fact",
+                FACT_CHECK_SOURCES,
+                seed_sources,
+                dynamic_references,
+            ),
+        },
     )
     graph.add_node("left_expert", leftist_expert)
     graph.add_node("centrist_expert", centrist_expert)
@@ -439,8 +512,9 @@ def build_graph(
 def run_pipeline(
     query: str,
     seed_sources: Optional[Union[List[Source], Dict[str, List[Source]]]] = None,
+    dynamic_references: DynamicReferences = None,
 ) -> str:
-    app = build_graph(seed_sources)
+    app = build_graph(seed_sources, dynamic_references)
     initial_state: PipelineState = {
         "query": query,
         "left_claims": [],
