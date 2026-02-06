@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import sys
 
 from geopoliticai.config import init_environment, require_env
 from geopoliticai.graph import run_pipeline
@@ -16,7 +17,10 @@ def main() -> None:
     parser.add_argument("query", help="Query to analyze")
     args = parser.parse_args()
 
-    print(run_pipeline(args.query))
+    output = run_pipeline(args.query)
+    data = str(output).encode("utf-8", errors="replace")
+    sys.stdout.buffer.write(data + b"\n")
+    sys.stdout.flush()
 
 
 if __name__ == "__main__":
