@@ -15,9 +15,15 @@ def main() -> None:
 
     parser = argparse.ArgumentParser(description="Run GeopoliticAI POC pipeline.")
     parser.add_argument("query", help="Query to analyze")
+    parser.add_argument(
+        "--infosphere",
+        choices=("english", "polish"),
+        default="english",
+        help="Which infosphere sources to use.",
+    )
     args = parser.parse_args()
 
-    output = run_pipeline(args.query)
+    output = run_pipeline(args.query, infosphere=args.infosphere)
     data = str(output).encode("utf-8", errors="replace")
     sys.stdout.buffer.write(data + b"\n")
     sys.stdout.flush()
