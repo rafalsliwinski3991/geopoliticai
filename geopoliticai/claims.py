@@ -5,25 +5,35 @@ from __future__ import annotations
 import logging
 from typing import List
 
-from geopoliticai.config import CENTRIST_SOURCES, LEFTIST_SOURCES, RIGHTIST_SOURCES
+from geopoliticai.config import ENGLISH_INFOSPHERE_SOURCES
 from geopoliticai.llm import llm_json
 from geopoliticai.models import Claim, PipelineState, Source
 
 logger = logging.getLogger(__name__)
 
 
-def build_claims(state: PipelineState, lens: str, sources: List[Source]) -> List[Claim]:
+def build_claims(
+    state: PipelineState,
+    lens: str,
+    sources: List[Source],
+    references: List[tuple[str, str]] | None = None,
+) -> List[Claim]:
     logger.info("Building claims: lens=%s sources=%d", lens, len(sources))
     source_block = "\n".join(
         f"{s.id}: {s.title} - {s.notes} ({s.url})" for s in sources
     )
-    if lens == "leftist":
-        reference_sources = LEFTIST_SOURCES
-    elif lens == "centrist":
-        reference_sources = CENTRIST_SOURCES
+    if references is None:
+        if lens == "leftist":
+            reference_sources_list = ENGLISH_INFOSPHERE_SOURCES["left"]
+        elif lens == "centrist":
+            reference_sources_list = ENGLISH_INFOSPHERE_SOURCES["centrist"]
+        else:
+            reference_sources_list = ENGLISH_INFOSPHERE_SOURCES["right"]
     else:
-        reference_sources = RIGHTIST_SOURCES
-    reference_block = "\n".join(f"- {name} ({url})" for name, url in reference_sources)
+        reference_sources_list = references
+    reference_block = "\n".join(
+        f"- {name} ({url})" for name, url in reference_sources_list
+    )
     user = f"""
 Query: {state['query']}
 

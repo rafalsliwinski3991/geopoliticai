@@ -8,29 +8,51 @@ from collections.abc import Sequence
 
 from dotenv import load_dotenv
 
-LEFTIST_SOURCES = [
-    ("Jacobin", "https://jacobin.com"),
-    ("Economic Policy Institute", "https://www.epi.org"),
-    ("Roosevelt Institute", "https://rooseveltinstitute.org"),
-]
+ENGLISH_INFOSPHERE_SOURCES: dict[str, list[tuple[str, str]]] = {
+    "left": [
+        ("Jacobin", "https://jacobin.com"),
+        ("Economic Policy Institute", "https://www.epi.org"),
+        ("Roosevelt Institute", "https://rooseveltinstitute.org"),
+    ],
+    "centrist": [
+        ("Brookings Institution", "https://www.brookings.edu"),
+        ("Council on Foreign Relations", "https://www.cfr.org"),
+        ("The Economist", "https://www.economist.com"),
+    ],
+    "right": [
+        ("American Enterprise Institute", "https://www.aei.org"),
+        ("Heritage Foundation", "https://www.heritage.org"),
+        ("Hoover Institution", "https://www.hoover.org"),
+    ],
+    "fact": [
+        ("Reuters Fact Check", "https://www.reuters.com/fact-check"),
+        ("AP Fact Check", "https://apnews.com/hub/ap-fact-check"),
+        ("FactCheck.org", "https://www.factcheck.org"),
+    ],
+}
 
-CENTRIST_SOURCES = [
-    ("Brookings Institution", "https://www.brookings.edu"),
-    ("Council on Foreign Relations", "https://www.cfr.org"),
-    ("The Economist", "https://www.economist.com"),
-]
-
-RIGHTIST_SOURCES = [
-    ("American Enterprise Institute", "https://www.aei.org"),
-    ("Heritage Foundation", "https://www.heritage.org"),
-    ("Hoover Institution", "https://www.hoover.org"),
-]
-
-FACT_CHECK_SOURCES = [
-    ("Reuters Fact Check", "https://www.reuters.com/fact-check"),
-    ("AP Fact Check", "https://apnews.com/hub/ap-fact-check"),
-    ("FactCheck.org", "https://www.factcheck.org"),
-]
+POLISH_INFOSPHERE_SOURCES: dict[str, list[tuple[str, str]]] = {
+    "left": [
+        ("Krytyka Polityczna", "https://krytykapolityczna.pl"),
+        ("OKO.press", "https://oko.press"),
+        ("Krytyka", "https://krytyka.info"),
+    ],
+    "centrist": [
+        ("Polityka", "https://www.polityka.pl"),
+        ("Rzeczpospolita", "https://www.rp.pl"),
+        ("TVN24", "https://tvn24.pl"),
+    ],
+    "right": [
+        ("Do Rzeczy", "https://dorzeczy.pl"),
+        ("wPolityce", "https://wpolityce.pl"),
+        ("Gazeta Polska", "https://www.gazetapolska.pl"),
+    ],
+    "fact": [
+        ("Demagog", "https://demagog.org.pl"),
+        ("OKO.press Fakt-checking", "https://oko.press/temat/fake-news"),
+        ("AFP Sprawdzamy", "https://sprawdzam.afp.com"),
+    ],
+}
 
 DEFAULT_MODEL = "gpt-4o-mini"
 REQUIRED_ENV_VARS = ("OPENAI_API_KEY", "TAVILY_KEY")
@@ -54,3 +76,15 @@ def require_env(keys: Sequence[str] = REQUIRED_ENV_VARS) -> None:
 
 def get_model() -> str:
     return os.getenv("OPENAI_MODEL", DEFAULT_MODEL)
+
+
+def get_infosphere_sources(infosphere: str) -> dict[str, list[tuple[str, str]]]:
+    if infosphere == "english":
+        return ENGLISH_INFOSPHERE_SOURCES
+    if infosphere == "polish":
+        return {
+            key: ENGLISH_INFOSPHERE_SOURCES.get(key, [])
+            + POLISH_INFOSPHERE_SOURCES.get(key, [])
+            for key in ENGLISH_INFOSPHERE_SOURCES
+        }
+    raise ValueError(f"Unsupported infosphere: {infosphere}")

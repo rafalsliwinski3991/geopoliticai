@@ -5,14 +5,16 @@ from __future__ import annotations
 import logging
 from typing import List
 
-from geopoliticai.config import FACT_CHECK_SOURCES
+from geopoliticai.config import ENGLISH_INFOSPHERE_SOURCES
 from geopoliticai.llm import llm_json
 from geopoliticai.models import Claim, FactCheckResult, PipelineState
 
 logger = logging.getLogger(__name__)
 
 
-def fact_checker(state: PipelineState) -> PipelineState:
+def fact_checker(
+    state: PipelineState, references: List[tuple[str, str]] | None = None
+) -> PipelineState:
     logger.info(
         "Fact checking: claims=%d",
         len(state["left_claims"])
@@ -27,7 +29,13 @@ def fact_checker(state: PipelineState) -> PipelineState:
         f"- {c.text} (Sources: {', '.join(c.source_ids) if c.source_ids else 'none'})"
         for c in claims
     )
-    reference_block = "\n".join(f"- {name} ({url})" for name, url in FACT_CHECK_SOURCES)
+    if references is None:
+        reference_sources_list = ENGLISH_INFOSPHERE_SOURCES["fact"]
+    else:
+        reference_sources_list = references
+    reference_block = "\n".join(
+        f"- {name} ({url})" for name, url in reference_sources_list
+    )
     user = f"""
 Sources:
 {source_block}
