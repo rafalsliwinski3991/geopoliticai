@@ -32,9 +32,11 @@ class PipelineState(TypedDict):
     left_claims: List[Claim]
     centrist_claims: List[Claim]
     right_claims: List[Claim]
+    people_claims: List[Claim]
     left_sources: List[Source]
     centrist_sources: List[Source]
     right_sources: List[Source]
+    people_sources: List[Source]
     fact_sources: List[Source]
     fact_checks: List[FactCheckResult]
     synthesis: str

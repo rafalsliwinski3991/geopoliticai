@@ -29,6 +29,11 @@ ENGLISH_INFOSPHERE_SOURCES: dict[str, list[tuple[str, str]]] = {
         ("AP Fact Check", "https://apnews.com/hub/ap-fact-check"),
         ("FactCheck.org", "https://www.factcheck.org"),
     ],
+    "people": [
+        ("Reddit", "https://www.reddit.com"),
+        ("X (formerly Twitter)", "https://x.com"),
+        ("Threads", "https://www.threads.net"),
+    ],
 }
 
 POLISH_INFOSPHERE_SOURCES: dict[str, list[tuple[str, str]]] = {
@@ -51,6 +56,11 @@ POLISH_INFOSPHERE_SOURCES: dict[str, list[tuple[str, str]]] = {
         ("Demagog", "https://demagog.org.pl"),
         ("OKO.press Fakt-checking", "https://oko.press/temat/fake-news"),
         ("AFP Sprawdzamy", "https://sprawdzam.afp.com"),
+    ],
+    "people": [
+        ("Reddit", "https://www.reddit.com"),
+        ("X (formerly Twitter)", "https://x.com"),
+        ("Threads", "https://www.threads.net"),
     ],
 }
 

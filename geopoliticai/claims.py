@@ -27,6 +27,8 @@ def build_claims(
             reference_sources_list = ENGLISH_INFOSPHERE_SOURCES["left"]
         elif lens == "centrist":
             reference_sources_list = ENGLISH_INFOSPHERE_SOURCES["centrist"]
+        elif lens == "people":
+            reference_sources_list = ENGLISH_INFOSPHERE_SOURCES["people"]
         else:
             reference_sources_list = ENGLISH_INFOSPHERE_SOURCES["right"]
     else:

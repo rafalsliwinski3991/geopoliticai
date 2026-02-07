@@ -44,12 +44,17 @@ def _make_supervisor_finalize(
         output.append(render_reference_list(infosphere_sources["right"]))
         output.append(render_claims(state["right_claims"]))
         output.append("")
-        output.append("5. \u2705 Fact Check Results")
+        output.append("5. \ud83d\udfe2 People's Perspective")
+        output.append("Preferred references:")
+        output.append(render_reference_list(infosphere_sources["people"]))
+        output.append(render_claims(state["people_claims"]))
+        output.append("")
+        output.append("6. \u2705 Fact Check Results")
         output.append("Preferred references:")
         output.append(render_reference_list(infosphere_sources["fact"]))
         output.append(render_fact_checks(state["fact_checks"]))
         output.append("")
-        output.append("6. \u2696\ufe0f Synthesis & Best-Supported Conclusion")
+        output.append("7. \u2696\ufe0f Synthesis & Best-Supported Conclusion")
         output.append(state["synthesis"])
         return {**state, "final_output": "\n".join(output)}
 
@@ -87,6 +92,15 @@ def build_graph(
             **state,
             "right_sources": web_searcher(
                 state, "right", infosphere_sources["right"], seed_sources
+            ),
+        },
+    )
+    graph.add_node(
+        "people_searcher",
+        lambda state: {
+            **state,
+            "people_sources": web_searcher(
+                state, "people", infosphere_sources["people"], seed_sources
             ),
         },
     )
@@ -133,6 +147,18 @@ def build_graph(
         },
     )
     graph.add_node(
+        "people_expert",
+        lambda state: {
+            **state,
+            "people_claims": build_claims(
+                state,
+                "people",
+                state["people_sources"],
+                infosphere_sources["people"],
+            ),
+        },
+    )
+    graph.add_node(
         "fact_checker",
         lambda state: fact_checker(state, infosphere_sources["fact"]),
     )
@@ -145,7 +171,9 @@ def build_graph(
     graph.add_edge("centrist_searcher", "centrist_expert")
     graph.add_edge("centrist_expert", "right_searcher")
     graph.add_edge("right_searcher", "right_expert")
-    graph.add_edge("right_expert", "fact_searcher")
+    graph.add_edge("right_expert", "people_searcher")
+    graph.add_edge("people_searcher", "people_expert")
+    graph.add_edge("people_expert", "fact_searcher")
     graph.add_edge("fact_searcher", "fact_checker")
     graph.add_edge("fact_checker", "summarizer_judge")
     graph.add_edge("summarizer_judge", "supervisor")
@@ -165,9 +193,11 @@ def run_pipeline(
         "left_claims": [],
         "centrist_claims": [],
         "right_claims": [],
+        "people_claims": [],
         "left_sources": [],
         "centrist_sources": [],
         "right_sources": [],
+        "people_sources": [],
         "fact_sources": [],
         "fact_checks": [],
         "synthesis": "",
