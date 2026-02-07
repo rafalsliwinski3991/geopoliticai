@@ -134,8 +134,11 @@
             type="text"
             placeholder="Napisz wiadomość..."
             aria-label="Wiadomość"
+            :disabled="isLoading"
           />
-          <button type="submit" :disabled="!input">Wyślij</button>
+          <button type="submit" :disabled="!input || isLoading">
+            {{ isLoading ? "Wysyłanie..." : "Wyślij" }}
+          </button>
         </form>
       </div>
     </div>
@@ -147,6 +150,7 @@
         data() {
           return {
             input: "",
+            isLoading: false,
             messages: [
               {
                 role: "bot",
@@ -156,15 +160,44 @@
           };
         },
         methods: {
-          sendMessage() {
+          async sendMessage() {
             if (!this.input) return;
             const text = this.input;
             this.messages.push({ role: "user", text });
-            this.messages.push({
-              role: "bot",
-              text: "Dziękuję za wiadomość! Backend będzie podłączony później.",
-            });
             this.input = "";
+            this.isLoading = true;
+
+            try {
+              const response = await fetch("/api/run_pipeline", {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                  query: text,
+                  infosphere: "polish",
+                }),
+              });
+
+              if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                const detail = errorData.detail || "Wystąpił błąd backendu.";
+                throw new Error(detail);
+              }
+
+              const data = await response.json();
+              this.messages.push({
+                role: "bot",
+                text: data.output || "Backend zwrócił pustą odpowiedź.",
+              });
+            } catch (error) {
+              this.messages.push({
+                role: "bot",
+                text: `Ups! Nie udało się połączyć z backendem: ${error.message}`,
+              });
+            } finally {
+              this.isLoading = false;
+            }
           },
         },
       }).mount("#app");
