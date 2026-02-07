@@ -22,39 +22,63 @@ from geopoliticai.summarizer import summarizer_judge
 
 
 def _make_supervisor_finalize(
-    infosphere_sources: dict[str, list[tuple[str, str]]]
+    infosphere_sources: dict[str, list[tuple[str, str]]],
+    language: str,
 ) -> Callable[[PipelineState], PipelineState]:
+    if language == "polish":
+        labels = {
+            "factual": "1. 🔎 Tło faktograficzne (z wyszukiwania)",
+            "left": "2. 🔴 Perspektywa lewicowa",
+            "centrist": "3. 🟡 Perspektywa centrowa",
+            "right": "4. 🔵 Perspektywa prawicowa",
+            "people": "5. 🟢 Perspektywa społeczna",
+            "fact": "6. ✅ Wyniki weryfikacji faktów",
+            "synthesis": "7. ⚖️ Synteza i najlepiej potwierdzone wnioski",
+            "refs": "Preferowane źródła:",
+        }
+    else:
+        labels = {
+            "factual": "1. 🔎 Factual Background (from Web Searcher)",
+            "left": "2. 🔴 Left Perspective",
+            "centrist": "3. 🟡 Centrist Perspective",
+            "right": "4. 🔵 Right Perspective",
+            "people": "5. 🟢 People's Perspective",
+            "fact": "6. ✅ Fact Check Results",
+            "synthesis": "7. ⚖️ Synthesis & Best-Supported Conclusion",
+            "refs": "Preferred references:",
+        }
+
     def supervisor_finalize(state: PipelineState) -> PipelineState:
         output: List[str] = []
-        output.append("1. \ud83d\udd0e Factual Background (from Web Searcher)")
+        output.append(labels["factual"])
         output.append(render_sources(merge_sources(state)))
         output.append("")
-        output.append("2. \ud83d\udd34 Left Perspective")
-        output.append("Preferred references:")
+        output.append(labels["left"])
+        output.append(labels["refs"])
         output.append(render_reference_list(infosphere_sources["left"]))
         output.append(render_claims(state["left_claims"]))
         output.append("")
-        output.append("3. \ud83d\udfe1 Centrist Perspective")
-        output.append("Preferred references:")
+        output.append(labels["centrist"])
+        output.append(labels["refs"])
         output.append(render_reference_list(infosphere_sources["centrist"]))
         output.append(render_claims(state["centrist_claims"]))
         output.append("")
-        output.append("4. \ud83d\udd35 Right Perspective")
-        output.append("Preferred references:")
+        output.append(labels["right"])
+        output.append(labels["refs"])
         output.append(render_reference_list(infosphere_sources["right"]))
         output.append(render_claims(state["right_claims"]))
         output.append("")
-        output.append("5. \ud83d\udfe2 People's Perspective")
-        output.append("Preferred references:")
+        output.append(labels["people"])
+        output.append(labels["refs"])
         output.append(render_reference_list(infosphere_sources["people"]))
         output.append(render_claims(state["people_claims"]))
         output.append("")
-        output.append("6. \u2705 Fact Check Results")
-        output.append("Preferred references:")
+        output.append(labels["fact"])
+        output.append(labels["refs"])
         output.append(render_reference_list(infosphere_sources["fact"]))
         output.append(render_fact_checks(state["fact_checks"]))
         output.append("")
-        output.append("7. \u2696\ufe0f Synthesis & Best-Supported Conclusion")
+        output.append(labels["synthesis"])
         output.append(state["synthesis"])
         return {**state, "final_output": "\n".join(output)}
 
@@ -65,6 +89,7 @@ def build_graph(
     seed_sources: Optional[Union[List[Source], Dict[str, List[Source]]]] = None,
     infosphere: str = "english",
 ):
+    language = "polish" if infosphere == "polish" else "english"
     infosphere_sources = get_infosphere_sources(infosphere)
     graph = StateGraph(PipelineState)
 
@@ -118,7 +143,11 @@ def build_graph(
         lambda state: {
             **state,
             "left_claims": build_claims(
-                state, "leftist", state["left_sources"], infosphere_sources["left"]
+                state,
+                "leftist",
+                state["left_sources"],
+                infosphere_sources["left"],
+                language,
             ),
         },
     )
@@ -131,6 +160,7 @@ def build_graph(
                 "centrist",
                 state["centrist_sources"],
                 infosphere_sources["centrist"],
+                language,
             ),
         },
     )
@@ -143,6 +173,7 @@ def build_graph(
                 "right-wing",
                 state["right_sources"],
                 infosphere_sources["right"],
+                language,
             ),
         },
     )
@@ -155,15 +186,18 @@ def build_graph(
                 "people",
                 state["people_sources"],
                 infosphere_sources["people"],
+                language,
             ),
         },
     )
     graph.add_node(
         "fact_checker",
-        lambda state: fact_checker(state, infosphere_sources["fact"]),
+        lambda state: fact_checker(state, infosphere_sources["fact"], language),
     )
-    graph.add_node("summarizer_judge", summarizer_judge)
-    graph.add_node("supervisor", _make_supervisor_finalize(infosphere_sources))
+    graph.add_node("summarizer_judge", lambda state: summarizer_judge(state, language))
+    graph.add_node(
+        "supervisor", _make_supervisor_finalize(infosphere_sources, language)
+    )
 
     graph.set_entry_point("left_searcher")
     graph.add_edge("left_searcher", "left_expert")
@@ -190,6 +224,7 @@ def run_pipeline(
     app = build_graph(seed_sources, infosphere)
     initial_state: PipelineState = {
         "query": query,
+        "language": "polish" if infosphere == "polish" else "english",
         "left_claims": [],
         "centrist_claims": [],
         "right_claims": [],

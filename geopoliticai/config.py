@@ -92,9 +92,16 @@ def get_infosphere_sources(infosphere: str) -> dict[str, list[tuple[str, str]]]:
     if infosphere == "english":
         return ENGLISH_INFOSPHERE_SOURCES
     if infosphere == "polish":
-        return {
-            key: ENGLISH_INFOSPHERE_SOURCES.get(key, [])
-            + POLISH_INFOSPHERE_SOURCES.get(key, [])
-            for key in ENGLISH_INFOSPHERE_SOURCES
-        }
+        combined: dict[str, list[tuple[str, str]]] = {}
+        for key, english_sources in ENGLISH_INFOSPHERE_SOURCES.items():
+            merged = english_sources + POLISH_INFOSPHERE_SOURCES.get(key, [])
+            seen: set[str] = set()
+            unique: list[tuple[str, str]] = []
+            for name, url in merged:
+                if url in seen:
+                    continue
+                seen.add(url)
+                unique.append((name, url))
+            combined[key] = unique
+        return combined
     raise ValueError(f"Unsupported infosphere: {infosphere}")

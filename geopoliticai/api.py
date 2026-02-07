@@ -22,6 +22,11 @@ class RunPipelineResponse(BaseModel):
     output: str
 
 
+def _sanitize_output(text: str) -> str:
+    """Ensure the response contains only valid UTF-8 characters."""
+    return text.encode("utf-8", errors="replace").decode("utf-8")
+
+
 @app.on_event("startup")
 def startup() -> None:
     init_environment()
@@ -42,4 +47,4 @@ def run_pipeline_endpoint(payload: RunPipelineRequest) -> RunPipelineResponse:
         output = run_pipeline(payload.query, infosphere=payload.infosphere)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return RunPipelineResponse(output=output)
+    return RunPipelineResponse(output=_sanitize_output(output))

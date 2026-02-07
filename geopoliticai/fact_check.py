@@ -13,7 +13,9 @@ logger = logging.getLogger(__name__)
 
 
 def fact_checker(
-    state: PipelineState, references: List[tuple[str, str]] | None = None
+    state: PipelineState,
+    references: List[tuple[str, str]] | None = None,
+    language: str | None = None,
 ) -> PipelineState:
     logger.info(
         "Fact checking: claims=%d",
@@ -42,6 +44,7 @@ def fact_checker(
     reference_block = "\n".join(
         f"- {name} ({url})" for name, url in reference_sources_list
     )
+    response_language = "Polish" if language == "polish" else "English"
     user = f"""
 Sources:
 {source_block}
@@ -53,6 +56,7 @@ Preferred fact-check references (use for methods; do not invent citations):
 {reference_block}
 
 Task: Fact-check each claim against the sources. Use verdicts: TRUE, PARTIALLY TRUE, MISLEADING, FALSE.
+Write the rationale in {response_language}. Keep the verdict labels exactly as specified.
 Return JSON: {{"results": [{{"claim_text": "...", "verdict": "...", "rationale": "...", "source_ids": ["S1"]}}]}}.
 """.strip()
 

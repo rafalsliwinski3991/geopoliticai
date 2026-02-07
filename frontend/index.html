@@ -8,12 +8,31 @@
     <style>
       :root {
         color-scheme: light;
-        font-family: "Inter", "Segoe UI", system-ui, sans-serif;
+        --bg: #f4f1ed;
+        --bg-accent: #e7ecef;
+        --ink: #1f2937;
+        --ink-muted: #475569;
+        --card: #fffdf9;
+        --accent: #d97706;
+        --accent-strong: #9a3412;
+        --line: #e2e8f0;
+        --shadow: 0 24px 60px rgba(15, 23, 42, 0.12);
+        font-family: "Space Grotesk", "Segoe UI", system-ui, sans-serif;
       }
       body {
         margin: 0;
-        background: #f6f7fb;
-        color: #1f2933;
+        background: radial-gradient(
+            circle at top left,
+            rgba(217, 119, 6, 0.08),
+            transparent 55%
+          ),
+          radial-gradient(
+            circle at bottom right,
+            rgba(56, 189, 248, 0.08),
+            transparent 45%
+          ),
+          var(--bg);
+        color: var(--ink);
       }
       #app {
         min-height: 100vh;
@@ -25,33 +44,63 @@
       }
       .chat-shell {
         width: min(960px, 100%);
-        background: #ffffff;
-        border-radius: 20px;
-        box-shadow: 0 24px 60px rgba(15, 23, 42, 0.12);
+        background: var(--card);
+        border-radius: 28px;
+        box-shadow: var(--shadow);
         display: flex;
         flex-direction: column;
         overflow: hidden;
+        border: 1px solid rgba(148, 163, 184, 0.2);
       }
       .chat-header {
-        padding: 20px 24px;
-        background: #111827;
-        color: #f9fafb;
+        padding: 24px 28px;
+        background: linear-gradient(120deg, #111827 0%, #1f2937 55%, #0f172a 100%);
+        color: #f8fafc;
       }
       .chat-header h1 {
         margin: 0;
-        font-size: 20px;
+        font-size: 22px;
+        letter-spacing: 0.3px;
       }
       .chat-header p {
         margin: 6px 0 0;
         font-size: 14px;
-        opacity: 0.8;
+        opacity: 0.78;
+      }
+      .controls {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        padding: 16px 24px;
+        background: var(--bg-accent);
+        border-bottom: 1px solid var(--line);
+        flex-wrap: wrap;
+      }
+      .controls label {
+        font-size: 13px;
+        color: var(--ink-muted);
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+      }
+      .controls select {
+        padding: 10px 14px;
+        border-radius: 999px;
+        border: 1px solid var(--line);
+        background: #ffffff;
+        font-size: 14px;
+        color: var(--ink);
+        min-width: 220px;
+      }
+      .controls .hint {
+        font-size: 13px;
+        color: var(--ink-muted);
       }
       .chat-body {
-        padding: 24px;
+        padding: 28px;
         display: flex;
         flex-direction: column;
         gap: 16px;
-        background: #f9fafb;
+        background: #f8fafc;
         min-height: 360px;
       }
       .message {
@@ -60,46 +109,55 @@
         border-radius: 16px;
         font-size: 15px;
         line-height: 1.4;
+        white-space: pre-wrap;
+        word-break: break-word;
       }
       .message.user {
         align-self: flex-end;
-        background: #2563eb;
-        color: white;
-        border-bottom-right-radius: 4px;
+        background: linear-gradient(120deg, #f59e0b, #d97706);
+        color: #111827;
+        border-bottom-right-radius: 6px;
       }
       .message.bot {
         align-self: flex-start;
         background: #ffffff;
-        color: #1f2933;
-        border: 1px solid #e5e7eb;
-        border-bottom-left-radius: 4px;
+        color: var(--ink);
+        border: 1px solid var(--line);
+        border-bottom-left-radius: 6px;
       }
       .chat-footer {
         display: flex;
         gap: 12px;
         padding: 16px 24px 24px;
         background: #ffffff;
-        border-top: 1px solid #e5e7eb;
+        border-top: 1px solid var(--line);
       }
       .chat-footer input {
         flex: 1;
         padding: 12px 14px;
         border-radius: 12px;
-        border: 1px solid #d1d5db;
+        border: 1px solid var(--line);
         font-size: 15px;
       }
       .chat-footer button {
         border: none;
-        background: #111827;
-        color: #ffffff;
+        background: var(--accent);
+        color: #111827;
         padding: 12px 18px;
         border-radius: 12px;
         font-size: 15px;
         cursor: pointer;
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+        box-shadow: 0 12px 24px rgba(217, 119, 6, 0.2);
+      }
+      .chat-footer button:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 14px 30px rgba(217, 119, 6, 0.28);
       }
       .chat-footer button:disabled {
         opacity: 0.6;
         cursor: not-allowed;
+        box-shadow: none;
       }
       @media (max-width: 640px) {
         .message {
@@ -109,6 +167,7 @@
           flex-direction: column;
         }
       }
+      @import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&display=swap");
     </style>
   </head>
   <body>
@@ -118,6 +177,18 @@
           <h1>GeopoliticAI Chat</h1>
           <p>Prosty interfejs do rozmowy z chatbotem.</p>
         </header>
+        <section class="controls">
+          <div>
+            <label for="infosphere">Infosfera</label>
+          </div>
+          <select id="infosphere" v-model="infosphere" :disabled="isLoading">
+            <option value="polish">Polska</option>
+            <option value="english">Angielska</option>
+          </select>
+          <div class="hint">
+            Wpływa na dobór źródeł i ton raportu.
+          </div>
+        </section>
         <main class="chat-body">
           <div
             v-for="(message, index) in messages"
@@ -134,8 +205,11 @@
             type="text"
             placeholder="Napisz wiadomość..."
             aria-label="Wiadomość"
+            :disabled="isLoading"
           />
-          <button type="submit" :disabled="!input">Wyślij</button>
+          <button type="submit" :disabled="!input || isLoading">
+            {{ isLoading ? "Wysyłanie..." : "Wyślij" }}
+          </button>
         </form>
       </div>
     </div>
@@ -147,6 +221,8 @@
         data() {
           return {
             input: "",
+            isLoading: false,
+            infosphere: "polish",
             messages: [
               {
                 role: "bot",
@@ -156,15 +232,53 @@
           };
         },
         methods: {
-          sendMessage() {
+          async sendMessage() {
             if (!this.input) return;
             const text = this.input;
             this.messages.push({ role: "user", text });
-            this.messages.push({
-              role: "bot",
-              text: "Dziękuję za wiadomość! Backend będzie podłączony później.",
-            });
             this.input = "";
+            this.isLoading = true;
+
+            try {
+              const controller = new AbortController();
+              const timeoutId = setTimeout(() => controller.abort(), 1000* 60 * 10);
+              const response = await fetch("/api/run_pipeline", {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                },
+                signal: controller.signal,
+                body: JSON.stringify({
+                  query: text,
+                  infosphere: this.infosphere,
+                }),
+              });
+              clearTimeout(timeoutId);
+
+              if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                const detail = errorData.detail || "Wystąpił błąd backendu.";
+                throw new Error(detail);
+              }
+
+              const data = await response.json();
+              this.messages.push({
+                role: "bot",
+                text: data.output || "Backend zwrócił pustą odpowiedź.",
+              });
+            } catch (error) {
+              const isTimeout =
+                error?.name === "AbortError" ||
+                String(error?.message || "").includes("aborted");
+              this.messages.push({
+                role: "bot",
+                text: isTimeout
+                  ? "Ups! Backend nie odpowiedział w ciągu 5 minut."
+                  : `Ups! Nie udało się połączyć z backendem: ${error.message}`,
+              });
+            } finally {
+              this.isLoading = false;
+            }
           },
         },
       }).mount("#app");

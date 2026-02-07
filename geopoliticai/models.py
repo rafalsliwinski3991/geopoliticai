@@ -29,6 +29,7 @@ class FactCheckResult:
 
 class PipelineState(TypedDict):
     query: str
+    language: str
     left_claims: List[Claim]
     centrist_claims: List[Claim]
     right_claims: List[Claim]
