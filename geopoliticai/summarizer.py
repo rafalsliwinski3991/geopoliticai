@@ -10,7 +10,7 @@ from geopoliticai.models import PipelineState
 logger = logging.getLogger(__name__)
 
 
-def summarizer_judge(state: PipelineState) -> PipelineState:
+def summarizer_judge(state: PipelineState, language: str | None = None) -> PipelineState:
     logger.info("Summarizing: fact_checks=%d", len(state["fact_checks"]))
     claims_block = "\n".join(
         f"- {c.text} (Sources: {', '.join(c.source_ids) if c.source_ids else 'none'})"
@@ -24,6 +24,7 @@ def summarizer_judge(state: PipelineState) -> PipelineState:
     fact_block = "\n".join(
         f"- {r.verdict}: {r.claim.text} — {r.rationale}" for r in state["fact_checks"]
     )
+    response_language = "Polish" if language == "polish" else "English"
     user = f"""
 Claims:
 {claims_block}
@@ -32,6 +33,7 @@ Fact checks:
 {fact_block}
 
 Task: Provide a neutral synthesis highlighting consensus, disputes, and strongest-supported conclusions.
+Write the synthesis in {response_language}.
 Return JSON: {{"synthesis": "..."}}.
 """.strip()
 

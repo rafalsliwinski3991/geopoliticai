@@ -17,6 +17,7 @@ def build_claims(
     lens: str,
     sources: List[Source],
     references: List[tuple[str, str]] | None = None,
+    language: str | None = None,
 ) -> List[Claim]:
     logger.info("Building claims: lens=%s sources=%d", lens, len(sources))
     source_block = "\n".join(
@@ -36,8 +37,10 @@ def build_claims(
     reference_block = "\n".join(
         f"- {name} ({url})" for name, url in reference_sources_list
     )
+    response_language = "Polish" if language == "polish" else "English"
     user = f"""
 Query: {state['query']}
+Response language: {response_language}
 
 Sources:
 {source_block}

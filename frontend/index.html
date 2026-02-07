@@ -109,6 +109,8 @@
         border-radius: 16px;
         font-size: 15px;
         line-height: 1.4;
+        white-space: pre-wrap;
+        word-break: break-word;
       }
       .message.user {
         align-self: flex-end;
@@ -180,7 +182,7 @@
             <label for="infosphere">Infosfera</label>
           </div>
           <select id="infosphere" v-model="infosphere" :disabled="isLoading">
-            <option value="polish">Polska + angielska (domyślnie)</option>
+            <option value="polish">Polska</option>
             <option value="english">Angielska</option>
           </select>
           <div class="hint">
@@ -239,7 +241,7 @@
 
             try {
               const controller = new AbortController();
-              const timeoutId = setTimeout(() => controller.abort(), 300000);
+              const timeoutId = setTimeout(() => controller.abort(), 1000* 60 * 10);
               const response = await fetch("/api/run_pipeline", {
                 method: "POST",
                 headers: {
