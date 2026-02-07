@@ -39,6 +39,7 @@ def merge_sources(state: PipelineState) -> List[Source]:
         state["left_sources"]
         + state["centrist_sources"]
         + state["right_sources"]
+        + state["people_sources"]
         + state["fact_sources"]
     ):
         if src.url not in dedup:
