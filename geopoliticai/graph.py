@@ -96,98 +96,89 @@ def build_graph(
     graph.add_node(
         "left_searcher",
         lambda state: {
-            **state,
             "left_sources": web_searcher(
                 state, "left", infosphere_sources["left"], seed_sources
-            ),
+            )
         },
     )
     graph.add_node(
         "centrist_searcher",
         lambda state: {
-            **state,
             "centrist_sources": web_searcher(
                 state, "centrist", infosphere_sources["centrist"], seed_sources
-            ),
+            )
         },
     )
     graph.add_node(
         "right_searcher",
         lambda state: {
-            **state,
             "right_sources": web_searcher(
                 state, "right", infosphere_sources["right"], seed_sources
-            ),
+            )
         },
     )
     graph.add_node(
         "people_searcher",
         lambda state: {
-            **state,
             "people_sources": web_searcher(
                 state, "people", infosphere_sources["people"], seed_sources
-            ),
+            )
         },
     )
     graph.add_node(
         "fact_searcher",
         lambda state: {
-            **state,
             "fact_sources": web_searcher(
                 state, "fact", infosphere_sources["fact"], seed_sources
-            ),
+            )
         },
     )
     graph.add_node(
         "left_expert",
         lambda state: {
-            **state,
             "left_claims": build_claims(
                 state,
                 "leftist",
                 state["left_sources"],
                 infosphere_sources["left"],
                 language,
-            ),
+            )
         },
     )
     graph.add_node(
         "centrist_expert",
         lambda state: {
-            **state,
             "centrist_claims": build_claims(
                 state,
                 "centrist",
                 state["centrist_sources"],
                 infosphere_sources["centrist"],
                 language,
-            ),
+            )
         },
     )
     graph.add_node(
         "right_expert",
         lambda state: {
-            **state,
             "right_claims": build_claims(
                 state,
                 "right-wing",
                 state["right_sources"],
                 infosphere_sources["right"],
                 language,
-            ),
+            )
         },
     )
     graph.add_node(
         "people_expert",
         lambda state: {
-            **state,
             "people_claims": build_claims(
                 state,
                 "people",
                 state["people_sources"],
                 infosphere_sources["people"],
                 language,
-            ),
+            )
         },
     )
     graph.add_node(
@@ -198,17 +189,28 @@ def build_graph(
     graph.add_node(
         "supervisor", _make_supervisor_finalize(infosphere_sources, language)
     )
+    graph.add_node("kickoff", lambda state: state)
 
-    graph.set_entry_point("left_searcher")
+    graph.set_entry_point("kickoff")
+    graph.add_edge("kickoff", "left_searcher")
+    graph.add_edge("kickoff", "centrist_searcher")
+    graph.add_edge("kickoff", "right_searcher")
+    graph.add_edge("kickoff", "people_searcher")
+    graph.add_edge("kickoff", "fact_searcher")
     graph.add_edge("left_searcher", "left_expert")
-    graph.add_edge("left_expert", "centrist_searcher")
     graph.add_edge("centrist_searcher", "centrist_expert")
-    graph.add_edge("centrist_expert", "right_searcher")
     graph.add_edge("right_searcher", "right_expert")
-    graph.add_edge("right_expert", "people_searcher")
     graph.add_edge("people_searcher", "people_expert")
-    graph.add_edge("people_expert", "fact_searcher")
-    graph.add_edge("fact_searcher", "fact_checker")
+    graph.add_edge(
+        [
+            "left_expert",
+            "centrist_expert",
+            "right_expert",
+            "people_expert",
+            "fact_searcher",
+        ],
+        "fact_checker",
+    )
     graph.add_edge("fact_checker", "summarizer_judge")
     graph.add_edge("summarizer_judge", "supervisor")
     graph.add_edge("supervisor", END)
