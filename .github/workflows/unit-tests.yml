@@ -20,6 +20,8 @@ jobs:
 
       - name: Set up uv
         uses: astral-sh/setup-uv@v3
+        with:
+          cache: true
 
       - name: Install dependencies
         run: |
