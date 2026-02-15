@@ -26,43 +26,22 @@ def _seed_sources(label: str) -> List[Source]:
     ]
 
 
-def _make_fake_llm_json(infosphere: str):
+def _make_fake_invoke_structured_chain(infosphere: str):
     is_polish = infosphere == "polish"
 
-    def _fake_llm_json(system: str, user: str, temperature: float = 0.2) -> dict:
+    def _fake_invoke_structured_chain(*, schema, system_prompt: str, human_prompt: str, variables: dict, temperature: float = 0.2):
+
+        class _Obj:
+            def __init__(self, **kwargs):
+                self.__dict__.update(kwargs)
+
+        user = human_prompt.format(**variables)
         if "Task: Provide 3-5 analytically cautious claims" in user:
             if "perspective: leftist" in user:
-                return {
-                    "claims": [
-                        {
-                            "text": "Polish left claim about policy impacts."
-                            if is_polish
-                            else "Left claim about policy impacts.",
-                            "source_ids": ["S1"],
-                        }
-                    ]
-                }
+                return _Obj(claims=[_Obj(text=("Polish left claim about policy impacts." if is_polish else "Left claim about policy impacts."), source_ids=["S1"])])
             if "perspective: centrist" in user:
-                return {
-                    "claims": [
-                        {
-                            "text": "Polish centrist claim balancing competing goals."
-                            if is_polish
-                            else "Centrist claim balancing competing goals.",
-                            "source_ids": ["S2"],
-                        }
-                    ]
-                }
-            return {
-                "claims": [
-                    {
-                        "text": "Polish right claim focused on market incentives."
-                        if is_polish
-                        else "Right claim focused on market incentives.",
-                        "source_ids": ["S1", "S2"],
-                    }
-                ]
-            }
+                return _Obj(claims=[_Obj(text=("Polish centrist claim balancing competing goals." if is_polish else "Centrist claim balancing competing goals."), source_ids=["S2"])])
+            return _Obj(claims=[_Obj(text=("Polish right claim focused on market incentives." if is_polish else "Right claim focused on market incentives."), source_ids=["S1", "S2"])])
 
         if "Task: Fact-check each claim" in user:
             lines = []
@@ -91,18 +70,14 @@ def _make_fake_llm_json(infosphere: str):
                             "source_ids": ["S1"],
                         }
                     )
-            return {"results": results}
+            return _Obj(results=[_Obj(**r) for r in results])
 
         if "Task: Provide a neutral synthesis" in user:
-            return {
-                "synthesis": "Overall evidence suggests mixed outcomes with partial support."
-                if not is_polish
-                else "Polish evidence suggests mixed outcomes with partial support.",
-            }
+            return _Obj(synthesis=("Overall evidence suggests mixed outcomes with partial support." if not is_polish else "Polish evidence suggests mixed outcomes with partial support."))
 
-        return {}
+        return _Obj()
 
-    return _fake_llm_json
+    return _fake_invoke_structured_chain
 
 
 @pytest.mark.parametrize(
@@ -122,10 +97,10 @@ def test_run_pipeline(infosphere, expected_left_claim, expected_reference):
     }
 
     # execute
-    fake_llm_json = _make_fake_llm_json(infosphere)
-    with patch("geopoliticai.claims.llm_json", fake_llm_json), patch(
-        "geopoliticai.fact_check.llm_json", fake_llm_json
-    ), patch("geopoliticai.summarizer.llm_json", fake_llm_json):
+    fake_invoke = _make_fake_invoke_structured_chain(infosphere)
+    with patch("geopoliticai.claims.invoke_structured_chain", fake_invoke), patch(
+        "geopoliticai.fact_check.invoke_structured_chain", fake_invoke
+    ), patch("geopoliticai.summarizer.invoke_structured_chain", fake_invoke):
         output = run_pipeline(
             "Test query", seed_sources=seed_sources, infosphere=infosphere
         )

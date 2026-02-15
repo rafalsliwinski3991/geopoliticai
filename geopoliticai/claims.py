@@ -5,11 +5,22 @@ from __future__ import annotations
 import logging
 from typing import List
 
+from pydantic import BaseModel, Field
+
 from geopoliticai.config import ENGLISH_INFOSPHERE_SOURCES
-from geopoliticai.llm import llm_json
+from geopoliticai.llm import invoke_structured_chain
 from geopoliticai.models import Claim, PipelineState, Source
 
 logger = logging.getLogger(__name__)
+
+
+class ClaimItem(BaseModel):
+    text: str = ""
+    source_ids: List[str] = Field(default_factory=list)
+
+
+class ClaimsOutput(BaseModel):
+    claims: List[ClaimItem] = Field(default_factory=list)
 
 
 def build_claims(
@@ -36,30 +47,34 @@ def build_claims(
         f"- {name} ({url})" for name, url in reference_sources_list
     )
     response_language = "Polish" if language == "polish" else "English"
-    user = f"""
-Query: {state['query']}
-Response language: {response_language}
 
-Sources:
-{source_block}
-
-Preferred references (use for framing; do not invent citations):
-{reference_block}
-
-Task: Provide 3-5 analytically cautious claims from the perspective: {lens}.
-- Use only the sources provided.
-- Each claim must cite one or more source IDs.
-Return JSON: {{"claims": [{{"text": "...", "source_ids": ["S1", "S2"]}}]}}.
-""".strip()
-
-    data = llm_json(
-        system="You are a political analyst who writes precise, source-grounded claims.",
-        user=user,
+    output = invoke_structured_chain(
+        schema=ClaimsOutput,
+        system_prompt="You are a political analyst who writes precise, source-grounded claims.",
+        human_prompt=(
+            "Query: {query}\n"
+            "Response language: {response_language}\n\n"
+            "Sources:\n{source_block}\n\n"
+            "Preferred references (use for framing; do not invent citations):\n"
+            "{reference_block}\n\n"
+            "Task: Provide 3-5 analytically cautious claims from the perspective: {lens}.\n"
+            "- Use only the sources provided.\n"
+            "- Each claim must cite one or more source IDs."
+        ),
+        variables={
+            "query": state["query"],
+            "response_language": response_language,
+            "source_block": source_block,
+            "reference_block": reference_block,
+            "lens": lens,
+        },
+        temperature=0.2,
     )
+
     claims = []
-    for item in data.get("claims", []):
-        text = (item.get("text") or "").strip()
-        source_ids = [sid for sid in item.get("source_ids", []) if isinstance(sid, str)]
+    for item in output.claims:
+        text = item.text.strip()
+        source_ids = [sid for sid in item.source_ids if isinstance(sid, str)]
         if text:
             claims.append(Claim(text=text, source_ids=source_ids))
     return claims
