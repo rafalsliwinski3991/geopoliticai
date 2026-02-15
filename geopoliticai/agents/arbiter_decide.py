@@ -1,8 +1,38 @@
 from __future__ import annotations
 
-from geopoliticai.governance import arbiter_decide
 from geopoliticai.models import PipelineState
 
 
 def arbiter_decide_agent(state: PipelineState) -> PipelineState:
-    return arbiter_decide(state)
+    if state["loop_count"] >= state["max_loops"] and (
+        state["verification_to_do"] or state["rewrites_to_do"]
+    ):
+        return {
+            **state,
+            "decision": "ESCALATE",
+            "decision_rationale": "Maximum verification loops reached.",
+        }
+
+    if state["verification_to_do"]:
+        return {
+            **state,
+            "decision": "VERIFY",
+            "decision_rationale": "Missing support for one or more claims.",
+        }
+
+    if state["rewrites_to_do"]:
+        return {
+            **state,
+            "decision": "REVISE",
+            "decision_rationale": "Loaded language detected in one or more claims.",
+        }
+
+    return {
+        **state,
+        "decision": "EXECUTE",
+        "decision_rationale": "Referee checks passed.",
+    }
+
+
+def route_from_arbiter(state: PipelineState) -> str:
+    return state.get("decision", "EXECUTE")

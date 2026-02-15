@@ -1,6 +1,6 @@
 """Pipeline agents package."""
 
-from geopoliticai.agents.arbiter_decide import arbiter_decide_agent
+from geopoliticai.agents.arbiter_decide import arbiter_decide_agent, route_from_arbiter
 from geopoliticai.agents.build_research_plan import build_research_plan_agent
 from geopoliticai.agents.center_analyst import center_analyst_agent
 from geopoliticai.agents.compose_final import compose_final_agent
@@ -30,6 +30,7 @@ __all__ = [
     "referee_agent",
     "revise_analyses_agent",
     "right_analyst_agent",
+    "route_from_arbiter",
     "search_center_pool_agent",
     "search_left_pool_agent",
     "search_right_pool_agent",

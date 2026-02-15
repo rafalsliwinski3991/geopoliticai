@@ -19,13 +19,13 @@ from geopoliticai.agents import (
     referee_agent,
     revise_analyses_agent,
     right_analyst_agent,
+    route_from_arbiter,
     search_center_pool_agent,
     search_left_pool_agent,
     search_right_pool_agent,
     verify_more_agent,
 )
 from geopoliticai.config import get_infosphere_sources
-from geopoliticai.governance import route_from_arbiter
 from geopoliticai.models import PipelineState, Source
 
 
