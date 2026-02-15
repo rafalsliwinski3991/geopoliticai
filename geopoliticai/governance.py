@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-from geopoliticai.agents.arbiter_decide import arbiter_decide_agent, route_from_arbiter
-from geopoliticai.agents.extract_claims import extract_claims_agent
-from geopoliticai.agents.referee import referee_agent
-from geopoliticai.agents.revise_analyses import revise_analyses_agent
-from geopoliticai.agents.verify_more import verify_more_agent
+from geopoliticai.tools.arbiter_decide import arbiter_decide_agent, route_from_arbiter
+from geopoliticai.tools.extract_claims import extract_claims_agent
+from geopoliticai.tools.referee import referee_agent
+from geopoliticai.tools.revise_analyses import revise_analyses_agent
+from geopoliticai.tools.verify_more import verify_more_agent
 from geopoliticai.models import PipelineState
 
 
