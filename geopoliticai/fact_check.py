@@ -22,7 +22,7 @@ def fact_checker(
         len(state["left_claims"])
         + len(state["centrist_claims"])
         + len(state["right_claims"])
-        + len(state["people_claims"]),
+        
     )
     source_block = "\n".join(
         f"{s.id}: {s.title} - {s.notes} ({s.url})" for s in state["fact_sources"]
@@ -31,7 +31,7 @@ def fact_checker(
         state["left_claims"]
         + state["centrist_claims"]
         + state["right_claims"]
-        + state["people_claims"]
+        
     )
     claims_block = "\n".join(
         f"- {c.text} (Sources: {', '.join(c.source_ids) if c.source_ids else 'none'})"

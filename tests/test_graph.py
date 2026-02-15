@@ -53,17 +53,6 @@ def _make_fake_llm_json(infosphere: str):
                         }
                     ]
                 }
-            if "perspective: people" in user:
-                return {
-                    "claims": [
-                        {
-                            "text": "Polish people claim reflecting public sentiment."
-                            if is_polish
-                            else "People claim reflecting public sentiment.",
-                            "source_ids": ["S1"],
-                        }
-                    ]
-                }
             return {
                 "claims": [
                     {
@@ -129,7 +118,6 @@ def test_run_pipeline(infosphere, expected_left_claim, expected_reference):
         "left": _seed_sources("left"),
         "centrist": _seed_sources("centrist"),
         "right": _seed_sources("right"),
-        "people": _seed_sources("people"),
         "fact": _seed_sources("fact"),
     }
 
@@ -146,16 +134,13 @@ def test_run_pipeline(infosphere, expected_left_claim, expected_reference):
     assert "Factual Background" in output or "Tło faktograficzne" in output
     assert expected_left_claim in output
     assert expected_reference in output
-    assert "Reddit" in output
     if infosphere == "polish":
         assert "Perspektywa lewicowa" in output
         assert "Perspektywa centrowa" in output
         assert "Perspektywa prawicowa" in output
-        assert "Perspektywa społeczna" in output
         assert "Wyniki weryfikacji faktów" in output
         assert "Synteza i najlepiej potwierdzone wnioski" in output
         assert "Polish centrist claim balancing competing goals." in output
-        assert "Polish people claim reflecting public sentiment." in output
         assert "Polish right claim focused on market incentives." in output
         assert "Evidence supports parts but not all details (PL)." in output
         assert "Polish evidence suggests mixed outcomes with partial support." in output
@@ -163,12 +148,12 @@ def test_run_pipeline(infosphere, expected_left_claim, expected_reference):
         assert "Left Perspective" in output
         assert "Centrist Perspective" in output
         assert "Right Perspective" in output
-        assert "People's Perspective" in output
         assert "Fact Check Results" in output
         assert "Synthesis & Best-Supported Conclusion" in output
         assert "Centrist claim balancing competing goals." in output
-        assert "People claim reflecting public sentiment." in output
         assert "Right claim focused on market incentives." in output
         assert "Evidence supports parts but not all details." in output
         assert "Overall evidence suggests mixed outcomes with partial support." in output
     assert "PARTIALLY TRUE" in output
+    assert "Arbiter Decision" in output or "Decyzja arbitra" in output
+    assert "EXECUTE" in output

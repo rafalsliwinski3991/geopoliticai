@@ -9,7 +9,16 @@ from langgraph.graph import END, StateGraph
 from geopoliticai.claims import build_claims
 from geopoliticai.config import get_infosphere_sources
 from geopoliticai.fact_check import fact_checker
+from geopoliticai.governance import (
+    arbiter_decide,
+    extract_claims,
+    referee,
+    revise_analyses,
+    route_from_arbiter,
+    verify_more,
+)
 from geopoliticai.models import PipelineState, Source
+from geopoliticai.planning import build_research_plan
 from geopoliticai.render import (
     merge_sources,
     render_claims,
@@ -31,9 +40,9 @@ def _make_supervisor_finalize(
             "left": "2. 🔴 Perspektywa lewicowa",
             "centrist": "3. 🟡 Perspektywa centrowa",
             "right": "4. 🔵 Perspektywa prawicowa",
-            "people": "5. 🟢 Perspektywa społeczna",
-            "fact": "6. ✅ Wyniki weryfikacji faktów",
-            "synthesis": "7. ⚖️ Synteza i najlepiej potwierdzone wnioski",
+            "fact": "5. ✅ Wyniki weryfikacji faktów",
+            "synthesis": "6. ⚖️ Synteza i najlepiej potwierdzone wnioski",
+            "decision": "7. 🧭 Decyzja arbitra",
             "refs": "Preferowane źródła:",
         }
     else:
@@ -42,9 +51,9 @@ def _make_supervisor_finalize(
             "left": "2. 🔴 Left Perspective",
             "centrist": "3. 🟡 Centrist Perspective",
             "right": "4. 🔵 Right Perspective",
-            "people": "5. 🟢 People's Perspective",
-            "fact": "6. ✅ Fact Check Results",
-            "synthesis": "7. ⚖️ Synthesis & Best-Supported Conclusion",
+            "fact": "5. ✅ Fact Check Results",
+            "synthesis": "6. ⚖️ Synthesis & Best-Supported Conclusion",
+            "decision": "7. 🧭 Arbiter Decision",
             "refs": "Preferred references:",
         }
 
@@ -68,11 +77,6 @@ def _make_supervisor_finalize(
         output.append(render_reference_list(infosphere_sources["right"]))
         output.append(render_claims(state["right_claims"]))
         output.append("")
-        output.append(labels["people"])
-        output.append(labels["refs"])
-        output.append(render_reference_list(infosphere_sources["people"]))
-        output.append(render_claims(state["people_claims"]))
-        output.append("")
         output.append(labels["fact"])
         output.append(labels["refs"])
         output.append(render_reference_list(infosphere_sources["fact"]))
@@ -80,6 +84,9 @@ def _make_supervisor_finalize(
         output.append("")
         output.append(labels["synthesis"])
         output.append(state["synthesis"])
+        output.append("")
+        output.append(labels["decision"])
+        output.append(f"- {state['decision']}: {state['decision_rationale']}")
         return {**state, "final_output": "\n".join(output)}
 
     return supervisor_finalize
@@ -93,8 +100,11 @@ def build_graph(
     infosphere_sources = get_infosphere_sources(infosphere)
     graph = StateGraph(PipelineState)
 
+    graph.add_node("ingest_request", lambda state: state)
+    graph.add_node("build_research_plan", build_research_plan)
+
     graph.add_node(
-        "left_searcher",
+        "search_left_pool",
         lambda state: {
             **state,
             "left_sources": web_searcher(
@@ -103,7 +113,7 @@ def build_graph(
         },
     )
     graph.add_node(
-        "centrist_searcher",
+        "search_center_pool",
         lambda state: {
             **state,
             "centrist_sources": web_searcher(
@@ -112,7 +122,7 @@ def build_graph(
         },
     )
     graph.add_node(
-        "right_searcher",
+        "search_right_pool",
         lambda state: {
             **state,
             "right_sources": web_searcher(
@@ -121,25 +131,7 @@ def build_graph(
         },
     )
     graph.add_node(
-        "people_searcher",
-        lambda state: {
-            **state,
-            "people_sources": web_searcher(
-                state, "people", infosphere_sources["people"], seed_sources
-            ),
-        },
-    )
-    graph.add_node(
-        "fact_searcher",
-        lambda state: {
-            **state,
-            "fact_sources": web_searcher(
-                state, "fact", infosphere_sources["fact"], seed_sources
-            ),
-        },
-    )
-    graph.add_node(
-        "left_expert",
+        "left_analyst",
         lambda state: {
             **state,
             "left_claims": build_claims(
@@ -152,7 +144,7 @@ def build_graph(
         },
     )
     graph.add_node(
-        "centrist_expert",
+        "center_analyst",
         lambda state: {
             **state,
             "centrist_claims": build_claims(
@@ -165,7 +157,7 @@ def build_graph(
         },
     )
     graph.add_node(
-        "right_expert",
+        "right_analyst",
         lambda state: {
             **state,
             "right_claims": build_claims(
@@ -177,40 +169,50 @@ def build_graph(
             ),
         },
     )
-    graph.add_node(
-        "people_expert",
-        lambda state: {
+    graph.add_node("referee", referee)
+    graph.add_node("extract_claims", extract_claims)
+    def _cross_check_facts(state: PipelineState) -> PipelineState:
+        with_fact_sources = {
             **state,
-            "people_claims": build_claims(
-                state,
-                "people",
-                state["people_sources"],
-                infosphere_sources["people"],
-                language,
+            "fact_sources": web_searcher(
+                state, "fact", infosphere_sources["fact"], seed_sources
             ),
+        }
+        return fact_checker(with_fact_sources, infosphere_sources["fact"], language)
+
+    graph.add_node("cross_check_facts", _cross_check_facts)
+    graph.add_node("arbiter_decide", arbiter_decide)
+    graph.add_node("verify_more", verify_more)
+    graph.add_node("revise_analyses", revise_analyses)
+    graph.add_node("compose_final", summarizer_judge)
+    graph.add_node("supervisor", _make_supervisor_finalize(infosphere_sources, language))
+
+    graph.set_entry_point("ingest_request")
+    graph.add_edge("ingest_request", "build_research_plan")
+    graph.add_edge("build_research_plan", "search_left_pool")
+    graph.add_edge("search_left_pool", "left_analyst")
+    graph.add_edge("left_analyst", "search_center_pool")
+    graph.add_edge("search_center_pool", "center_analyst")
+    graph.add_edge("center_analyst", "search_right_pool")
+    graph.add_edge("search_right_pool", "right_analyst")
+    graph.add_edge("right_analyst", "referee")
+    graph.add_edge("referee", "extract_claims")
+    graph.add_edge("extract_claims", "cross_check_facts")
+    graph.add_edge("cross_check_facts", "arbiter_decide")
+    graph.add_conditional_edges(
+        "arbiter_decide",
+        route_from_arbiter,
+        {
+            "EXECUTE": "compose_final",
+            "ESCALATE": "compose_final",
+            "HALT": "compose_final",
+            "VERIFY": "verify_more",
+            "REVISE": "revise_analyses",
         },
     )
-    graph.add_node(
-        "fact_checker",
-        lambda state: fact_checker(state, infosphere_sources["fact"], language),
-    )
-    graph.add_node("summarizer_judge", lambda state: summarizer_judge(state, language))
-    graph.add_node(
-        "supervisor", _make_supervisor_finalize(infosphere_sources, language)
-    )
-
-    graph.set_entry_point("left_searcher")
-    graph.add_edge("left_searcher", "left_expert")
-    graph.add_edge("left_expert", "centrist_searcher")
-    graph.add_edge("centrist_searcher", "centrist_expert")
-    graph.add_edge("centrist_expert", "right_searcher")
-    graph.add_edge("right_searcher", "right_expert")
-    graph.add_edge("right_expert", "people_searcher")
-    graph.add_edge("people_searcher", "people_expert")
-    graph.add_edge("people_expert", "fact_searcher")
-    graph.add_edge("fact_searcher", "fact_checker")
-    graph.add_edge("fact_checker", "summarizer_judge")
-    graph.add_edge("summarizer_judge", "supervisor")
+    graph.add_edge("verify_more", "search_left_pool")
+    graph.add_edge("revise_analyses", "referee")
+    graph.add_edge("compose_final", "supervisor")
     graph.add_edge("supervisor", END)
 
     return graph.compile()
@@ -228,15 +230,29 @@ def run_pipeline(
         "left_claims": [],
         "centrist_claims": [],
         "right_claims": [],
-        "people_claims": [],
         "left_sources": [],
         "centrist_sources": [],
         "right_sources": [],
-        "people_sources": [],
         "fact_sources": [],
         "fact_checks": [],
         "synthesis": "",
         "final_output": "",
+        "research_plan": {"queries": [], "entities": [], "timeframe": "", "must_find": []},
+        "referee_report": {
+            "blocked": False,
+            "issues": [],
+            "unsupported_facts": [],
+            "loaded_language": [],
+            "required_verifications": [],
+            "required_rewrites": [],
+        },
+        "extracted_claims": [],
+        "decision": "EXECUTE",
+        "decision_rationale": "",
+        "verification_to_do": [],
+        "rewrites_to_do": [],
+        "loop_count": 0,
+        "max_loops": 2,
     }
     result = app.invoke(initial_state)
     return result["final_output"]

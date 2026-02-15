@@ -46,7 +46,8 @@ def web_searcher(
 
     logger.info("Web searcher (%s): querying Tavily", agent_key)
     client = TavilyClient(api_key=tavily_key)
-    biased_query = _build_biased_query(state["query"], references)
+    queries = state.get("research_plan", {}).get("queries") or [state["query"]]
+    biased_query = _build_biased_query(queries[0], references)
     response = client.search(biased_query, max_results=6, search_depth="advanced")
     sources: List[Source] = []
     for idx, item in enumerate(response.get("results", []), start=1):

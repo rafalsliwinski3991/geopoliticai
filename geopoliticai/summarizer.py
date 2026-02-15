@@ -18,7 +18,7 @@ def summarizer_judge(state: PipelineState, language: str | None = None) -> Pipel
             state["left_claims"]
             + state["centrist_claims"]
             + state["right_claims"]
-            + state["people_claims"]
+            
         )
     )
     fact_block = "\n".join(
