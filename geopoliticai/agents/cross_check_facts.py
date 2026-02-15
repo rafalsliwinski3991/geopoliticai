@@ -1,10 +1,23 @@
 from __future__ import annotations
 
-from typing import Dict, List, Optional, Union
+from typing import Dict, List, Literal, Optional, Union
 
-from geopoliticai.fact_check import fact_checker
-from geopoliticai.models import PipelineState, Source
+from pydantic import BaseModel, Field
+
+from geopoliticai.models import Claim, FactCheckResult, PipelineState, Source
 from geopoliticai.search import web_searcher
+from geopoliticai.llm import invoke_structured_chain
+
+
+class FactCheckItem(BaseModel):
+    claim_text: str = ""
+    verdict: Literal["TRUE", "PARTIALLY TRUE", "MISLEADING", "FALSE"] | str = ""
+    rationale: str = ""
+    source_ids: List[str] = Field(default_factory=list)
+
+
+class FactCheckOutput(BaseModel):
+    results: List[FactCheckItem] = Field(default_factory=list)
 
 
 def cross_check_facts_agent(
@@ -17,4 +30,57 @@ def cross_check_facts_agent(
         **state,
         "fact_sources": web_searcher(state, "fact", infosphere_sources["fact"], seed_sources),
     }
-    return fact_checker(with_fact_sources, infosphere_sources["fact"], language)
+
+    source_block = "\n".join(
+        f"{s.id}: {s.title} - {s.notes} ({s.url})" for s in with_fact_sources["fact_sources"]
+    )
+    claims = (
+        with_fact_sources["left_claims"]
+        + with_fact_sources["centrist_claims"]
+        + with_fact_sources["right_claims"]
+    )
+    claims_block = "\n".join(
+        f"- {c.text} (Sources: {', '.join(c.source_ids) if c.source_ids else 'none'})"
+        for c in claims
+    )
+    reference_block = "\n".join(
+        f"- {name} ({url})" for name, url in infosphere_sources["fact"]
+    )
+    response_language = "Polish" if language == "polish" else "English"
+
+    data = invoke_structured_chain(
+        schema=FactCheckOutput,
+        system_prompt="You are a meticulous fact-checker who only uses the provided sources.",
+        human_prompt=(
+            "Sources:\n{source_block}\n\n"
+            "Claims:\n{claims_block}\n\n"
+            "Preferred fact-check references (use for methods; do not invent citations):\n"
+            "{reference_block}\n\n"
+            "Task: Fact-check each claim against the sources. "
+            "Use verdicts: TRUE, PARTIALLY TRUE, MISLEADING, FALSE. "
+            "Write the rationale in {response_language}. Keep the verdict labels exactly as specified."
+        ),
+        variables={
+            "source_block": source_block,
+            "claims_block": claims_block,
+            "reference_block": reference_block,
+            "response_language": response_language,
+        },
+        temperature=0.0,
+    )
+
+    results: List[FactCheckResult] = []
+    for item in data.results:
+        claim_text = item.claim_text.strip()
+        verdict = item.verdict.strip()
+        rationale = item.rationale.strip()
+        source_ids = [sid for sid in item.source_ids if isinstance(sid, str)]
+        if claim_text and verdict:
+            results.append(
+                FactCheckResult(
+                    claim=Claim(text=claim_text, source_ids=source_ids),
+                    verdict=verdict,
+                    rationale=rationale,
+                )
+            )
+    return {**with_fact_sources, "fact_checks": results}

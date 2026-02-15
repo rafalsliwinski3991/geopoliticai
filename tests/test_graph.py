@@ -98,9 +98,11 @@ def test_run_pipeline(infosphere, expected_left_claim, expected_reference):
 
     # execute
     fake_invoke = _make_fake_invoke_structured_chain(infosphere)
-    with patch("geopoliticai.claims.invoke_structured_chain", fake_invoke), patch(
-        "geopoliticai.fact_check.invoke_structured_chain", fake_invoke
-    ), patch("geopoliticai.summarizer.invoke_structured_chain", fake_invoke):
+    with patch("geopoliticai.agents.left_analyst.invoke_structured_chain", fake_invoke), patch(
+        "geopoliticai.agents.center_analyst.invoke_structured_chain", fake_invoke
+    ), patch("geopoliticai.agents.right_analyst.invoke_structured_chain", fake_invoke), patch(
+        "geopoliticai.agents.cross_check_facts.invoke_structured_chain", fake_invoke
+    ), patch("geopoliticai.agents.compose_final.invoke_structured_chain", fake_invoke):
         output = run_pipeline(
             "Test query", seed_sources=seed_sources, infosphere=infosphere
         )
