@@ -41,6 +41,12 @@ class StructuredOutputChain:
             ]
         )
         messages = prompt.format_messages(**variables)
+        # OpenAI JSON mode requires that the prompt explicitly mentions JSON.
+        system_content = (
+            f"{messages[0].content}\n\n"
+            "Output requirement: return only a valid JSON object."
+        )
+        user_content = str(messages[1].content)
         client = get_openai_client()
         model = get_model()
         logger.info(
@@ -53,8 +59,8 @@ class StructuredOutputChain:
             response = client.responses.create(
                 model=model,
                 input=[
-                    {"role": "system", "content": messages[0].content},
-                    {"role": "user", "content": messages[1].content},
+                    {"role": "system", "content": system_content},
+                    {"role": "user", "content": user_content},
                 ],
                 temperature=self.temperature,
                 response_format={"type": "json_object"},
@@ -64,8 +70,8 @@ class StructuredOutputChain:
             response = client.chat.completions.create(
                 model=model,
                 messages=[
-                    {"role": "system", "content": messages[0].content},
-                    {"role": "user", "content": messages[1].content},
+                    {"role": "system", "content": system_content},
+                    {"role": "user", "content": user_content},
                 ],
                 temperature=self.temperature,
                 response_format={"type": "json_object"},

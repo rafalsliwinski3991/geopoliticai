@@ -68,8 +68,6 @@ class PipelineState(TypedDict):
     research_plan: Dict[str, Any]
     referee_report: Dict[str, Any]
     extracted_claims: List[Dict[str, Any]]
-    decision: str
-    decision_rationale: str
     verification_to_do: List[str]
     rewrites_to_do: List[str]
     loop_count: int

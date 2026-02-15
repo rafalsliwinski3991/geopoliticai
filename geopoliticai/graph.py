@@ -14,18 +14,14 @@ from geopoliticai.agents import (
     right_analyst_agent,
 )
 from geopoliticai.tools import (
-    decide_arbiter_outcome,
     build_research_plan_step,
     extract_claims_for_verification,
     ingest_request,
-    make_supervisor_step,
     run_referee_checks,
-    perform_revision_loop,
-    route_from_arbiter_decision,
+    make_supervisor_step,
     search_center_pool,
     search_left_pool,
     search_right_pool,
-    perform_verification_loop,
 )
 from geopoliticai.config import get_infosphere_sources
 from geopoliticai.models import PipelineState, Source
@@ -35,6 +31,7 @@ def build_graph(
     seed_sources: Optional[Union[List[Source], Dict[str, List[Source]]]] = None,
     infosphere: str = "english",
 ):
+    """Construct and compile the LangGraph pipeline."""
     language = "polish" if infosphere == "polish" else "english"
     infosphere_sources = get_infosphere_sources(infosphere)
     graph = StateGraph(PipelineState)
@@ -72,9 +69,6 @@ def build_graph(
             state, infosphere_sources, language, seed_sources
         ),
     )
-    graph.add_node("arbiter_decide", decide_arbiter_outcome)
-    graph.add_node("verify_more", perform_verification_loop)
-    graph.add_node("revise_analyses", perform_revision_loop)
     graph.add_node("compose_final", lambda state: compose_final_agent(state, language))
     graph.add_node("supervisor", make_supervisor_step(infosphere_sources, language))
 
@@ -89,20 +83,7 @@ def build_graph(
     graph.add_edge("right_analyst", "referee")
     graph.add_edge("referee", "extract_claims")
     graph.add_edge("extract_claims", "cross_check_facts")
-    graph.add_edge("cross_check_facts", "arbiter_decide")
-    graph.add_conditional_edges(
-        "arbiter_decide",
-        route_from_arbiter_decision,
-        {
-            "EXECUTE": "compose_final",
-            "ESCALATE": "compose_final",
-            "HALT": "compose_final",
-            "VERIFY": "verify_more",
-            "REVISE": "revise_analyses",
-        },
-    )
-    graph.add_edge("verify_more", "search_left_pool")
-    graph.add_edge("revise_analyses", "referee")
+    graph.add_edge("cross_check_facts", "compose_final")
     graph.add_edge("compose_final", "supervisor")
     graph.add_edge("supervisor", END)
 
@@ -114,6 +95,7 @@ def run_pipeline(
     seed_sources: Optional[Union[List[Source], Dict[str, List[Source]]]] = None,
     infosphere: str = "english",
 ) -> str:
+    """Execute the pipeline and return the final rendered report."""
     app = build_graph(seed_sources, infosphere)
     initial_state: PipelineState = {
         "query": query,
@@ -138,8 +120,6 @@ def run_pipeline(
             "required_rewrites": [],
         },
         "extracted_claims": [],
-        "decision": "EXECUTE",
-        "decision_rationale": "",
         "verification_to_do": [],
         "rewrites_to_do": [],
         "loop_count": 0,

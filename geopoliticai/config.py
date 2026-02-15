@@ -79,16 +79,19 @@ def init_environment() -> logging.Logger:
 
 
 def require_env(keys: Sequence[str] = REQUIRED_ENV_VARS) -> None:
+    """Ensure required environment variables are present."""
     missing = [key for key in keys if not os.getenv(key)]
     if missing:
         raise ValueError("Missing required environment variables: " + ", ".join(missing))
 
 
 def get_model() -> str:
+    """Return the configured OpenAI model name."""
     return os.getenv("OPENAI_MODEL", DEFAULT_MODEL)
 
 
 def get_infosphere_sources(infosphere: str) -> dict[str, list[tuple[str, str]]]:
+    """Return the sources list for the requested infosphere."""
     if infosphere == "english":
         return ENGLISH_INFOSPHERE_SOURCES
     if infosphere == "polish":

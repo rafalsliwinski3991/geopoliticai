@@ -1,3 +1,5 @@
+"""Search pool helpers for populating lane-specific source lists."""
+
 from __future__ import annotations
 
 from typing import Dict, List, Optional, Union
@@ -13,6 +15,7 @@ def _search_lane_pool(
     state_key: str,
     seed_sources: Optional[Union[List[Source], Dict[str, List[Source]]]] = None,
 ) -> PipelineState:
+    """Populate a single lane's sources via the web searcher."""
     return {
         **state,
         state_key: web_searcher(state, lane_key, infosphere_sources[lane_key], seed_sources),
@@ -24,6 +27,7 @@ def search_left_pool(
     infosphere_sources: dict[str, list[tuple[str, str]]],
     seed_sources: Optional[Union[List[Source], Dict[str, List[Source]]]] = None,
 ) -> PipelineState:
+    """Populate the left-leaning source pool."""
     return _search_lane_pool(state, infosphere_sources, "left", "left_sources", seed_sources)
 
 
@@ -32,6 +36,7 @@ def search_center_pool(
     infosphere_sources: dict[str, list[tuple[str, str]]],
     seed_sources: Optional[Union[List[Source], Dict[str, List[Source]]]] = None,
 ) -> PipelineState:
+    """Populate the centrist source pool."""
     return _search_lane_pool(
         state,
         infosphere_sources,
@@ -46,4 +51,5 @@ def search_right_pool(
     infosphere_sources: dict[str, list[tuple[str, str]]],
     seed_sources: Optional[Union[List[Source], Dict[str, List[Source]]]] = None,
 ) -> PipelineState:
+    """Populate the right-leaning source pool."""
     return _search_lane_pool(state, infosphere_sources, "right", "right_sources", seed_sources)

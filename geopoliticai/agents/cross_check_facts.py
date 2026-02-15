@@ -1,22 +1,40 @@
+"""Fact-checking agent for verifying claims against sources."""
+
 from __future__ import annotations
 
-from typing import Dict, List, Literal, Optional, Union
+import logging
+from typing import Any, Dict, List, Literal, Optional, Union
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from geopoliticai.models import Claim, FactCheckResult, PipelineState, Source
 from geopoliticai.search import web_searcher
 from geopoliticai.llm import invoke_structured_chain
 
+logger = logging.getLogger(__name__)
+
 
 class FactCheckItem(BaseModel):
+    """Single fact-check result for a claim."""
+
     claim_text: str = ""
     verdict: Literal["TRUE", "PARTIALLY TRUE", "MISLEADING", "FALSE"] | str = ""
     rationale: str = ""
     source_ids: List[str] = Field(default_factory=list)
 
+    @field_validator("source_ids", mode="before")
+    @classmethod
+    def _coerce_source_ids(cls, value: Any) -> list[str]:
+        if value is None:
+            return []
+        if isinstance(value, list):
+            return [str(item) for item in value if item is not None]
+        return [str(value)]
+
 
 class FactCheckOutput(BaseModel):
+    """Structured output for a batch of fact-check results."""
+
     results: List[FactCheckItem] = Field(default_factory=list)
 
 
@@ -26,6 +44,7 @@ def cross_check_facts_agent(
     language: str,
     seed_sources: Optional[Union[List[Source], Dict[str, List[Source]]]] = None,
 ) -> PipelineState:
+    """Run fact checks for all claims and return structured verdicts."""
     with_fact_sources = {
         **state,
         "fact_sources": web_searcher(state, "fact", infosphere_sources["fact"], seed_sources),
@@ -38,6 +57,11 @@ def cross_check_facts_agent(
         with_fact_sources["left_claims"]
         + with_fact_sources["centrist_claims"]
         + with_fact_sources["right_claims"]
+    )
+    logger.info(
+        "Fact-check: sources=%d claims=%d",
+        len(with_fact_sources["fact_sources"]),
+        len(claims),
     )
     claims_block = "\n".join(
         f"- {c.text} (Sources: {', '.join(c.source_ids) if c.source_ids else 'none'})"
@@ -56,7 +80,8 @@ def cross_check_facts_agent(
             "Claims:\n{claims_block}\n\n"
             "Preferred fact-check references (use for methods; do not invent citations):\n"
             "{reference_block}\n\n"
-            "Task: Fact-check each claim against the sources. "
+            "Task: Fact-check each claim strictly against the provided sources. "
+            "Do not speculate or add outside knowledge. "
             "Use verdicts: TRUE, PARTIALLY TRUE, MISLEADING, FALSE. "
             "Write the rationale in {response_language}. Keep the verdict labels exactly as specified."
         ),
@@ -83,4 +108,14 @@ def cross_check_facts_agent(
                     rationale=rationale,
                 )
             )
+    logger.info("Fact-check: produced %d verdicts", len(results))
+    for idx, res in enumerate(results[:5], start=1):
+        sources = ", ".join(res.claim.source_ids) if res.claim.source_ids else "none"
+        logger.info(
+            "Fact-check %d: %s — %s (Sources: %s)",
+            idx,
+            res.verdict,
+            res.claim.text,
+            sources,
+        )
     return {**with_fact_sources, "fact_checks": results}
