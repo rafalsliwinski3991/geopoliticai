@@ -5,7 +5,7 @@ from geopoliticai.models import PipelineState, RefereeReport
 LOADED_TERMS = ("traitor", "vermin", "subhuman")
 
 
-def referee_agent(state: PipelineState) -> PipelineState:
+def run_referee_checks(state: PipelineState) -> PipelineState:
     unsupported: list[str] = []
     loaded: list[str] = []
     all_claims = state["left_claims"] + state["centrist_claims"] + state["right_claims"]

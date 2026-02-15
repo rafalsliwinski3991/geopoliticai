@@ -3,7 +3,7 @@ from __future__ import annotations
 from geopoliticai.models import PipelineState
 
 
-def extract_claims_agent(state: PipelineState) -> PipelineState:
+def extract_claims_for_verification(state: PipelineState) -> PipelineState:
     extracted = []
     for lane, claims in (
         ("left", state["left_claims"]),

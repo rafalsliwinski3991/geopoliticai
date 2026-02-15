@@ -14,18 +14,18 @@ from geopoliticai.agents import (
     right_analyst_agent,
 )
 from geopoliticai.tools import (
-    arbiter_decide_agent,
-    build_research_plan_agent,
-    extract_claims_agent,
+    decide_arbiter_outcome,
+    build_research_plan_step,
+    extract_claims_for_verification,
     ingest_request,
-    make_supervisor_agent,
-    referee_agent,
-    revise_analyses_agent,
-    route_from_arbiter,
-    search_center_pool_agent,
-    search_left_pool_agent,
-    search_right_pool_agent,
-    verify_more_agent,
+    make_supervisor_step,
+    run_referee_checks,
+    perform_revision_loop,
+    route_from_arbiter_decision,
+    search_center_pool,
+    search_left_pool,
+    search_right_pool,
+    perform_verification_loop,
 )
 from geopoliticai.config import get_infosphere_sources
 from geopoliticai.models import PipelineState, Source
@@ -40,18 +40,18 @@ def build_graph(
     graph = StateGraph(PipelineState)
 
     graph.add_node("ingest_request", ingest_request)
-    graph.add_node("build_research_plan", build_research_plan_agent)
+    graph.add_node("build_research_plan", build_research_plan_step)
     graph.add_node(
         "search_left_pool",
-        lambda state: search_left_pool_agent(state, infosphere_sources, seed_sources),
+        lambda state: search_left_pool(state, infosphere_sources, seed_sources),
     )
     graph.add_node(
         "search_center_pool",
-        lambda state: search_center_pool_agent(state, infosphere_sources, seed_sources),
+        lambda state: search_center_pool(state, infosphere_sources, seed_sources),
     )
     graph.add_node(
         "search_right_pool",
-        lambda state: search_right_pool_agent(state, infosphere_sources, seed_sources),
+        lambda state: search_right_pool(state, infosphere_sources, seed_sources),
     )
     graph.add_node(
         "left_analyst", lambda state: left_analyst_agent(state, infosphere_sources, language)
@@ -64,19 +64,19 @@ def build_graph(
         "right_analyst",
         lambda state: right_analyst_agent(state, infosphere_sources, language),
     )
-    graph.add_node("referee", referee_agent)
-    graph.add_node("extract_claims", extract_claims_agent)
+    graph.add_node("referee", run_referee_checks)
+    graph.add_node("extract_claims", extract_claims_for_verification)
     graph.add_node(
         "cross_check_facts",
         lambda state: cross_check_facts_agent(
             state, infosphere_sources, language, seed_sources
         ),
     )
-    graph.add_node("arbiter_decide", arbiter_decide_agent)
-    graph.add_node("verify_more", verify_more_agent)
-    graph.add_node("revise_analyses", revise_analyses_agent)
+    graph.add_node("arbiter_decide", decide_arbiter_outcome)
+    graph.add_node("verify_more", perform_verification_loop)
+    graph.add_node("revise_analyses", perform_revision_loop)
     graph.add_node("compose_final", lambda state: compose_final_agent(state, language))
-    graph.add_node("supervisor", make_supervisor_agent(infosphere_sources, language))
+    graph.add_node("supervisor", make_supervisor_step(infosphere_sources, language))
 
     graph.set_entry_point("ingest_request")
     graph.add_edge("ingest_request", "build_research_plan")
@@ -92,7 +92,7 @@ def build_graph(
     graph.add_edge("cross_check_facts", "arbiter_decide")
     graph.add_conditional_edges(
         "arbiter_decide",
-        route_from_arbiter,
+        route_from_arbiter_decision,
         {
             "EXECUTE": "compose_final",
             "ESCALATE": "compose_final",

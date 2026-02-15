@@ -3,7 +3,7 @@ from __future__ import annotations
 from geopoliticai.models import PipelineState
 
 
-def arbiter_decide_agent(state: PipelineState) -> PipelineState:
+def decide_arbiter_outcome(state: PipelineState) -> PipelineState:
     if state["loop_count"] >= state["max_loops"] and (
         state["verification_to_do"] or state["rewrites_to_do"]
     ):
@@ -34,5 +34,5 @@ def arbiter_decide_agent(state: PipelineState) -> PipelineState:
     }
 
 
-def route_from_arbiter(state: PipelineState) -> str:
+def route_from_arbiter_decision(state: PipelineState) -> str:
     return state.get("decision", "EXECUTE")

@@ -12,7 +12,7 @@ from geopoliticai.render import (
 )
 
 
-def make_supervisor_agent(
+def make_supervisor_step(
     infosphere_sources: dict[str, list[tuple[str, str]]],
     language: str,
 ) -> Callable[[PipelineState], PipelineState]:

@@ -3,7 +3,7 @@ from __future__ import annotations
 from geopoliticai.models import PipelineState
 
 
-def verify_more_agent(state: PipelineState) -> PipelineState:
+def perform_verification_loop(state: PipelineState) -> PipelineState:
     # Minimal implementation: record loop and clear pending verifications for next pass.
     return {
         **state,
@@ -12,7 +12,7 @@ def verify_more_agent(state: PipelineState) -> PipelineState:
     }
 
 
-def revise_analyses_agent(state: PipelineState) -> PipelineState:
+def perform_revision_loop(state: PipelineState) -> PipelineState:
     # Minimal implementation: record loop and clear pending rewrites for next pass.
     return {
         **state,

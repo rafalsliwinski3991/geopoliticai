@@ -1,29 +1,29 @@
 """Non-LLM pipeline tools used by the graph runtime."""
 
-from geopoliticai.tools.arbiter_decide import arbiter_decide_agent, route_from_arbiter
-from geopoliticai.tools.build_research_plan import build_research_plan_agent
-from geopoliticai.tools.extract_claims import extract_claims_agent
+from geopoliticai.tools.arbiter_decide import decide_arbiter_outcome, route_from_arbiter_decision
+from geopoliticai.tools.build_research_plan import build_research_plan_step
+from geopoliticai.tools.extract_claims import extract_claims_for_verification
 from geopoliticai.tools.ingest_request import ingest_request
-from geopoliticai.tools.referee import referee_agent
-from geopoliticai.tools.loop_controls import revise_analyses_agent, verify_more_agent
+from geopoliticai.tools.referee import run_referee_checks
+from geopoliticai.tools.loop_controls import perform_revision_loop, perform_verification_loop
 from geopoliticai.tools.search_pools import (
-    search_center_pool_agent,
-    search_left_pool_agent,
-    search_right_pool_agent,
+    search_center_pool,
+    search_left_pool,
+    search_right_pool,
 )
-from geopoliticai.tools.supervisor import make_supervisor_agent
+from geopoliticai.tools.supervisor import make_supervisor_step
 
 __all__ = [
-    "arbiter_decide_agent",
-    "build_research_plan_agent",
-    "extract_claims_agent",
+    "decide_arbiter_outcome",
+    "build_research_plan_step",
+    "extract_claims_for_verification",
     "ingest_request",
-    "make_supervisor_agent",
-    "referee_agent",
-    "revise_analyses_agent",
-    "route_from_arbiter",
-    "search_center_pool_agent",
-    "search_left_pool_agent",
-    "search_right_pool_agent",
-    "verify_more_agent",
+    "make_supervisor_step",
+    "run_referee_checks",
+    "perform_revision_loop",
+    "route_from_arbiter_decision",
+    "search_center_pool",
+    "search_left_pool",
+    "search_right_pool",
+    "perform_verification_loop",
 ]

@@ -19,7 +19,7 @@ def _search_lane_pool(
     }
 
 
-def search_left_pool_agent(
+def search_left_pool(
     state: PipelineState,
     infosphere_sources: dict[str, list[tuple[str, str]]],
     seed_sources: Optional[Union[List[Source], Dict[str, List[Source]]]] = None,
@@ -27,7 +27,7 @@ def search_left_pool_agent(
     return _search_lane_pool(state, infosphere_sources, "left", "left_sources", seed_sources)
 
 
-def search_center_pool_agent(
+def search_center_pool(
     state: PipelineState,
     infosphere_sources: dict[str, list[tuple[str, str]]],
     seed_sources: Optional[Union[List[Source], Dict[str, List[Source]]]] = None,
@@ -41,7 +41,7 @@ def search_center_pool_agent(
     )
 
 
-def search_right_pool_agent(
+def search_right_pool(
     state: PipelineState,
     infosphere_sources: dict[str, list[tuple[str, str]]],
     seed_sources: Optional[Union[List[Source], Dict[str, List[Source]]]] = None,
