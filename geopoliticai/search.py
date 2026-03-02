@@ -14,6 +14,7 @@ from geopoliticai.llm import get_openai_client
 from geopoliticai.models import PipelineState, Source
 
 logger = logging.getLogger(__name__)
+MAX_SOURCE_NOTES_CHARS = 400
 
 
 def _seed_for_agent(
@@ -32,6 +33,16 @@ def _build_biased_query(query: str, references: List[tuple[str, str]]) -> str:
     sites = [url.replace("https://", "").replace("http://", "") for _, url in references]
     site_filter = " OR ".join(f"site:{site}" for site in sites)
     return f"{query} ({site_filter})"
+
+
+def _normalize_source_notes(raw_notes: str, max_chars: int = MAX_SOURCE_NOTES_CHARS) -> str:
+    """Return a compact source summary safe to include in LLM prompts."""
+    compact = " ".join((raw_notes or "").split())
+    if not compact:
+        return "No summary provided."
+    if len(compact) <= max_chars:
+        return compact
+    return compact[: max_chars - 3].rstrip() + "..."
 
 
 def _select_sources_with_llm(
@@ -160,7 +171,7 @@ def web_searcher(
     sources: List[Source] = []
     seen_urls: set[str] = set()
     for idx, item in enumerate(response.get("results", []), start=1):
-        notes = (item.get("content") or "").strip().replace("\n", " ")
+        raw_notes = (item.get("content") or "").strip()
         url = (item.get("url") or "").strip()
         if not url or url in seen_urls:
             continue
@@ -169,7 +180,8 @@ def web_searcher(
             id=f"S{idx}",
             title=(item.get("title") or "Untitled").strip(),
             url=url,
-            notes=notes if notes else "No summary provided.",
+            notes=_normalize_source_notes(raw_notes),
+            content_excerpt=raw_notes or None,
         )
         sources.append(source)
         logger.debug(
@@ -192,7 +204,7 @@ def web_searcher(
         )
         extra_candidates: List[Source] = []
         for item in extra_response.get("results", []):
-            notes = (item.get("content") or "").strip().replace("\n", " ")
+            raw_notes = (item.get("content") or "").strip()
             url = (item.get("url") or "").strip()
             if not url or url in seen_urls:
                 continue
@@ -201,7 +213,8 @@ def web_searcher(
                 id=f"S{len(sources) + len(extra_candidates) + 1}",
                 title=(item.get("title") or "Untitled").strip(),
                 url=url,
-                notes=notes if notes else "No summary provided.",
+                notes=_normalize_source_notes(raw_notes),
+                content_excerpt=raw_notes or None,
             )
             extra_candidates.append(source)
         logger.info("Web searcher (%s): gathered %d extra candidates", agent_key, len(extra_candidates))

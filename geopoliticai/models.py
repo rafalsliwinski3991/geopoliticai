@@ -18,7 +18,7 @@ class Source:
     content_excerpt: Optional[str] = None
     source_type: Optional[str] = None
     credibility_tier: Optional[Literal["A", "B", "C", "D"]] = None
-    lane: Optional[Literal["left", "centrist", "right", "fact"]] = None
+    lane: Optional[Literal["left", "centrist", "right", "people", "fact"]] = None
 
 
 @dataclass
