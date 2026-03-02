@@ -7,6 +7,7 @@ from typing import Any, List
 
 from pydantic import BaseModel, Field, field_validator
 
+from geopoliticai.config import get_model
 from geopoliticai.llm import invoke_structured_chain
 from geopoliticai.models import Claim, PipelineState, Source
 
@@ -69,6 +70,7 @@ def left_analyst_agent(
         f"- {name} ({url})" for name, url in infosphere_sources["left"]
     )
     response_language = "Polish" if language == "polish" else "English"
+    model_name = get_model("left_analyst")
 
     output = invoke_structured_chain(
         schema=LeftClaimsOutput,
@@ -79,11 +81,10 @@ def left_analyst_agent(
             "Sources:\n{source_block}\n\n"
             "Preferred references (use for framing; do not invent citations):\n"
             "{reference_block}\n\n"
-            "Task: Provide exactly 1 analytically cautious claim from the perspective: leftist.\n"
+            "Task: Provide 3-5 analytically cautious claims from the perspective: leftist.\n"
             "- Use only the sources provided.\n"
-            "- The claim must cite one or more source IDs.\n"
-            "- If sources are general, produce one factual claim grounded in them.\n"
-            "- Never return an empty list; return exactly one claim."
+            "- Each claim must cite one or more source IDs.\n"
+            "Return a JSON object with key `claims`."
         ),
         variables={
             "query": state["query"],
@@ -92,11 +93,13 @@ def left_analyst_agent(
             "reference_block": reference_block,
         },
         temperature=0.2,
+        model=model_name,
     )
-    claims = _extract_claims(output.claims)[:1]
+    claims = _extract_claims(output.claims)
     if not claims:
-        logger.warning(
-            "Left analyst produced 0 claims from %d sources.", len(state["left_sources"])
+        logger.info(
+            "Left analyst: initial pass produced 0 claims from %d sources; retrying.",
+            len(state["left_sources"]),
         )
         retry = invoke_structured_chain(
             schema=LeftClaimsOutput,
@@ -105,9 +108,9 @@ def left_analyst_agent(
                 "Query: {query}\n"
                 "Response language: {response_language}\n\n"
                 "Sources:\n{source_block}\n\n"
-                "Task: Provide exactly 1 factual claim from the sources. "
-                "If the sources are descriptive, turn them into one concise claim. "
-                "The claim must cite one or more source IDs. "
+                "Task: Provide 2-3 factual claims from the sources. "
+                "If the sources are descriptive, turn them into concise claims. "
+                "Each claim must cite one or more source IDs. "
                 "Never return an empty list."
             ),
             variables={
@@ -116,16 +119,23 @@ def left_analyst_agent(
                 "source_block": source_block,
             },
             temperature=0.1,
+            model=model_name,
         )
-        claims = _extract_claims(retry.claims)[:1]
+        claims = _extract_claims(retry.claims)
         if not claims:
+            logger.info("Left analyst: retry returned 0 claims; using source-note fallback.")
             claims = _fallback_claims_from_sources(state["left_sources"], limit=2)
         if not claims:
             logger.warning("Left analyst fallback empty; creating minimal claim from query.")
             claims = [Claim(text=f"Left perspective on: {state['query']}", source_ids=[])]
-    else:
-        logger.info("Left analyst produced %d claims.", len(claims))
-        for idx, claim in enumerate(claims[:5], start=1):
-            sources = ", ".join(claim.source_ids) if claim.source_ids else "none"
-            logger.info("Left claim %d: %s (Sources: %s)", idx, claim.text, sources)
+    logger.info("Left analyst: produced %d claims.", len(claims))
+    for idx, claim in enumerate(claims, start=1):
+        sources = ", ".join(claim.source_ids) if claim.source_ids else "none"
+        logger.info(
+            "Left claim %d/%d: %s (Sources: %s)",
+            idx,
+            len(claims),
+            claim.text,
+            sources,
+        )
     return {**state, "left_claims": claims}

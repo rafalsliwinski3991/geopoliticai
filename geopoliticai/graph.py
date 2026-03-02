@@ -11,6 +11,7 @@ from geopoliticai.agents import (
     compose_final_agent,
     cross_check_facts_agent,
     left_analyst_agent,
+    people_analyst_agent,
     right_analyst_agent,
 )
 from geopoliticai.tools import (
@@ -21,6 +22,7 @@ from geopoliticai.tools import (
     make_supervisor_step,
     search_center_pool,
     search_left_pool,
+    search_people_pool,
     search_right_pool,
 )
 from geopoliticai.config import get_infosphere_sources
@@ -51,6 +53,10 @@ def build_graph(
         lambda state: search_right_pool(state, infosphere_sources, seed_sources),
     )
     graph.add_node(
+        "search_people_pool",
+        lambda state: search_people_pool(state, infosphere_sources, seed_sources),
+    )
+    graph.add_node(
         "left_analyst", lambda state: left_analyst_agent(state, infosphere_sources, language)
     )
     graph.add_node(
@@ -60,6 +66,10 @@ def build_graph(
     graph.add_node(
         "right_analyst",
         lambda state: right_analyst_agent(state, infosphere_sources, language),
+    )
+    graph.add_node(
+        "people_analyst",
+        lambda state: people_analyst_agent(state, infosphere_sources, language),
     )
     graph.add_node("referee", run_referee_checks)
     graph.add_node("extract_claims", extract_claims_for_verification)
@@ -80,7 +90,9 @@ def build_graph(
     graph.add_edge("search_center_pool", "center_analyst")
     graph.add_edge("center_analyst", "search_right_pool")
     graph.add_edge("search_right_pool", "right_analyst")
-    graph.add_edge("right_analyst", "referee")
+    graph.add_edge("right_analyst", "search_people_pool")
+    graph.add_edge("search_people_pool", "people_analyst")
+    graph.add_edge("people_analyst", "referee")
     graph.add_edge("referee", "extract_claims")
     graph.add_edge("extract_claims", "cross_check_facts")
     graph.add_edge("cross_check_facts", "compose_final")
@@ -103,9 +115,11 @@ def run_pipeline(
         "left_claims": [],
         "centrist_claims": [],
         "right_claims": [],
+        "people_claims": [],
         "left_sources": [],
         "centrist_sources": [],
         "right_sources": [],
+        "people_sources": [],
         "fact_sources": [],
         "fact_checks": [],
         "synthesis": "",

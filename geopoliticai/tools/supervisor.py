@@ -1,4 +1,4 @@
-"""Render the final report without LLM post-processing."""
+"""Render a concise final report for CLI output."""
 
 from __future__ import annotations
 
@@ -6,145 +6,113 @@ import logging
 from typing import Callable, List
 
 from geopoliticai.models import PipelineState
-from geopoliticai.render import (
-    merge_sources,
-    render_claims,
-    render_fact_checks,
-    render_reference_list,
-    render_sources,
-)
+from geopoliticai.render import merge_sources
 
 logger = logging.getLogger(__name__)
 
 
+def _split_direct_answer_and_details(synthesis: str) -> tuple[str, str]:
+    """Extract direct answer and remaining rationale from synthesis text."""
+    stripped = synthesis.strip()
+    if not stripped:
+        return "Unavailable.", ""
+
+    lines = [line.strip() for line in stripped.splitlines() if line.strip()]
+    if not lines:
+        return "Unavailable.", ""
+
+    first = lines[0]
+    if first.lower().startswith("short answer:") or first.lower().startswith("krotka odpowiedz:"):
+        first = first.split(":", 1)[1].strip() if ":" in first else first
+    rest = "\n".join(lines[1:]).strip()
+    return first, rest
+
+
+def _render_concise_sources(state: PipelineState) -> str:
+    """Render only source id, title, and URL for readability."""
+    sources = merge_sources(state)
+    if not sources:
+        return "- No sources collected."
+    lines = [f"- [{src.id}] {src.title} ({src.url})" for src in sources]
+    return "\n".join(lines)
+
+
 def make_supervisor_step(
-    infosphere_sources: dict[str, list[tuple[str, str]]],
+    _infosphere_sources: dict[str, list[tuple[str, str]]],
     language: str,
 ) -> Callable[[PipelineState], PipelineState]:
-    """Return a callable that assembles the final report deterministically."""
+    """Return a callable that assembles a concise final report."""
     if language == "polish":
-        section_labels = {
-            "factual": "1. 🔎 Tło faktograficzne (z wyszukiwania)",
-            "left": "2. 🔴 Perspektywa lewicowa",
-            "centrist": "3. 🟡 Perspektywa centrowa",
-            "right": "4. 🔵 Perspektywa prawicowa",
-            "fact": "5. ✅ Wyniki weryfikacji faktów",
-            "synthesis": "6. ⚖️ Synteza i najlepiej potwierdzone wnioski",
-            "all_claims": "7. 📚 Wszystkie tezy (zbiorczo)",
-            "agent_role_prefix": "Rola agenta:",
-            "left_role": "akcent na sprawy społeczne, nierówności, prawa pracownicze.",
-            "centrist_role": "balans interesów, instytucje, pragmatyczne kompromisy.",
-            "right_role": "suwerenność, bezpieczeństwo, tradycja, gospodarka rynkowa.",
-            "fact_role": "weryfikacja tez na podstawie źródeł.",
-            "sources_label": "Źródła użyte (wybrane):",
-            "claims_label": "Tezy agenta:",
-            "refs": "Preferowane źródła:",
-        }
+        question_label = "Pytanie:"
+        answer_label = "Odpowiedz:"
+        rationale_label = "Uzasadnienie:"
+        facts_label = "Weryfikacja faktow:"
+        sources_label = "Zrodla:"
     else:
-        section_labels = {
-            "factual": "1. 🔎 Factual Background (from Web Searcher)",
-            "left": "2. 🔴 Left Perspective",
-            "centrist": "3. 🟡 Centrist Perspective",
-            "right": "4. 🔵 Right Perspective",
-            "fact": "5. ✅ Fact Check Results",
-            "synthesis": "6. ⚖️ Synthesis & Best-Supported Conclusion",
-            "all_claims": "7. 📚 All Claims (combined)",
-            "agent_role_prefix": "Agent role:",
-            "left_role": "focus on labor, inequality, and social welfare implications.",
-            "centrist_role": "balance trade-offs, institutions, and pragmatic policy.",
-            "right_role": "sovereignty, security, tradition, and market outcomes.",
-            "fact_role": "verify claims against sources.",
-            "sources_label": "Sources used (selected):",
-            "claims_label": "Analyst claims:",
-            "refs": "Preferred references:",
-        }
+        question_label = "Question:"
+        answer_label = "Answer:"
+        rationale_label = "Rationale:"
+        facts_label = "Fact-check:"
+        sources_label = "Sources:"
 
     def supervisor_step(state: PipelineState) -> PipelineState:
         lines: List[str] = []
 
         logger.info(
-            "Supervisor assembling report: left_sources=%d centrist_sources=%d right_sources=%d fact_sources=%d",
+            "Supervisor assembling report: left_sources=%d centrist_sources=%d right_sources=%d people_sources=%d fact_sources=%d",
             len(state["left_sources"]),
             len(state["centrist_sources"]),
             len(state["right_sources"]),
+            len(state["people_sources"]),
             len(state["fact_sources"]),
         )
-        total_claims = len(state["left_claims"]) + len(state["centrist_claims"]) + len(state["right_claims"])
+        total_claims = (
+            len(state["left_claims"])
+            + len(state["centrist_claims"])
+            + len(state["right_claims"])
+            + len(state["people_claims"])
+        )
         logger.info(
-            "Supervisor claims: left=%d centrist=%d right=%d total=%d fact_checks=%d",
+            "Supervisor claims: left=%d centrist=%d right=%d people=%d total=%d fact_checks=%d",
             len(state["left_claims"]),
             len(state["centrist_claims"]),
             len(state["right_claims"]),
+            len(state["people_claims"]),
             total_claims,
             len(state["fact_checks"]),
         )
-        lines.append(section_labels["factual"])
-        lines.append(render_sources(merge_sources(state)))
+        short_answer, synthesis_details = _split_direct_answer_and_details(state["synthesis"])
+        lines.append(f"{question_label} {state['query']}")
         lines.append("")
-
-        lines.append(section_labels["left"])
-        lines.append(f"{section_labels['agent_role_prefix']} {section_labels['left_role']}")
-        lines.append(section_labels["refs"])
-        lines.append(render_reference_list(infosphere_sources["left"]))
-        lines.append(section_labels["sources_label"])
-        lines.append(render_sources(state["left_sources"]))
-        lines.append(section_labels["claims_label"])
-        lines.append(render_claims(state["left_claims"]))
+        lines.append(f"{answer_label} {short_answer}")
         lines.append("")
-
-        lines.append(section_labels["centrist"])
-        lines.append(f"{section_labels['agent_role_prefix']} {section_labels['centrist_role']}")
-        lines.append(section_labels["refs"])
-        lines.append(render_reference_list(infosphere_sources["centrist"]))
-        lines.append(section_labels["sources_label"])
-        lines.append(render_sources(state["centrist_sources"]))
-        lines.append(section_labels["claims_label"])
-        lines.append(render_claims(state["centrist_claims"]))
+        lines.append(rationale_label)
+        lines.append(synthesis_details if synthesis_details else short_answer)
         lines.append("")
-
-        lines.append(section_labels["right"])
-        lines.append(f"{section_labels['agent_role_prefix']} {section_labels['right_role']}")
-        lines.append(section_labels["refs"])
-        lines.append(render_reference_list(infosphere_sources["right"]))
-        lines.append(section_labels["sources_label"])
-        lines.append(render_sources(state["right_sources"]))
-        lines.append(section_labels["claims_label"])
-        lines.append(render_claims(state["right_claims"]))
-        lines.append("")
-
-        lines.append(section_labels["fact"])
-        lines.append(f"{section_labels['agent_role_prefix']} {section_labels['fact_role']}")
-        lines.append(section_labels["refs"])
-        lines.append(render_reference_list(infosphere_sources["fact"]))
-        lines.append(render_fact_checks(state["fact_checks"]))
-        lines.append("")
-
-        lines.append(section_labels["synthesis"])
-        lines.append(state["synthesis"])
-        lines.append("")
-
-        combined_claims = (
-            [("Left", c) for c in state["left_claims"]]
-            + [("Centrist", c) for c in state["centrist_claims"]]
-            + [("Right", c) for c in state["right_claims"]]
+        lines.append(
+            f"{facts_label} {len(state['fact_checks'])} verdicts from "
+            f"{len(state['fact_sources'])} sources."
         )
-        lines.append(section_labels["all_claims"])
-        labeled_lines = []
-        for lane, claim in combined_claims:
-            cite = ", ".join(claim.source_ids) if claim.source_ids else "no sources"
-            labeled_lines.append(f"- [{lane}] {claim.text} (Sources: {cite})")
-        lines.append("\n".join(labeled_lines))
+        lines.append("")
+        lines.append(sources_label)
+        lines.append(_render_concise_sources(state))
 
         final_report = "\n".join(lines)
-        logger.info(
+        logger.debug(
             "Supervisor final report length: %d chars, combined_claims=%d, fact_checks=%d",
             len(final_report),
-            len(combined_claims),
+            total_claims,
             len(state["fact_checks"]),
         )
-        if combined_claims:
-            sample = combined_claims[0][1].text[:120].replace("\n", " ")
-            logger.info("Supervisor sample claim: %s", sample)
+        if total_claims:
+            first_claim = (
+                state["left_claims"]
+                + state["centrist_claims"]
+                + state["right_claims"]
+                + state["people_claims"]
+            )[0]
+            sample = first_claim.text.replace("\n", " ")
+            logger.debug("Supervisor sample claim: %s", sample)
         return {**state, "final_output": final_report}
 
     return supervisor_step

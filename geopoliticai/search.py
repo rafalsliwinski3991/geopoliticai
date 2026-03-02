@@ -9,7 +9,7 @@ from typing import Dict, List, Optional, Union
 
 from tavily import TavilyClient
 
-from geopoliticai.config import get_model
+from geopoliticai.config import get_analyst_additional_sources, get_model
 from geopoliticai.llm import get_openai_client
 from geopoliticai.models import PipelineState, Source
 
@@ -46,7 +46,7 @@ def _select_sources_with_llm(
         return []
 
     client = get_openai_client()
-    model = get_model()
+    model = get_model(agent_key)
     catalog = [
         {
             "id": idx,
@@ -119,13 +119,33 @@ def web_searcher(
     agent_key: str,
     references: List[tuple[str, str]],
     seed_sources: Optional[Union[List[Source], Dict[str, List[Source]]]] = None,
-    additional_sources: int = 3,
+    additional_sources: Optional[int] = None,
 ) -> List[Source]:
     """Run biased search and optionally add extra general sources selected by the LLM."""
     seeded = _seed_for_agent(seed_sources, agent_key)
     if seeded:
         logger.info("Web searcher (%s): using seed_sources (%d)", agent_key, len(seeded))
+        for idx, source in enumerate(seeded, start=1):
+            logger.info(
+                "Web searcher (%s): source %d/%d title=%s url=%s",
+                agent_key,
+                idx,
+                len(seeded),
+                source.title,
+                source.url,
+            )
         return seeded
+
+    if additional_sources is None:
+        extra_sources = get_analyst_additional_sources()
+    else:
+        extra_sources = max(additional_sources, 0)
+        if additional_sources < 0:
+            logger.warning(
+                "Web searcher (%s): additional_sources=%d is invalid; using 0.",
+                agent_key,
+                additional_sources,
+            )
 
     tavily_key = os.getenv("TAVILY_KEY")
     if not tavily_key:
@@ -135,7 +155,7 @@ def web_searcher(
     client = TavilyClient(api_key=tavily_key)
     queries = state.get("research_plan", {}).get("queries") or [state["query"]]
     biased_query = _build_biased_query(queries[0], references)
-    logger.info("Web searcher (%s): biased query='%s'", agent_key, biased_query)
+    logger.info("Web searcher (%s): built biased query", agent_key)
     response = client.search(biased_query, max_results=3, search_depth="advanced")
     sources: List[Source] = []
     seen_urls: set[str] = set()
@@ -149,25 +169,25 @@ def web_searcher(
             id=f"S{idx}",
             title=(item.get("title") or "Untitled").strip(),
             url=url,
-            notes=notes[:240] if notes else "No summary provided.",
+            notes=notes if notes else "No summary provided.",
         )
         sources.append(source)
-        logger.info(
+        logger.debug(
             "Web searcher (%s): source=%s url=%s", agent_key, source.title, source.url
         )
         if len(sources) >= 3:
             break
 
-    if additional_sources > 0:
+    if extra_sources > 0:
         general_query = queries[0]
         logger.info(
             "Web searcher (%s): querying %d additional sources (general)",
             agent_key,
-            additional_sources,
+            extra_sources,
         )
         extra_response = client.search(
             general_query,
-            max_results=max(additional_sources * 3, additional_sources),
+            max_results=max(extra_sources * 3, extra_sources),
             search_depth="advanced",
         )
         extra_candidates: List[Source] = []
@@ -181,37 +201,42 @@ def web_searcher(
                 id=f"S{len(sources) + len(extra_candidates) + 1}",
                 title=(item.get("title") or "Untitled").strip(),
                 url=url,
-                notes=notes[:240] if notes else "No summary provided.",
+                notes=notes if notes else "No summary provided.",
             )
             extra_candidates.append(source)
-        logger.info(
-            "Web searcher (%s): gathered %d extra candidates", agent_key, len(extra_candidates)
-        )
+        logger.info("Web searcher (%s): gathered %d extra candidates", agent_key, len(extra_candidates))
 
         selected_extras = _select_sources_with_llm(
             agent_key=agent_key,
             query=general_query,
             candidates=extra_candidates,
-            count=additional_sources,
+            count=extra_sources,
         )
         logger.info(
             "Web searcher (%s): LLM selected %d extras (requested %d)",
             agent_key,
             len(selected_extras),
-            additional_sources,
+            extra_sources,
         )
         for source in selected_extras:
             sources.append(source)
-            logger.info(
+            logger.debug(
                 "Web searcher (%s): extra source=%s url=%s",
                 agent_key,
                 source.title,
                 source.url,
             )
-            if len(sources) >= 3 + additional_sources:
+            if len(sources) >= 3 + extra_sources:
                 break
 
-    logger.info(
-        "Web searcher (%s): received %d sources", agent_key, len(sources)
-    )
+    logger.info("Web searcher (%s): selected %d sources", agent_key, len(sources))
+    for idx, source in enumerate(sources, start=1):
+        logger.info(
+            "Web searcher (%s): source %d/%d title=%s url=%s",
+            agent_key,
+            idx,
+            len(sources),
+            source.title,
+            source.url,
+        )
     return sources

@@ -32,6 +32,7 @@ class StructuredOutputChain:
     system_prompt: str
     human_prompt: str
     temperature: float = 0.0
+    model: str | None = None
 
     def invoke(self, variables: dict[str, Any]) -> BaseModel:
         prompt = ChatPromptTemplate.from_messages(
@@ -48,8 +49,8 @@ class StructuredOutputChain:
         )
         user_content = str(messages[1].content)
         client = get_openai_client()
-        model = get_model()
-        logger.info(
+        model = self.model or get_model()
+        logger.debug(
             "LLM structured request: model=%s temp=%.2f schema=%s",
             model,
             self.temperature,
@@ -87,11 +88,13 @@ def invoke_structured_chain(
     human_prompt: str,
     variables: dict[str, Any],
     temperature: float = 0.0,
+    model: str | None = None,
 ) -> BaseModel:
     chain = StructuredOutputChain(
         schema=schema,
         system_prompt=system_prompt,
         human_prompt=human_prompt,
         temperature=temperature,
+        model=model,
     )
     return chain.invoke(variables)

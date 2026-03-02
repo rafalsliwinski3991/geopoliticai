@@ -8,6 +8,8 @@ from collections.abc import Sequence
 
 from dotenv import load_dotenv
 
+logger = logging.getLogger(__name__)
+
 ENGLISH_INFOSPHERE_SOURCES: dict[str, list[tuple[str, str]]] = {
     "left": [
         ("Jacobin", "https://jacobin.com"),
@@ -65,7 +67,24 @@ POLISH_INFOSPHERE_SOURCES: dict[str, list[tuple[str, str]]] = {
 }
 
 DEFAULT_MODEL = "gpt-4o-mini"
+DEFAULT_ANALYST_ADDITIONAL_SOURCES = 0
 REQUIRED_ENV_VARS = ("OPENAI_API_KEY", "TAVILY_KEY")
+
+AGENT_MODEL_NAMES: dict[str, str] = {
+    "left_analyst": "gpt-4o-mini",
+    "center_analyst": "gpt-4o-mini",
+    "centrist_analyst": "gpt-4o-mini",
+    "right_analyst": "gpt-4o-mini",
+    "people_analyst": "gpt-4o-mini",
+    "cross_check_facts": "gpt-4o-mini",
+    "compose_final": "gpt-5.2",
+    # Lane aliases used by search helpers.
+    "left": "gpt-4o-mini",
+    "centrist": "gpt-4o-mini",
+    "right": "gpt-4o-mini",
+    "people": "gpt-4o-mini",
+    "fact": "gpt-4o-mini",
+}
 
 
 def init_environment() -> logging.Logger:
@@ -75,6 +94,9 @@ def init_environment() -> logging.Logger:
         level=os.getenv("LOG_LEVEL", "INFO").upper(),
         format="%(levelname)s %(message)s",
     )
+    # Keep third-party transport logs quiet unless explicitly requested via DEBUG.
+    for noisy_logger in ("httpx", "httpcore", "openai", "urllib3"):
+        logging.getLogger(noisy_logger).setLevel(logging.WARNING)
     return logging.getLogger("geopoliticai")
 
 
@@ -85,9 +107,48 @@ def require_env(keys: Sequence[str] = REQUIRED_ENV_VARS) -> None:
         raise ValueError("Missing required environment variables: " + ", ".join(missing))
 
 
-def get_model() -> str:
-    """Return the configured OpenAI model name."""
-    return os.getenv("OPENAI_MODEL", DEFAULT_MODEL)
+def _get_non_negative_int_env(var_name: str, default: int) -> int:
+    """Read a non-negative integer env var, falling back to default when invalid."""
+    raw_value = os.getenv(var_name)
+    if raw_value is None or not raw_value.strip():
+        return default
+    try:
+        parsed = int(raw_value.strip())
+    except ValueError:
+        logger.warning(
+            "Invalid %s=%r; expected an integer. Falling back to %d.",
+            var_name,
+            raw_value,
+            default,
+        )
+        return default
+    if parsed < 0:
+        logger.warning(
+            "Invalid %s=%r; expected a non-negative integer. Falling back to %d.",
+            var_name,
+            raw_value,
+            default,
+        )
+        return default
+    return parsed
+
+
+def get_analyst_additional_sources() -> int:
+    """Return how many optional extra sources each analyst may use."""
+    return _get_non_negative_int_env(
+        "ANALYST_ADDITIONAL_SOURCES",
+        DEFAULT_ANALYST_ADDITIONAL_SOURCES,
+    )
+
+
+def get_model(agent_key: str | None = None) -> str:
+    """Return the configured OpenAI model, optionally overridden per agent key."""
+    base_model = os.getenv("OPENAI_MODEL")
+    fallback = base_model.strip() if base_model and base_model.strip() else DEFAULT_MODEL
+    if not agent_key:
+        return fallback
+
+    return AGENT_MODEL_NAMES.get(agent_key.strip().lower(), fallback)
 
 
 def get_infosphere_sources(infosphere: str) -> dict[str, list[tuple[str, str]]]:

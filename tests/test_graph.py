@@ -29,7 +29,15 @@ def _seed_sources(label: str) -> List[Source]:
 def _make_fake_invoke_structured_chain(infosphere: str):
     is_polish = infosphere == "polish"
 
-    def _fake_invoke_structured_chain(*, schema, system_prompt: str, human_prompt: str, variables: dict, temperature: float = 0.2):
+    def _fake_invoke_structured_chain(
+        *,
+        schema,
+        system_prompt: str,
+        human_prompt: str,
+        variables: dict,
+        temperature: float = 0.2,
+        model: str | None = None,
+    ):
 
         class _Obj:
             def __init__(self, **kwargs):

@@ -7,6 +7,7 @@ from typing import Any, Dict, List, Literal, Optional, Union
 
 from pydantic import BaseModel, Field, field_validator
 
+from geopoliticai.config import get_model
 from geopoliticai.models import Claim, FactCheckResult, PipelineState, Source
 from geopoliticai.search import web_searcher
 from geopoliticai.llm import invoke_structured_chain
@@ -57,12 +58,22 @@ def cross_check_facts_agent(
         with_fact_sources["left_claims"]
         + with_fact_sources["centrist_claims"]
         + with_fact_sources["right_claims"]
+        + with_fact_sources["people_claims"]
     )
     logger.info(
         "Fact-check: sources=%d claims=%d",
         len(with_fact_sources["fact_sources"]),
         len(claims),
     )
+    for idx, claim in enumerate(claims, start=1):
+        sources = ", ".join(claim.source_ids) if claim.source_ids else "none"
+        logger.info(
+            "Fact-check input claim %d/%d: %s (Sources: %s)",
+            idx,
+            len(claims),
+            claim.text,
+            sources,
+        )
     claims_block = "\n".join(
         f"- {c.text} (Sources: {', '.join(c.source_ids) if c.source_ids else 'none'})"
         for c in claims
@@ -71,6 +82,7 @@ def cross_check_facts_agent(
         f"- {name} ({url})" for name, url in infosphere_sources["fact"]
     )
     response_language = "Polish" if language == "polish" else "English"
+    model_name = get_model("cross_check_facts")
 
     data = invoke_structured_chain(
         schema=FactCheckOutput,
@@ -92,6 +104,7 @@ def cross_check_facts_agent(
             "response_language": response_language,
         },
         temperature=0.0,
+        model=model_name,
     )
 
     results: List[FactCheckResult] = []
@@ -109,11 +122,12 @@ def cross_check_facts_agent(
                 )
             )
     logger.info("Fact-check: produced %d verdicts", len(results))
-    for idx, res in enumerate(results[:5], start=1):
+    for idx, res in enumerate(results, start=1):
         sources = ", ".join(res.claim.source_ids) if res.claim.source_ids else "none"
         logger.info(
-            "Fact-check %d: %s — %s (Sources: %s)",
+            "Fact-check %d/%d: %s — %s (Sources: %s)",
             idx,
+            len(results),
             res.verdict,
             res.claim.text,
             sources,

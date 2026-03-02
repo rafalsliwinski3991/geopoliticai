@@ -9,6 +9,7 @@ def extract_claims_for_verification(state: PipelineState) -> PipelineState:
         ("left", state["left_claims"]),
         ("centrist", state["centrist_claims"]),
         ("right", state["right_claims"]),
+        ("people", state["people_claims"]),
     ):
         for claim in claims:
             extracted.append(

@@ -53,3 +53,18 @@ def search_right_pool(
 ) -> PipelineState:
     """Populate the right-leaning source pool."""
     return _search_lane_pool(state, infosphere_sources, "right", "right_sources", seed_sources)
+
+
+def search_people_pool(
+    state: PipelineState,
+    infosphere_sources: dict[str, list[tuple[str, str]]],
+    seed_sources: Optional[Union[List[Source], Dict[str, List[Source]]]] = None,
+) -> PipelineState:
+    """Populate the people-perspective source pool."""
+    return _search_lane_pool(
+        state,
+        infosphere_sources,
+        "people",
+        "people_sources",
+        seed_sources,
+    )
