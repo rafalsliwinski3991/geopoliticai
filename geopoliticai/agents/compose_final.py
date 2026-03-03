@@ -205,18 +205,18 @@ def _fallback_synthesis(state: PipelineState, language: str) -> str:
     query = state["query"]
     answer_label, answer_text = _infer_yes_no_answer(query, state)
     who_started_answer = _infer_who_started_answer(query, state)
-    claims = _all_claims(state)
-    if state["fact_checks"]:
-        evidence_claims = [
-            item.claim for item in state["fact_checks"] if item.verdict.upper() in {"TRUE", "PARTIALLY TRUE"}
-        ]
-    else:
-        evidence_claims = claims
+    claim_with_author: list[tuple[str, Any]] = []
+    claim_with_author.extend(("Left", claim) for claim in state["left_claims"])
+    claim_with_author.extend(("Centrist", claim) for claim in state["centrist_claims"])
+    claim_with_author.extend(("Right", claim) for claim in state["right_claims"])
+    claim_with_author.extend(("People", claim) for claim in state["people_claims"])
 
-    evidence_lines: list[str] = []
-    for claim in evidence_claims[:3]:
-        sources = ", ".join(claim.source_ids) if claim.source_ids else "none"
-        evidence_lines.append(f"- {claim.text} (Sources: {sources})")
+    claim_verdicts: dict[str, tuple[str, str]] = {}
+    for fact_check in state["fact_checks"]:
+        claim_verdicts[fact_check.claim.text] = (
+            fact_check.verdict,
+            fact_check.rationale,
+        )
 
     if language == "polish":
         if who_started_answer:
@@ -229,11 +229,13 @@ def _fallback_synthesis(state: PipelineState, language: str) -> str:
             lead = (
                 "Krotka odpowiedz: Niejednoznaczne na podstawie obecnych danych."
             )
-        support = (
-            "Uwzgledniono wyniki fact-checkingu."
+        fact_status = (
+            f"Weryfikacja: {len(state['fact_checks'])} twierdzen sprawdzonych."
             if state["fact_checks"]
-            else "Brak wynikow fact-checkingu; synteza oparta na zgodnych tezach ze zrodel."
+            else "Brak wynikow fact-checkingu."
         )
+        claims_header = "Twierdzenia wg perspektyw:"
+        no_claims_line = "- Nie wygenerowano twierdzen."
     else:
         if who_started_answer:
             lead = f"Short answer: {who_started_answer}"
@@ -243,15 +245,40 @@ def _fallback_synthesis(state: PipelineState, language: str) -> str:
             lead = f"Short answer: No. {answer_text}"
         else:
             lead = "Short answer: Unclear from the currently gathered evidence."
-        support = (
-            "Fact-check verdicts were used where available."
+        fact_status = (
+            f"Verification: {len(state['fact_checks'])} claims fact-checked."
             if state["fact_checks"]
-            else "No fact-check verdicts were produced; this synthesis is based on converging source claims."
+            else "No fact-check verdicts were produced."
         )
+        claims_header = "Claims by perspective:"
+        no_claims_line = "- No claims were generated."
 
-    if not evidence_lines:
-        return f"{lead}\n{support}"
-    return "\n".join([lead, support, "Evidence:", *evidence_lines])
+    claim_lines: list[str] = []
+    for author, claim in claim_with_author:
+        text = claim.text.strip()
+        if not text:
+            continue
+        short_text = text[:200] + ("..." if len(text) > 200 else "")
+        sources = ", ".join(claim.source_ids) if claim.source_ids else "none"
+        if text in claim_verdicts:
+            verdict, rationale = claim_verdicts[text]
+            short_rationale = rationale[:120] + ("..." if len(rationale) > 120 else "")
+            claim_lines.append(
+                f"- [{author}] {short_text}\n"
+                f"  Verdict: {verdict} | {short_rationale} | Sources: {sources}"
+            )
+        else:
+            claim_lines.append(
+                f"- [{author}] {short_text}\n"
+                f"  Verdict: NOT CHECKED | Sources: {sources}"
+            )
+
+    parts = [lead, fact_status, claims_header]
+    if claim_lines:
+        parts.extend(claim_lines)
+    else:
+        parts.append(no_claims_line)
+    return "\n".join(parts)
 
 
 def _ensure_synthesis_has_details(

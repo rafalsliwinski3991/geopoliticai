@@ -126,12 +126,22 @@ def cross_check_facts_agent(
         temperature=0.0,
         model=model_name,
     )
+    raw_results = list(getattr(data, "results", []))
+    logger.info("Fact-check: LLM raw results count=%d", len(raw_results))
+    for idx, raw_item in enumerate(raw_results, start=1):
+        logger.debug(
+            "Fact-check raw result %d: claim_text=%r verdict=%r source_ids=%r",
+            idx,
+            getattr(raw_item, "claim_text", "")[:80],
+            getattr(raw_item, "verdict", ""),
+            getattr(raw_item, "source_ids", []),
+        )
 
     facts_source_ids = {source.id for source in with_fact_sources["fact_sources"]}
     claims_by_text = {claim.text: claim for claim in claims if claim.text.strip()}
     results: List[FactCheckResult] = []
     seen_claims: set[str] = set()
-    for item in getattr(data, "results", []):
+    for item in raw_results:
         claim_text = item.claim_text.strip()
         if not claim_text or claim_text not in claims_by_text or claim_text in seen_claims:
             continue
@@ -154,9 +164,17 @@ def cross_check_facts_agent(
         )
         seen_claims.add(claim_text)
 
+    logger.info(
+        "Fact-check: normalized results=%d, unique input claims=%d",
+        len(results),
+        len(claims_by_text),
+    )
     for claim in claims:
         if not claim.text.strip() or claim.text in seen_claims:
+            if claim.text in seen_claims:
+                logger.debug("Fact-check skipping already-seen claim: %s", claim.text[:80])
             continue
+        logger.info("Fact-check adding fallback for unseen claim: %s", claim.text[:80])
         results.append(
             _fallback_result_for_claim(
                 claim,
