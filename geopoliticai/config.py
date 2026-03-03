@@ -68,16 +68,16 @@ POLISH_INFOSPHERE_SOURCES: dict[str, list[tuple[str, str]]] = {
 
 DEFAULT_MODEL = "gpt-4o-mini"
 DEFAULT_ANALYST_ADDITIONAL_SOURCES = 0
+DEFAULT_OPENAI_TIMEOUT_SECONDS = 60.0
 REQUIRED_ENV_VARS = ("OPENAI_API_KEY", "TAVILY_KEY")
 
 AGENT_MODEL_NAMES: dict[str, str] = {
     "left_analyst": "gpt-4o-mini",
     "center_analyst": "gpt-4o-mini",
-    "centrist_analyst": "gpt-4o-mini",
     "right_analyst": "gpt-4o-mini",
     "people_analyst": "gpt-4o-mini",
     "cross_check_facts": "gpt-4o-mini",
-    "compose_final": "gpt-5.2",
+    "compose_final": "gpt-4o",
     # Lane aliases used by search helpers.
     "left": "gpt-4o-mini",
     "centrist": "gpt-4o-mini",
@@ -133,11 +133,45 @@ def _get_non_negative_int_env(var_name: str, default: int) -> int:
     return parsed
 
 
+def _get_positive_float_env(var_name: str, default: float) -> float:
+    """Read a positive float env var, falling back to default when invalid."""
+    raw_value = os.getenv(var_name)
+    if raw_value is None or not raw_value.strip():
+        return default
+    try:
+        parsed = float(raw_value.strip())
+    except ValueError:
+        logger.warning(
+            "Invalid %s=%r; expected a float. Falling back to %.2f.",
+            var_name,
+            raw_value,
+            default,
+        )
+        return default
+    if parsed <= 0:
+        logger.warning(
+            "Invalid %s=%r; expected a positive float. Falling back to %.2f.",
+            var_name,
+            raw_value,
+            default,
+        )
+        return default
+    return parsed
+
+
 def get_analyst_additional_sources() -> int:
     """Return how many optional extra sources each analyst may use."""
     return _get_non_negative_int_env(
         "ANALYST_ADDITIONAL_SOURCES",
         DEFAULT_ANALYST_ADDITIONAL_SOURCES,
+    )
+
+
+def get_openai_timeout_seconds() -> float:
+    """Return timeout used for OpenAI API calls."""
+    return _get_positive_float_env(
+        "OPENAI_TIMEOUT_SECONDS",
+        DEFAULT_OPENAI_TIMEOUT_SECONDS,
     )
 
 

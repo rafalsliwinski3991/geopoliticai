@@ -11,7 +11,7 @@ from langchain_core.prompts import ChatPromptTemplate
 from openai import OpenAI
 from pydantic import BaseModel
 
-from geopoliticai.config import get_model
+from geopoliticai.config import get_model, get_openai_timeout_seconds
 
 logger = logging.getLogger(__name__)
 _openai_client: OpenAI | None = None
@@ -22,6 +22,47 @@ def get_openai_client() -> OpenAI:
     if _openai_client is None:
         _openai_client = OpenAI()
     return _openai_client
+
+
+def invoke_openai_json_object(
+    *,
+    client: OpenAI,
+    model: str,
+    system_content: str,
+    user_content: str,
+    temperature: float = 0.0,
+    timeout_seconds: float | None = None,
+) -> dict[str, Any]:
+    """Call OpenAI and return a parsed JSON object across SDK surfaces."""
+    timeout = timeout_seconds if timeout_seconds is not None else get_openai_timeout_seconds()
+    try:
+        response = client.responses.create(
+            model=model,
+            input=[
+                {"role": "system", "content": system_content},
+                {"role": "user", "content": user_content},
+            ],
+            temperature=temperature,
+            response_format={"type": "json_object"},
+            timeout=timeout,
+        )
+        text = response.output_text
+    except TypeError:
+        response = client.chat.completions.create(
+            model=model,
+            messages=[
+                {"role": "system", "content": system_content},
+                {"role": "user", "content": user_content},
+            ],
+            temperature=temperature,
+            response_format={"type": "json_object"},
+            timeout=timeout,
+        )
+        text = response.choices[0].message.content
+
+    if not text:
+        raise ValueError("OpenAI returned an empty JSON response body.")
+    return json.loads(text)
 
 
 @dataclass
@@ -56,28 +97,13 @@ class StructuredOutputChain:
             self.temperature,
             self.schema.__name__,
         )
-        try:
-            response = client.responses.create(
-                model=model,
-                input=[
-                    {"role": "system", "content": system_content},
-                    {"role": "user", "content": user_content},
-                ],
-                temperature=self.temperature,
-                response_format={"type": "json_object"},
-            )
-            payload = json.loads(response.output_text)
-        except TypeError:
-            response = client.chat.completions.create(
-                model=model,
-                messages=[
-                    {"role": "system", "content": system_content},
-                    {"role": "user", "content": user_content},
-                ],
-                temperature=self.temperature,
-                response_format={"type": "json_object"},
-            )
-            payload = json.loads(response.choices[0].message.content)
+        payload = invoke_openai_json_object(
+            client=client,
+            model=model,
+            system_content=system_content,
+            user_content=user_content,
+            temperature=self.temperature,
+        )
         return self.schema.model_validate(payload)
 
 

@@ -6,6 +6,7 @@
     <title>GeopoliticAI - Chatbot</title>
     <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
     <style>
+      @import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&display=swap");
       :root {
         color-scheme: light;
         --bg: #f4f1ed;
@@ -167,7 +168,6 @@
           flex-direction: column;
         }
       }
-      @import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&display=swap");
     </style>
   </head>
   <body>
@@ -241,7 +241,7 @@
 
             try {
               const controller = new AbortController();
-              const timeoutId = setTimeout(() => controller.abort(), 1000* 60 * 10);
+              const timeoutId = setTimeout(() => controller.abort(), 1000 * 60 * 10);
               const response = await fetch("/api/run_pipeline", {
                 method: "POST",
                 headers: {
@@ -273,7 +273,7 @@
               this.messages.push({
                 role: "bot",
                 text: isTimeout
-                  ? "Ups! Backend nie odpowiedział w ciągu 5 minut."
+                  ? "Ups! Backend nie odpowiedzial w ciagu 10 minut."
                   : `Ups! Nie udało się połączyć z backendem: ${error.message}`,
               });
             } finally {

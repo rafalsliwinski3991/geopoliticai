@@ -10,7 +10,7 @@ from typing import Dict, List, Optional, Union
 from tavily import TavilyClient
 
 from geopoliticai.config import get_analyst_additional_sources, get_model
-from geopoliticai.llm import get_openai_client
+from geopoliticai.llm import get_openai_client, invoke_openai_json_object
 from geopoliticai.models import PipelineState, Source
 
 logger = logging.getLogger(__name__)
@@ -80,48 +80,35 @@ def _select_sources_with_llm(
         f"Catalog: {json.dumps(catalog, ensure_ascii=False)}"
     )
     try:
-        try:
-            response = client.responses.create(
-                model=model,
-                input=[
-                    {"role": "system", "content": system_prompt + " Output must be JSON."},
-                    {"role": "user", "content": user_prompt},
-                ],
-                temperature=0.2,
-                response_format={"type": "json_object"},
-            )
-            payload = json.loads(response.output_text)
-        except TypeError:
-            response = client.chat.completions.create(
-                model=model,
-                messages=[
-                    {"role": "system", "content": system_prompt + " Output must be JSON."},
-                    {"role": "user", "content": user_prompt},
-                ],
-                temperature=0.2,
-                response_format={"type": "json_object"},
-            )
-            payload = json.loads(response.choices[0].message.content)
-        raw_ids = payload.get("selected_ids", [])
-        logger.info(
-            "LLM source selector (%s): candidates=%d requested=%d returned_ids=%s",
-            agent_key,
-            len(candidates),
-            count,
-            raw_ids,
+        payload = invoke_openai_json_object(
+            client=client,
+            model=model,
+            system_content=system_prompt + " Output must be JSON.",
+            user_content=user_prompt,
+            temperature=0.2,
         )
-        selected: List[Source] = []
-        for idx in raw_ids:
-            try:
-                pos = int(idx)
-            except (TypeError, ValueError):
-                continue
-            if 1 <= pos <= len(candidates):
-                selected.append(candidates[pos - 1])
-        if selected:
-            return selected[:count]
-    except Exception:
-        logger.exception("LLM source selection failed for lane %s", agent_key)
+    except (json.JSONDecodeError, TypeError, ValueError):
+        logger.exception("LLM source selection returned invalid payload for lane %s", agent_key)
+        return candidates[:count]
+
+    raw_ids = payload.get("selected_ids", [])
+    logger.info(
+        "LLM source selector (%s): candidates=%d requested=%d returned_ids=%s",
+        agent_key,
+        len(candidates),
+        count,
+        raw_ids,
+    )
+    selected: List[Source] = []
+    for idx in raw_ids:
+        try:
+            pos = int(idx)
+        except (TypeError, ValueError):
+            continue
+        if 1 <= pos <= len(candidates):
+            selected.append(candidates[pos - 1])
+    if selected:
+        return selected[:count]
     return candidates[:count]
 
 

@@ -18,15 +18,21 @@ from geopoliticai.tools import (
     build_research_plan_step,
     extract_claims_for_verification,
     ingest_request,
-    run_referee_checks,
     make_supervisor_step,
+    run_referee_checks,
     search_center_pool,
     search_left_pool,
     search_people_pool,
     search_right_pool,
+    summarize_referee_block,
 )
 from geopoliticai.config import get_infosphere_sources
 from geopoliticai.models import PipelineState, Source
+
+
+def _route_after_referee(state: PipelineState) -> str:
+    report = state.get("referee_report", {})
+    return "blocked" if report.get("blocked") else "continue"
 
 
 def build_graph(
@@ -72,6 +78,7 @@ def build_graph(
         lambda state: people_analyst_agent(state, infosphere_sources, language),
     )
     graph.add_node("referee", run_referee_checks)
+    graph.add_node("referee_blocked_summary", summarize_referee_block)
     graph.add_node("extract_claims", extract_claims_for_verification)
     graph.add_node(
         "cross_check_facts",
@@ -93,7 +100,15 @@ def build_graph(
     graph.add_edge("right_analyst", "search_people_pool")
     graph.add_edge("search_people_pool", "people_analyst")
     graph.add_edge("people_analyst", "referee")
-    graph.add_edge("referee", "extract_claims")
+    graph.add_conditional_edges(
+        "referee",
+        _route_after_referee,
+        {
+            "continue": "extract_claims",
+            "blocked": "referee_blocked_summary",
+        },
+    )
+    graph.add_edge("referee_blocked_summary", "supervisor")
     graph.add_edge("extract_claims", "cross_check_facts")
     graph.add_edge("cross_check_facts", "compose_final")
     graph.add_edge("compose_final", "supervisor")

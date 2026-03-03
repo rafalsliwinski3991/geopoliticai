@@ -46,7 +46,6 @@ def _looks_generic_synthesis(text: str) -> bool:
     lowered = text.lower()
     if not text.strip():
         return True
-    placeholders = [" x ", " y ", " z ", " a ", " b ", " c "]
     generic_phrases = [
         "one claim states",
         "another claim asserts",
@@ -57,7 +56,11 @@ def _looks_generic_synthesis(text: str) -> bool:
     ]
     if any(phrase in lowered for phrase in generic_phrases):
         return True
-    if any(token in f" {lowered} " for token in placeholders):
+    # Treat explicit template markers as suspicious, but avoid lower-case false positives.
+    placeholder_hits = re.findall(r"\b[XYZABC]\b", text)
+    if len(placeholder_hits) >= 2:
+        return True
+    if re.search(r"\b(?:claim|option|source|fact)\s+[XYZABC]\b", text):
         return True
     return False
 
