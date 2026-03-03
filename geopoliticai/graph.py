@@ -92,14 +92,17 @@ def build_graph(
     graph.set_entry_point("ingest_request")
     graph.add_edge("ingest_request", "build_research_plan")
     graph.add_edge("build_research_plan", "search_left_pool")
+    graph.add_edge("build_research_plan", "search_center_pool")
+    graph.add_edge("build_research_plan", "search_right_pool")
+    graph.add_edge("build_research_plan", "search_people_pool")
     graph.add_edge("search_left_pool", "left_analyst")
-    graph.add_edge("left_analyst", "search_center_pool")
     graph.add_edge("search_center_pool", "center_analyst")
-    graph.add_edge("center_analyst", "search_right_pool")
     graph.add_edge("search_right_pool", "right_analyst")
-    graph.add_edge("right_analyst", "search_people_pool")
     graph.add_edge("search_people_pool", "people_analyst")
-    graph.add_edge("people_analyst", "referee")
+    graph.add_edge(
+        ["left_analyst", "center_analyst", "right_analyst", "people_analyst"],
+        "referee",
+    )
     graph.add_conditional_edges(
         "referee",
         _route_after_referee,

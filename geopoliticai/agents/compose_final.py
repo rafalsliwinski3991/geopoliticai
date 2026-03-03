@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import re
+from collections import Counter
 from typing import Any
 
 from pydantic import BaseModel, field_validator
@@ -14,6 +16,37 @@ from geopoliticai.llm import invoke_structured_chain
 from geopoliticai.models import PipelineState
 
 logger = logging.getLogger(__name__)
+CONSENSUS_STOPWORDS = {
+    "about",
+    "after",
+    "against",
+    "among",
+    "between",
+    "claim",
+    "claims",
+    "from",
+    "into",
+    "regarding",
+    "report",
+    "reports",
+    "source",
+    "sources",
+    "their",
+    "there",
+    "these",
+    "those",
+    "when",
+    "where",
+    "which",
+    "with",
+    "oraz",
+    "przez",
+    "tego",
+    "tezy",
+    "teza",
+    "zrodla",
+    "zrodlo",
+}
 
 
 class SynthesisOutput(BaseModel):
@@ -200,11 +233,46 @@ def _infer_yes_no_answer(query: str, state: PipelineState) -> tuple[str, str]:
     return "UNCLEAR", ""
 
 
+def _has_consensus_verification_gap(
+    state: PipelineState,
+    *,
+    min_claims: int = 4,
+    match_ratio: float = 0.7,
+) -> bool:
+    """Detect converging claim language when all verdicts are MISLEADING."""
+    fact_checks = state["fact_checks"]
+    if not fact_checks:
+        return False
+    if any(check.verdict.upper() != "MISLEADING" for check in fact_checks):
+        return False
+
+    claim_texts = [claim.text.lower() for claim in _all_claims(state) if claim.text.strip()]
+    if len(claim_texts) < min_claims:
+        return False
+
+    token_counter: Counter[str] = Counter()
+    for text in claim_texts:
+        tokens = {
+            token
+            for token in re.findall(r"\b[\w-]{4,}\b", text)
+            if token not in CONSENSUS_STOPWORDS and not token.isdigit()
+        }
+        token_counter.update(tokens)
+
+    if not token_counter:
+        return False
+
+    required_hits = max(1, math.ceil(len(claim_texts) * match_ratio))
+    shared_terms = [token for token, count in token_counter.items() if count >= required_hits]
+    return len(shared_terms) >= 3
+
+
 def _fallback_synthesis(state: PipelineState, language: str) -> str:
     """Build a deterministic, user-friendly synthesis when LLM output is generic."""
     query = state["query"]
     answer_label, answer_text = _infer_yes_no_answer(query, state)
     who_started_answer = _infer_who_started_answer(query, state)
+    consensus_gap = _has_consensus_verification_gap(state)
     claim_with_author: list[tuple[str, Any]] = []
     claim_with_author.extend(("Left", claim) for claim in state["left_claims"])
     claim_with_author.extend(("Centrist", claim) for claim in state["centrist_claims"])
@@ -219,12 +287,22 @@ def _fallback_synthesis(state: PipelineState, language: str) -> str:
         )
 
     if language == "polish":
-        if who_started_answer:
+        if who_started_answer and consensus_gap:
+            lead = (
+                f"Krotka odpowiedz: {who_started_answer} Niezalezna weryfikacja byla "
+                "ograniczona, ale tezy z wielu zrodel sa zbiezne."
+            )
+        elif who_started_answer:
             lead = f"Krotka odpowiedz: {who_started_answer}"
         elif answer_label == "YES":
             lead = f"Krotka odpowiedz: Tak. {answer_text}"
         elif answer_label == "NO":
             lead = f"Krotka odpowiedz: Nie. {answer_text}"
+        elif consensus_gap:
+            lead = (
+                "Krotka odpowiedz: Tezy z wielu zrodel sa zbiezne, "
+                "ale niezalezna weryfikacja pozostala ograniczona."
+            )
         else:
             lead = (
                 "Krotka odpowiedz: Niejednoznaczne na podstawie obecnych danych."
@@ -237,12 +315,22 @@ def _fallback_synthesis(state: PipelineState, language: str) -> str:
         claims_header = "Twierdzenia wg perspektyw:"
         no_claims_line = "- Nie wygenerowano twierdzen."
     else:
-        if who_started_answer:
+        if who_started_answer and consensus_gap:
+            lead = (
+                f"Short answer: {who_started_answer} Independent verification was limited, "
+                "but multiple source-grounded claims converge on this account."
+            )
+        elif who_started_answer:
             lead = f"Short answer: {who_started_answer}"
         elif answer_label == "YES":
             lead = f"Short answer: Yes. {answer_text}"
         elif answer_label == "NO":
             lead = f"Short answer: No. {answer_text}"
+        elif consensus_gap:
+            lead = (
+                "Short answer: Multiple source-grounded claims converge on the same answer, "
+                "but independent verification remained limited."
+            )
         else:
             lead = "Short answer: Unclear from the currently gathered evidence."
         fact_status = (
@@ -326,9 +414,8 @@ def compose_final_agent(state: PipelineState, language: str) -> PipelineState:
     partial_checks = [
         r for r in state["fact_checks"] if r.verdict.upper() == "PARTIALLY TRUE"
     ]
-    fact_block = "\n".join(
-        f"- {r.verdict}: {r.claim.text} — {r.rationale}"
-        for r in (true_checks + partial_checks)
+    all_checks_block = "\n".join(
+        f"- {r.verdict}: {r.claim.text} — {r.rationale}" for r in state["fact_checks"]
     )
     true_claims_block = "\n".join(
         f"- {r.claim.text} (Sources: {', '.join(r.claim.source_ids) if r.claim.source_ids else 'none'})"
@@ -348,8 +435,8 @@ def compose_final_agent(state: PipelineState, language: str) -> PipelineState:
         human_prompt=(
             "User query: {query}\n\n"
             "All claims:\n{claims_block}\n\n"
-            "Fact checks (TRUE/PARTIALLY TRUE):\n{fact_block}\n\n"
-            "Verified claims:\n{true_claims_block}\n\n"
+            "All fact-check results (all verdicts):\n{all_checks_block}\n\n"
+            "Verified claims (TRUE/PARTIALLY TRUE only):\n{true_claims_block}\n\n"
             "Fact-check status: {fact_status}\n\n"
             "Task: Provide a user-friendly synthesis that directly answers the user query.\n"
             "Requirements:\n"
@@ -358,6 +445,7 @@ def compose_final_agent(state: PipelineState, language: str) -> PipelineState:
             "- Give a direct answer in plain language.\n"
             "- If fact-check verdicts are available, prioritize them.\n"
             "- If fact-check verdicts are unavailable, use consensus from source-grounded claims and explicitly say this.\n"
+            "- If most verdicts are MISLEADING but claims strongly converge, state the likely consensus answer and note verification limits.\n"
             "- Mention at least 2 concrete facts when available; if fewer exist, use what is available.\n"
             "- Include source IDs in parentheses when possible, e.g., (Sources: S1, S3).\n"
             "- Do not use placeholders like X/Y/Z/A/B or generic templates.\n"
@@ -366,7 +454,7 @@ def compose_final_agent(state: PipelineState, language: str) -> PipelineState:
         variables={
             "query": state["query"],
             "claims_block": claims_block,
-            "fact_block": fact_block,
+            "all_checks_block": all_checks_block,
             "true_claims_block": true_claims_block,
             "fact_status": fact_status,
             "response_language": response_language,
@@ -384,8 +472,8 @@ def compose_final_agent(state: PipelineState, language: str) -> PipelineState:
             human_prompt=(
                 "User query: {query}\n\n"
                 "All claims:\n{claims_block}\n\n"
-                "Fact checks (TRUE/PARTIALLY TRUE):\n{fact_block}\n\n"
-                "Verified claims:\n{true_claims_block}\n\n"
+                "All fact-check results (all verdicts):\n{all_checks_block}\n\n"
+                "Verified claims (TRUE/PARTIALLY TRUE only):\n{true_claims_block}\n\n"
                 "Fact-check status: {fact_status}\n\n"
                 "Task: Provide a synthesis that answers the user query directly and clearly.\n"
                 "Requirements:\n"
@@ -393,6 +481,7 @@ def compose_final_agent(state: PipelineState, language: str) -> PipelineState:
                 "- First line must be: 'Short answer: ...'.\n"
                 "- Use concise plain language.\n"
                 "- If fact-check verdicts are unavailable, explicitly state that this is a claim-consensus answer.\n"
+                "- If most verdicts are MISLEADING but claims converge, report the likely consensus and name the verification gap.\n"
                 "- Mention concrete facts when available.\n"
                 "- Include source IDs in parentheses when possible.\n"
                 "- Strictly avoid placeholders or templated prose.\n"
@@ -401,7 +490,7 @@ def compose_final_agent(state: PipelineState, language: str) -> PipelineState:
             variables={
                 "query": state["query"],
                 "claims_block": claims_block,
-                "fact_block": fact_block,
+                "all_checks_block": all_checks_block,
                 "true_claims_block": true_claims_block,
                 "fact_status": fact_status,
                 "response_language": response_language,

@@ -48,3 +48,34 @@ def test_compose_final_fallback_lists_claims_with_authors_and_verdicts() -> None
     assert "Verdict: TRUE" in synthesis
     assert "[Right] Right claim text" in synthesis
     assert "Verdict: NOT CHECKED" in synthesis
+
+
+def test_compose_final_prompt_includes_all_fact_verdicts() -> None:
+    class _Obj:
+        def __init__(self, **kwargs):
+            self.__dict__.update(kwargs)
+
+    state = _state()
+    right_claim = state["right_claims"][0]
+    state["fact_checks"].append(
+        FactCheckResult(
+            claim=right_claim,
+            verdict="MISLEADING",
+            rationale="Insufficient evidence in provided sources.",
+        )
+    )
+    captured_users: list[str] = []
+
+    def _fake_invoke(*, human_prompt: str, variables: dict, **_kwargs):
+        captured_users.append(human_prompt.format(**variables))
+        return _Obj(
+            synthesis="Short answer: Direct answer.\nDetail line with concrete support."
+        )
+
+    with patch("geopoliticai.agents.compose_final.invoke_structured_chain", _fake_invoke):
+        compose_final_agent(state, language="english")
+
+    assert captured_users
+    prompt = captured_users[0]
+    assert "All fact-check results (all verdicts):" in prompt
+    assert "- MISLEADING: Right claim text" in prompt

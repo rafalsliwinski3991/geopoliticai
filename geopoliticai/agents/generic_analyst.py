@@ -244,4 +244,4 @@ def generic_analyst_agent(
             claim.text,
             sources_text,
         )
-    return {**state, claims_key: claims}
+    return {claims_key: claims}

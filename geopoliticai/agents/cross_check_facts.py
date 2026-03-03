@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from difflib import SequenceMatcher
 import logging
 from typing import Any, Dict, List, Literal, Optional, Union
 
@@ -14,6 +15,7 @@ from geopoliticai.llm import invoke_structured_chain
 
 logger = logging.getLogger(__name__)
 SUPPORTED_VERDICTS = {"TRUE", "PARTIALLY TRUE", "MISLEADING", "FALSE"}
+CLAIM_MATCH_THRESHOLD = 0.85
 
 
 class FactCheckItem(BaseModel):
@@ -40,6 +42,51 @@ class FactCheckOutput(BaseModel):
     results: List[FactCheckItem] = Field(default_factory=list)
 
 
+def _normalize_text(text: str) -> str:
+    """Normalize claim text for approximate matching."""
+    return " ".join((text or "").lower().split())
+
+
+def _find_best_claim_match(
+    candidate_text: str,
+    claims_by_text: dict[str, Claim],
+    threshold: float = CLAIM_MATCH_THRESHOLD,
+) -> str | None:
+    """Map a near-duplicate claim text back to the original input claim text."""
+    normalized_candidate = _normalize_text(candidate_text)
+    if not normalized_candidate:
+        return None
+
+    best_ratio = 0.0
+    best_match: str | None = None
+    for original_text in claims_by_text:
+        ratio = SequenceMatcher(
+            None,
+            normalized_candidate,
+            _normalize_text(original_text),
+        ).ratio()
+        if ratio > best_ratio:
+            best_ratio = ratio
+            best_match = original_text
+
+    if best_ratio >= threshold:
+        return best_match
+    return None
+
+
+def _dedupe_sources_by_url(sources: list[Source]) -> list[Source]:
+    """Deduplicate context sources by URL while preserving first occurrence."""
+    deduped: list[Source] = []
+    seen_keys: set[str] = set()
+    for source in sources:
+        dedupe_key = source.url.strip() or f"__id__:{source.id}"
+        if dedupe_key in seen_keys:
+            continue
+        seen_keys.add(dedupe_key)
+        deduped.append(source)
+    return deduped
+
+
 def _fallback_result_for_claim(claim: Claim, rationale: str) -> FactCheckResult:
     """Build a deterministic fallback fact-check result for one claim."""
     return FactCheckResult(
@@ -56,13 +103,22 @@ def cross_check_facts_agent(
     seed_sources: Optional[Union[List[Source], Dict[str, List[Source]]]] = None,
 ) -> PipelineState:
     """Run fact checks for all claims and return structured verdicts."""
+    fact_sources = web_searcher(state, "fact", infosphere_sources["fact"], seed_sources)
     with_fact_sources = {
         **state,
-        "fact_sources": web_searcher(state, "fact", infosphere_sources["fact"], seed_sources),
+        "fact_sources": fact_sources,
     }
+    all_context_sources = (
+        state["left_sources"]
+        + state["centrist_sources"]
+        + state["right_sources"]
+        + state["people_sources"]
+        + fact_sources
+    )
+    context_sources = _dedupe_sources_by_url(all_context_sources)
 
     source_block = "\n".join(
-        f"{s.id}: {s.title} - {s.notes} ({s.url})" for s in with_fact_sources["fact_sources"]
+        f"{s.id}: {s.title} - {s.notes} ({s.url})" for s in context_sources
     )
     claims = (
         with_fact_sources["left_claims"]
@@ -71,7 +127,8 @@ def cross_check_facts_agent(
         + with_fact_sources["people_claims"]
     )
     logger.info(
-        "Fact-check: sources=%d claims=%d",
+        "Fact-check: context_sources=%d fact_sources=%d claims=%d",
+        len(context_sources),
         len(with_fact_sources["fact_sources"]),
         len(claims),
     )
@@ -110,7 +167,7 @@ def cross_check_facts_agent(
             "Output requirements:\n"
             "- Return a JSON object with key `results`.\n"
             "- Return exactly {claims_count} items in `results` (one per claim).\n"
-            "- `claim_text` must exactly match an input claim text.\n"
+            "- `claim_text` should correspond to one input claim text (minor wording differences are acceptable).\n"
             "- If evidence is insufficient, still return that claim with verdict `MISLEADING` and rationale "
             "'Insufficient evidence in provided sources'.\n"
             "Return JSON exactly like:\n"
@@ -137,13 +194,16 @@ def cross_check_facts_agent(
             getattr(raw_item, "source_ids", []),
         )
 
-    facts_source_ids = {source.id for source in with_fact_sources["fact_sources"]}
+    context_source_ids = {source.id for source in context_sources}
     claims_by_text = {claim.text: claim for claim in claims if claim.text.strip()}
     results: List[FactCheckResult] = []
     seen_claims: set[str] = set()
     for item in raw_results:
-        claim_text = item.claim_text.strip()
-        if not claim_text or claim_text not in claims_by_text or claim_text in seen_claims:
+        raw_claim_text = item.claim_text.strip()
+        if not raw_claim_text:
+            continue
+        matched_claim_text = _find_best_claim_match(raw_claim_text, claims_by_text)
+        if matched_claim_text is None or matched_claim_text in seen_claims:
             continue
 
         verdict = item.verdict.strip().upper()
@@ -153,16 +213,16 @@ def cross_check_facts_agent(
         source_ids = [
             sid.strip()
             for sid in item.source_ids
-            if isinstance(sid, str) and sid.strip() in facts_source_ids
+            if isinstance(sid, str) and sid.strip() in context_source_ids
         ]
         results.append(
             FactCheckResult(
-                claim=Claim(text=claim_text, source_ids=source_ids),
+                claim=Claim(text=matched_claim_text, source_ids=source_ids),
                 verdict=verdict,
                 rationale=rationale,
             )
         )
-        seen_claims.add(claim_text)
+        seen_claims.add(matched_claim_text)
 
     logger.info(
         "Fact-check: normalized results=%d, unique input claims=%d",
@@ -178,7 +238,7 @@ def cross_check_facts_agent(
         results.append(
             _fallback_result_for_claim(
                 claim,
-                rationale="No explicit support found in provided fact sources.",
+                rationale="No explicit support found in provided sources.",
             )
         )
     logger.info("Fact-check: produced %d verdicts", len(results))

@@ -17,7 +17,6 @@ def _search_lane_pool(
 ) -> PipelineState:
     """Populate a single lane's sources via the web searcher."""
     return {
-        **state,
         state_key: web_searcher(state, lane_key, infosphere_sources[lane_key], seed_sources),
     }
 
