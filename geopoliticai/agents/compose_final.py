@@ -87,7 +87,8 @@ def _looks_generic_synthesis(text: str) -> bool:
         "some claims are robustly",
         "mixed evidence",
     ]
-    if any(phrase in lowered for phrase in generic_phrases):
+    generic_hits = sum(1 for phrase in generic_phrases if phrase in lowered)
+    if generic_hits >= 2:
         return True
     # Treat explicit template markers as suspicious, but avoid lower-case false positives.
     placeholder_hits = re.findall(r"\b[XYZABC]\b", text)
@@ -267,12 +268,51 @@ def _has_consensus_verification_gap(
     return len(shared_terms) >= 3
 
 
+def _infer_consensus_answer(state: PipelineState) -> str:
+    """Extract a likely direct answer when TRUE claims converge on the same entity."""
+    true_claims = [
+        fact_check.claim.text
+        for fact_check in state["fact_checks"]
+        if fact_check.verdict.upper() in {"TRUE", "PARTIALLY TRUE"}
+    ]
+    if len(true_claims) < 2:
+        return ""
+
+    entity_counter: Counter[str] = Counter()
+    skip_entities = {
+        "according to",
+        "executive branch",
+        "federal government",
+        "united states",
+        "white house",
+    }
+
+    for text in true_claims:
+        names = re.findall(
+            r"\b([A-Z][a-z]+(?:\s+[A-Z]\.?)?\s+[A-Z][a-z]+)\b",
+            text,
+        )
+        for name in names:
+            if name.lower() not in skip_entities:
+                entity_counter[name] += 1
+
+    if not entity_counter:
+        return ""
+
+    top_entity, top_count = entity_counter.most_common(1)[0]
+    required_hits = max(2, math.ceil(len(true_claims) * 0.3))
+    if top_count >= required_hits:
+        return top_entity
+    return ""
+
+
 def _fallback_synthesis(state: PipelineState, language: str) -> str:
     """Build a deterministic, user-friendly synthesis when LLM output is generic."""
     query = state["query"]
     answer_label, answer_text = _infer_yes_no_answer(query, state)
     who_started_answer = _infer_who_started_answer(query, state)
     consensus_gap = _has_consensus_verification_gap(state)
+    consensus_entity = _infer_consensus_answer(state)
     claim_with_author: list[tuple[str, Any]] = []
     claim_with_author.extend(("Left", claim) for claim in state["left_claims"])
     claim_with_author.extend(("Centrist", claim) for claim in state["centrist_claims"])
@@ -298,6 +338,8 @@ def _fallback_synthesis(state: PipelineState, language: str) -> str:
             lead = f"Krotka odpowiedz: Tak. {answer_text}"
         elif answer_label == "NO":
             lead = f"Krotka odpowiedz: Nie. {answer_text}"
+        elif consensus_entity:
+            lead = f"Krotka odpowiedz: {consensus_entity}."
         elif consensus_gap:
             lead = (
                 "Krotka odpowiedz: Tezy z wielu zrodel sa zbiezne, "
@@ -326,6 +368,8 @@ def _fallback_synthesis(state: PipelineState, language: str) -> str:
             lead = f"Short answer: Yes. {answer_text}"
         elif answer_label == "NO":
             lead = f"Short answer: No. {answer_text}"
+        elif consensus_entity:
+            lead = f"Short answer: {consensus_entity}."
         elif consensus_gap:
             lead = (
                 "Short answer: Multiple source-grounded claims converge on the same answer, "
@@ -448,6 +492,11 @@ def compose_final_agent(state: PipelineState, language: str) -> PipelineState:
             "- If most verdicts are MISLEADING but claims strongly converge, state the likely consensus answer and note verification limits.\n"
             "- Mention at least 2 concrete facts when available; if fewer exist, use what is available.\n"
             "- Include source IDs in parentheses when possible, e.g., (Sources: S1, S3).\n"
+            "- For simple factual queries (who/what/where), state the answer directly.\n"
+            "  Example for 'Who is the president of the US?':\n"
+            "  'Short answer: Donald Trump is the current president of the United States. "
+            "He was inaugurated on January 20, 2025, for his second term as the 47th president "
+            "(Sources: C1, R2).'\n"
             "- Do not use placeholders like X/Y/Z/A/B or generic templates.\n"
             "Return a JSON object with exactly one key: synthesis (string)."
         ),
@@ -463,6 +512,12 @@ def compose_final_agent(state: PipelineState, language: str) -> PipelineState:
         model=model_name,
     )
     synthesis = data.synthesis.strip()
+    logger.info(
+        "Compose final: raw synthesis (first 300 chars)=%r generic=%s details=%s",
+        synthesis[:300],
+        _looks_generic_synthesis(synthesis),
+        _has_synthesis_details(synthesis),
+    )
     logger.debug("Compose final: received synthesis len=%d", len(synthesis))
     if _looks_generic_synthesis(synthesis) or not _has_synthesis_details(synthesis):
         logger.info("Compose final: synthesis too generic/thin; retrying with stricter prompt.")
@@ -484,6 +539,8 @@ def compose_final_agent(state: PipelineState, language: str) -> PipelineState:
                 "- If most verdicts are MISLEADING but claims converge, report the likely consensus and name the verification gap.\n"
                 "- Mention concrete facts when available.\n"
                 "- Include source IDs in parentheses when possible.\n"
+                "- For simple factual queries (who/what/where), state the answer directly.\n"
+                "  Example for 'Who is the president of the US?': 'Short answer: Donald Trump ... (Sources: C1, R2).'\n"
                 "- Strictly avoid placeholders or templated prose.\n"
                 "Return a JSON object with exactly one key: synthesis (string)."
             ),
@@ -499,6 +556,12 @@ def compose_final_agent(state: PipelineState, language: str) -> PipelineState:
             model=model_name,
         )
         synthesis = retry.synthesis.strip()
+        logger.info(
+            "Compose final: retry synthesis (first 300 chars)=%r generic=%s details=%s",
+            synthesis[:300],
+            _looks_generic_synthesis(synthesis),
+            _has_synthesis_details(synthesis),
+        )
         if _looks_generic_synthesis(synthesis) or not _has_synthesis_details(synthesis):
             logger.warning("Compose final: synthesis still generic/thin; using deterministic fallback.")
             synthesis = _fallback_synthesis(state, language)

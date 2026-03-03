@@ -19,7 +19,16 @@ LOADED_TERMS = (
 def run_referee_checks(state: PipelineState) -> PipelineState:
     unsupported: list[str] = []
     loaded: list[str] = []
-    all_claims = state["left_claims"] + state["centrist_claims"] + state["right_claims"] + state["people_claims"]
+    all_claims = (
+        state["left_claims"]
+        + state["centrist_claims"]
+        + state["right_claims"]
+        + state["people_claims"]
+    )
+    clean_left = [claim for claim in state["left_claims"] if claim.source_ids]
+    clean_centrist = [claim for claim in state["centrist_claims"] if claim.source_ids]
+    clean_right = [claim for claim in state["right_claims"] if claim.source_ids]
+    clean_people = [claim for claim in state["people_claims"] if claim.source_ids]
     for claim in all_claims:
         if not claim.source_ids:
             unsupported.append(claim.text)
@@ -27,8 +36,10 @@ def run_referee_checks(state: PipelineState) -> PipelineState:
         if any(term in low for term in LOADED_TERMS):
             loaded.append(claim.text)
 
+    total_claims = len(all_claims)
+    has_some_supported = total_claims > len(unsupported)
     report = RefereeReport(
-        blocked=bool(unsupported or loaded),
+        blocked=bool(loaded) or not has_some_supported,
         unsupported_facts=unsupported,
         loaded_language=loaded,
         required_verifications=unsupported,
@@ -36,6 +47,10 @@ def run_referee_checks(state: PipelineState) -> PipelineState:
     )
     return {
         **state,
+        "left_claims": clean_left,
+        "centrist_claims": clean_centrist,
+        "right_claims": clean_right,
+        "people_claims": clean_people,
         "referee_report": {
             "blocked": report.blocked,
             "issues": report.issues,

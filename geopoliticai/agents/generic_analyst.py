@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from typing import Any, Callable, List
 
 from pydantic import BaseModel, Field, field_validator
@@ -39,18 +40,22 @@ class GenericClaimsOutput(BaseModel):
 
 def _extract_claims(items: List[GenericClaimItem]) -> List[Claim]:
     """Convert model claim items into validated Claim objects."""
-    return [
-        Claim(
-            text=item.text.strip(),
-            source_ids=[
-                sid.strip()
-                for sid in item.source_ids
-                if isinstance(sid, str) and sid.strip()
-            ],
-        )
-        for item in items
-        if item.text.strip()
-    ]
+    claims: List[Claim] = []
+    for item in items:
+        text = item.text.strip()
+        if not text:
+            continue
+        source_ids = [
+            sid.strip()
+            for sid in item.source_ids
+            if isinstance(sid, str) and sid.strip()
+        ]
+        if not source_ids:
+            match = re.search(r"\baccording to\s+([A-Za-z]+\d+)\b", text, flags=re.IGNORECASE)
+            if match:
+                source_ids = [match.group(1).upper()]
+        claims.append(Claim(text=text, source_ids=source_ids))
+    return claims
 
 
 def _truncate_for_prompt(text: str, max_chars: int = ANALYST_SOURCE_NOTE_CHARS) -> str:

@@ -2,7 +2,10 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
-from geopoliticai.agents.compose_final import compose_final_agent
+from geopoliticai.agents.compose_final import (
+    _looks_generic_synthesis,
+    compose_final_agent,
+)
 from geopoliticai.models import Claim, FactCheckResult
 
 
@@ -79,3 +82,70 @@ def test_compose_final_prompt_includes_all_fact_verdicts() -> None:
     prompt = captured_users[0]
     assert "All fact-check results (all verdicts):" in prompt
     assert "- MISLEADING: Right claim text" in prompt
+    assert "For simple factual queries (who/what/where), state the answer directly." in prompt
+
+
+def test_compose_final_fallback_uses_consensus_entity() -> None:
+    class _Obj:
+        def __init__(self, **kwargs):
+            self.__dict__.update(kwargs)
+
+    claim_one = Claim(
+        text=(
+            "According to C1, Donald Trump is the 47th president of the United States "
+            "and started his second term on January 20, 2025."
+        ),
+        source_ids=["C1"],
+    )
+    claim_two = Claim(
+        text=(
+            "According to R2, Donald Trump currently serves as president and took office "
+            "again in 2025."
+        ),
+        source_ids=["R2"],
+    )
+    state = {
+        "query": "Who is the president of the US?",
+        "left_claims": [claim_one],
+        "centrist_claims": [],
+        "right_claims": [claim_two],
+        "people_claims": [],
+        "left_sources": [],
+        "centrist_sources": [],
+        "right_sources": [],
+        "people_sources": [],
+        "fact_sources": [],
+        "fact_checks": [
+            FactCheckResult(
+                claim=claim_one,
+                verdict="TRUE",
+                rationale="Supported.",
+            ),
+            FactCheckResult(
+                claim=claim_two,
+                verdict="PARTIALLY TRUE",
+                rationale="Mostly supported.",
+            ),
+        ],
+        "synthesis": "",
+    }
+
+    with patch(
+        "geopoliticai.agents.compose_final.invoke_structured_chain",
+        return_value=_Obj(synthesis="Short answer: Something."),
+    ):
+        result = compose_final_agent(state, language="english")
+
+    assert result["synthesis"].startswith("Short answer: Donald Trump.")
+    assert "Verification: 2 claims fact-checked." in result["synthesis"]
+
+
+def test_looks_generic_synthesis_requires_two_generic_phrases() -> None:
+    one_phrase = "Short answer: Direct.\nThe claims presented support the answer."
+    two_phrases = (
+        "Short answer: Direct.\nThe claims presented support the answer. "
+        "Still, there is mixed evidence."
+    )
+
+    assert _looks_generic_synthesis(one_phrase) is False
+    assert _looks_generic_synthesis(two_phrases) is True
