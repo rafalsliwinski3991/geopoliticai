@@ -69,6 +69,7 @@ POLISH_INFOSPHERE_SOURCES: dict[str, list[tuple[str, str]]] = {
 DEFAULT_MODEL = "gpt-4o-mini"
 DEFAULT_ANALYST_ADDITIONAL_SOURCES = 0
 DEFAULT_OPENAI_TIMEOUT_SECONDS = 60.0
+DEFAULT_OPENAI_MAX_OUTPUT_TOKENS = 1200
 REQUIRED_ENV_VARS = ("OPENAI_API_KEY", "TAVILY_KEY")
 
 AGENT_MODEL_NAMES: dict[str, str] = {
@@ -133,6 +134,32 @@ def _get_non_negative_int_env(var_name: str, default: int) -> int:
     return parsed
 
 
+def _get_positive_int_env(var_name: str, default: int) -> int:
+    """Read a positive integer env var, falling back to default when invalid."""
+    raw_value = os.getenv(var_name)
+    if raw_value is None or not raw_value.strip():
+        return default
+    try:
+        parsed = int(raw_value.strip())
+    except ValueError:
+        logger.warning(
+            "Invalid %s=%r; expected an integer. Falling back to %d.",
+            var_name,
+            raw_value,
+            default,
+        )
+        return default
+    if parsed <= 0:
+        logger.warning(
+            "Invalid %s=%r; expected a positive integer. Falling back to %d.",
+            var_name,
+            raw_value,
+            default,
+        )
+        return default
+    return parsed
+
+
 def _get_positive_float_env(var_name: str, default: float) -> float:
     """Read a positive float env var, falling back to default when invalid."""
     raw_value = os.getenv(var_name)
@@ -172,6 +199,14 @@ def get_openai_timeout_seconds() -> float:
     return _get_positive_float_env(
         "OPENAI_TIMEOUT_SECONDS",
         DEFAULT_OPENAI_TIMEOUT_SECONDS,
+    )
+
+
+def get_openai_max_output_tokens() -> int:
+    """Return max output tokens used for OpenAI API calls."""
+    return _get_positive_int_env(
+        "OPENAI_MAX_OUTPUT_TOKENS",
+        DEFAULT_OPENAI_MAX_OUTPUT_TOKENS,
     )
 
 

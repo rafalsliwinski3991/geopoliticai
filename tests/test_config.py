@@ -15,3 +15,16 @@ def test_get_openai_timeout_seconds_respects_env(monkeypatch) -> None:
 def test_get_openai_timeout_seconds_falls_back_for_invalid(monkeypatch) -> None:
     monkeypatch.setenv("OPENAI_TIMEOUT_SECONDS", "0")
     assert config.get_openai_timeout_seconds() == config.DEFAULT_OPENAI_TIMEOUT_SECONDS
+
+
+def test_get_openai_max_output_tokens_respects_env(monkeypatch) -> None:
+    monkeypatch.setenv("OPENAI_MAX_OUTPUT_TOKENS", "777")
+    assert config.get_openai_max_output_tokens() == 777
+
+
+def test_get_openai_max_output_tokens_falls_back_for_invalid(monkeypatch) -> None:
+    monkeypatch.setenv("OPENAI_MAX_OUTPUT_TOKENS", "0")
+    assert (
+        config.get_openai_max_output_tokens()
+        == config.DEFAULT_OPENAI_MAX_OUTPUT_TOKENS
+    )

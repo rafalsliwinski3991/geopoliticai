@@ -11,7 +11,11 @@ from langchain_core.prompts import ChatPromptTemplate
 from openai import OpenAI
 from pydantic import BaseModel
 
-from geopoliticai.config import get_model, get_openai_timeout_seconds
+from geopoliticai.config import (
+    get_model,
+    get_openai_max_output_tokens,
+    get_openai_timeout_seconds,
+)
 
 logger = logging.getLogger(__name__)
 _openai_client: OpenAI | None = None
@@ -35,6 +39,7 @@ def invoke_openai_json_object(
 ) -> dict[str, Any]:
     """Call OpenAI and return a parsed JSON object across SDK surfaces."""
     timeout = timeout_seconds if timeout_seconds is not None else get_openai_timeout_seconds()
+    max_output_tokens = get_openai_max_output_tokens()
     try:
         response = client.responses.create(
             model=model,
@@ -44,6 +49,7 @@ def invoke_openai_json_object(
             ],
             temperature=temperature,
             response_format={"type": "json_object"},
+            max_output_tokens=max_output_tokens,
             timeout=timeout,
         )
         text = response.output_text
@@ -56,6 +62,7 @@ def invoke_openai_json_object(
             ],
             temperature=temperature,
             response_format={"type": "json_object"},
+            max_tokens=max_output_tokens,
             timeout=timeout,
         )
         text = response.choices[0].message.content

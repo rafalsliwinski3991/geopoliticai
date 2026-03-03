@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+from dataclasses import replace
 from typing import Dict, List, Optional, Union
 
 from tavily import TavilyClient
@@ -15,6 +16,24 @@ from geopoliticai.models import PipelineState, Source
 
 logger = logging.getLogger(__name__)
 MAX_SOURCE_NOTES_CHARS = 400
+LANE_SOURCE_PREFIXES = {
+    "left": "L",
+    "centrist": "C",
+    "right": "R",
+    "people": "P",
+    "fact": "F",
+}
+
+
+def _source_id_for_lane(agent_key: str, index: int) -> str:
+    """Build a lane-prefixed source ID."""
+    prefix = LANE_SOURCE_PREFIXES.get(agent_key, "S")
+    return f"{prefix}{index}"
+
+
+def _renumber_lane_sources(agent_key: str, sources: List[Source]) -> List[Source]:
+    """Ensure source IDs are lane-prefixed and unique within lane."""
+    return [replace(source, id=_source_id_for_lane(agent_key, idx)) for idx, source in enumerate(sources, start=1)]
 
 
 def _seed_for_agent(
@@ -122,17 +141,18 @@ def web_searcher(
     """Run biased search and optionally add extra general sources selected by the LLM."""
     seeded = _seed_for_agent(seed_sources, agent_key)
     if seeded:
-        logger.info("Web searcher (%s): using seed_sources (%d)", agent_key, len(seeded))
-        for idx, source in enumerate(seeded, start=1):
+        normalized_seeded = _renumber_lane_sources(agent_key, seeded)
+        logger.info("Web searcher (%s): using seed_sources (%d)", agent_key, len(normalized_seeded))
+        for idx, source in enumerate(normalized_seeded, start=1):
             logger.info(
                 "Web searcher (%s): source %d/%d title=%s url=%s",
                 agent_key,
                 idx,
-                len(seeded),
+                len(normalized_seeded),
                 source.title,
                 source.url,
             )
-        return seeded
+        return normalized_seeded
 
     if additional_sources is None:
         extra_sources = get_analyst_additional_sources()
@@ -164,7 +184,7 @@ def web_searcher(
             continue
         seen_urls.add(url)
         source = Source(
-            id=f"S{idx}",
+            id=_source_id_for_lane(agent_key, idx),
             title=(item.get("title") or "Untitled").strip(),
             url=url,
             notes=_normalize_source_notes(raw_notes),
@@ -197,7 +217,7 @@ def web_searcher(
                 continue
             seen_urls.add(url)
             source = Source(
-                id=f"S{len(sources) + len(extra_candidates) + 1}",
+                id=_source_id_for_lane(agent_key, len(sources) + len(extra_candidates) + 1),
                 title=(item.get("title") or "Untitled").strip(),
                 url=url,
                 notes=_normalize_source_notes(raw_notes),
@@ -228,6 +248,8 @@ def web_searcher(
             )
             if len(sources) >= 3 + extra_sources:
                 break
+
+    sources = _renumber_lane_sources(agent_key, sources)
 
     logger.info("Web searcher (%s): selected %d sources", agent_key, len(sources))
     for idx, source in enumerate(sources, start=1):

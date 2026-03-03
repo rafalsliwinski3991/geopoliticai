@@ -90,6 +90,73 @@ def _all_claims(state: PipelineState) -> list:
     )
 
 
+def _infer_who_started_answer(query: str, state: PipelineState) -> str:
+    """Infer likely initiating side for 'who started ... between A and B' queries."""
+    lowered_query = query.lower()
+    if "who started" not in lowered_query or " between " not in lowered_query:
+        return ""
+    between_match = re.search(
+        r"between\s+(.+?)\s+and\s+(.+?)(?:\s+(?:in|on|during)\b|[?.!,]|$)",
+        lowered_query,
+    )
+    if not between_match:
+        return ""
+
+    left_side = between_match.group(1).strip()
+    right_side = between_match.group(2).strip()
+    if not left_side or not right_side:
+        return ""
+
+    split_pattern = r"\s*(?:/|,|&|\+|\bor\b|\band\b)\s*"
+    left_terms = [term for term in re.split(split_pattern, left_side) if term]
+    right_terms = [term for term in re.split(split_pattern, right_side) if term]
+    if not left_terms or not right_terms:
+        return ""
+
+    evidence_texts = [
+        claim.text for claim in _all_claims(state) if claim.text.strip()
+    ] + [
+        src.notes
+        for src in (
+            state["left_sources"]
+            + state["centrist_sources"]
+            + state["right_sources"]
+            + state["people_sources"]
+            + state["fact_sources"]
+        )
+        if src.notes.strip()
+    ]
+
+    start_markers = (
+        "started",
+        "began",
+        "launched",
+        "initiated",
+        "first strike",
+        "first strikes",
+        "opening strike",
+        "opened fire",
+    )
+    left_hits = 0
+    right_hits = 0
+    for text in evidence_texts:
+        lowered = text.lower()
+        if not any(marker in lowered for marker in start_markers):
+            continue
+        has_left = any(term in lowered for term in left_terms)
+        has_right = any(term in lowered for term in right_terms)
+        if has_left and not has_right:
+            left_hits += 1
+        elif has_right and not has_left:
+            right_hits += 1
+
+    if left_hits >= 2 and left_hits > right_hits:
+        return f"{left_side.title()} initiated the first reported strikes; {right_side.title()} appears to have responded."
+    if right_hits >= 2 and right_hits > left_hits:
+        return f"{right_side.title()} initiated the first reported strikes; {left_side.title()} appears to have responded."
+    return ""
+
+
 def _infer_yes_no_answer(query: str, state: PipelineState) -> tuple[str, str]:
     """Infer a direct answer for simple 'Is X in Y?' queries from gathered evidence."""
     match = re.match(r"^\s*is\s+(.+?)\s+in\s+([^?]+)\??\s*$", query, flags=re.IGNORECASE)
@@ -137,6 +204,7 @@ def _fallback_synthesis(state: PipelineState, language: str) -> str:
     """Build a deterministic, user-friendly synthesis when LLM output is generic."""
     query = state["query"]
     answer_label, answer_text = _infer_yes_no_answer(query, state)
+    who_started_answer = _infer_who_started_answer(query, state)
     claims = _all_claims(state)
     if state["fact_checks"]:
         evidence_claims = [
@@ -151,7 +219,9 @@ def _fallback_synthesis(state: PipelineState, language: str) -> str:
         evidence_lines.append(f"- {claim.text} (Sources: {sources})")
 
     if language == "polish":
-        if answer_label == "YES":
+        if who_started_answer:
+            lead = f"Krotka odpowiedz: {who_started_answer}"
+        elif answer_label == "YES":
             lead = f"Krotka odpowiedz: Tak. {answer_text}"
         elif answer_label == "NO":
             lead = f"Krotka odpowiedz: Nie. {answer_text}"
@@ -165,7 +235,9 @@ def _fallback_synthesis(state: PipelineState, language: str) -> str:
             else "Brak wynikow fact-checkingu; synteza oparta na zgodnych tezach ze zrodel."
         )
     else:
-        if answer_label == "YES":
+        if who_started_answer:
+            lead = f"Short answer: {who_started_answer}"
+        elif answer_label == "YES":
             lead = f"Short answer: Yes. {answer_text}"
         elif answer_label == "NO":
             lead = f"Short answer: No. {answer_text}"

@@ -13,6 +13,7 @@ from geopoliticai.search import web_searcher
 from geopoliticai.llm import invoke_structured_chain
 
 logger = logging.getLogger(__name__)
+SUPPORTED_VERDICTS = {"TRUE", "PARTIALLY TRUE", "MISLEADING", "FALSE"}
 
 
 class FactCheckItem(BaseModel):
@@ -37,6 +38,15 @@ class FactCheckOutput(BaseModel):
     """Structured output for a batch of fact-check results."""
 
     results: List[FactCheckItem] = Field(default_factory=list)
+
+
+def _fallback_result_for_claim(claim: Claim, rationale: str) -> FactCheckResult:
+    """Build a deterministic fallback fact-check result for one claim."""
+    return FactCheckResult(
+        claim=Claim(text=claim.text, source_ids=[]),
+        verdict="MISLEADING",
+        rationale=rationale,
+    )
 
 
 def cross_check_facts_agent(
@@ -78,6 +88,7 @@ def cross_check_facts_agent(
         f"- {c.text} (Sources: {', '.join(c.source_ids) if c.source_ids else 'none'})"
         for c in claims
     )
+    claims_count = len(claims)
     reference_block = "\n".join(
         f"- {name} ({url})" for name, url in infosphere_sources["fact"]
     )
@@ -95,32 +106,63 @@ def cross_check_facts_agent(
             "Task: Fact-check each claim strictly against the provided sources. "
             "Do not speculate or add outside knowledge. "
             "Use verdicts: TRUE, PARTIALLY TRUE, MISLEADING, FALSE. "
-            "Write the rationale in {response_language}. Keep the verdict labels exactly as specified."
+            "Write the rationale in {response_language}. Keep the verdict labels exactly as specified.\n"
+            "Output requirements:\n"
+            "- Return a JSON object with key `results`.\n"
+            "- Return exactly {claims_count} items in `results` (one per claim).\n"
+            "- `claim_text` must exactly match an input claim text.\n"
+            "- If evidence is insufficient, still return that claim with verdict `MISLEADING` and rationale "
+            "'Insufficient evidence in provided sources'.\n"
+            "Return JSON exactly like:\n"
+            "{{\"results\": [{{\"claim_text\": \"...\", \"verdict\": \"MISLEADING\", \"rationale\": \"...\", \"source_ids\": []}}]}}"
         ),
         variables={
             "source_block": source_block,
             "claims_block": claims_block,
             "reference_block": reference_block,
             "response_language": response_language,
+            "claims_count": claims_count,
         },
         temperature=0.0,
         model=model_name,
     )
 
+    facts_source_ids = {source.id for source in with_fact_sources["fact_sources"]}
+    claims_by_text = {claim.text: claim for claim in claims if claim.text.strip()}
     results: List[FactCheckResult] = []
-    for item in data.results:
+    seen_claims: set[str] = set()
+    for item in getattr(data, "results", []):
         claim_text = item.claim_text.strip()
-        verdict = item.verdict.strip()
-        rationale = item.rationale.strip()
-        source_ids = [sid for sid in item.source_ids if isinstance(sid, str)]
-        if claim_text and verdict:
-            results.append(
-                FactCheckResult(
-                    claim=Claim(text=claim_text, source_ids=source_ids),
-                    verdict=verdict,
-                    rationale=rationale,
-                )
+        if not claim_text or claim_text not in claims_by_text or claim_text in seen_claims:
+            continue
+
+        verdict = item.verdict.strip().upper()
+        if verdict not in SUPPORTED_VERDICTS:
+            verdict = "MISLEADING"
+        rationale = item.rationale.strip() or "Insufficient evidence in provided sources."
+        source_ids = [
+            sid.strip()
+            for sid in item.source_ids
+            if isinstance(sid, str) and sid.strip() in facts_source_ids
+        ]
+        results.append(
+            FactCheckResult(
+                claim=Claim(text=claim_text, source_ids=source_ids),
+                verdict=verdict,
+                rationale=rationale,
             )
+        )
+        seen_claims.add(claim_text)
+
+    for claim in claims:
+        if not claim.text.strip() or claim.text in seen_claims:
+            continue
+        results.append(
+            _fallback_result_for_claim(
+                claim,
+                rationale="No explicit support found in provided fact sources.",
+            )
+        )
     logger.info("Fact-check: produced %d verdicts", len(results))
     for idx, res in enumerate(results, start=1):
         sources = ", ".join(res.claim.source_ids) if res.claim.source_ids else "none"
