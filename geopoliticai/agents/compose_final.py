@@ -234,6 +234,23 @@ def _infer_yes_no_answer(query: str, state: PipelineState) -> tuple[str, str]:
     return "UNCLEAR", ""
 
 
+def _is_subjective_comparison_query(query: str) -> bool:
+    """Detect open-ended comparative questions where 'better' is value-dependent."""
+    lowered = query.lower()
+    comparison_markers = (
+        "who is better",
+        "which is better",
+        "better prime minister",
+        "better president",
+        "kto jest lepszy",
+        "ktory jest lepszy",
+    )
+    side_markers = (" vs ", " versus ", " or ", " czy ", ":")
+    return any(marker in lowered for marker in comparison_markers) and any(
+        marker in lowered for marker in side_markers
+    )
+
+
 def _has_consensus_verification_gap(
     state: PipelineState,
     *,
@@ -310,6 +327,7 @@ def _fallback_synthesis(state: PipelineState, language: str) -> str:
     """Build a deterministic, user-friendly synthesis when LLM output is generic."""
     query = state["query"]
     answer_label, answer_text = _infer_yes_no_answer(query, state)
+    is_subjective_comparison = _is_subjective_comparison_query(query)
     who_started_answer = _infer_who_started_answer(query, state)
     consensus_gap = _has_consensus_verification_gap(state)
     consensus_entity = _infer_consensus_answer(state)
@@ -339,7 +357,17 @@ def _fallback_synthesis(state: PipelineState, language: str) -> str:
         elif answer_label == "NO":
             lead = f"Krotka odpowiedz: Nie. {answer_text}"
         elif consensus_entity:
-            lead = f"Krotka odpowiedz: {consensus_entity}."
+            if is_subjective_comparison:
+                lead = (
+                    "Krotka odpowiedz: Na podstawie obecnie zebranych zrodel nieznacznie "
+                    f"lepiej wypada {consensus_entity}, ale ta ocena pozostaje czesciowo "
+                    "wartosciujaca."
+                )
+            else:
+                lead = (
+                    "Krotka odpowiedz: Na podstawie obecnie zebranych zrodel najbardziej "
+                    f"wspierana odpowiedz to {consensus_entity}."
+                )
         elif consensus_gap:
             lead = (
                 "Krotka odpowiedz: Tezy z wielu zrodel sa zbiezne, "
@@ -369,7 +397,17 @@ def _fallback_synthesis(state: PipelineState, language: str) -> str:
         elif answer_label == "NO":
             lead = f"Short answer: No. {answer_text}"
         elif consensus_entity:
-            lead = f"Short answer: {consensus_entity}."
+            if is_subjective_comparison:
+                lead = (
+                    "Short answer: Based on the currently gathered sources, "
+                    f"{consensus_entity} comes out slightly stronger, but this remains "
+                    "partly a value judgment."
+                )
+            else:
+                lead = (
+                    "Short answer: Based on the currently gathered sources, "
+                    f"the best-supported answer is {consensus_entity}."
+                )
         elif consensus_gap:
             lead = (
                 "Short answer: Multiple source-grounded claims converge on the same answer, "
@@ -568,4 +606,4 @@ def compose_final_agent(state: PipelineState, language: str) -> PipelineState:
     synthesis = _ensure_synthesis_has_details(synthesis, state, language)
     logger.info("Compose final: final synthesis ready (len=%d).", len(synthesis))
 
-    return {**state, "synthesis": synthesis}
+    return {"synthesis": synthesis}

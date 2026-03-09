@@ -21,4 +21,4 @@ def extract_claims_for_verification(state: PipelineState) -> PipelineState:
                     "confidence": 0.65,
                 }
             )
-    return {**state, "extracted_claims": extracted}
+    return {"extracted_claims": extracted}

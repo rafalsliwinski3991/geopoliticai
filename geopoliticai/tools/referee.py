@@ -46,7 +46,6 @@ def run_referee_checks(state: PipelineState) -> PipelineState:
         required_rewrites=loaded,
     )
     return {
-        **state,
         "left_claims": clean_left,
         "centrist_claims": clean_centrist,
         "right_claims": clean_right,
@@ -68,7 +67,7 @@ def summarize_referee_block(state: PipelineState) -> PipelineState:
     """Produce a synthesis when referee blocks normal downstream execution."""
     report = state.get("referee_report", {})
     if not report.get("blocked"):
-        return state
+        return {}
 
     unsupported = report.get("unsupported_facts", [])
     loaded = report.get("loaded_language", [])
@@ -89,4 +88,4 @@ def summarize_referee_block(state: PipelineState) -> PipelineState:
             f"- Loaded-language claims: {len(loaded)}",
         ]
     synthesis = "\n".join([lead, *details])
-    return {**state, "synthesis": synthesis}
+    return {"synthesis": synthesis}

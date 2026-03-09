@@ -113,6 +113,6 @@ def make_supervisor_step(
             )[0]
             sample = first_claim.text.replace("\n", " ")
             logger.debug("Supervisor sample claim: %s", sample)
-        return {**state, "final_output": final_report}
+        return {"final_output": final_report}
 
     return supervisor_step

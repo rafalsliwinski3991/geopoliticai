@@ -136,7 +136,9 @@ def test_compose_final_fallback_uses_consensus_entity() -> None:
     ):
         result = compose_final_agent(state, language="english")
 
-    assert result["synthesis"].startswith("Short answer: Donald Trump.")
+    assert result["synthesis"].startswith(
+        "Short answer: Based on the currently gathered sources, the best-supported answer is Donald Trump."
+    )
     assert "Verification: 2 claims fact-checked." in result["synthesis"]
 
 

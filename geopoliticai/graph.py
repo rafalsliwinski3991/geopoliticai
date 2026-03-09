@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-from typing import Dict, List, Optional, Union
+from functools import partial
+from typing import Any, Dict, List, Literal, Optional, Union
 
-from langgraph.graph import END, StateGraph
+from langgraph.graph import END, START, StateGraph
 
 from geopoliticai.agents import (
     center_analyst_agent,
@@ -27,20 +28,29 @@ from geopoliticai.tools import (
     summarize_referee_block,
 )
 from geopoliticai.config import get_infosphere_sources
-from geopoliticai.models import PipelineState, Source
+from geopoliticai.models import (
+    PipelineState,
+    Source,
+    build_initial_pipeline_state,
+    normalize_language,
+)
 
 
-def _route_after_referee(state: PipelineState) -> str:
-    report = state.get("referee_report", {})
-    return "blocked" if report.get("blocked") else "continue"
+def _route_after_referee(state: PipelineState) -> Literal["continue", "blocked"]:
+    report = state.get("referee_report")
+    if not isinstance(report, dict):
+        return "blocked"
+    return "blocked" if bool(report.get("blocked")) else "continue"
 
 
 def build_graph(
     seed_sources: Optional[Union[List[Source], Dict[str, List[Source]]]] = None,
     infosphere: str = "english",
+    *,
+    checkpointer: Any | None = None,
 ):
     """Construct and compile the LangGraph pipeline."""
-    language = "polish" if infosphere == "polish" else "english"
+    language = normalize_language(infosphere)
     infosphere_sources = get_infosphere_sources(infosphere)
     graph = StateGraph(PipelineState)
 
@@ -48,48 +58,84 @@ def build_graph(
     graph.add_node("build_research_plan", build_research_plan_step)
     graph.add_node(
         "search_left_pool",
-        lambda state: search_left_pool(state, infosphere_sources, seed_sources),
+        partial(
+            search_left_pool,
+            infosphere_sources=infosphere_sources,
+            seed_sources=seed_sources,
+        ),
     )
     graph.add_node(
         "search_center_pool",
-        lambda state: search_center_pool(state, infosphere_sources, seed_sources),
+        partial(
+            search_center_pool,
+            infosphere_sources=infosphere_sources,
+            seed_sources=seed_sources,
+        ),
     )
     graph.add_node(
         "search_right_pool",
-        lambda state: search_right_pool(state, infosphere_sources, seed_sources),
+        partial(
+            search_right_pool,
+            infosphere_sources=infosphere_sources,
+            seed_sources=seed_sources,
+        ),
     )
     graph.add_node(
         "search_people_pool",
-        lambda state: search_people_pool(state, infosphere_sources, seed_sources),
+        partial(
+            search_people_pool,
+            infosphere_sources=infosphere_sources,
+            seed_sources=seed_sources,
+        ),
     )
     graph.add_node(
-        "left_analyst", lambda state: left_analyst_agent(state, infosphere_sources, language)
+        "left_analyst",
+        partial(
+            left_analyst_agent,
+            infosphere_sources=infosphere_sources,
+            language=language,
+        ),
     )
     graph.add_node(
         "center_analyst",
-        lambda state: center_analyst_agent(state, infosphere_sources, language),
+        partial(
+            center_analyst_agent,
+            infosphere_sources=infosphere_sources,
+            language=language,
+        ),
     )
     graph.add_node(
         "right_analyst",
-        lambda state: right_analyst_agent(state, infosphere_sources, language),
+        partial(
+            right_analyst_agent,
+            infosphere_sources=infosphere_sources,
+            language=language,
+        ),
     )
     graph.add_node(
         "people_analyst",
-        lambda state: people_analyst_agent(state, infosphere_sources, language),
+        partial(
+            people_analyst_agent,
+            infosphere_sources=infosphere_sources,
+            language=language,
+        ),
     )
     graph.add_node("referee", run_referee_checks)
     graph.add_node("referee_blocked_summary", summarize_referee_block)
     graph.add_node("extract_claims", extract_claims_for_verification)
     graph.add_node(
         "cross_check_facts",
-        lambda state: cross_check_facts_agent(
-            state, infosphere_sources, language, seed_sources
+        partial(
+            cross_check_facts_agent,
+            infosphere_sources=infosphere_sources,
+            language=language,
+            seed_sources=seed_sources,
         ),
     )
-    graph.add_node("compose_final", lambda state: compose_final_agent(state, language))
+    graph.add_node("compose_final", partial(compose_final_agent, language=language))
     graph.add_node("supervisor", make_supervisor_step(infosphere_sources, language))
 
-    graph.set_entry_point("ingest_request")
+    graph.add_edge(START, "ingest_request")
     graph.add_edge("ingest_request", "build_research_plan")
     graph.add_edge("build_research_plan", "search_left_pool")
     graph.add_edge("build_research_plan", "search_center_pool")
@@ -117,45 +163,32 @@ def build_graph(
     graph.add_edge("compose_final", "supervisor")
     graph.add_edge("supervisor", END)
 
-    return graph.compile()
+    if checkpointer is None:
+        return graph.compile()
+    return graph.compile(checkpointer=checkpointer)
 
 
 def run_pipeline(
     query: str,
     seed_sources: Optional[Union[List[Source], Dict[str, List[Source]]]] = None,
     infosphere: str = "english",
+    *,
+    thread_id: str | None = None,
+    checkpointer: Any | None = None,
 ) -> str:
     """Execute the pipeline and return the final rendered report."""
-    app = build_graph(seed_sources, infosphere)
-    initial_state: PipelineState = {
-        "query": query,
-        "language": "polish" if infosphere == "polish" else "english",
-        "left_claims": [],
-        "centrist_claims": [],
-        "right_claims": [],
-        "people_claims": [],
-        "left_sources": [],
-        "centrist_sources": [],
-        "right_sources": [],
-        "people_sources": [],
-        "fact_sources": [],
-        "fact_checks": [],
-        "synthesis": "",
-        "final_output": "",
-        "research_plan": {"queries": [], "entities": [], "timeframe": "", "must_find": []},
-        "referee_report": {
-            "blocked": False,
-            "issues": [],
-            "unsupported_facts": [],
-            "loaded_language": [],
-            "required_verifications": [],
-            "required_rewrites": [],
-        },
-        "extracted_claims": [],
-        "verification_to_do": [],
-        "rewrites_to_do": [],
-        "loop_count": 0,
-        "max_loops": 2,
-    }
-    result = app.invoke(initial_state)
+    app = build_graph(seed_sources, infosphere, checkpointer=checkpointer)
+    initial_state = build_initial_pipeline_state(
+        query,
+        language=normalize_language(infosphere),
+    )
+    if thread_id is not None and not thread_id.strip():
+        raise ValueError("thread_id must not be empty when provided.")
+
+    config = (
+        {"configurable": {"thread_id": thread_id}}
+        if thread_id is not None
+        else None
+    )
+    result = app.invoke(initial_state, config=config)
     return result["final_output"]

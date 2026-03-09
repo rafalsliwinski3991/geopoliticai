@@ -12,11 +12,10 @@ def build_research_plan(state: PipelineState) -> PipelineState:
         must_find=["latest developments", "primary-source confirmation"],
     )
     return {
-        **state,
         "research_plan": {
             "queries": plan.queries,
             "entities": plan.entities,
             "timeframe": plan.timeframe,
             "must_find": plan.must_find,
-        },
+        }
     }

@@ -252,4 +252,7 @@ def cross_check_facts_agent(
             res.claim.text,
             sources,
         )
-    return {**with_fact_sources, "fact_checks": results}
+    return {
+        "fact_sources": fact_sources,
+        "fact_checks": results,
+    }

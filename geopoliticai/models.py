@@ -74,3 +74,50 @@ class PipelineState(TypedDict):
     rewrites_to_do: List[str]
     loop_count: int
     max_loops: int
+
+
+def normalize_language(value: str) -> str:
+    """Normalize language marker to supported values."""
+    return "polish" if str(value).strip().lower() == "polish" else "english"
+
+
+def build_initial_pipeline_state(
+    query: str,
+    *,
+    language: str,
+    max_loops: int = 2,
+) -> PipelineState:
+    """Return a complete initial pipeline state."""
+    normalized_query = " ".join((query or "").split())
+    normalized_language = normalize_language(language)
+    safe_max_loops = max(int(max_loops), 0)
+    return {
+        "query": normalized_query,
+        "language": normalized_language,
+        "left_claims": [],
+        "centrist_claims": [],
+        "right_claims": [],
+        "people_claims": [],
+        "left_sources": [],
+        "centrist_sources": [],
+        "right_sources": [],
+        "people_sources": [],
+        "fact_sources": [],
+        "fact_checks": [],
+        "synthesis": "",
+        "final_output": "",
+        "research_plan": {"queries": [], "entities": [], "timeframe": "", "must_find": []},
+        "referee_report": {
+            "blocked": False,
+            "issues": [],
+            "unsupported_facts": [],
+            "loaded_language": [],
+            "required_verifications": [],
+            "required_rewrites": [],
+        },
+        "extracted_claims": [],
+        "verification_to_do": [],
+        "rewrites_to_do": [],
+        "loop_count": 0,
+        "max_loops": safe_max_loops,
+    }
