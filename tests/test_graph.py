@@ -117,7 +117,10 @@ def test_run_pipeline(infosphere, expected_left_claim):
         "geopoliticai.agents.compose_final.invoke_structured_chain", fake_invoke
     ):
         output = run_pipeline(
-            "Test query", seed_sources=seed_sources, infosphere=infosphere
+            "Test query",
+            seed_sources=seed_sources,
+            infosphere=infosphere,
+            report_mode="full",
         )
 
     # assert
@@ -139,3 +142,40 @@ def test_run_pipeline(infosphere, expected_left_claim):
         assert "Centrist claim balancing competing goals." in output
         assert "Right claim focused on market incentives." in output
     assert "left Source One (https://example.com/left/1)" in output
+
+
+def test_run_pipeline_compact_report_uses_summary_sections():
+    seed_sources = {
+        "left": _seed_sources("left"),
+        "centrist": _seed_sources("centrist"),
+        "right": _seed_sources("right"),
+        "people": _seed_sources("people"),
+        "fact": _seed_sources("fact"),
+    }
+
+    fake_invoke = _make_fake_invoke_structured_chain("english")
+    with patch("geopoliticai.agents.left_analyst.invoke_structured_chain", fake_invoke), patch(
+        "geopoliticai.agents.center_analyst.invoke_structured_chain", fake_invoke
+    ), patch("geopoliticai.agents.right_analyst.invoke_structured_chain", fake_invoke), patch(
+        "geopoliticai.agents.cross_check_facts.invoke_structured_chain", fake_invoke
+    ), patch("geopoliticai.agents.people_analyst.invoke_structured_chain", fake_invoke), patch(
+        "geopoliticai.agents.compose_final.invoke_structured_chain", fake_invoke
+    ):
+        output = run_pipeline(
+            "Test query",
+            seed_sources=seed_sources,
+            infosphere="english",
+            report_mode="compact",
+        )
+
+    assert "Question: Test query" in output
+    assert "Answer:" in output
+    assert "Why:" in output
+    assert "Fact-check summary:" in output
+    assert "Top sources:" in output
+    assert "Rationale:" not in output
+
+
+def test_run_pipeline_rejects_invalid_report_mode() -> None:
+    with pytest.raises(ValueError):
+        run_pipeline("Test query", report_mode="verbose")

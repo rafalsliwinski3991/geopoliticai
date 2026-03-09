@@ -10,9 +10,6 @@ from geopoliticai.graph import run_pipeline
 
 
 def main() -> None:
-    init_environment()
-    require_env()
-
     parser = argparse.ArgumentParser(description="Run GeopoliticAI POC pipeline.")
     parser.add_argument("query", help="Query to analyze")
     parser.add_argument(
@@ -21,9 +18,28 @@ def main() -> None:
         default="english",
         help="Which infosphere sources to use.",
     )
+    parser.add_argument(
+        "--report",
+        choices=("compact", "full"),
+        default="compact",
+        help="Output mode: compact summary or full report.",
+    )
+    parser.add_argument(
+        "--log-level",
+        choices=("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"),
+        default=None,
+        help="Override logging level for this run.",
+    )
     args = parser.parse_args()
 
-    output = run_pipeline(args.query, infosphere=args.infosphere)
+    init_environment(log_level=args.log_level)
+    require_env()
+
+    output = run_pipeline(
+        args.query,
+        infosphere=args.infosphere,
+        report_mode=args.report,
+    )
     data = str(output).encode("utf-8", errors="replace")
     sys.stdout.buffer.write(data + b"\n")
     sys.stdout.flush()

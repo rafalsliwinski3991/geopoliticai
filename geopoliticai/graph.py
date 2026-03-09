@@ -46,6 +46,7 @@ def _route_after_referee(state: PipelineState) -> Literal["continue", "blocked"]
 def build_graph(
     seed_sources: Optional[Union[List[Source], Dict[str, List[Source]]]] = None,
     infosphere: str = "english",
+    report_mode: str = "full",
     *,
     checkpointer: Any | None = None,
 ):
@@ -133,7 +134,14 @@ def build_graph(
         ),
     )
     graph.add_node("compose_final", partial(compose_final_agent, language=language))
-    graph.add_node("supervisor", make_supervisor_step(infosphere_sources, language))
+    graph.add_node(
+        "supervisor",
+        make_supervisor_step(
+            infosphere_sources,
+            language,
+            report_mode=report_mode,
+        ),
+    )
 
     graph.add_edge(START, "ingest_request")
     graph.add_edge("ingest_request", "build_research_plan")
@@ -172,12 +180,22 @@ def run_pipeline(
     query: str,
     seed_sources: Optional[Union[List[Source], Dict[str, List[Source]]]] = None,
     infosphere: str = "english",
+    report_mode: str = "full",
     *,
     thread_id: str | None = None,
     checkpointer: Any | None = None,
 ) -> str:
     """Execute the pipeline and return the final rendered report."""
-    app = build_graph(seed_sources, infosphere, checkpointer=checkpointer)
+    normalized_report_mode = report_mode.strip().lower()
+    if normalized_report_mode not in {"compact", "full"}:
+        raise ValueError("report_mode must be one of: compact, full.")
+
+    app = build_graph(
+        seed_sources,
+        infosphere,
+        report_mode=normalized_report_mode,
+        checkpointer=checkpointer,
+    )
     initial_state = build_initial_pipeline_state(
         query,
         language=normalize_language(infosphere),

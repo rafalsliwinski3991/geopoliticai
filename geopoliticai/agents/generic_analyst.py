@@ -143,7 +143,7 @@ def generic_analyst_agent(
         model=model_name,
     )
     initial_raw_claims = getattr(output, "claims", [])
-    logger.info("%s analyst: initial raw output claims=%r", log_label, initial_raw_claims)
+    logger.debug("%s analyst: initial raw output claims=%r", log_label, initial_raw_claims)
     claims = _extract_claims(initial_raw_claims)
 
     if not claims:
@@ -176,7 +176,7 @@ def generic_analyst_agent(
             model=model_name,
         )
         retry_raw_claims = getattr(retry, "claims", [])
-        logger.info("%s analyst: retry raw output claims=%r", log_label, retry_raw_claims)
+        logger.debug("%s analyst: retry raw output claims=%r", log_label, retry_raw_claims)
         claims = _extract_claims(retry_raw_claims)
 
         if not claims:
@@ -211,7 +211,7 @@ def generic_analyst_agent(
                 model=model_name,
             )
             repair_raw_claims = getattr(repair, "claims", [])
-            logger.info(
+            logger.debug(
                 "%s analyst: repair raw output claims=%r",
                 log_label,
                 repair_raw_claims,
@@ -241,7 +241,7 @@ def generic_analyst_agent(
     logger.info("%s analyst: produced %d claims.", log_label, len(claims))
     for idx, claim in enumerate(claims, start=1):
         sources_text = ", ".join(claim.source_ids) if claim.source_ids else "none"
-        logger.info(
+        logger.debug(
             "%s claim %d/%d: %s (Sources: %s)",
             log_label,
             idx,

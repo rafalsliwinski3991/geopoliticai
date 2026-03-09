@@ -134,7 +134,7 @@ def cross_check_facts_agent(
     )
     for idx, claim in enumerate(claims, start=1):
         sources = ", ".join(claim.source_ids) if claim.source_ids else "none"
-        logger.info(
+        logger.debug(
             "Fact-check input claim %d/%d: %s (Sources: %s)",
             idx,
             len(claims),
@@ -184,7 +184,7 @@ def cross_check_facts_agent(
         model=model_name,
     )
     raw_results = list(getattr(data, "results", []))
-    logger.info("Fact-check: LLM raw results count=%d", len(raw_results))
+    logger.debug("Fact-check: LLM raw results count=%d", len(raw_results))
     for idx, raw_item in enumerate(raw_results, start=1):
         logger.debug(
             "Fact-check raw result %d: claim_text=%r verdict=%r source_ids=%r",
@@ -229,22 +229,26 @@ def cross_check_facts_agent(
         len(results),
         len(claims_by_text),
     )
+    fallback_added = 0
     for claim in claims:
         if not claim.text.strip() or claim.text in seen_claims:
             if claim.text in seen_claims:
                 logger.debug("Fact-check skipping already-seen claim: %s", claim.text[:80])
             continue
-        logger.info("Fact-check adding fallback for unseen claim: %s", claim.text[:80])
+        logger.debug("Fact-check adding fallback for unseen claim: %s", claim.text[:80])
         results.append(
             _fallback_result_for_claim(
                 claim,
                 rationale="No explicit support found in provided sources.",
             )
         )
+        fallback_added += 1
+    if fallback_added:
+        logger.info("Fact-check: added %d fallback verdicts for unmatched claims", fallback_added)
     logger.info("Fact-check: produced %d verdicts", len(results))
     for idx, res in enumerate(results, start=1):
         sources = ", ".join(res.claim.source_ids) if res.claim.source_ids else "none"
-        logger.info(
+        logger.debug(
             "Fact-check %d/%d: %s — %s (Sources: %s)",
             idx,
             len(results),

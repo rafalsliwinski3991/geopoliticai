@@ -111,7 +111,7 @@ def _select_sources_with_llm(
         return candidates[:count]
 
     raw_ids = payload.get("selected_ids", [])
-    logger.info(
+    logger.debug(
         "LLM source selector (%s): candidates=%d requested=%d returned_ids=%s",
         agent_key,
         len(candidates),
@@ -144,7 +144,7 @@ def web_searcher(
         normalized_seeded = _renumber_lane_sources(agent_key, seeded)
         logger.info("Web searcher (%s): using seed_sources (%d)", agent_key, len(normalized_seeded))
         for idx, source in enumerate(normalized_seeded, start=1):
-            logger.info(
+            logger.debug(
                 "Web searcher (%s): source %d/%d title=%s url=%s",
                 agent_key,
                 idx,
@@ -173,7 +173,7 @@ def web_searcher(
     client = TavilyClient(api_key=tavily_key)
     queries = state.get("research_plan", {}).get("queries") or [state["query"]]
     biased_query = _build_biased_query(queries[0], references)
-    logger.info("Web searcher (%s): built biased query", agent_key)
+    logger.debug("Web searcher (%s): built biased query", agent_key)
     response = client.search(biased_query, max_results=3, search_depth="advanced")
     sources: List[Source] = []
     seen_urls: set[str] = set()
@@ -253,7 +253,7 @@ def web_searcher(
 
     logger.info("Web searcher (%s): selected %d sources", agent_key, len(sources))
     for idx, source in enumerate(sources, start=1):
-        logger.info(
+        logger.debug(
             "Web searcher (%s): source %d/%d title=%s url=%s",
             agent_key,
             idx,

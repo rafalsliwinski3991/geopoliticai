@@ -88,12 +88,17 @@ AGENT_MODEL_NAMES: dict[str, str] = {
 }
 
 
-def init_environment() -> logging.Logger:
+def init_environment(log_level: str | None = None) -> logging.Logger:
     """Load environment variables and configure base logging."""
     load_dotenv()
+    configured_level = (log_level or os.getenv("LOG_LEVEL", "INFO")).upper().strip()
+    numeric_level = logging.getLevelName(configured_level)
+    if not isinstance(numeric_level, int):
+        numeric_level = logging.INFO
     logging.basicConfig(
-        level=os.getenv("LOG_LEVEL", "INFO").upper(),
+        level=numeric_level,
         format="%(levelname)s %(message)s",
+        force=True,
     )
     # Keep third-party transport logs quiet unless explicitly requested via DEBUG.
     for noisy_logger in ("httpx", "httpcore", "openai", "urllib3"):

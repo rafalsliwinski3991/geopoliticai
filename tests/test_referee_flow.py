@@ -79,6 +79,7 @@ def test_pipeline_stops_after_referee_block() -> None:
             "Test query",
             seed_sources=seed_sources,
             infosphere="english",
+            report_mode="full",
         )
 
     assert "A reliable answer cannot be provided with the current verification state." in output

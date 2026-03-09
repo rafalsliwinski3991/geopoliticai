@@ -550,7 +550,7 @@ def compose_final_agent(state: PipelineState, language: str) -> PipelineState:
         model=model_name,
     )
     synthesis = data.synthesis.strip()
-    logger.info(
+    logger.debug(
         "Compose final: raw synthesis (first 300 chars)=%r generic=%s details=%s",
         synthesis[:300],
         _looks_generic_synthesis(synthesis),
@@ -594,7 +594,7 @@ def compose_final_agent(state: PipelineState, language: str) -> PipelineState:
             model=model_name,
         )
         synthesis = retry.synthesis.strip()
-        logger.info(
+        logger.debug(
             "Compose final: retry synthesis (first 300 chars)=%r generic=%s details=%s",
             synthesis[:300],
             _looks_generic_synthesis(synthesis),
