@@ -58,6 +58,34 @@ def _extract_claims(items: List[GenericClaimItem]) -> List[Claim]:
     return claims
 
 
+def _keep_claims_with_allowed_sources(
+    claims: List[Claim],
+    allowed_source_ids: set[str],
+    *,
+    log_label: str,
+) -> List[Claim]:
+    """Drop claims that cite IDs outside the lane's provided sources."""
+    sanitized: List[Claim] = []
+    for claim in claims:
+        valid_ids: List[str] = []
+        seen_ids: set[str] = set()
+        for source_id in claim.source_ids:
+            normalized = source_id.strip()
+            if normalized in allowed_source_ids and normalized not in seen_ids:
+                valid_ids.append(normalized)
+                seen_ids.add(normalized)
+        if not valid_ids:
+            logger.debug(
+                "%s analyst: dropped claim with invalid source_ids=%s text=%r",
+                log_label,
+                claim.source_ids,
+                claim.text[:120],
+            )
+            continue
+        sanitized.append(Claim(text=claim.text, source_ids=valid_ids))
+    return sanitized
+
+
 def _truncate_for_prompt(text: str, max_chars: int = ANALYST_SOURCE_NOTE_CHARS) -> str:
     compact = " ".join((text or "").split())
     if len(compact) <= max_chars:
@@ -102,6 +130,7 @@ def generic_analyst_agent(
     sources_key = f"{lane_key}_sources"
     claims_key = f"{lane_key}_claims"
     sources = state[sources_key]
+    allowed_source_id_set = {source.id for source in sources}
     source_block = "\n".join(_render_source_for_prompt(source) for source in sources)
     allowed_source_ids = ", ".join(source.id for source in sources) or "none"
     reference_block = "\n".join(
@@ -144,7 +173,11 @@ def generic_analyst_agent(
     )
     initial_raw_claims = getattr(output, "claims", [])
     logger.debug("%s analyst: initial raw output claims=%r", log_label, initial_raw_claims)
-    claims = _extract_claims(initial_raw_claims)
+    claims = _keep_claims_with_allowed_sources(
+        _extract_claims(initial_raw_claims),
+        allowed_source_id_set,
+        log_label=log_label,
+    )
 
     if not claims:
         logger.info(
@@ -177,7 +210,11 @@ def generic_analyst_agent(
         )
         retry_raw_claims = getattr(retry, "claims", [])
         logger.debug("%s analyst: retry raw output claims=%r", log_label, retry_raw_claims)
-        claims = _extract_claims(retry_raw_claims)
+        claims = _keep_claims_with_allowed_sources(
+            _extract_claims(retry_raw_claims),
+            allowed_source_id_set,
+            log_label=log_label,
+        )
 
         if not claims:
             previous_claims_block = "\n".join(
@@ -216,7 +253,11 @@ def generic_analyst_agent(
                 log_label,
                 repair_raw_claims,
             )
-            claims = _extract_claims(repair_raw_claims)
+            claims = _keep_claims_with_allowed_sources(
+                _extract_claims(repair_raw_claims),
+                allowed_source_id_set,
+                log_label=log_label,
+            )
 
         if not claims:
             logger.info(

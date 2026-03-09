@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from difflib import SequenceMatcher
 import logging
-from typing import Any, Dict, List, Literal, Optional, Union
+from typing import Any, List, Literal
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -100,10 +100,9 @@ def cross_check_facts_agent(
     state: PipelineState,
     infosphere_sources: dict[str, list[tuple[str, str]]],
     language: str,
-    seed_sources: Optional[Union[List[Source], Dict[str, List[Source]]]] = None,
 ) -> PipelineState:
     """Run fact checks for all claims and return structured verdicts."""
-    fact_sources = web_searcher(state, "fact", infosphere_sources["fact"], seed_sources)
+    fact_sources = web_searcher(state, "fact", infosphere_sources["fact"])
     with_fact_sources = {
         **state,
         "fact_sources": fact_sources,

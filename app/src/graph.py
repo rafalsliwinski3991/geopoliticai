@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from functools import partial
-from typing import Any, Dict, List, Literal, Optional, Union
+from typing import Any, Literal
 
 from langgraph.graph import END, START, StateGraph
 
@@ -28,7 +28,7 @@ from tools import (
     summarize_referee_block,
 )
 from config import get_infosphere_sources
-from models import PipelineState, Source, build_initial_pipeline_state, normalize_language
+from models import PipelineState, build_initial_pipeline_state, normalize_language
 
 DEFAULT_INFOSPHERE = "english"
 DEFAULT_REPORT_MODE = "full"
@@ -49,7 +49,6 @@ def _route_after_referee(state: PipelineState) -> Literal["continue", "blocked"]
 
 
 def build_graph(
-    seed_sources: Optional[Union[List[Source], Dict[str, List[Source]]]] = None,
     infosphere: str = DEFAULT_INFOSPHERE,
     report_mode: str = DEFAULT_REPORT_MODE,
     *,
@@ -68,7 +67,6 @@ def build_graph(
         partial(
             search_left_pool,
             infosphere_sources=infosphere_sources,
-            seed_sources=seed_sources,
         ),
     )
     graph.add_node(
@@ -76,7 +74,6 @@ def build_graph(
         partial(
             search_center_pool,
             infosphere_sources=infosphere_sources,
-            seed_sources=seed_sources,
         ),
     )
     graph.add_node(
@@ -84,7 +81,6 @@ def build_graph(
         partial(
             search_right_pool,
             infosphere_sources=infosphere_sources,
-            seed_sources=seed_sources,
         ),
     )
     graph.add_node(
@@ -92,7 +88,6 @@ def build_graph(
         partial(
             search_people_pool,
             infosphere_sources=infosphere_sources,
-            seed_sources=seed_sources,
         ),
     )
     graph.add_node(
@@ -136,7 +131,6 @@ def build_graph(
             cross_check_facts_agent,
             infosphere_sources=infosphere_sources,
             language=language,
-            seed_sources=seed_sources,
         ),
     )
     graph.add_node("compose_final", partial(compose_final_agent, language=language))
@@ -184,7 +178,6 @@ def build_graph(
 
 def run_pipeline(
     query: str,
-    seed_sources: Optional[Union[List[Source], Dict[str, List[Source]]]] = None,
     infosphere: str = DEFAULT_INFOSPHERE,
     report_mode: str = DEFAULT_REPORT_MODE,
     *,
@@ -195,8 +188,7 @@ def run_pipeline(
     normalized_report_mode = _normalize_report_mode(report_mode)
 
     app = build_graph(
-        seed_sources,
-        infosphere,
+        infosphere=infosphere,
         report_mode=normalized_report_mode,
         checkpointer=checkpointer,
     )
