@@ -78,7 +78,7 @@ AGENT_MODEL_NAMES: dict[str, str] = {
     "right_analyst": "gpt-4o-mini",
     "people_analyst": "gpt-4o-mini",
     "cross_check_facts": "gpt-4o-mini",
-    "compose_final": "gpt-4o",
+    "compose_final": "gpt-5",
     # Lane aliases used by search helpers.
     "left": "gpt-4o-mini",
     "centrist": "gpt-4o-mini",
