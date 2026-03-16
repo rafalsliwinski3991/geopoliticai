@@ -8,12 +8,13 @@ from dataclasses import replace
 from typing import List
 from urllib.parse import urlparse
 
-from tavily import TavilyClient
+import httpx
 
 from models import PipelineState, Source
 
 logger = logging.getLogger(__name__)
 MAX_SOURCE_NOTES_CHARS = 400
+BRAVE_SEARCH_URL = "https://api.search.brave.com/res/v1/web/search"
 LANE_SOURCE_PREFIXES = {
     "left": "L",
     "centrist": "C",
@@ -88,17 +89,27 @@ def _normalize_source_notes(raw_notes: str, max_chars: int = MAX_SOURCE_NOTES_CH
     return compact[: max_chars - 3].rstrip() + "..."
 
 
+def _brave_search(client: httpx.Client, query: str, count: int) -> List[dict]:
+    """Execute a single Brave Search query and return raw result dicts."""
+    resp = client.get(
+        BRAVE_SEARCH_URL,
+        params={"q": query, "count": count},
+        timeout=10,
+    )
+    resp.raise_for_status()
+    return resp.json().get("web", {}).get("results", [])
+
+
 def web_searcher(
     state: PipelineState,
     agent_key: str,
     references: List[tuple[str, str]],
 ) -> List[Source]:
-    """Search Tavily only within the lane's configured reference domains."""
-    tavily_key = os.getenv("TAVILY_KEY")
-    if not tavily_key:
-        raise ValueError("Missing TAVILY_KEY for live search.")
+    """Search Brave only within the lane's configured reference domains."""
+    brave_key = os.getenv("BRAVE_SEARCH_KEY")
+    if not brave_key:
+        raise ValueError("Missing BRAVE_SEARCH_KEY for live search.")
 
-    client = TavilyClient(api_key=tavily_key)
     queries = state.get("research_plan", {}).get("queries") or [state["query"]]
     query = queries[0]
     allowed_domains = sorted(_allowed_reference_domains(references))
@@ -111,75 +122,81 @@ def web_searcher(
         logger.warning("Web searcher (%s): no configured domains for lane.", agent_key)
         return []
 
+    headers = {
+        "Accept": "application/json",
+        "Accept-Encoding": "gzip",
+        "X-Subscription-Token": brave_key,
+    }
     sources: List[Source] = []
     seen_urls: set[str] = set()
 
-    # Query each configured domain directly so every lane stays inside its source list.
-    for domain in allowed_domains:
-        domain_response = client.search(
-            f"{query} site:{domain}",
-            max_results=3,
-            search_depth="advanced",
-        )
-        for item in domain_response.get("results", []):
-            raw_notes = (item.get("content") or "").strip()
-            url = (item.get("url") or "").strip()
-            if not url or url in seen_urls:
+    with httpx.Client(headers=headers) as client:
+        # Query each configured domain directly so every lane stays inside its source list.
+        for domain in allowed_domains:
+            try:
+                items = _brave_search(client, f"{query} site:{domain}", count=3)
+            except httpx.HTTPError as exc:
+                logger.warning("Web searcher (%s): request failed for domain=%s: %s", agent_key, domain, exc)
                 continue
-            if not _url_matches_allowed_domains(url, {domain}):
+            for item in items:
+                raw_notes = (item.get("description") or "").strip()
+                url = (item.get("url") or "").strip()
+                if not url or url in seen_urls:
+                    continue
+                if not _url_matches_allowed_domains(url, {domain}):
+                    logger.debug(
+                        "Web searcher (%s): dropped out-of-domain URL %s for domain=%s",
+                        agent_key,
+                        url,
+                        domain,
+                    )
+                    continue
+                seen_urls.add(url)
+                sources.append(
+                    Source(
+                        id=_source_id_for_lane(agent_key, len(sources) + 1),
+                        title=(item.get("title") or "Untitled").strip(),
+                        url=url,
+                        notes=_normalize_source_notes(raw_notes),
+                        content_excerpt=raw_notes or None,
+                    )
+                )
                 logger.debug(
-                    "Web searcher (%s): dropped out-of-domain URL %s for domain=%s",
+                    "Web searcher (%s): selected source=%s url=%s",
                     agent_key,
+                    item.get("title"),
                     url,
-                    domain,
                 )
-                continue
-            seen_urls.add(url)
-            sources.append(
-                Source(
-                    id=_source_id_for_lane(agent_key, len(sources) + 1),
-                    title=(item.get("title") or "Untitled").strip(),
-                    url=url,
-                    notes=_normalize_source_notes(raw_notes),
-                    content_excerpt=raw_notes or None,
-                )
-            )
-            logger.debug(
-                "Web searcher (%s): selected source=%s url=%s",
-                agent_key,
-                item.get("title"),
-                url,
-            )
-            # Keep at most one item per configured domain.
-            break
-
-    if not sources:
-        combined_query = _build_biased_query(query, references)
-        logger.info("Web searcher (%s): no per-domain hits, trying combined query.", agent_key)
-        response = client.search(
-            combined_query,
-            max_results=max(len(allowed_domains) * 3, 3),
-            search_depth="advanced",
-        )
-        for item in response.get("results", []):
-            raw_notes = (item.get("content") or "").strip()
-            url = (item.get("url") or "").strip()
-            if not url or url in seen_urls:
-                continue
-            if not _url_matches_allowed_domains(url, set(allowed_domains)):
-                continue
-            seen_urls.add(url)
-            sources.append(
-                Source(
-                    id=_source_id_for_lane(agent_key, len(sources) + 1),
-                    title=(item.get("title") or "Untitled").strip(),
-                    url=url,
-                    notes=_normalize_source_notes(raw_notes),
-                    content_excerpt=raw_notes or None,
-                )
-            )
-            if len(sources) >= len(allowed_domains):
+                # Keep at most one item per configured domain.
                 break
+
+        if not sources:
+            combined_query = _build_biased_query(query, references)
+            logger.info("Web searcher (%s): no per-domain hits, trying combined query.", agent_key)
+            try:
+                items = _brave_search(client, combined_query, count=max(len(allowed_domains) * 3, 3))
+            except httpx.HTTPError as exc:
+                logger.warning("Web searcher (%s): combined query failed: %s", agent_key, exc)
+                return []
+            for item in items:
+                raw_notes = (item.get("description") or "").strip()
+                url = (item.get("url") or "").strip()
+                if not url or url in seen_urls:
+                    continue
+                if not _url_matches_allowed_domains(url, set(allowed_domains)):
+                    continue
+                seen_urls.add(url)
+                sources.append(
+                    Source(
+                        id=_source_id_for_lane(agent_key, len(sources) + 1),
+                        title=(item.get("title") or "Untitled").strip(),
+                        url=url,
+                        notes=_normalize_source_notes(raw_notes),
+                        content_excerpt=raw_notes or None,
+                    )
+                )
+                if len(sources) >= len(allowed_domains):
+                    break
 
     sources = _renumber_lane_sources(agent_key, sources)
 

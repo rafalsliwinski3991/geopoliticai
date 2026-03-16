@@ -70,7 +70,7 @@ DEFAULT_MODEL = "gpt-4o-mini"
 DEFAULT_ANALYST_ADDITIONAL_SOURCES = 0
 DEFAULT_OPENAI_TIMEOUT_SECONDS = 60.0
 DEFAULT_OPENAI_MAX_OUTPUT_TOKENS = 1200
-REQUIRED_ENV_VARS = ("OPENAI_API_KEY", "TAVILY_KEY")
+REQUIRED_ENV_VARS = ("OPENAI_API_KEY", "BRAVE_SEARCH_KEY")
 
 AGENT_MODEL_NAMES: dict[str, str] = {
     "left_analyst": "gpt-4o-mini",
@@ -78,7 +78,7 @@ AGENT_MODEL_NAMES: dict[str, str] = {
     "right_analyst": "gpt-4o-mini",
     "people_analyst": "gpt-4o-mini",
     "cross_check_facts": "gpt-4o-mini",
-    "compose_final": "gpt-5",
+    "compose_final": "gpt-4o-mini",
     # Lane aliases used by search helpers.
     "left": "gpt-4o-mini",
     "centrist": "gpt-4o-mini",

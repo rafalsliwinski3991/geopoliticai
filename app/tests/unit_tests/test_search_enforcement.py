@@ -1,51 +1,49 @@
+import httpx
+import pytest
 import search
 from agents import generic_analyst
 from models import Claim
 
 
-class _FakeTavilyClient:
-    def __init__(self, api_key: str, responses: list[dict]):
-        self.api_key = api_key
-        self._responses = responses
-        self.calls = 0
+def _brave_response(results: list[dict]) -> httpx.Response:
+    req = httpx.Request("GET", "https://api.search.brave.com/res/v1/web/search")
+    return httpx.Response(200, json={"web": {"results": results}}, request=req)
 
-    def search(self, _query: str, max_results: int, search_depth: str) -> dict:
-        assert max_results >= 1
-        assert search_depth == "advanced"
-        response = self._responses[self.calls]
-        self.calls += 1
-        return response
+
+@pytest.fixture(autouse=True)
+def _set_brave_key(monkeypatch):
+    monkeypatch.setenv("BRAVE_SEARCH_KEY", "test-key")
 
 
 def test_web_searcher_keeps_only_allowed_domains(monkeypatch) -> None:
     responses = [
-        {
-            "results": [
-                {
-                    "title": "Wikipedia entry",
-                    "url": "https://en.wikipedia.org/wiki/Example",
-                    "content": "Out-of-scope source that should be filtered.",
-                },
-                {
-                    "title": "Brookings analysis",
-                    "url": "https://www.brookings.edu/articles/example",
-                    "content": "Allowed source should remain.",
-                },
-            ]
-        }
+        _brave_response([
+            {
+                "title": "Wikipedia entry",
+                "url": "https://en.wikipedia.org/wiki/Example",
+                "description": "Out-of-scope source that should be filtered.",
+            },
+            {
+                "title": "Brookings analysis",
+                "url": "https://www.brookings.edu/articles/example",
+                "description": "Allowed source should remain.",
+            },
+        ])
     ]
-    fake_client = _FakeTavilyClient("test", responses)
-    monkeypatch.setenv("TAVILY_KEY", "test-key")
-    monkeypatch.setattr(search, "TavilyClient", lambda api_key: fake_client)
+    call_count = 0
+
+    def fake_get(self, url, *, params, timeout):
+        nonlocal call_count
+        resp = responses[call_count]
+        call_count += 1
+        return resp
+
+    monkeypatch.setattr(httpx.Client, "get", fake_get)
 
     state = {"query": "test query", "research_plan": {"queries": ["test query"]}}
     references = [("Brookings Institution", "https://www.brookings.edu")]
 
-    sources = search.web_searcher(
-        state,  # type: ignore[arg-type]
-        "centrist",
-        references,
-    )
+    sources = search.web_searcher(state, "centrist", references)  # type: ignore[arg-type]
 
     assert len(sources) == 1
     assert sources[0].url == "https://www.brookings.edu/articles/example"
@@ -53,33 +51,35 @@ def test_web_searcher_keeps_only_allowed_domains(monkeypatch) -> None:
 
 def test_web_searcher_keeps_each_lane_within_configured_domains(monkeypatch) -> None:
     responses = [
-        {
-            "results": [
-                {
-                    "title": "CFR piece",
-                    "url": "https://www.cfr.org/article/example",
-                    "content": "Allowed base source.",
-                },
-                {
-                    "title": "Wikipedia entry",
-                    "url": "https://en.wikipedia.org/wiki/Example",
-                    "content": "Must be dropped.",
-                }
-            ]
-        },
-        {
-            "results": [
-                {
-                    "title": "Economist note",
-                    "url": "https://www.economist.com/world/2026/03/01/example",
-                    "content": "Allowed extra source.",
-                },
-            ]
-        },
+        _brave_response([
+            {
+                "title": "CFR piece",
+                "url": "https://www.cfr.org/article/example",
+                "description": "Allowed base source.",
+            },
+            {
+                "title": "Wikipedia entry",
+                "url": "https://en.wikipedia.org/wiki/Example",
+                "description": "Must be dropped.",
+            },
+        ]),
+        _brave_response([
+            {
+                "title": "Economist note",
+                "url": "https://www.economist.com/world/2026/03/01/example",
+                "description": "Allowed extra source.",
+            },
+        ]),
     ]
-    fake_client = _FakeTavilyClient("test", responses)
-    monkeypatch.setenv("TAVILY_KEY", "test-key")
-    monkeypatch.setattr(search, "TavilyClient", lambda api_key: fake_client)
+    call_count = 0
+
+    def fake_get(self, url, *, params, timeout):
+        nonlocal call_count
+        resp = responses[call_count]
+        call_count += 1
+        return resp
+
+    monkeypatch.setattr(httpx.Client, "get", fake_get)
 
     state = {"query": "test query", "research_plan": {"queries": ["test query"]}}
     references = [
@@ -87,11 +87,7 @@ def test_web_searcher_keeps_each_lane_within_configured_domains(monkeypatch) -> 
         ("The Economist", "https://www.economist.com"),
     ]
 
-    sources = search.web_searcher(
-        state,  # type: ignore[arg-type]
-        "centrist",
-        references,
-    )
+    sources = search.web_searcher(state, "centrist", references)  # type: ignore[arg-type]
 
     urls = [source.url for source in sources]
     assert "https://en.wikipedia.org/wiki/Example" not in urls
