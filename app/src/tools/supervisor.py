@@ -7,7 +7,7 @@ import logging
 import re
 from typing import Callable, List
 
-from models import PipelineState
+from models import Claim, PipelineState
 from render import merge_sources
 
 logger = logging.getLogger(__name__)
@@ -16,6 +16,18 @@ MAX_COMPACT_RATIONALE_BULLETS = 3
 MAX_COMPACT_SOURCE_ITEMS = 5
 MAX_BULLET_CHARS = 220
 CONSENSUS_NAME_PATTERN = re.compile(r"\b([A-Z][a-z]+(?:\s+[A-Z]\.?)?\s+[A-Z][a-z]+)\b")
+_VERDICT_BADGE_PL = {
+    "TRUE": "PRAWDA ✓",
+    "PARTIALLY TRUE": "CZĘŚCIOWO PRAWDA ~",
+    "MISLEADING": "MYLĄCE ?",
+    "FALSE": "FAŁSZ ✗",
+}
+_VERDICT_BADGE_EN = {
+    "TRUE": "TRUE ✓",
+    "PARTIALLY TRUE": "PARTIALLY TRUE ~",
+    "MISLEADING": "MISLEADING ?",
+    "FALSE": "FALSE ✗",
+}
 
 
 def _split_direct_answer_and_details(synthesis: str) -> tuple[str, str]:
@@ -116,6 +128,32 @@ def _infer_consensus_entity(state: PipelineState) -> str:
     return best_name if best_count >= 2 else ""
 
 
+def _build_verdict_lookup(state: PipelineState) -> dict[str, str]:
+    """Return claim text → upper-cased verdict from fact_checks."""
+    return {
+        fc.claim.text.strip(): fc.verdict.strip().upper()
+        for fc in state["fact_checks"]
+        if fc.claim.text.strip()
+    }
+
+
+def _render_lane_claims(
+    claims: List[Claim],
+    verdict_lookup: dict[str, str],
+    badges: dict[str, str],
+) -> list[str]:
+    """Render every claim in a lane with its verdict badge."""
+    if not claims:
+        return ["- (brak twierdzeń)" if badges is _VERDICT_BADGE_PL else "- (no claims)"]
+    lines = []
+    for claim in claims:
+        text = _truncate_text(claim.text)
+        verdict = verdict_lookup.get(claim.text.strip(), "")
+        badge = badges.get(verdict, "– ?") if verdict else "– ?"
+        lines.append(f"- [{badge}] {text}")
+    return lines
+
+
 def _warn_if_answer_conflicts_with_consensus(answer: str, state: PipelineState) -> None:
     consensus = _infer_consensus_entity(state)
     if not consensus:
@@ -148,6 +186,9 @@ def make_supervisor_step(
         compact_facts_label = "Podsumowanie fact-checku:"
         sources_label = "Zrodla:"
         compact_sources_label = "Najwazniejsze zrodla:"
+        claims_label = "Twierdzenia analitykow:"
+        lane_labels = ("Lewica:", "Centrum:", "Prawica:", "Osoby:")
+        badges = _VERDICT_BADGE_PL
     else:
         question_label = "Question:"
         answer_label = "Answer:"
@@ -157,6 +198,9 @@ def make_supervisor_step(
         compact_facts_label = "Fact-check summary:"
         sources_label = "Sources:"
         compact_sources_label = "Top sources:"
+        claims_label = "Analysts' claims:"
+        lane_labels = ("Left:", "Center:", "Right:", "People:")
+        badges = _VERDICT_BADGE_EN
 
     def supervisor_step(state: PipelineState) -> PipelineState:
         lines: List[str] = []
@@ -216,6 +260,19 @@ def make_supervisor_step(
             if synthesis_details:
                 lines.append(rationale_label)
                 lines.append(synthesis_details)
+            lines.append("")
+            verdict_lookup = _build_verdict_lookup(state)
+            lane_pairs = [
+                (lane_labels[0], state["left_claims"]),
+                (lane_labels[1], state["centrist_claims"]),
+                (lane_labels[2], state["right_claims"]),
+                (lane_labels[3], state["people_claims"]),
+            ]
+            lines.append(claims_label)
+            for lane_label, lane_claims in lane_pairs:
+                lines.append("")
+                lines.append(lane_label)
+                lines.extend(_render_lane_claims(lane_claims, verdict_lookup, badges))
             lines.append("")
             lines.append(
                 f"{facts_label} {len(state['fact_checks'])} verdicts from "
