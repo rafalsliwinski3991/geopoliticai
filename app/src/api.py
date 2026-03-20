@@ -2,19 +2,22 @@
 
 from __future__ import annotations
 
+import json
 import os
 import time
 from collections import defaultdict, deque
 from contextlib import asynccontextmanager
 from threading import Lock
-from typing import Literal
+from typing import AsyncGenerator, Literal
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, field_validator
 
 from config import init_environment, require_env
-from graph import run_pipeline
+from graph import build_graph, run_pipeline
+from models import build_initial_pipeline_state, normalize_language
 
 DEFAULT_ALLOWED_ORIGINS = (
     "http://localhost",
@@ -135,6 +138,106 @@ def _enforce_rate_limit(request: Request) -> None:
 @app.get("/health")
 def healthcheck() -> dict[str, str]:
     return {"status": "ok"}
+
+
+_NODE_LABELS: dict[str, str] = {
+    "ingest_request": "Przetwarzam zapytanie...",
+    "build_research_plan": "Buduję plan badań...",
+    "search_left_pool": "Przeszukuję lewicowe źródła...",
+    "search_center_pool": "Przeszukuję centrowe źródła...",
+    "search_right_pool": "Przeszukuję prawicowe źródła...",
+    "search_people_pool": "Przeszukuję profile osób...",
+    "left_analyst": "Analizuję perspektywę lewicową...",
+    "center_analyst": "Analizuję perspektywę centrową...",
+    "right_analyst": "Analizuję perspektywę prawicową...",
+    "people_analyst": "Analizuję profile osób...",
+    "referee": "Weryfikuję treść raportu...",
+    "referee_blocked_summary": "Podsumowuję blokadę...",
+    "extract_claims": "Wyodrębniam twierdzenia...",
+    "cross_check_facts": "Sprawdzam fakty krzyżowo...",
+    "compose_final": "Komponuję raport końcowy...",
+    "supervisor": "Finalizuję odpowiedź...",
+}
+
+
+@app.post("/run_pipeline/stream")
+async def run_pipeline_stream_endpoint(
+    payload: RunPipelineRequest,
+    request: Request,
+) -> StreamingResponse:
+    _enforce_rate_limit(request)
+
+    async def _generate() -> AsyncGenerator[str, None]:
+        try:
+            graph = build_graph(infosphere=payload.infosphere)
+            initial_state = build_initial_pipeline_state(
+                payload.query,
+                language=normalize_language(payload.infosphere),
+            )
+            seen_nodes: set[str] = set()
+            final_output: str | None = None
+
+            async for event in graph.astream_events(
+                initial_state, version="v2"
+            ):
+                etype = event.get("event", "")
+                node = event.get("metadata", {}).get(
+                    "langgraph_node", ""
+                )
+
+                if (
+                    etype == "on_chain_start"
+                    and node in _NODE_LABELS
+                    and node not in seen_nodes
+                ):
+                    seen_nodes.add(node)
+                    data = json.dumps(
+                        {
+                            "type": "progress",
+                            "node": node,
+                            "label": _NODE_LABELS[node],
+                        }
+                    )
+                    yield f"data: {data}\n\n"
+
+                if (
+                    etype == "on_chain_end"
+                    and event.get("name") == "GeopoliticAI"
+                ):
+                    output = event.get("data", {}).get("output", {})
+                    if isinstance(output, dict):
+                        final_output = output.get("final_output")
+
+            if final_output is not None:
+                data = json.dumps(
+                    {
+                        "type": "result",
+                        "output": _sanitize_output(final_output),
+                    }
+                )
+            else:
+                data = json.dumps(
+                    {
+                        "type": "error",
+                        "message": "Backend zwrócił pustą odpowiedź.",
+                    }
+                )
+            yield f"data: {data}\n\n"
+
+        except ValueError as exc:
+            data = json.dumps({"type": "error", "message": str(exc)})
+            yield f"data: {data}\n\n"
+        except Exception as exc:
+            data = json.dumps(
+                {"type": "error", "message": f"Nieoczekiwany błąd: {exc}"}
+            )
+            yield f"data: {data}\n\n"
+
+    return StreamingResponse(
+        _generate(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 @app.post("/run_pipeline", response_model=RunPipelineResponse)
