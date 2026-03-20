@@ -226,20 +226,13 @@ def get_model(agent_key: str | None = None) -> str:
 
 
 def get_infosphere_sources(infosphere: str) -> dict[str, list[tuple[str, str]]]:
-    """Return the sources list for the requested infosphere."""
+    """Return the sources list for the requested infosphere.
+
+    Polish infosphere uses only Polish-language sources.
+    English infosphere uses only English-language sources.
+    """
     if infosphere == "english":
         return ENGLISH_INFOSPHERE_SOURCES
     if infosphere == "polish":
-        combined: dict[str, list[tuple[str, str]]] = {}
-        for key, english_sources in ENGLISH_INFOSPHERE_SOURCES.items():
-            merged = english_sources + POLISH_INFOSPHERE_SOURCES.get(key, [])
-            seen: set[str] = set()
-            unique: list[tuple[str, str]] = []
-            for name, url in merged:
-                if url in seen:
-                    continue
-                seen.add(url)
-                unique.append((name, url))
-            combined[key] = unique
-        return combined
+        return POLISH_INFOSPHERE_SOURCES
     raise ValueError(f"Unsupported infosphere: {infosphere}")

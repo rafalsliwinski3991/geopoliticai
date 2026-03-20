@@ -2,8 +2,21 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Literal, Optional, TypedDict
+
+_POLISH_DIACRITICS = frozenset("ąćęłńóśźżĄĆĘŁŃÓŚŹŻ")
+_POLISH_STOPWORDS = frozenset(
+    [
+        "czy", "jakie", "który", "która", "które", "których",
+        "ktory", "ktora", "ktore", "ktorych",
+        "przez", "oraz", "tego", "jest", "się", "sie", "jako",
+        "polska", "polskie", "polskich", "polsce", "polski",
+        "jakich", "jakiego", "czemu", "skąd", "skad", "dlaczego",
+        "kiedy", "gdzie", "kto", "kogo", "komu",
+    ]
+)
 
 
 @dataclass
@@ -74,6 +87,22 @@ class PipelineState(TypedDict):
     rewrites_to_do: List[str]
     loop_count: int
     max_loops: int
+
+
+def detect_language(query: str) -> str:
+    """Return 'polish' if the query appears to be in Polish, else 'english'.
+
+    Detection is heuristic:
+    1. Any Polish diacritic character → Polish.
+    2. Any known Polish function/stop word as a whole token → Polish.
+    3. Otherwise → English.
+    """
+    if any(c in _POLISH_DIACRITICS for c in query):
+        return "polish"
+    tokens = set(re.findall(r"\b\w+\b", query.lower()))
+    if tokens & _POLISH_STOPWORDS:
+        return "polish"
+    return "english"
 
 
 def normalize_language(value: str) -> str:

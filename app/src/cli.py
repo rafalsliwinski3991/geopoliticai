@@ -7,6 +7,7 @@ import sys
 
 from config import init_environment, require_env
 from graph import run_pipeline
+from models import detect_language
 
 
 def main() -> None:
@@ -15,8 +16,11 @@ def main() -> None:
     parser.add_argument(
         "--infosphere",
         choices=("english", "polish"),
-        default="english",
-        help="Which infosphere sources to use.",
+        default=None,
+        help=(
+            "Force a specific infosphere. "
+            "Defaults to auto-detecting from query language."
+        ),
     )
     parser.add_argument(
         "--report",
@@ -35,9 +39,10 @@ def main() -> None:
     init_environment(log_level=args.log_level)
     require_env()
 
+    infosphere = args.infosphere or detect_language(args.query)
     output = run_pipeline(
         args.query,
-        infosphere=args.infosphere,
+        infosphere=infosphere,
         report_mode=args.report,
     )
     data = str(output).encode("utf-8", errors="replace")

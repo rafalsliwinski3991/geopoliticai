@@ -86,7 +86,7 @@ class RunPipelineRequest(BaseModel):
         description="Query to analyze",
     )
     infosphere: Literal["english", "polish"] = Field(
-        "english", description="Which infosphere sources to use: english or polish"
+        "polish", description="Which infosphere sources to use: english or polish"
     )
 
     @field_validator("query")
@@ -140,7 +140,7 @@ def healthcheck() -> dict[str, str]:
     return {"status": "ok"}
 
 
-_NODE_LABELS: dict[str, str] = {
+_NODE_LABELS_PL: dict[str, str] = {
     "ingest_request": "Przetwarzam zapytanie...",
     "build_research_plan": "Buduję plan badań...",
     "search_left_pool": "Przeszukuję lewicowe źródła...",
@@ -158,6 +158,24 @@ _NODE_LABELS: dict[str, str] = {
     "compose_final": "Komponuję raport końcowy...",
     "supervisor": "Finalizuję odpowiedź...",
 }
+_NODE_LABELS_EN: dict[str, str] = {
+    "ingest_request": "Processing query...",
+    "build_research_plan": "Building research plan...",
+    "search_left_pool": "Searching left-leaning sources...",
+    "search_center_pool": "Searching centrist sources...",
+    "search_right_pool": "Searching right-leaning sources...",
+    "search_people_pool": "Searching people profiles...",
+    "left_analyst": "Analyzing left perspective...",
+    "center_analyst": "Analyzing centrist perspective...",
+    "right_analyst": "Analyzing right perspective...",
+    "people_analyst": "Analyzing people profiles...",
+    "referee": "Verifying report content...",
+    "referee_blocked_summary": "Summarizing block...",
+    "extract_claims": "Extracting claims...",
+    "cross_check_facts": "Cross-checking facts...",
+    "compose_final": "Composing final report...",
+    "supervisor": "Finalizing answer...",
+}
 
 
 @app.post("/run_pipeline/stream")
@@ -166,6 +184,18 @@ async def run_pipeline_stream_endpoint(
     request: Request,
 ) -> StreamingResponse:
     _enforce_rate_limit(request)
+
+    node_labels = _NODE_LABELS_PL if payload.infosphere == "polish" else _NODE_LABELS_EN
+    empty_msg = (
+        "Backend zwrócił pustą odpowiedź."
+        if payload.infosphere == "polish"
+        else "Backend returned an empty response."
+    )
+    unexpected_msg = (
+        "Nieoczekiwany błąd: {}"
+        if payload.infosphere == "polish"
+        else "Unexpected error: {}"
+    )
 
     async def _generate() -> AsyncGenerator[str, None]:
         try:
@@ -187,7 +217,7 @@ async def run_pipeline_stream_endpoint(
 
                 if (
                     etype == "on_chain_start"
-                    and node in _NODE_LABELS
+                    and node in node_labels
                     and node not in seen_nodes
                 ):
                     seen_nodes.add(node)
@@ -195,7 +225,7 @@ async def run_pipeline_stream_endpoint(
                         {
                             "type": "progress",
                             "node": node,
-                            "label": _NODE_LABELS[node],
+                            "label": node_labels[node],
                         }
                     )
                     yield f"data: {data}\n\n"
@@ -216,12 +246,7 @@ async def run_pipeline_stream_endpoint(
                     }
                 )
             else:
-                data = json.dumps(
-                    {
-                        "type": "error",
-                        "message": "Backend zwrócił pustą odpowiedź.",
-                    }
-                )
+                data = json.dumps({"type": "error", "message": empty_msg})
             yield f"data: {data}\n\n"
 
         except ValueError as exc:
@@ -229,7 +254,7 @@ async def run_pipeline_stream_endpoint(
             yield f"data: {data}\n\n"
         except Exception as exc:
             data = json.dumps(
-                {"type": "error", "message": f"Nieoczekiwany błąd: {exc}"}
+                {"type": "error", "message": unexpected_msg.format(exc)}
             )
             yield f"data: {data}\n\n"
 

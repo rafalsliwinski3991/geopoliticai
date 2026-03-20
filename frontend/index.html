@@ -57,44 +57,39 @@
         padding: 24px 28px;
         background: linear-gradient(120deg, #111827 0%, #1f2937 55%, #0f172a 100%);
         color: #f8fafc;
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 16px;
       }
+      .chat-header-text { flex: 1; min-width: 0; }
       .chat-header h1 { margin: 0; font-size: 22px; letter-spacing: 0.3px; }
       .chat-header p  { margin: 6px 0 0; font-size: 14px; opacity: 0.78; }
 
-      /* ── Controls ── */
-      .controls {
+      /* ── Language picker ── */
+      .lang-picker {
         display: flex;
-        align-items: center;
-        gap: 16px;
-        padding: 12px 24px;
-        background: var(--bg-accent);
-        border-bottom: 1px solid var(--line);
-        flex-wrap: wrap;
+        gap: 6px;
+        flex-shrink: 0;
+        margin-top: 2px;
       }
-      .controls label {
-        font-size: 12px;
-        color: var(--ink-muted);
-        text-transform: uppercase;
-        letter-spacing: 0.08em;
-        font-weight: 600;
-      }
-      .controls select {
-        padding: 7px 32px 7px 12px;
-        border-radius: 999px;
-        border: 1px solid var(--line);
-        background: #fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23475569' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E") no-repeat right 10px center;
-        appearance: none;
-        font-size: 14px;
-        font-family: inherit;
-        color: var(--ink);
+      .lang-btn {
+        font-size: 22px;
+        line-height: 1;
+        background: none;
+        border: 2px solid transparent;
+        border-radius: 8px;
+        padding: 4px 6px;
         cursor: pointer;
-        transition: border-color 0.15s;
+        opacity: 0.35;
+        transition: opacity 0.15s, border-color 0.15s, background 0.15s;
       }
-      .controls select:focus {
-        outline: 2px solid var(--accent);
-        outline-offset: 1px;
+      .lang-btn:hover { opacity: 0.7; }
+      .lang-btn.active {
+        opacity: 1;
+        border-color: rgba(255, 255, 255, 0.35);
+        background: rgba(255, 255, 255, 0.08);
       }
-      .controls .hint { font-size: 13px; color: var(--ink-muted); }
 
       /* ── Chat body ── */
       .chat-body {
@@ -305,18 +300,30 @@
       <div class="chat-shell">
 
         <header class="chat-header">
-          <h1>GeopoliticAI Chat</h1>
-          <p>Wieloperspektywiczna analiza geopolityczna z weryfikacją faktów.</p>
+          <div class="chat-header-text">
+            <h1>GeopoliticAI Chat</h1>
+            <p x-text="infosphere === 'polish'
+              ? 'Wieloperspektywiczna analiza geopolityczna z weryfikacją faktów.'
+              : 'Multi-perspective geopolitical analysis with fact verification.'">
+            </p>
+          </div>
+          <div class="lang-picker">
+            <button
+              class="lang-btn"
+              :class="{ active: infosphere === 'polish' }"
+              @click="infosphere = 'polish'"
+              title="Polski"
+              :disabled="isLoading"
+            >🇵🇱</button>
+            <button
+              class="lang-btn"
+              :class="{ active: infosphere === 'english' }"
+              @click="infosphere = 'english'"
+              title="English"
+              :disabled="isLoading"
+            >🇺🇸</button>
+          </div>
         </header>
-
-        <section class="controls">
-          <label for="infosphere">Infosfera</label>
-          <select id="infosphere" x-model="infosphere" :disabled="isLoading">
-            <option value="polish">🇵🇱 Polska</option>
-            <option value="english">🇬🇧 Angielska</option>
-          </select>
-          <span class="hint">Wpływa na dobór źródeł i ton raportu.</span>
-        </section>
 
         <main class="chat-body" x-ref="chatBody">
 
@@ -329,17 +336,11 @@
 
           <!-- Example chips — only on fresh start -->
           <div class="examples" x-show="messages.length === 1 && !isLoading">
-            <p class="examples-hint">Przykładowe pytania</p>
+            <p class="examples-hint" x-text="t('examples_hint')"></p>
             <div class="chips">
-              <button class="chip" @click="fillExample('Jakie są konsekwencje konfliktu na Ukrainie dla NATO?')">
-                Konsekwencje konfliktu na Ukrainie dla NATO
-              </button>
-              <button class="chip" @click="fillExample('Jak zmienia się rola Chin w światowej polityce?')">
-                Rola Chin w światowej polityce
-              </button>
-              <button class="chip" @click="fillExample('Co oznacza wzrost populizmu w Europie Zachodniej?')">
-                Wzrost populizmu w Europie Zachodniej
-              </button>
+              <template x-for="ex in t('examples')" :key="ex.q">
+                <button class="chip" @click="fillExample(ex.q)" x-text="ex.label"></button>
+              </template>
             </div>
           </div>
 
@@ -347,7 +348,7 @@
           <div class="progress-log" x-show="progressLog.length > 0">
             <div class="progress-header">
               <span class="spinner"></span>
-              <span>Analizuję...</span>
+              <span x-text="t('analyzing_dots')"></span>
             </div>
             <template x-for="(entry, i) in progressLog" :key="i">
               <div class="progress-entry" :class="{ active: i === progressLog.length - 1 }">
@@ -368,13 +369,13 @@
             x-ref="input"
             x-model.trim="input"
             type="text"
-            placeholder="Napisz wiadomość... (Enter aby wysłać)"
-            aria-label="Wiadomość"
+            :placeholder="t('placeholder')"
+            :aria-label="t('placeholder')"
             :disabled="isLoading"
           />
           <button type="submit" :disabled="!input || isLoading">
-            <span x-show="!isLoading">Wyślij</span>
-            <span x-show="isLoading" class="btn-loading">Analizuję</span>
+            <span x-show="!isLoading" x-text="t('send')"></span>
+            <span x-show="isLoading" class="btn-loading" x-text="t('analyzing')"></span>
           </button>
         </form>
 
@@ -384,22 +385,64 @@
     <script>
       marked.use({ breaks: true, gfm: true });
 
+      const I18N = {
+        polish: {
+          welcome: "Cześć! Jestem **GeopoliticAI**. Specjalizuję się w wieloperspektywicznej analizie geopolitycznej — przeszukuję źródła lewicowe, centrowe i prawicowe, a następnie weryfikuję fakty.\n\nW czym mogę pomóc?",
+          examples_hint: "Przykładowe pytania",
+          examples: [
+            { q: "Jakie są konsekwencje konfliktu na Ukrainie dla NATO?",  label: "Konsekwencje konfliktu na Ukrainie dla NATO" },
+            { q: "Jak zmienia się rola Chin w światowej polityce?",         label: "Rola Chin w światowej polityce" },
+            { q: "Co oznacza wzrost populizmu w Europie Zachodniej?",       label: "Wzrost populizmu w Europie Zachodniej" },
+          ],
+          placeholder:      "Napisz wiadomość... (Enter aby wysłać)",
+          send:             "Wyślij",
+          analyzing:        "Analizuję",
+          analyzing_dots:   "Analizuję...",
+          timeout_error:    "⏱ Backend nie odpowiedział w ciągu 10 minut.",
+          connection_error: (msg) => `Błąd połączenia: ${msg}`,
+          server_error:     (code) => `Błąd serwera (${code}).`,
+          time_locale:      "pl-PL",
+        },
+        english: {
+          welcome: "Hello! I'm **GeopoliticAI**. I specialize in multi-perspective geopolitical analysis — I search left-leaning, centrist, and right-wing sources, then verify the facts.\n\nHow can I help you?",
+          examples_hint: "Example questions",
+          examples: [
+            { q: "What are the consequences of the Ukraine conflict for NATO?", label: "Ukraine conflict consequences for NATO" },
+            { q: "How is China's role in global politics changing?",            label: "China's role in global politics" },
+            { q: "What does the rise of populism in Western Europe mean?",      label: "Rise of populism in Western Europe" },
+          ],
+          placeholder:      "Type a message... (Enter to send)",
+          send:             "Send",
+          analyzing:        "Analyzing",
+          analyzing_dots:   "Analyzing...",
+          timeout_error:    "⏱ Backend did not respond within 10 minutes.",
+          connection_error: (msg) => `Connection error: ${msg}`,
+          server_error:     (code) => `Server error (${code}).`,
+          time_locale:      "en-US",
+        },
+      };
+
       document.addEventListener("alpine:init", () => {
         Alpine.data("chat", () => ({
           input: "",
           isLoading: false,
           infosphere: "polish",
           progressLog: [],
-          messages: [
-            {
-              role: "bot",
-              text: "Cześć! Jestem **GeopoliticAI**. Specjalizuję się w wieloperspektywicznej analizie geopolitycznej — przeszukuję źródła lewicowe, centrowe i prawicowe, a następnie weryfikuję fakty.\n\nW czym mogę pomóc?",
-              timestamp: new Date(),
-            },
-          ],
+          messages: [],
 
           init() {
+            this.messages = [{ role: "bot", text: I18N.polish.welcome, timestamp: new Date() }];
+            this.$watch("infosphere", (lang) => {
+              // Update welcome message only if conversation hasn't started yet
+              if (this.messages.length === 1 && this.messages[0].role === "bot") {
+                this.messages[0].text = I18N[lang].welcome;
+              }
+            });
             this.$nextTick(() => this.$refs.input?.focus());
+          },
+
+          t(key) {
+            return I18N[this.infosphere][key];
           },
 
           async sendMessage() {
@@ -412,25 +455,19 @@
             this.scrollToBottom();
 
             const controller = new AbortController();
-            const timeoutId = setTimeout(
-              () => controller.abort(),
-              1000 * 60 * 10
-            );
+            const timeoutId = setTimeout(() => controller.abort(), 1000 * 60 * 10);
 
             try {
               const response = await fetch("/api/run_pipeline/stream", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 signal: controller.signal,
-                body: JSON.stringify({
-                  query: text,
-                  infosphere: this.infosphere,
-                }),
+                body: JSON.stringify({ query: text, infosphere: this.infosphere }),
               });
 
               if (!response.ok) {
                 const err = await response.json().catch(() => ({}));
-                throw new Error(err.detail || `Błąd serwera (${response.status}).`);
+                throw new Error(err.detail || this.t("server_error")(response.status));
               }
 
               const reader = response.body.getReader();
@@ -453,19 +490,11 @@
                       this.scrollToBottom();
                     } else if (data.type === "result") {
                       this.progressLog = [];
-                      this.messages.push({
-                        role: "bot",
-                        text: data.output,
-                        timestamp: new Date(),
-                      });
+                      this.messages.push({ role: "bot", text: data.output, timestamp: new Date() });
                       this.scrollToBottom();
                     } else if (data.type === "error") {
                       this.progressLog = [];
-                      this.messages.push({
-                        role: "error",
-                        text: data.message,
-                        timestamp: new Date(),
-                      });
+                      this.messages.push({ role: "error", text: data.message, timestamp: new Date() });
                       this.scrollToBottom();
                     }
                   } catch {
@@ -478,9 +507,7 @@
               const isTimeout = error?.name === "AbortError";
               this.messages.push({
                 role: "error",
-                text: isTimeout
-                  ? "⏱ Backend nie odpowiedział w ciągu 10 minut."
-                  : `Błąd połączenia: ${error.message}`,
+                text: isTimeout ? this.t("timeout_error") : this.t("connection_error")(error.message),
                 timestamp: new Date(),
               });
               this.scrollToBottom();
@@ -499,7 +526,7 @@
           },
 
           formatTime(date) {
-            return new Date(date).toLocaleTimeString("pl-PL", {
+            return new Date(date).toLocaleTimeString(this.t("time_locale"), {
               hour: "2-digit",
               minute: "2-digit",
             });
@@ -511,10 +538,7 @@
           },
 
           renderContent(msg) {
-            if (msg.role === "bot") {
-              return marked.parse(msg.text ?? "");
-            }
-            // Escape HTML for user/error messages
+            if (msg.role === "bot") return marked.parse(msg.text ?? "");
             const el = document.createElement("div");
             el.textContent = msg.text;
             return el.innerHTML;

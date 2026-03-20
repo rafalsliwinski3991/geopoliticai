@@ -7,7 +7,7 @@ import logging
 import re
 from typing import Callable, List
 
-from models import Claim, PipelineState
+from models import Claim, PipelineState, Source
 from render import merge_sources
 
 logger = logging.getLogger(__name__)
@@ -141,8 +141,9 @@ def _render_lane_claims(
     claims: List[Claim],
     verdict_lookup: dict[str, str],
     badges: dict[str, str],
+    source_lookup: dict[str, "Source"],
 ) -> list[str]:
-    """Render every claim in a lane with its verdict badge."""
+    """Render every claim with its verdict badge and inline source links."""
     if not claims:
         return ["- (brak twierdzeń)" if badges is _VERDICT_BADGE_PL else "- (no claims)"]
     lines = []
@@ -150,7 +151,15 @@ def _render_lane_claims(
         text = _truncate_text(claim.text)
         verdict = verdict_lookup.get(claim.text.strip(), "")
         badge = badges.get(verdict, "– ?") if verdict else "– ?"
-        lines.append(f"- [{badge}] {text}")
+        source_parts = []
+        for sid in claim.source_ids:
+            src = source_lookup.get(sid)
+            if src:
+                source_parts.append(f"[{src.title}]({src.url})")
+        if source_parts:
+            lines.append(f"- [{badge}] {text} — {', '.join(source_parts)}")
+        else:
+            lines.append(f"- [{badge}] {text}")
     return lines
 
 
@@ -211,6 +220,7 @@ def make_supervisor_step(
             + len(state["people_claims"])
         )
         merged_sources = merge_sources(state)
+        source_lookup: dict[str, Source] = {src.id: src for src in merged_sources}
         logger.info(
             "Supervisor: assembling %s report claims=%d fact_checks=%d merged_sources=%d",
             normalized_report_mode,
@@ -272,15 +282,12 @@ def make_supervisor_step(
             for lane_label, lane_claims in lane_pairs:
                 lines.append("")
                 lines.append(lane_label)
-                lines.extend(_render_lane_claims(lane_claims, verdict_lookup, badges))
+                lines.extend(_render_lane_claims(lane_claims, verdict_lookup, badges, source_lookup))
             lines.append("")
             lines.append(
                 f"{facts_label} {len(state['fact_checks'])} verdicts from "
                 f"{len(state['fact_sources'])} sources."
             )
-            lines.append("")
-            lines.append(sources_label)
-            lines.append(_render_sources(state))
 
         final_report = "\n".join(lines)
         logger.info(

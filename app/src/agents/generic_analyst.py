@@ -51,7 +51,11 @@ def _extract_claims(items: List[GenericClaimItem]) -> List[Claim]:
             if isinstance(sid, str) and sid.strip()
         ]
         if not source_ids:
-            match = re.search(r"\baccording to\s+([A-Za-z]+\d+)\b", text, flags=re.IGNORECASE)
+            match = re.search(
+                r"\b(?:according to|wed(?:ług|lug))\s+([A-Za-z]+\d+)\b",
+                text,
+                flags=re.IGNORECASE,
+            )
             if match:
                 source_ids = [match.group(1).upper()]
         claims.append(Claim(text=text, source_ids=source_ids))
@@ -98,8 +102,11 @@ def _render_source_for_prompt(source: Source) -> str:
     return f"{source.id}: {source.title} - {summary} ({source.url})"
 
 
-def _fallback_claims_from_sources(sources: List[Source], limit: int) -> List[Claim]:
+def _fallback_claims_from_sources(
+    sources: List[Source], limit: int, *, language: str = "english"
+) -> List[Claim]:
     """Build minimal claims directly from source notes when the LLM returns none."""
+    according_to = "Według" if language == "polish" else "According to"
     claims: List[Claim] = []
     for src in sources[:limit]:
         snippet = _truncate_for_prompt(
@@ -108,7 +115,7 @@ def _fallback_claims_from_sources(sources: List[Source], limit: int) -> List[Cla
         ).strip()
         if not snippet:
             continue
-        text = f"According to {src.id}, {snippet}"
+        text = f"{according_to} {src.id}, {snippet}"
         claims.append(Claim(text=text, source_ids=[src.id]))
     return claims
 
@@ -137,6 +144,7 @@ def generic_analyst_agent(
         f"- {name} ({url})" for name, url in infosphere_sources[lane_key]
     )
     response_language = "Polish" if language == "polish" else "English"
+    according_to = "Według" if language == "polish" else "According to"
     model_name = get_model(model_key)
     example_source_id = sources[0].id if sources else "S1"
 
@@ -152,16 +160,17 @@ def generic_analyst_agent(
             "Task: Provide 3-5 analytically cautious claims from the perspective: {ideology}.\n"
             "- Use only the sources provided.\n"
             "- Never return an empty claims list. If 3-5 is not possible, return 1-3 claims.\n"
-            "- If sources are descriptive, still extract factual claims in the form 'According to <ID>, ...'.\n"
+            "- If sources are descriptive, still extract factual claims in the form '{according_to} <ID>, ...'.\n"
             "- Each claim must cite one or more source IDs.\n"
             "- Allowed source IDs: {allowed_source_ids}.\n"
             "Return JSON exactly like this example:\n"
-            "{{\"claims\": [{{\"text\": \"According to {example_source_id}, ...\", \"source_ids\": [\"{example_source_id}\"]}}]}}\n"
+            "{{\"claims\": [{{\"text\": \"{according_to} {example_source_id}, ...\", \"source_ids\": [\"{example_source_id}\"]}}]}}\n"
             "Never return {{\"claims\": []}}."
         ),
         variables={
             "query": state["query"],
             "response_language": response_language,
+            "according_to": according_to,
             "source_block": source_block,
             "reference_block": reference_block,
             "ideology": ideology,
@@ -195,12 +204,13 @@ def generic_analyst_agent(
                 "Task: Provide 2-3 factual claims from the sources. "
                 "If the sources are descriptive, still convert them into factual claims. "
                 "Each claim must include non-empty text and one or more source IDs from: {allowed_source_ids}. "
-                "Return JSON exactly like: {{\"claims\": [{{\"text\": \"According to {example_source_id}, ...\", \"source_ids\": [\"{example_source_id}\"]}}]}}. "
+                "Return JSON exactly like: {{\"claims\": [{{\"text\": \"{according_to} {example_source_id}, ...\", \"source_ids\": [\"{example_source_id}\"]}}]}}. "
                 "Never return {{\"claims\": []}}."
             ),
             variables={
                 "query": state["query"],
                 "response_language": response_language,
+                "according_to": according_to,
                 "source_block": source_block,
                 "allowed_source_ids": allowed_source_ids,
                 "example_source_id": example_source_id,
@@ -233,12 +243,13 @@ def generic_analyst_agent(
                     "- Use source IDs from: {allowed_source_ids}.\n"
                     "- At least 1 claim is required.\n"
                     "Previous output summary:\n{previous_claims_block}\n\n"
-                    "Return JSON exactly like: {{\"claims\": [{{\"text\": \"According to {example_source_id}, ...\", \"source_ids\": [\"{example_source_id}\"]}}]}}.\n"
+                    "Return JSON exactly like: {{\"claims\": [{{\"text\": \"{according_to} {example_source_id}, ...\", \"source_ids\": [\"{example_source_id}\"]}}]}}.\n"
                     "Never return {{\"claims\": []}}."
                 ),
                 variables={
                     "query": state["query"],
                     "response_language": response_language,
+                    "according_to": according_to,
                     "source_block": source_block,
                     "allowed_source_ids": allowed_source_ids,
                     "previous_claims_block": previous_claims_block,
@@ -264,7 +275,7 @@ def generic_analyst_agent(
                 "%s analyst: retry returned 0 claims; using source-note fallback.",
                 log_label,
             )
-            claims = _fallback_claims_from_sources(sources, limit=fallback_limit)
+            claims = _fallback_claims_from_sources(sources, limit=fallback_limit, language=language)
 
         if not claims:
             logger.warning(
@@ -274,7 +285,11 @@ def generic_analyst_agent(
             fallback_id = sources[0].id if sources else ""
             claims = [
                 Claim(
-                    text=f"{perspective_label} perspective on: {state['query']}",
+                    text=(
+                        f"Perspektywa {perspective_label}: {state['query']}"
+                        if language == "polish"
+                        else f"{perspective_label} perspective on: {state['query']}"
+                    ),
                     source_ids=[fallback_id] if fallback_id else [],
                 )
             ]
