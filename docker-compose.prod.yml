@@ -1,0 +1,22 @@
+services:
+  backend:
+    restart: unless-stopped
+    healthcheck:
+      test:
+        - "CMD-SHELL"
+        - ".venv/bin/python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health')\""
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  frontend:
+    ports:
+      - "80:80"
+    environment:
+      AUTH_USER: ${AUTH_USER}
+      AUTH_PASSWORD: ${AUTH_PASSWORD}
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
