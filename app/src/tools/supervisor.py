@@ -213,8 +213,9 @@ def make_supervisor_step(
             lines.append(compact_sources_label)
             lines.append(_render_sources(state, max_items=MAX_COMPACT_SOURCE_ITEMS))
         else:
-            lines.append(rationale_label)
-            lines.append(synthesis_details if synthesis_details else short_answer)
+            if synthesis_details:
+                lines.append(rationale_label)
+                lines.append(synthesis_details)
             lines.append("")
             lines.append(
                 f"{facts_label} {len(state['fact_checks'])} verdicts from "
