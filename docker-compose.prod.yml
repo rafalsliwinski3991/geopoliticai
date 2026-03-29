@@ -1,4 +1,7 @@
 services:
+  postgres:
+    restart: unless-stopped
+
   backend:
     restart: unless-stopped
     healthcheck:

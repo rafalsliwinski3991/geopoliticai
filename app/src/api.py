@@ -10,11 +10,12 @@ from contextlib import asynccontextmanager
 from threading import Lock
 from typing import AsyncGenerator, Literal
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, field_validator
 
+import database
 from config import init_environment, require_env
 from graph import build_graph, run_pipeline
 from models import build_initial_pipeline_state, normalize_language
@@ -65,7 +66,11 @@ RATE_LIMIT_WINDOW_SECONDS = _read_positive_int_env(
 async def lifespan(_app: FastAPI):
     init_environment()
     require_env()
+    db_url = os.getenv("DATABASE_URL")
+    if db_url:
+        await database.init_pool(db_url)
     yield
+    await database.close_pool()
 
 
 app = FastAPI(title="GeopoliticAI API", version="1.0.0", lifespan=lifespan)
@@ -182,8 +187,10 @@ _NODE_LABELS_EN: dict[str, str] = {
 async def run_pipeline_stream_endpoint(
     payload: RunPipelineRequest,
     request: Request,
+    background_tasks: BackgroundTasks,
 ) -> StreamingResponse:
     _enforce_rate_limit(request)
+    background_tasks.add_task(database.log_prompt, payload.query, _resolve_client_id(request))
 
     node_labels = _NODE_LABELS_PL if payload.infosphere == "polish" else _NODE_LABELS_EN
     empty_msg = (
@@ -269,8 +276,10 @@ async def run_pipeline_stream_endpoint(
 def run_pipeline_endpoint(
     payload: RunPipelineRequest,
     request: Request,
+    background_tasks: BackgroundTasks,
 ) -> RunPipelineResponse:
     _enforce_rate_limit(request)
+    background_tasks.add_task(database.log_prompt, payload.query, _resolve_client_id(request))
     try:
         output = run_pipeline(payload.query, infosphere=payload.infosphere)
     except ValueError as exc:
