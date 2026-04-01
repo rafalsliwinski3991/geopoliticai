@@ -10,9 +10,9 @@ from contextlib import asynccontextmanager
 from threading import Lock
 from typing import AsyncGenerator, Literal
 
-from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
+from fastapi import APIRouter, BackgroundTasks, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel, Field, field_validator
 
 import database
@@ -74,6 +74,7 @@ async def lifespan(_app: FastAPI):
 
 
 app = FastAPI(title="GeopoliticAI API", version="1.0.0", lifespan=lifespan)
+router = APIRouter(prefix="/api")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_parse_allowed_origins(),
@@ -140,7 +141,17 @@ def _enforce_rate_limit(request: Request) -> None:
         timestamps.append(now)
 
 
-@app.get("/health")
+_FRONTEND_HTML = os.getenv("FRONTEND_HTML_PATH", "/app/frontend/index.html")
+
+
+@app.get("/")
+async def serve_frontend() -> FileResponse:
+    if os.path.exists(_FRONTEND_HTML):
+        return FileResponse(_FRONTEND_HTML)
+    raise HTTPException(status_code=404, detail="Frontend not available")
+
+
+@router.get("/health")
 def healthcheck() -> dict[str, str]:
     return {"status": "ok"}
 
@@ -183,14 +194,15 @@ _NODE_LABELS_EN: dict[str, str] = {
 }
 
 
-@app.post("/run_pipeline/stream")
+@router.post("/run_pipeline/stream")
 async def run_pipeline_stream_endpoint(
     payload: RunPipelineRequest,
     request: Request,
     background_tasks: BackgroundTasks,
 ) -> StreamingResponse:
     _enforce_rate_limit(request)
-    background_tasks.add_task(database.log_prompt, payload.query, _resolve_client_id(request))
+    client_id = _resolve_client_id(request)
+    log_id = await database.log_prompt(payload.query, client_id)
 
     node_labels = _NODE_LABELS_PL if payload.infosphere == "polish" else _NODE_LABELS_EN
     empty_msg = (
@@ -252,6 +264,8 @@ async def run_pipeline_stream_endpoint(
                         "output": _sanitize_output(final_output),
                     }
                 )
+                if log_id is not None:
+                    await database.log_output(log_id, final_output)
             else:
                 data = json.dumps({"type": "error", "message": empty_msg})
             yield f"data: {data}\n\n"
@@ -260,9 +274,8 @@ async def run_pipeline_stream_endpoint(
             data = json.dumps({"type": "error", "message": str(exc)})
             yield f"data: {data}\n\n"
         except Exception as exc:
-            data = json.dumps(
-                {"type": "error", "message": unexpected_msg.format(exc)}
-            )
+            msg = unexpected_msg.format(exc)
+            data = json.dumps({"type": "error", "message": msg})
             yield f"data: {data}\n\n"
 
     return StreamingResponse(
@@ -272,16 +285,24 @@ async def run_pipeline_stream_endpoint(
     )
 
 
-@app.post("/run_pipeline", response_model=RunPipelineResponse)
-def run_pipeline_endpoint(
+@router.post("/run_pipeline", response_model=RunPipelineResponse)
+async def run_pipeline_endpoint(
     payload: RunPipelineRequest,
     request: Request,
     background_tasks: BackgroundTasks,
 ) -> RunPipelineResponse:
     _enforce_rate_limit(request)
-    background_tasks.add_task(database.log_prompt, payload.query, _resolve_client_id(request))
+    client_id = _resolve_client_id(request)
+    log_id = await database.log_prompt(payload.query, client_id)
     try:
         output = run_pipeline(payload.query, infosphere=payload.infosphere)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if log_id is not None:
+        background_tasks.add_task(
+            database.log_output, log_id, output
+        )
     return RunPipelineResponse(output=_sanitize_output(output))
+
+
+app.include_router(router)

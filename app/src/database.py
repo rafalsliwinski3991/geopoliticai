@@ -22,8 +22,16 @@ async def init_pool(dsn: str) -> None:
                 datetime  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                 prompt    TEXT        NOT NULL,
                 ip        VARCHAR(45),
-                location  VARCHAR(255)
+                location  VARCHAR(255),
+                output    TEXT
             )
+            """
+        )
+        # Add output column to existing tables
+        await conn.execute(
+            """
+            ALTER TABLE prompt_logs
+            ADD COLUMN IF NOT EXISTS output TEXT
             """
         )
 
@@ -52,18 +60,38 @@ async def _resolve_location(ip: str) -> str:
         return "unknown"
 
 
-async def log_prompt(prompt: str, ip: str) -> None:
-    """Insert a prompt log row; silently skips if DB is unavailable."""
+async def log_prompt(prompt: str, ip: str) -> int | None:
+    """Insert a prompt log row and return its ID; returns None if DB unavailable."""
     if _pool is None:
-        return
+        return None
     location = await _resolve_location(ip)
     try:
         async with _pool.acquire() as conn:
-            await conn.execute(
-                "INSERT INTO prompt_logs (prompt, ip, location) VALUES ($1, $2, $3)",
+            row_id = await conn.fetchval(
+                """
+                INSERT INTO prompt_logs (prompt, ip, location)
+                VALUES ($1, $2, $3)
+                RETURNING id
+                """,
                 prompt,
                 ip,
                 location,
+            )
+            return row_id
+    except Exception:
+        return None
+
+
+async def log_output(log_id: int, output: str) -> None:
+    """Update a prompt log row with the pipeline output."""
+    if _pool is None:
+        return
+    try:
+        async with _pool.acquire() as conn:
+            await conn.execute(
+                "UPDATE prompt_logs SET output = $1 WHERE id = $2",
+                output,
+                log_id,
             )
     except Exception:
         pass

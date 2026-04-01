@@ -7,13 +7,14 @@ services:
     healthcheck:
       test:
         - "CMD-SHELL"
-        - ".venv/bin/python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health')\""
+        - ".venv/bin/python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')\""
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 30s
 
   frontend:
+    profiles: []
     ports:
       - "80:80"
       - "443:443"
