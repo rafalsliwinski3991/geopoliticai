@@ -4,6 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>PoliticalAgent</title>
+    <link rel="icon" type="image/png" href="assets/logo.png">
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
     <style>
@@ -11,14 +12,14 @@
 
       :root {
         color-scheme: light;
-        --bg: #f4f1ed;
-        --bg-accent: #e7ecef;
+        --bg: #eef2f7;
+        --bg-accent: #e0e8f0;
         --ink: #1f2937;
         --ink-muted: #475569;
-        --card: #fffdf9;
-        --accent: #d97706;
-        --line: #e2e8f0;
-        --shadow: 0 24px 60px rgba(15, 23, 42, 0.12);
+        --card: #f8fafc;
+        --accent: #1a8de8;
+        --line: #d1dde8;
+        --shadow: 0 24px 60px rgba(15, 23, 42, 0.14);
         font-family: "Space Grotesk", "Segoe UI", system-ui, sans-serif;
       }
 
@@ -27,8 +28,8 @@
       body {
         margin: 0;
         background:
-          radial-gradient(circle at top left, rgba(217, 119, 6, 0.08), transparent 55%),
-          radial-gradient(circle at bottom right, rgba(56, 189, 248, 0.08), transparent 45%),
+          radial-gradient(circle at top left, rgba(26, 141, 232, 0.10), transparent 55%),
+          radial-gradient(circle at bottom right, rgba(15, 40, 80, 0.08), transparent 45%),
           var(--bg);
         color: var(--ink);
       }
@@ -53,16 +54,27 @@
       }
 
       /* ── Header ── */
+      .header-logo {
+        height: 44px;
+        width: auto;
+        border-radius: 10px;
+        flex-shrink: 0;
+      }
+      .chat-header-text {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+      }
+      .chat-header-title { flex: 1; min-width: 0; }
       .chat-header {
         padding: 24px 28px;
         background: linear-gradient(120deg, #111827 0%, #1f2937 55%, #0f172a 100%);
         color: #f8fafc;
         display: flex;
-        align-items: flex-start;
+        align-items: center;
         justify-content: space-between;
         gap: 16px;
       }
-      .chat-header-text { flex: 1; min-width: 0; }
       .chat-header h1 { margin: 0; font-size: 22px; letter-spacing: 0.3px; }
       .chat-header p  { margin: 6px 0 0; font-size: 14px; opacity: 0.78; }
 
@@ -119,8 +131,8 @@
         word-break: break-word;
       }
       .message.user {
-        background: linear-gradient(120deg, #f59e0b, #d97706);
-        color: #111827;
+        background: linear-gradient(120deg, #42a5f5, #1a8de8);
+        color: #fff;
         border-bottom-right-radius: 6px;
       }
       .message.bot {
@@ -183,7 +195,7 @@
       .chip:hover {
         border-color: var(--accent);
         color: var(--accent);
-        background: rgba(217, 119, 6, 0.04);
+        background: rgba(26, 141, 232, 0.06);
       }
 
       /* ── Progress log (point 13) ── */
@@ -227,7 +239,7 @@
         display: inline-block;
         width: 13px;
         height: 13px;
-        border: 2px solid rgba(217, 119, 6, 0.25);
+        border: 2px solid rgba(26, 141, 232, 0.25);
         border-top-color: var(--accent);
         border-radius: 50%;
         animation: spin 0.75s linear infinite;
@@ -256,14 +268,14 @@
       }
       .chat-footer input:focus {
         border-color: var(--accent);
-        box-shadow: 0 0 0 3px rgba(217, 119, 6, 0.14);
+        box-shadow: 0 0 0 3px rgba(26, 141, 232, 0.16);
       }
       .chat-footer input:disabled { background: #f8fafc; color: var(--ink-muted); }
 
       .chat-footer button {
         border: none;
         background: var(--accent);
-        color: #111827;
+        color: #fff;
         padding: 12px 22px;
         border-radius: 12px;
         font-size: 15px;
@@ -272,11 +284,11 @@
         cursor: pointer;
         white-space: nowrap;
         transition: transform 0.15s, box-shadow 0.15s;
-        box-shadow: 0 6px 18px rgba(217, 119, 6, 0.25);
+        box-shadow: 0 6px 18px rgba(26, 141, 232, 0.30);
       }
       .chat-footer button:hover:not(:disabled) {
         transform: translateY(-1px);
-        box-shadow: 0 10px 26px rgba(217, 119, 6, 0.32);
+        box-shadow: 0 10px 26px rgba(26, 141, 232, 0.40);
       }
       .chat-footer button:disabled {
         opacity: 0.55;
@@ -301,11 +313,14 @@
 
         <header class="chat-header">
           <div class="chat-header-text">
-            <h1>PoliticalAgent</h1>
-            <p x-text="infosphere === 'polish'
-              ? 'Wieloperspektywiczna analiza geopolityczna z weryfikacją faktów.'
-              : 'Multi-perspective geopolitical analysis with fact verification.'">
-            </p>
+            <img src="assets/logo.png" alt="PoliticalAgent" class="header-logo">
+            <div class="chat-header-title">
+              <h1>PoliticalAgent</h1>
+              <p x-text="infosphere === 'polish'
+                ? 'Wieloperspektywiczna analiza geopolityczna z weryfikacją faktów.'
+                : 'Multi-perspective geopolitical analysis with fact verification.'">
+              </p>
+            </div>
           </div>
           <div class="lang-picker">
             <button
