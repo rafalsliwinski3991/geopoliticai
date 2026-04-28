@@ -1,8 +1,9 @@
 import httpx
 import pytest
+
 import search
-from agents import generic_analyst
-from models import Claim
+from models import Claim, ResearchPlan
+from nodes import generic_analyst
 
 
 def _brave_response(results: list[dict]) -> httpx.Response:
@@ -17,18 +18,20 @@ def _set_brave_key(monkeypatch):
 
 def test_web_searcher_keeps_only_allowed_domains(monkeypatch) -> None:
     responses = [
-        _brave_response([
-            {
-                "title": "Wikipedia entry",
-                "url": "https://en.wikipedia.org/wiki/Example",
-                "description": "Out-of-scope source that should be filtered.",
-            },
-            {
-                "title": "Brookings analysis",
-                "url": "https://www.brookings.edu/articles/example",
-                "description": "Allowed source should remain.",
-            },
-        ])
+        _brave_response(
+            [
+                {
+                    "title": "Wikipedia entry",
+                    "url": "https://en.wikipedia.org/wiki/Example",
+                    "description": "Out-of-scope source that should be filtered.",
+                },
+                {
+                    "title": "Brookings analysis",
+                    "url": "https://www.brookings.edu/articles/example",
+                    "description": "Allowed source should remain.",
+                },
+            ]
+        )
     ]
     call_count = 0
 
@@ -40,7 +43,10 @@ def test_web_searcher_keeps_only_allowed_domains(monkeypatch) -> None:
 
     monkeypatch.setattr(httpx.Client, "get", fake_get)
 
-    state = {"query": "test query", "research_plan": {"queries": ["test query"]}}
+    state = {
+        "query": "test query",
+        "research_plan": ResearchPlan(queries=["test query"]),
+    }
     references = [("Brookings Institution", "https://www.brookings.edu")]
 
     sources = search.web_searcher(state, "centrist", references)  # type: ignore[arg-type]
@@ -51,25 +57,29 @@ def test_web_searcher_keeps_only_allowed_domains(monkeypatch) -> None:
 
 def test_web_searcher_keeps_each_lane_within_configured_domains(monkeypatch) -> None:
     responses = [
-        _brave_response([
-            {
-                "title": "CFR piece",
-                "url": "https://www.cfr.org/article/example",
-                "description": "Allowed base source.",
-            },
-            {
-                "title": "Wikipedia entry",
-                "url": "https://en.wikipedia.org/wiki/Example",
-                "description": "Must be dropped.",
-            },
-        ]),
-        _brave_response([
-            {
-                "title": "Economist note",
-                "url": "https://www.economist.com/world/2026/03/01/example",
-                "description": "Allowed extra source.",
-            },
-        ]),
+        _brave_response(
+            [
+                {
+                    "title": "CFR piece",
+                    "url": "https://www.cfr.org/article/example",
+                    "description": "Allowed base source.",
+                },
+                {
+                    "title": "Wikipedia entry",
+                    "url": "https://en.wikipedia.org/wiki/Example",
+                    "description": "Must be dropped.",
+                },
+            ]
+        ),
+        _brave_response(
+            [
+                {
+                    "title": "Economist note",
+                    "url": "https://www.economist.com/world/2026/03/01/example",
+                    "description": "Allowed extra source.",
+                },
+            ]
+        ),
     ]
     call_count = 0
 
@@ -81,7 +91,10 @@ def test_web_searcher_keeps_each_lane_within_configured_domains(monkeypatch) -> 
 
     monkeypatch.setattr(httpx.Client, "get", fake_get)
 
-    state = {"query": "test query", "research_plan": {"queries": ["test query"]}}
+    state = {
+        "query": "test query",
+        "research_plan": ResearchPlan(queries=["test query"]),
+    }
     references = [
         ("Council on Foreign Relations", "https://www.cfr.org"),
         ("The Economist", "https://www.economist.com"),

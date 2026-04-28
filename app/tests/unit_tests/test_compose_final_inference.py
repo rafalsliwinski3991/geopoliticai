@@ -1,5 +1,7 @@
-from agents import compose_final
 from models import Claim, FactCheckResult, build_initial_pipeline_state
+from nodes import compose_final
+
+_ENGLISH_CONFIG = {"configurable": {"language": "english"}}
 
 
 def _state_with_mixed_verdicts() -> dict:
@@ -26,7 +28,9 @@ def _state_with_mixed_verdicts() -> dict:
             rationale="Contradicted.",
         ),
         FactCheckResult(
-            claim=Claim(text="TRUE claim only in fact-check output.", source_ids=["F1"]),
+            claim=Claim(
+                text="TRUE claim only in fact-check output.", source_ids=["F1"]
+            ),
             verdict="TRUE",
             rationale="Supported in verification.",
         ),
@@ -56,7 +60,7 @@ def test_compose_final_returns_fallback_when_no_true_claims() -> None:
         )
     ]
 
-    result = compose_final.compose_final_agent(state, "english")  # type: ignore[arg-type]
+    result = compose_final.compose_final_agent(state, _ENGLISH_CONFIG)  # type: ignore[arg-type]
 
     assert result["synthesis"].startswith(
         "Short answer: No answer can be supported by verified TRUE claims."
@@ -73,9 +77,11 @@ def test_compose_final_prompt_uses_true_claims_only(monkeypatch) -> None:
             synthesis="Short answer: Answered from TRUE claims."
         )
 
-    monkeypatch.setattr(compose_final, "invoke_structured_chain", _fake_invoke_structured_chain)
+    monkeypatch.setattr(
+        compose_final, "invoke_structured_chain", _fake_invoke_structured_chain
+    )
 
-    result = compose_final.compose_final_agent(state, "english")  # type: ignore[arg-type]
+    result = compose_final.compose_final_agent(state, _ENGLISH_CONFIG)  # type: ignore[arg-type]
 
     assert "Claim TRUE from left." in captured["true_claims_block"]
     assert "TRUE claim only in fact-check output." in captured["true_claims_block"]
@@ -91,7 +97,7 @@ def test_compose_final_fallback_when_llm_raises(monkeypatch) -> None:
 
     monkeypatch.setattr(compose_final, "invoke_structured_chain", _raise_invoke)
 
-    result = compose_final.compose_final_agent(state, "english")  # type: ignore[arg-type]
+    result = compose_final.compose_final_agent(state, _ENGLISH_CONFIG)  # type: ignore[arg-type]
 
     assert result["synthesis"].startswith(
         "Short answer: Based on verified TRUE claims, Claim TRUE from left."

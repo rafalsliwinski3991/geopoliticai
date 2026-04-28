@@ -122,6 +122,7 @@ def _loads_json_object(raw_text: str) -> dict[str, Any]:
 
 
 def get_openai_client() -> OpenAI:
+    """Return a lazily initialized OpenAI client."""
     global _openai_client
     if _openai_client is None:
         _openai_client = OpenAI()
@@ -151,7 +152,9 @@ def _create_chat_completion_with_retries(
     use_max_completion_tokens = True
     for _ in range(4):
         request_kwargs = dict(chat_kwargs)
-        token_key = "max_completion_tokens" if use_max_completion_tokens else "max_tokens"
+        token_key = (
+            "max_completion_tokens" if use_max_completion_tokens else "max_tokens"
+        )
         request_kwargs[token_key] = max_output_tokens
         try:
             return client.chat.completions.create(**request_kwargs)
@@ -184,7 +187,9 @@ def invoke_openai_json_object(
     timeout_seconds: float | None = None,
 ) -> dict[str, Any]:
     """Call OpenAI and return a parsed JSON object across SDK surfaces."""
-    timeout = timeout_seconds if timeout_seconds is not None else get_openai_timeout_seconds()
+    timeout = (
+        timeout_seconds if timeout_seconds is not None else get_openai_timeout_seconds()
+    )
     max_output_tokens = get_openai_max_output_tokens()
     chat_messages = [
         {"role": "system", "content": system_content},
@@ -257,6 +262,7 @@ class StructuredOutputChain:
     model: str | None = None
 
     def invoke(self, variables: dict[str, Any]) -> BaseModel:
+        """Format prompts, invoke OpenAI JSON mode, and validate the response."""
         prompt = ChatPromptTemplate.from_messages(
             [
                 ("system", self.system_prompt),
@@ -297,6 +303,7 @@ def invoke_structured_chain(
     temperature: float = 0.0,
     model: str | None = None,
 ) -> BaseModel:
+    """Invoke a one-shot structured output chain."""
     chain = StructuredOutputChain(
         schema=schema,
         system_prompt=system_prompt,

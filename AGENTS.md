@@ -8,7 +8,8 @@ This file provides guidance to Codex and other coding agents when working with c
 
 The live code lives under `app/`. The repository root also contains a stale `Dockerfile`, `main.py`, and `requirements.txt` that import a no-longer-existing `geopoliticai` package. Do not use them, except that the GitHub Actions workflow `.github/workflows/unit-tests.yml` still references `requirements.txt`. The shipped image is built from `app/Dockerfile`, and the CLI/API entrypoints are in `app/src/`.
 
-- `app/src/` - Python package; treated as the import root (`PYTHONPATH=/app/src` in containers). Modules use bare `from agents import ...`, `from models import ...` style, so the package directory must be on `sys.path`.
+- `app/src/` - Python package; treated as the import root (`PYTHONPATH=/app/src` in containers). Modules use bare imports such as `from nodes import ...`, `from models import ...`, so the package directory must be on `sys.path`.
+- `app/src/nodes/` - all LangGraph node callables, including search nodes, analyst nodes, referee, claim extraction, fact-checking, final composition, and supervisor rendering. The old `app/src/agents/` and `app/src/tools/` packages were merged into this package.
 - `frontend/` - single `index.html` using Alpine.js and `marked.js` from CDN, plus `assets/`. No bundler. Served either directly by FastAPI in dev or by nginx in prod.
 - `docker-compose.yml` and `docker-compose.override.yml` - local dev. The override mounts `app/src` and `frontend/` into the backend container, exposes port `3000:8000`, and runs uvicorn with `--reload`. The frontend container is gated behind the `production` profile, so `docker compose up` runs only postgres and backend.
 - `docker-compose.prod.yml` - adds restart policies, the `/api/health` healthcheck, TLS cert mount (`/etc/letsencrypt`), and basic-auth env vars; activates the frontend service.
@@ -33,6 +34,8 @@ ingest_request -> build_research_plan
 
 - **Lanes** (`left`, `centrist`, `right`, `people`, plus `fact` for cross-checking): each lane has a curated source allow-list per infosphere defined in `app/src/config.py` (`ENGLISH_INFOSPHERE_SOURCES`, `POLISH_INFOSPHERE_SOURCES`). Search queries are constrained with `site:` filters built from those domains.
 - **Infosphere** (`"english"` or `"polish"`): selected explicitly via the `--infosphere` CLI flag or the `infosphere` field in API requests. CLI auto-detects via `detect_language()` in `models.py` using Polish diacritics and stopword tokens. The infosphere drives both source pools and prompt language.
+- **Runtime config**: graph nodes read `infosphere_sources`, `language`, and `report_mode` from LangGraph `RunnableConfig["configurable"]` via `nodes/runtime_config.py`. `build_runtime_config()` in `graph.py` is shared by sync and streaming entrypoints. Do not reintroduce `functools.partial` wrappers for per-request node settings.
+- **State shape**: `PipelineState` stores `ResearchPlan` and `RefereeReport` dataclass instances directly. Accumulating list fields such as source lists, fact checks, and extracted claims use LangGraph `Annotated[..., operator.add]` reducers. The unused verification/rewrite loop state was removed.
 - **Referee** can short-circuit the pipeline by returning `blocked: true`, routing through `referee_blocked_summary` instead of fact-checking.
 - **`compose_final`** writes the user-facing report; **`supervisor`** is the terminal node that emits `final_output`.
 - **OpenAI calls** go through `app/src/llm.py`, which wraps both the Responses API and Chat Completions with JSON-mode output and graceful retries for `max_completion_tokens` and `temperature` compatibility issues across model variants. All structured outputs use `StructuredOutputChain` (Pydantic schema to JSON object).
@@ -92,8 +95,8 @@ Set variables in `.env` at the repo root (loaded by docker compose) or `app/.env
 ## Agent Operating Notes
 
 - Do not add new top-level Python modules to the repo root. Imports inside `app/src/` assume `src/` is on `sys.path`, set as `PYTHONPATH=/app/src` in the override compose and via `tool.setuptools.package-dir` in `pyproject.toml`. Adding `geopoliticai/` at the root will not be picked up.
-- Polish and English prompts and sources are not interchangeable. Both the LLM prompts and curated `INFOSPHERE_SOURCES` switch on the `language` or `infosphere` argument threaded through every node via `functools.partial` in `build_graph()`.
-- The graph is recompiled per request in the streaming endpoint (`build_graph(infosphere=...)`) so the per-language partials are correct. The synchronous endpoint goes through `run_pipeline()`, which does the same.
+- Polish and English prompts and sources are not interchangeable. Both the LLM prompts and curated `INFOSPHERE_SOURCES` switch on the `language` or `infosphere` value passed through LangGraph runtime config.
+- The graph is recompiled per request in the streaming endpoint (`build_graph(infosphere=...)`) and both sync and streaming paths pass per-request values with `build_runtime_config()`.
 - `compose_final` depends on the referee not having blocked. If you change routing, also update the `_route_after_referee` conditional in `graph.py`.
 - CI uses the stale top-level `requirements.txt`, not `app/pyproject.toml`. If you change runtime dependencies in `pyproject.toml`, CI will not pick them up unless you also update `requirements.txt` or fix the workflow.
 - Prefer `rg` for repository searches and keep edits scoped to the task. Do not modify `.env` files or secrets unless the user explicitly asks.

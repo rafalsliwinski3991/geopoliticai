@@ -1,47 +1,79 @@
 """Shared data structures for the pipeline."""
 
-from __future__ import annotations
-
+import operator
 import re
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Literal, Optional, TypedDict
+from typing import Annotated, Any, Literal, TypedDict
 
 _POLISH_DIACRITICS = frozenset("ąćęłńóśźżĄĆĘŁŃÓŚŹŻ")
 _POLISH_STOPWORDS = frozenset(
     [
-        "czy", "jakie", "który", "która", "które", "których",
-        "ktory", "ktora", "ktore", "ktorych",
-        "przez", "oraz", "tego", "jest", "się", "sie", "jako",
-        "polska", "polskie", "polskich", "polsce", "polski",
-        "jakich", "jakiego", "czemu", "skąd", "skad", "dlaczego",
-        "kiedy", "gdzie", "kto", "kogo", "komu",
+        "czy",
+        "jakie",
+        "który",
+        "która",
+        "które",
+        "których",
+        "ktory",
+        "ktora",
+        "ktore",
+        "ktorych",
+        "przez",
+        "oraz",
+        "tego",
+        "jest",
+        "się",
+        "sie",
+        "jako",
+        "polska",
+        "polskie",
+        "polskich",
+        "polsce",
+        "polski",
+        "jakich",
+        "jakiego",
+        "czemu",
+        "skąd",
+        "skad",
+        "dlaczego",
+        "kiedy",
+        "gdzie",
+        "kto",
+        "kogo",
+        "komu",
     ]
 )
 
 
 @dataclass
 class Source:
+    """A source collected from a lane-constrained search."""
+
     id: str
     title: str
     url: str
     notes: str
-    publisher: Optional[str] = None
-    published_at: Optional[str] = None
+    publisher: str | None = None
+    published_at: str | None = None
     snippet: str = ""
-    content_excerpt: Optional[str] = None
-    source_type: Optional[str] = None
-    credibility_tier: Optional[Literal["A", "B", "C", "D"]] = None
-    lane: Optional[Literal["left", "centrist", "right", "people", "fact"]] = None
+    content_excerpt: str | None = None
+    source_type: str | None = None
+    credibility_tier: Literal["A", "B", "C", "D"] | None = None
+    lane: Literal["left", "centrist", "right", "people", "fact"] | None = None
 
 
 @dataclass
 class Claim:
+    """A source-grounded claim produced by an analyst lane."""
+
     text: str
-    source_ids: List[str]
+    source_ids: list[str]
 
 
 @dataclass
 class FactCheckResult:
+    """A verdict and rationale for a single claim."""
+
     claim: Claim
     verdict: str
     rationale: str
@@ -49,44 +81,44 @@ class FactCheckResult:
 
 @dataclass
 class ResearchPlan:
-    queries: List[str] = field(default_factory=list)
-    entities: List[str] = field(default_factory=list)
+    """Search plan built before lane searches run."""
+
+    queries: list[str] = field(default_factory=list)
+    entities: list[str] = field(default_factory=list)
     timeframe: str = ""
-    must_find: List[str] = field(default_factory=list)
+    must_find: list[str] = field(default_factory=list)
 
 
 @dataclass
 class RefereeReport:
+    """Result of the referee quality gate."""
+
     blocked: bool = False
-    issues: List[str] = field(default_factory=list)
-    unsupported_facts: List[str] = field(default_factory=list)
-    loaded_language: List[str] = field(default_factory=list)
-    required_verifications: List[str] = field(default_factory=list)
-    required_rewrites: List[str] = field(default_factory=list)
+    issues: list[str] = field(default_factory=list)
+    unsupported_facts: list[str] = field(default_factory=list)
+    loaded_language: list[str] = field(default_factory=list)
 
 
 class PipelineState(TypedDict):
+    """LangGraph state shared by all pipeline nodes."""
+
     query: str
     language: str
-    left_claims: List[Claim]
-    centrist_claims: List[Claim]
-    right_claims: List[Claim]
-    people_claims: List[Claim]
-    left_sources: List[Source]
-    centrist_sources: List[Source]
-    right_sources: List[Source]
-    people_sources: List[Source]
-    fact_sources: List[Source]
-    fact_checks: List[FactCheckResult]
+    left_claims: list[Claim]
+    centrist_claims: list[Claim]
+    right_claims: list[Claim]
+    people_claims: list[Claim]
+    left_sources: Annotated[list[Source], operator.add]
+    centrist_sources: Annotated[list[Source], operator.add]
+    right_sources: Annotated[list[Source], operator.add]
+    people_sources: Annotated[list[Source], operator.add]
+    fact_sources: Annotated[list[Source], operator.add]
+    fact_checks: Annotated[list[FactCheckResult], operator.add]
     synthesis: str
     final_output: str
-    research_plan: Dict[str, Any]
-    referee_report: Dict[str, Any]
-    extracted_claims: List[Dict[str, Any]]
-    verification_to_do: List[str]
-    rewrites_to_do: List[str]
-    loop_count: int
-    max_loops: int
+    research_plan: ResearchPlan
+    referee_report: RefereeReport
+    extracted_claims: Annotated[list[dict[str, Any]], operator.add]
 
 
 def detect_language(query: str) -> str:
@@ -114,12 +146,10 @@ def build_initial_pipeline_state(
     query: str,
     *,
     language: str,
-    max_loops: int = 2,
 ) -> PipelineState:
     """Return a complete initial pipeline state."""
     normalized_query = " ".join((query or "").split())
     normalized_language = normalize_language(language)
-    safe_max_loops = max(int(max_loops), 0)
     return {
         "query": normalized_query,
         "language": normalized_language,
@@ -135,18 +165,7 @@ def build_initial_pipeline_state(
         "fact_checks": [],
         "synthesis": "",
         "final_output": "",
-        "research_plan": {"queries": [], "entities": [], "timeframe": "", "must_find": []},
-        "referee_report": {
-            "blocked": False,
-            "issues": [],
-            "unsupported_facts": [],
-            "loaded_language": [],
-            "required_verifications": [],
-            "required_rewrites": [],
-        },
+        "research_plan": ResearchPlan(),
+        "referee_report": RefereeReport(),
         "extracted_claims": [],
-        "verification_to_do": [],
-        "rewrites_to_do": [],
-        "loop_count": 0,
-        "max_loops": safe_max_loops,
     }

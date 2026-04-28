@@ -1,16 +1,16 @@
 """Compose the final synthesis using only TRUE-verified claims."""
 
-from __future__ import annotations
-
 import json
 import logging
-from typing import Any
+from typing import Any, cast
 
+from langchain_core.runnables import RunnableConfig
 from pydantic import BaseModel, field_validator
 
 from config import get_model
 from llm import invoke_structured_chain
 from models import Claim, PipelineState
+from nodes.runtime_config import runtime_language
 
 logger = logging.getLogger(__name__)
 
@@ -96,7 +96,9 @@ def _ensure_short_answer_prefix(synthesis: str, language: str) -> str:
 
     first_line = lines[0]
     lowered_first = first_line.lower()
-    if lowered_first.startswith("short answer:") or lowered_first.startswith("krotka odpowiedz:"):
+    if lowered_first.startswith("short answer:") or lowered_first.startswith(
+        "krotka odpowiedz:"
+    ):
         return "\n".join(lines)
 
     lines[0] = f"{prefix} {first_line}"
@@ -115,8 +117,28 @@ def _fallback_for_no_true_claims(language: str) -> str:
         "The final response is restricted to claims with verdict TRUE, and none were available."
     )
 
-def compose_final_agent(state: PipelineState, language: str) -> PipelineState:
+
+def _fallback_from_true_claims(true_claims: list[Claim], language: str) -> str:
+    """Return deterministic synthesis when the LLM synthesis call fails."""
+    claims_block = "\n".join(f"- {claim.text}" for claim in true_claims)
+    first_claim = true_claims[0].text if true_claims else ""
+    if language == "polish":
+        return (
+            f"Krotka odpowiedz: Na podstawie zweryfikowanych twierdzen TRUE, {first_claim}\n"
+            f"Zweryfikowane twierdzenia TRUE:\n{claims_block}"
+        )
+    return (
+        f"Short answer: Based on verified TRUE claims, {first_claim}\n"
+        f"Verified TRUE claims:\n{claims_block}"
+    )
+
+
+def compose_final_agent(
+    state: PipelineState,
+    config: RunnableConfig | None = None,
+) -> dict[str, Any]:
     """Generate final synthesis from TRUE-verified claims only."""
+    language = runtime_language(state, config)
     true_claims = _true_claims(state)
     logger.info(
         "Compose final: total_claims=%d true_claims=%d fact_checks=%d",
@@ -135,32 +157,37 @@ def compose_final_agent(state: PipelineState, language: str) -> PipelineState:
     response_language = "Polish" if language == "polish" else "English"
     model_name = get_model("compose_final")
 
-    data = invoke_structured_chain(
-        schema=SynthesisOutput,
-        system_prompt=(
-            "You are a precise final-answer agent. "
-            "Use only TRUE-verified claims provided by the pipeline."
-        ),
-        human_prompt=(
-            "User query: {query}\n\n"
-            "TRUE-verified claims:\n{true_claims_block}\n\n"
-            "Task: Answer the user query directly using only the TRUE-verified claims above.\n"
-            "Requirements:\n"
-            "- Write in {response_language}.\n"
-            "- First line must be: 'Short answer: ...'.\n"
-            "- Do not use claims that are not in the TRUE list.\n"
-            "- Include source IDs in the rationale when available.\n"
-            "- If the TRUE claims are still insufficient for a precise answer, explicitly say so.\n"
-            "Return JSON with exactly one key: synthesis (string)."
-        ),
-        variables={
-            "query": state["query"],
-            "true_claims_block": true_claims_block,
-            "response_language": response_language,
-        },
-        temperature=0.0,
-        model=model_name,
-    )
-    synthesis = _ensure_short_answer_prefix(data.synthesis.strip(), language)
+    try:
+        data = invoke_structured_chain(
+            schema=SynthesisOutput,
+            system_prompt=(
+                "You are a precise final-answer agent. "
+                "Use only TRUE-verified claims provided by the pipeline."
+            ),
+            human_prompt=(
+                "User query: {query}\n\n"
+                "TRUE-verified claims:\n{true_claims_block}\n\n"
+                "Task: Answer the user query directly using only the TRUE-verified claims above.\n"
+                "Requirements:\n"
+                "- Write in {response_language}.\n"
+                "- First line must be: 'Short answer: ...'.\n"
+                "- Do not use claims that are not in the TRUE list.\n"
+                "- Include source IDs in the rationale when available.\n"
+                "- If the TRUE claims are still insufficient for a precise answer, explicitly say so.\n"
+                "Return JSON with exactly one key: synthesis (string)."
+            ),
+            variables={
+                "query": state["query"],
+                "true_claims_block": true_claims_block,
+                "response_language": response_language,
+            },
+            temperature=0.0,
+            model=model_name,
+        )
+    except Exception as exc:
+        logger.warning("Compose final: LLM synthesis failed, using fallback: %s", exc)
+        return {"synthesis": _fallback_from_true_claims(true_claims, language)}
+    synthesis_data = cast(SynthesisOutput, data)
+    synthesis = _ensure_short_answer_prefix(synthesis_data.synthesis.strip(), language)
 
     return {"synthesis": synthesis}

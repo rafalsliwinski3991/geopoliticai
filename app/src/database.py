@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-from typing import Optional
+from typing import Any, cast
 
-import asyncpg
+import asyncpg  # type: ignore[import-untyped]
 import httpx
 
-_pool: Optional[asyncpg.Pool] = None
+_pool: Any | None = None
 
 
 async def init_pool(dsn: str) -> None:
@@ -77,7 +77,7 @@ async def log_prompt(prompt: str, ip: str) -> int | None:
                 ip,
                 location,
             )
-            return row_id
+            return cast(int, row_id)
     except Exception:
         return None
 

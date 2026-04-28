@@ -1,9 +1,14 @@
+"""Claim extraction node for downstream verification."""
+
 from __future__ import annotations
+
+from typing import Any
 
 from models import PipelineState
 
 
-def extract_claims_for_verification(state: PipelineState) -> PipelineState:
+def extract_claims_for_verification(state: PipelineState) -> dict[str, Any]:
+    """Flatten analyst claims into verification records."""
     extracted = []
     for lane, claims in (
         ("left", state["left_claims"]),

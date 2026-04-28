@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import logging
 import re
-from typing import Any, Callable, List
+from collections.abc import Mapping
+from typing import Any, Callable, List, cast
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -132,11 +133,12 @@ def generic_analyst_agent(
     perspective_label: str,
     fallback_limit: int,
     invoke_chain: Callable[..., BaseModel] = invoke_structured_chain,
-) -> PipelineState:
+) -> dict[str, Any]:
     """Generate ideology-specific claims grounded in lane sources."""
     sources_key = f"{lane_key}_sources"
     claims_key = f"{lane_key}_claims"
-    sources = state[sources_key]
+    state_values = cast(Mapping[str, Any], state)
+    sources = cast(list[Source], state_values[sources_key])
     allowed_source_id_set = {source.id for source in sources}
     source_block = "\n".join(_render_source_for_prompt(source) for source in sources)
     allowed_source_ids = ", ".join(source.id for source in sources) or "none"
@@ -164,8 +166,8 @@ def generic_analyst_agent(
             "- Each claim must cite one or more source IDs.\n"
             "- Allowed source IDs: {allowed_source_ids}.\n"
             "Return JSON exactly like this example:\n"
-            "{{\"claims\": [{{\"text\": \"{according_to} {example_source_id}, ...\", \"source_ids\": [\"{example_source_id}\"]}}]}}\n"
-            "Never return {{\"claims\": []}}."
+            '{{"claims": [{{"text": "{according_to} {example_source_id}, ...", "source_ids": ["{example_source_id}"]}}]}}\n'
+            'Never return {{"claims": []}}.'
         ),
         variables={
             "query": state["query"],
@@ -181,7 +183,9 @@ def generic_analyst_agent(
         model=model_name,
     )
     initial_raw_claims = getattr(output, "claims", [])
-    logger.debug("%s analyst: initial raw output claims=%r", log_label, initial_raw_claims)
+    logger.debug(
+        "%s analyst: initial raw output claims=%r", log_label, initial_raw_claims
+    )
     claims = _keep_claims_with_allowed_sources(
         _extract_claims(initial_raw_claims),
         allowed_source_id_set,
@@ -204,8 +208,8 @@ def generic_analyst_agent(
                 "Task: Provide 2-3 factual claims from the sources. "
                 "If the sources are descriptive, still convert them into factual claims. "
                 "Each claim must include non-empty text and one or more source IDs from: {allowed_source_ids}. "
-                "Return JSON exactly like: {{\"claims\": [{{\"text\": \"{according_to} {example_source_id}, ...\", \"source_ids\": [\"{example_source_id}\"]}}]}}. "
-                "Never return {{\"claims\": []}}."
+                'Return JSON exactly like: {{"claims": [{{"text": "{according_to} {example_source_id}, ...", "source_ids": ["{example_source_id}"]}}]}}. '
+                'Never return {{"claims": []}}.'
             ),
             variables={
                 "query": state["query"],
@@ -219,7 +223,9 @@ def generic_analyst_agent(
             model=model_name,
         )
         retry_raw_claims = getattr(retry, "claims", [])
-        logger.debug("%s analyst: retry raw output claims=%r", log_label, retry_raw_claims)
+        logger.debug(
+            "%s analyst: retry raw output claims=%r", log_label, retry_raw_claims
+        )
         claims = _keep_claims_with_allowed_sources(
             _extract_claims(retry_raw_claims),
             allowed_source_id_set,
@@ -227,10 +233,13 @@ def generic_analyst_agent(
         )
 
         if not claims:
-            previous_claims_block = "\n".join(
-                f"- text={getattr(item, 'text', '')!r}, source_ids={getattr(item, 'source_ids', [])!r}"
-                for item in retry_raw_claims
-            ) or "[]"
+            previous_claims_block = (
+                "\n".join(
+                    f"- text={getattr(item, 'text', '')!r}, source_ids={getattr(item, 'source_ids', [])!r}"
+                    for item in retry_raw_claims
+                )
+                or "[]"
+            )
             repair = invoke_chain(
                 schema=GenericClaimsOutput,
                 system_prompt="You repair JSON outputs for schema compliance.",
@@ -243,8 +252,8 @@ def generic_analyst_agent(
                     "- Use source IDs from: {allowed_source_ids}.\n"
                     "- At least 1 claim is required.\n"
                     "Previous output summary:\n{previous_claims_block}\n\n"
-                    "Return JSON exactly like: {{\"claims\": [{{\"text\": \"{according_to} {example_source_id}, ...\", \"source_ids\": [\"{example_source_id}\"]}}]}}.\n"
-                    "Never return {{\"claims\": []}}."
+                    'Return JSON exactly like: {{"claims": [{{"text": "{according_to} {example_source_id}, ...", "source_ids": ["{example_source_id}"]}}]}}.\n'
+                    'Never return {{"claims": []}}.'
                 ),
                 variables={
                     "query": state["query"],
@@ -275,7 +284,9 @@ def generic_analyst_agent(
                 "%s analyst: retry returned 0 claims; using source-note fallback.",
                 log_label,
             )
-            claims = _fallback_claims_from_sources(sources, limit=fallback_limit, language=language)
+            claims = _fallback_claims_from_sources(
+                sources, limit=fallback_limit, language=language
+            )
 
         if not claims:
             logger.warning(

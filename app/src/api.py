@@ -18,7 +18,7 @@ from pydantic import BaseModel, Field, field_validator
 
 import database
 from config import init_environment, require_env
-from graph import build_graph, run_pipeline
+from graph import build_graph, build_runtime_config, run_pipeline
 from models import build_initial_pipeline_state, normalize_language
 
 DEFAULT_ALLOWED_ORIGINS = (
@@ -64,7 +64,8 @@ RATE_LIMIT_WINDOW_SECONDS = _read_positive_int_env(
 
 
 @asynccontextmanager
-async def lifespan(_app: FastAPI):
+async def lifespan(_app: FastAPI) -> AsyncGenerator[None, None]:
+    """Initialize and close optional application resources."""
     init_environment()
     require_env()
     db_url = os.getenv("DATABASE_URL")
@@ -86,6 +87,8 @@ app.add_middleware(
 
 
 class RunPipelineRequest(BaseModel):
+    """Request payload for running the analysis pipeline."""
+
     query: str = Field(
         ...,
         min_length=1,
@@ -106,6 +109,8 @@ class RunPipelineRequest(BaseModel):
 
 
 class RunPipelineResponse(BaseModel):
+    """Response payload containing the rendered pipeline output."""
+
     output: str
 
 
@@ -146,11 +151,14 @@ _FRONTEND_HTML = os.getenv("FRONTEND_HTML_PATH", "/app/frontend/index.html")
 _FRONTEND_ASSETS = os.path.join(os.path.dirname(_FRONTEND_HTML), "assets")
 
 if os.path.isdir(_FRONTEND_ASSETS):
-    app.mount("/assets", StaticFiles(directory=_FRONTEND_ASSETS), name="frontend-assets")
+    app.mount(
+        "/assets", StaticFiles(directory=_FRONTEND_ASSETS), name="frontend-assets"
+    )
 
 
 @app.get("/")
 async def serve_frontend() -> FileResponse:
+    """Serve the static frontend shell when available."""
     if os.path.exists(_FRONTEND_HTML):
         return FileResponse(_FRONTEND_HTML)
     raise HTTPException(status_code=404, detail="Frontend not available")
@@ -158,6 +166,7 @@ async def serve_frontend() -> FileResponse:
 
 @router.get("/health")
 def healthcheck() -> dict[str, str]:
+    """Return a simple health status."""
     return {"status": "ok"}
 
 
@@ -205,6 +214,7 @@ async def run_pipeline_stream_endpoint(
     request: Request,
     background_tasks: BackgroundTasks,
 ) -> StreamingResponse:
+    """Run the pipeline and stream progress events over SSE."""
     _enforce_rate_limit(request)
     client_id = _resolve_client_id(request)
     log_id = await database.log_prompt(payload.query, client_id)
@@ -228,16 +238,15 @@ async def run_pipeline_stream_endpoint(
                 payload.query,
                 language=normalize_language(payload.infosphere),
             )
+            config = build_runtime_config(infosphere=payload.infosphere)
             seen_nodes: set[str] = set()
             final_output: str | None = None
 
             async for event in graph.astream_events(
-                initial_state, version="v2"
+                initial_state, config=config, version="v2"
             ):
                 etype = event.get("event", "")
-                node = event.get("metadata", {}).get(
-                    "langgraph_node", ""
-                )
+                node = event.get("metadata", {}).get("langgraph_node", "")
 
                 if (
                     etype == "on_chain_start"
@@ -254,10 +263,7 @@ async def run_pipeline_stream_endpoint(
                     )
                     yield f"data: {data}\n\n"
 
-                if (
-                    etype == "on_chain_end"
-                    and event.get("name") == "GeopoliticAI"
-                ):
+                if etype == "on_chain_end" and event.get("name") == "GeopoliticAI":
                     output = event.get("data", {}).get("output", {})
                     if isinstance(output, dict):
                         final_output = output.get("final_output")
@@ -296,6 +302,7 @@ async def run_pipeline_endpoint(
     request: Request,
     background_tasks: BackgroundTasks,
 ) -> RunPipelineResponse:
+    """Run the pipeline synchronously and return its final output."""
     _enforce_rate_limit(request)
     client_id = _resolve_client_id(request)
     log_id = await database.log_prompt(payload.query, client_id)
@@ -304,9 +311,7 @@ async def run_pipeline_endpoint(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     if log_id is not None:
-        background_tasks.add_task(
-            database.log_output, log_id, output
-        )
+        background_tasks.add_task(database.log_output, log_id, output)
     return RunPipelineResponse(output=_sanitize_output(output))
 
 

@@ -33,9 +33,7 @@ async def test_run_pipeline_stream_logs_prompt_and_output() -> None:
     # Mock the graph execution
     mock_state = {"final_output": "test output"}
     mock_graph = AsyncMock()
-    mock_graph.astream_events = AsyncMock(
-        return_value=_mock_stream_events(mock_state)
-    )
+    mock_graph.astream_events = AsyncMock(return_value=_mock_stream_events(mock_state))
 
     with patch("api.database.log_prompt", mock_log_prompt):
         with patch("api.database.log_output", mock_log_output):
@@ -57,9 +55,7 @@ async def test_run_pipeline_stream_logs_prompt_and_output() -> None:
 
 
 @pytest.mark.anyio
-async def test_run_pipeline_logs_prompt_and_output_via_background_task() -> (
-    None
-):
+async def test_run_pipeline_logs_prompt_and_output_via_background_task() -> None:
     """Test sync endpoint logs prompt and output via background task."""
     mock_log_prompt = AsyncMock(return_value=99)
     mock_log_output = AsyncMock()

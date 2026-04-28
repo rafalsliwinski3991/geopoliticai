@@ -71,14 +71,16 @@ def test_extract_text_from_chat_completions_response_handles_parts() -> None:
 
 
 def test_loads_json_object_accepts_code_fence() -> None:
-    payload = "```json\n{\"synthesis\":\"ok\"}\n```"
+    payload = '```json\n{"synthesis":"ok"}\n```'
 
     parsed = llm._loads_json_object(payload)
 
     assert parsed == {"synthesis": "ok"}
 
 
-def test_invoke_openai_json_object_retries_responses_without_temperature(monkeypatch) -> None:
+def test_invoke_openai_json_object_retries_responses_without_temperature(
+    monkeypatch,
+) -> None:
     monkeypatch.setattr(llm, "BadRequestError", _FakeBadRequestError)
 
     def _responses_impl(**kwargs):
@@ -109,10 +111,14 @@ def test_invoke_openai_json_object_retries_responses_without_temperature(monkeyp
     assert "temperature" not in fake_responses.calls[1]
 
 
-def test_invoke_openai_json_object_retries_chat_without_temperature(monkeypatch) -> None:
+def test_invoke_openai_json_object_retries_chat_without_temperature(
+    monkeypatch,
+) -> None:
     monkeypatch.setattr(llm, "BadRequestError", _FakeBadRequestError)
 
-    fake_responses = _FakeResponses(lambda **_: (_ for _ in ()).throw(TypeError("fallback")))
+    fake_responses = _FakeResponses(
+        lambda **_: (_ for _ in ()).throw(TypeError("fallback"))
+    )
 
     def _chat_impl(**kwargs):
         if "temperature" in kwargs:
@@ -121,7 +127,9 @@ def test_invoke_openai_json_object_retries_chat_without_temperature(monkeypatch)
                 "Only the default (1) value is supported."
             )
         return SimpleNamespace(
-            choices=[SimpleNamespace(message=SimpleNamespace(content='{"synthesis":"ok"}'))]
+            choices=[
+                SimpleNamespace(message=SimpleNamespace(content='{"synthesis":"ok"}'))
+            ]
         )
 
     fake_completions = _FakeChatCompletions(_chat_impl)
@@ -144,10 +152,14 @@ def test_invoke_openai_json_object_retries_chat_without_temperature(monkeypatch)
     assert "temperature" not in fake_completions.calls[1]
 
 
-def test_invoke_openai_json_object_retries_chat_without_response_format(monkeypatch) -> None:
+def test_invoke_openai_json_object_retries_chat_without_response_format(
+    monkeypatch,
+) -> None:
     monkeypatch.setattr(llm, "BadRequestError", _FakeBadRequestError)
 
-    fake_responses = _FakeResponses(lambda **_: (_ for _ in ()).throw(TypeError("fallback")))
+    fake_responses = _FakeResponses(
+        lambda **_: (_ for _ in ()).throw(TypeError("fallback"))
+    )
 
     def _chat_impl(**kwargs):
         if "response_format" in kwargs:
@@ -155,7 +167,9 @@ def test_invoke_openai_json_object_retries_chat_without_response_format(monkeypa
                 choices=[SimpleNamespace(message=SimpleNamespace(content=""))]
             )
         return SimpleNamespace(
-            choices=[SimpleNamespace(message=SimpleNamespace(content='{"synthesis":"ok"}'))]
+            choices=[
+                SimpleNamespace(message=SimpleNamespace(content='{"synthesis":"ok"}'))
+            ]
         )
 
     fake_completions = _FakeChatCompletions(_chat_impl)

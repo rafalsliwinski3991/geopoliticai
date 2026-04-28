@@ -4,13 +4,14 @@ from __future__ import annotations
 
 import logging
 import os
+from collections.abc import Mapping
 from dataclasses import replace
-from typing import List
+from typing import Any, List, cast
 from urllib.parse import urlparse
 
 import httpx
 
-from models import PipelineState, Source
+from models import PipelineState, ResearchPlan, Source
 
 logger = logging.getLogger(__name__)
 MAX_SOURCE_NOTES_CHARS = 400
@@ -32,7 +33,10 @@ def _source_id_for_lane(agent_key: str, index: int) -> str:
 
 def _renumber_lane_sources(agent_key: str, sources: List[Source]) -> List[Source]:
     """Ensure source IDs are lane-prefixed and unique within lane."""
-    return [replace(source, id=_source_id_for_lane(agent_key, idx)) for idx, source in enumerate(sources, start=1)]
+    return [
+        replace(source, id=_source_id_for_lane(agent_key, idx))
+        for idx, source in enumerate(sources, start=1)
+    ]
 
 
 def _build_biased_query(query: str, references: List[tuple[str, str]]) -> str:
@@ -79,7 +83,9 @@ def _url_matches_allowed_domains(url: str, allowed_domains: set[str]) -> bool:
     )
 
 
-def _normalize_source_notes(raw_notes: str, max_chars: int = MAX_SOURCE_NOTES_CHARS) -> str:
+def _normalize_source_notes(
+    raw_notes: str, max_chars: int = MAX_SOURCE_NOTES_CHARS
+) -> str:
     """Return a compact source summary safe to include in LLM prompts."""
     compact = " ".join((raw_notes or "").split())
     if not compact:
@@ -89,7 +95,7 @@ def _normalize_source_notes(raw_notes: str, max_chars: int = MAX_SOURCE_NOTES_CH
     return compact[: max_chars - 3].rstrip() + "..."
 
 
-def _brave_search(client: httpx.Client, query: str, count: int) -> List[dict]:
+def _brave_search(client: httpx.Client, query: str, count: int) -> list[dict[str, Any]]:
     """Execute a single Brave Search query and return raw result dicts."""
     resp = client.get(
         BRAVE_SEARCH_URL,
@@ -97,7 +103,14 @@ def _brave_search(client: httpx.Client, query: str, count: int) -> List[dict]:
         timeout=10,
     )
     resp.raise_for_status()
-    return resp.json().get("web", {}).get("results", [])
+    payload = resp.json()
+    if not isinstance(payload, dict):
+        return []
+    web_payload = payload.get("web", {})
+    if not isinstance(web_payload, dict):
+        return []
+    results = web_payload.get("results", [])
+    return cast(list[dict[str, Any]], results) if isinstance(results, list) else []
 
 
 def web_searcher(
@@ -110,7 +123,15 @@ def web_searcher(
     if not brave_key:
         raise ValueError("Missing BRAVE_SEARCH_KEY for live search.")
 
-    queries = state.get("research_plan", {}).get("queries") or [state["query"]]
+    research_plan = state.get("research_plan")
+    if isinstance(research_plan, ResearchPlan):
+        queries = research_plan.queries
+    elif isinstance(research_plan, Mapping):
+        raw_queries = research_plan.get("queries")
+        queries = raw_queries if isinstance(raw_queries, list) else [state["query"]]
+    else:
+        queries = [state["query"]]
+    queries = queries or [state["query"]]
     query = queries[0]
     allowed_domains = sorted(_allowed_reference_domains(references))
     logger.debug(
@@ -136,7 +157,12 @@ def web_searcher(
             try:
                 items = _brave_search(client, f"{query} site:{domain}", count=3)
             except httpx.HTTPError as exc:
-                logger.warning("Web searcher (%s): request failed for domain=%s: %s", agent_key, domain, exc)
+                logger.warning(
+                    "Web searcher (%s): request failed for domain=%s: %s",
+                    agent_key,
+                    domain,
+                    exc,
+                )
                 continue
             for item in items:
                 raw_notes = (item.get("description") or "").strip()
@@ -172,11 +198,18 @@ def web_searcher(
 
         if not sources:
             combined_query = _build_biased_query(query, references)
-            logger.info("Web searcher (%s): no per-domain hits, trying combined query.", agent_key)
+            logger.info(
+                "Web searcher (%s): no per-domain hits, trying combined query.",
+                agent_key,
+            )
             try:
-                items = _brave_search(client, combined_query, count=max(len(allowed_domains) * 3, 3))
+                items = _brave_search(
+                    client, combined_query, count=max(len(allowed_domains) * 3, 3)
+                )
             except httpx.HTTPError as exc:
-                logger.warning("Web searcher (%s): combined query failed: %s", agent_key, exc)
+                logger.warning(
+                    "Web searcher (%s): combined query failed: %s", agent_key, exc
+                )
                 return []
             for item in items:
                 raw_notes = (item.get("description") or "").strip()

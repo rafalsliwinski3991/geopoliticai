@@ -1,13 +1,14 @@
 """Render a concise final report for CLI output."""
 
-from __future__ import annotations
-
-from collections import Counter
 import logging
 import re
-from typing import Callable, List
+from collections import Counter
+from typing import Any, Callable, List
+
+from langchain_core.runnables import RunnableConfig
 
 from models import Claim, PipelineState, Source
+from nodes.runtime_config import runtime_language, runtime_report_mode
 from render import merge_sources
 
 logger = logging.getLogger(__name__)
@@ -41,7 +42,9 @@ def _split_direct_answer_and_details(synthesis: str) -> tuple[str, str]:
         return "Unavailable.", ""
 
     first = lines[0]
-    if first.lower().startswith("short answer:") or first.lower().startswith("krotka odpowiedz:"):
+    if first.lower().startswith("short answer:") or first.lower().startswith(
+        "krotka odpowiedz:"
+    ):
         first = first.split(":", 1)[1].strip() if ":" in first else first
     rest = "\n".join(lines[1:]).strip()
     return first, rest
@@ -141,11 +144,13 @@ def _render_lane_claims(
     claims: List[Claim],
     verdict_lookup: dict[str, str],
     badges: dict[str, str],
-    source_lookup: dict[str, "Source"],
+    source_lookup: dict[str, Source],
 ) -> list[str]:
     """Render every claim with its verdict badge and inline source links."""
     if not claims:
-        return ["- (brak twierdzeń)" if badges is _VERDICT_BADGE_PL else "- (no claims)"]
+        return [
+            "- (brak twierdzeń)" if badges is _VERDICT_BADGE_PL else "- (no claims)"
+        ]
     lines = []
     for claim in claims:
         text = _truncate_text(claim.text)
@@ -177,10 +182,10 @@ def _warn_if_answer_conflicts_with_consensus(answer: str, state: PipelineState) 
 
 
 def make_supervisor_step(
-    _infosphere_sources: dict[str, list[tuple[str, str]]],
+    _infosphere_sources: dict[str, list[tuple[str, str]]] | None,
     language: str,
     report_mode: str = "full",
-) -> Callable[[PipelineState], PipelineState]:
+) -> Callable[[PipelineState], dict[str, Any]]:
     """Return a callable that assembles a compact or full report."""
     normalized_report_mode = report_mode.strip().lower()
     if normalized_report_mode not in {"compact", "full"}:
@@ -193,7 +198,6 @@ def make_supervisor_step(
         compact_rationale_label = "Dlaczego:"
         facts_label = "Weryfikacja faktow:"
         compact_facts_label = "Podsumowanie fact-checku:"
-        sources_label = "Zrodla:"
         compact_sources_label = "Najwazniejsze zrodla:"
         claims_label = "Twierdzenia analitykow:"
         lane_labels = ("Lewica:", "Centrum:", "Prawica:", "Osoby:")
@@ -205,13 +209,12 @@ def make_supervisor_step(
         compact_rationale_label = "Why:"
         facts_label = "Fact-check:"
         compact_facts_label = "Fact-check summary:"
-        sources_label = "Sources:"
         compact_sources_label = "Top sources:"
         claims_label = "Analysts' claims:"
         lane_labels = ("Left:", "Center:", "Right:", "People:")
         badges = _VERDICT_BADGE_EN
 
-    def supervisor_step(state: PipelineState) -> PipelineState:
+    def supervisor_step(state: PipelineState) -> dict[str, Any]:
         lines: List[str] = []
         total_claims = (
             len(state["left_claims"])
@@ -235,7 +238,9 @@ def make_supervisor_step(
             len(state["right_claims"]),
             len(state["people_claims"]),
         )
-        short_answer, synthesis_details = _split_direct_answer_and_details(state["synthesis"])
+        short_answer, synthesis_details = _split_direct_answer_and_details(
+            state["synthesis"]
+        )
         _warn_if_answer_conflicts_with_consensus(short_answer, state)
         verdict_counts = _fact_verdict_counts(state)
 
@@ -282,7 +287,11 @@ def make_supervisor_step(
             for lane_label, lane_claims in lane_pairs:
                 lines.append("")
                 lines.append(lane_label)
-                lines.extend(_render_lane_claims(lane_claims, verdict_lookup, badges, source_lookup))
+                lines.extend(
+                    _render_lane_claims(
+                        lane_claims, verdict_lookup, badges, source_lookup
+                    )
+                )
             lines.append("")
             lines.append(
                 f"{facts_label} {len(state['fact_checks'])} verdicts from "
@@ -306,3 +315,16 @@ def make_supervisor_step(
         return {"final_output": final_report}
 
     return supervisor_step
+
+
+def supervisor_step(
+    state: PipelineState,
+    config: RunnableConfig | None = None,
+) -> dict[str, Any]:
+    """Assemble the final report using LangGraph runtime configuration."""
+    step = make_supervisor_step(
+        None,
+        runtime_language(state, config),
+        report_mode=runtime_report_mode(config),
+    )
+    return step(state)
