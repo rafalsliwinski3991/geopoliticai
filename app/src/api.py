@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import time
 from collections import defaultdict, deque
@@ -21,6 +22,7 @@ from config import init_environment, require_env
 from graph import build_graph, build_runtime_config, run_pipeline
 from models import build_initial_pipeline_state, normalize_language
 
+logger = logging.getLogger(__name__)
 DEFAULT_ALLOWED_ORIGINS = (
     "http://localhost",
     "http://127.0.0.1",
@@ -282,9 +284,11 @@ async def run_pipeline_stream_endpoint(
             yield f"data: {data}\n\n"
 
         except ValueError as exc:
+            logger.warning("Streaming pipeline rejected request: %s", exc)
             data = json.dumps({"type": "error", "message": str(exc)})
             yield f"data: {data}\n\n"
         except Exception as exc:
+            logger.exception("Streaming pipeline failed unexpectedly.")
             msg = unexpected_msg.format(exc)
             data = json.dumps({"type": "error", "message": msg})
             yield f"data: {data}\n\n"
