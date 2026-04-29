@@ -11,6 +11,7 @@ from models import detect_language
 
 
 def main() -> None:
+    """Parse CLI arguments and run the pipeline."""
     parser = argparse.ArgumentParser(description="Run GeopoliticAI POC pipeline.")
     parser.add_argument("query", help="Query to analyze")
     parser.add_argument(

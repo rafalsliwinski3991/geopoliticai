@@ -1,12 +1,26 @@
 services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: geopoliticai
+      POSTGRES_USER: geopoliticai
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
   backend:
     build: ./app
     env_file: .env
     environment:
       LOG_LEVEL: INFO
+    depends_on:
+      - postgres
 
   frontend:
     build: ./frontend
     depends_on:
       backend:
         condition: service_started
+
+volumes:
+  postgres_data:

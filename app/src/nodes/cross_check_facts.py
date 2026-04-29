@@ -1,17 +1,17 @@
 """Fact-checking agent for verifying claims against sources."""
 
-from __future__ import annotations
-
-from difflib import SequenceMatcher
 import logging
+from difflib import SequenceMatcher
 from typing import Any, List, Literal
 
+from langchain_core.runnables import RunnableConfig
 from pydantic import BaseModel, Field, field_validator
 
 from config import get_model
-from models import Claim, FactCheckResult, PipelineState, Source
-from search import web_searcher
 from llm import invoke_structured_chain
+from models import Claim, FactCheckResult, PipelineState, Source
+from nodes.runtime_config import runtime_infosphere_sources, runtime_language
+from search import web_searcher
 
 logger = logging.getLogger(__name__)
 SUPPORTED_VERDICTS = {"TRUE", "PARTIALLY TRUE", "MISLEADING", "FALSE"}
@@ -98,15 +98,12 @@ def _fallback_result_for_claim(claim: Claim, rationale: str) -> FactCheckResult:
 
 def cross_check_facts_agent(
     state: PipelineState,
-    infosphere_sources: dict[str, list[tuple[str, str]]],
-    language: str,
-) -> PipelineState:
+    config: RunnableConfig | None = None,
+) -> dict[str, Any]:
     """Run fact checks for all claims and return structured verdicts."""
+    infosphere_sources = runtime_infosphere_sources(state, config)
+    language = runtime_language(state, config)
     fact_sources = web_searcher(state, "fact", infosphere_sources["fact"])
-    with_fact_sources = {
-        **state,
-        "fact_sources": fact_sources,
-    }
     all_context_sources = (
         state["left_sources"]
         + state["centrist_sources"]
@@ -120,15 +117,15 @@ def cross_check_facts_agent(
         f"{s.id}: {s.title} - {s.notes} ({s.url})" for s in context_sources
     )
     claims = (
-        with_fact_sources["left_claims"]
-        + with_fact_sources["centrist_claims"]
-        + with_fact_sources["right_claims"]
-        + with_fact_sources["people_claims"]
+        state["left_claims"]
+        + state["centrist_claims"]
+        + state["right_claims"]
+        + state["people_claims"]
     )
     logger.info(
         "Fact-check: context_sources=%d fact_sources=%d claims=%d",
         len(context_sources),
-        len(with_fact_sources["fact_sources"]),
+        len(fact_sources),
         len(claims),
     )
     for idx, claim in enumerate(claims, start=1):
@@ -170,7 +167,7 @@ def cross_check_facts_agent(
             "- If evidence is insufficient, still return that claim with verdict `MISLEADING` and rationale "
             "'Insufficient evidence in provided sources'.\n"
             "Return JSON exactly like:\n"
-            "{{\"results\": [{{\"claim_text\": \"...\", \"verdict\": \"MISLEADING\", \"rationale\": \"...\", \"source_ids\": []}}]}}"
+            '{{"results": [{{"claim_text": "...", "verdict": "MISLEADING", "rationale": "...", "source_ids": []}}]}}'
         ),
         variables={
             "source_block": source_block,
@@ -208,7 +205,9 @@ def cross_check_facts_agent(
         verdict = item.verdict.strip().upper()
         if verdict not in SUPPORTED_VERDICTS:
             verdict = "MISLEADING"
-        rationale = item.rationale.strip() or "Insufficient evidence in provided sources."
+        rationale = (
+            item.rationale.strip() or "Insufficient evidence in provided sources."
+        )
         source_ids = [
             sid.strip()
             for sid in item.source_ids
@@ -232,7 +231,9 @@ def cross_check_facts_agent(
     for claim in claims:
         if not claim.text.strip() or claim.text in seen_claims:
             if claim.text in seen_claims:
-                logger.debug("Fact-check skipping already-seen claim: %s", claim.text[:80])
+                logger.debug(
+                    "Fact-check skipping already-seen claim: %s", claim.text[:80]
+                )
             continue
         logger.debug("Fact-check adding fallback for unseen claim: %s", claim.text[:80])
         results.append(
@@ -243,7 +244,10 @@ def cross_check_facts_agent(
         )
         fallback_added += 1
     if fallback_added:
-        logger.info("Fact-check: added %d fallback verdicts for unmatched claims", fallback_added)
+        logger.info(
+            "Fact-check: added %d fallback verdicts for unmatched claims",
+            fallback_added,
+        )
     logger.info("Fact-check: produced %d verdicts", len(results))
     for idx, res in enumerate(results, start=1):
         sources = ", ".join(res.claim.source_ids) if res.claim.source_ids else "none"

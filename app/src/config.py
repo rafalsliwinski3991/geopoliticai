@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import logging
 import os
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
+from typing import TypeVar
 
 from dotenv import load_dotenv
 
 logger = logging.getLogger(__name__)
+T = TypeVar("T")
 
 ENGLISH_INFOSPHERE_SOURCES: dict[str, list[tuple[str, str]]] = {
     "left": [
@@ -91,7 +93,8 @@ AGENT_MODEL_NAMES: dict[str, str] = {
 def init_environment(log_level: str | None = None) -> logging.Logger:
     """Load environment variables and configure base logging."""
     load_dotenv()
-    configured_level = (log_level or os.getenv("LOG_LEVEL", "INFO")).upper().strip()
+    env_log_level = os.getenv("LOG_LEVEL") or "INFO"
+    configured_level = (log_level or env_log_level).upper().strip()
     numeric_level = logging.getLevelName(configured_level)
     if not isinstance(numeric_level, int):
         numeric_level = logging.INFO
@@ -110,79 +113,38 @@ def require_env(keys: Sequence[str] = REQUIRED_ENV_VARS) -> None:
     """Ensure required environment variables are present."""
     missing = [key for key in keys if not os.getenv(key)]
     if missing:
-        raise ValueError("Missing required environment variables: " + ", ".join(missing))
+        raise ValueError(
+            "Missing required environment variables: " + ", ".join(missing)
+        )
 
 
-def _get_non_negative_int_env(var_name: str, default: int) -> int:
-    """Read a non-negative integer env var, falling back to default when invalid."""
+def _get_env_var(
+    var_name: str,
+    default: T,
+    *,
+    parser: Callable[[str], T],
+    validator: Callable[[T], bool],
+    expected_type: str,
+    expected_value: str,
+    default_format: str,
+) -> T:
+    """Read and validate an environment variable, falling back to default."""
     raw_value = os.getenv(var_name)
     if raw_value is None or not raw_value.strip():
         return default
     try:
-        parsed = int(raw_value.strip())
-    except ValueError:
+        parsed = parser(raw_value.strip())
+    except (TypeError, ValueError):
         logger.warning(
-            "Invalid %s=%r; expected an integer. Falling back to %d.",
+            f"Invalid %s=%r; expected {expected_type}. Falling back to {default_format}.",
             var_name,
             raw_value,
             default,
         )
         return default
-    if parsed < 0:
+    if not validator(parsed):
         logger.warning(
-            "Invalid %s=%r; expected a non-negative integer. Falling back to %d.",
-            var_name,
-            raw_value,
-            default,
-        )
-        return default
-    return parsed
-
-
-def _get_positive_int_env(var_name: str, default: int) -> int:
-    """Read a positive integer env var, falling back to default when invalid."""
-    raw_value = os.getenv(var_name)
-    if raw_value is None or not raw_value.strip():
-        return default
-    try:
-        parsed = int(raw_value.strip())
-    except ValueError:
-        logger.warning(
-            "Invalid %s=%r; expected an integer. Falling back to %d.",
-            var_name,
-            raw_value,
-            default,
-        )
-        return default
-    if parsed <= 0:
-        logger.warning(
-            "Invalid %s=%r; expected a positive integer. Falling back to %d.",
-            var_name,
-            raw_value,
-            default,
-        )
-        return default
-    return parsed
-
-
-def _get_positive_float_env(var_name: str, default: float) -> float:
-    """Read a positive float env var, falling back to default when invalid."""
-    raw_value = os.getenv(var_name)
-    if raw_value is None or not raw_value.strip():
-        return default
-    try:
-        parsed = float(raw_value.strip())
-    except ValueError:
-        logger.warning(
-            "Invalid %s=%r; expected a float. Falling back to %.2f.",
-            var_name,
-            raw_value,
-            default,
-        )
-        return default
-    if parsed <= 0:
-        logger.warning(
-            "Invalid %s=%r; expected a positive float. Falling back to %.2f.",
+            f"Invalid %s=%r; expected {expected_value}. Falling back to {default_format}.",
             var_name,
             raw_value,
             default,
@@ -193,32 +155,49 @@ def _get_positive_float_env(var_name: str, default: float) -> float:
 
 def get_analyst_additional_sources() -> int:
     """Return how many optional extra sources each analyst may use."""
-    return _get_non_negative_int_env(
+    return _get_env_var(
         "ANALYST_ADDITIONAL_SOURCES",
         DEFAULT_ANALYST_ADDITIONAL_SOURCES,
+        parser=int,
+        validator=lambda value: value >= 0,
+        expected_type="an integer",
+        expected_value="a non-negative integer",
+        default_format="%d",
     )
 
 
 def get_openai_timeout_seconds() -> float:
     """Return timeout used for OpenAI API calls."""
-    return _get_positive_float_env(
+    return _get_env_var(
         "OPENAI_TIMEOUT_SECONDS",
         DEFAULT_OPENAI_TIMEOUT_SECONDS,
+        parser=float,
+        validator=lambda value: value > 0,
+        expected_type="a float",
+        expected_value="a positive float",
+        default_format="%.2f",
     )
 
 
 def get_openai_max_output_tokens() -> int:
     """Return max output tokens used for OpenAI API calls."""
-    return _get_positive_int_env(
+    return _get_env_var(
         "OPENAI_MAX_OUTPUT_TOKENS",
         DEFAULT_OPENAI_MAX_OUTPUT_TOKENS,
+        parser=int,
+        validator=lambda value: value > 0,
+        expected_type="an integer",
+        expected_value="a positive integer",
+        default_format="%d",
     )
 
 
 def get_model(agent_key: str | None = None) -> str:
     """Return the configured OpenAI model, optionally overridden per agent key."""
     base_model = os.getenv("OPENAI_MODEL")
-    fallback = base_model.strip() if base_model and base_model.strip() else DEFAULT_MODEL
+    fallback = (
+        base_model.strip() if base_model and base_model.strip() else DEFAULT_MODEL
+    )
     if not agent_key:
         return fallback
 

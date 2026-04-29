@@ -1,18 +1,25 @@
 services:
+  postgres:
+    restart: unless-stopped
+
   backend:
     restart: unless-stopped
     healthcheck:
       test:
         - "CMD-SHELL"
-        - ".venv/bin/python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health')\""
+        - ".venv/bin/python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')\""
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 30s
 
   frontend:
+    profiles: []
     ports:
       - "80:80"
+      - "443:443"
+    volumes:
+      - /etc/letsencrypt:/etc/letsencrypt:ro
     environment:
       AUTH_USER: ${AUTH_USER}
       AUTH_PASSWORD: ${AUTH_PASSWORD}

@@ -1,4 +1,8 @@
+"""Referee nodes for claim quality gates."""
+
 from __future__ import annotations
+
+from typing import Any
 
 from models import PipelineState, RefereeReport
 
@@ -16,7 +20,8 @@ LOADED_TERMS = (
 )
 
 
-def run_referee_checks(state: PipelineState) -> PipelineState:
+def run_referee_checks(state: PipelineState) -> dict[str, Any]:
+    """Reject unsupported or loaded-language claims before synthesis."""
     unsupported: list[str] = []
     loaded: list[str] = []
     all_claims = (
@@ -42,35 +47,24 @@ def run_referee_checks(state: PipelineState) -> PipelineState:
         blocked=bool(loaded) or not has_some_supported,
         unsupported_facts=unsupported,
         loaded_language=loaded,
-        required_verifications=unsupported,
-        required_rewrites=loaded,
     )
     return {
         "left_claims": clean_left,
         "centrist_claims": clean_centrist,
         "right_claims": clean_right,
         "people_claims": clean_people,
-        "referee_report": {
-            "blocked": report.blocked,
-            "issues": report.issues,
-            "unsupported_facts": report.unsupported_facts,
-            "loaded_language": report.loaded_language,
-            "required_verifications": report.required_verifications,
-            "required_rewrites": report.required_rewrites,
-        },
-        "verification_to_do": report.required_verifications,
-        "rewrites_to_do": report.required_rewrites,
+        "referee_report": report,
     }
 
 
-def summarize_referee_block(state: PipelineState) -> PipelineState:
+def summarize_referee_block(state: PipelineState) -> dict[str, Any]:
     """Produce a synthesis when referee blocks normal downstream execution."""
-    report = state.get("referee_report", {})
-    if not report.get("blocked"):
+    report = state.get("referee_report")
+    if not isinstance(report, RefereeReport) or not report.blocked:
         return {}
 
-    unsupported = report.get("unsupported_facts", [])
-    loaded = report.get("loaded_language", [])
+    unsupported = report.unsupported_facts
+    loaded = report.loaded_language
     language = state.get("language", "english")
 
     if language == "polish":
