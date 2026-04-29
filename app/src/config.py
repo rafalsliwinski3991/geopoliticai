@@ -75,10 +75,12 @@ DEFAULT_OPENAI_MAX_OUTPUT_TOKENS = 4096
 REQUIRED_ENV_VARS = ("OPENAI_API_KEY", "BRAVE_SEARCH_KEY")
 
 AGENT_MODEL_NAMES: dict[str, str] = {
+    "build_research_plan": "gpt-4o-mini",
     "left_analyst": "gpt-4o-mini",
     "center_analyst": "gpt-4o-mini",
     "right_analyst": "gpt-4o-mini",
     "people_analyst": "gpt-4o-mini",
+    "synthesize_perspectives": "gpt-4o-mini",
     "cross_check_facts": "gpt-4o-mini",
     "compose_final": "gpt-4o-mini",
     # Lane aliases used by search helpers.

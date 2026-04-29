@@ -16,6 +16,57 @@ from models import Claim, PipelineState, Source
 logger = logging.getLogger(__name__)
 ANALYST_SOURCE_NOTE_CHARS = 220
 
+LANE_ANALYTICAL_LENSES = {
+    "left": (
+        "You analyse political events through the lens of power, inequality, "
+        "and structural change. Focus on who benefits, who bears the cost, "
+        "historical patterns of exploitation, institutional power dynamics, "
+        "and international solidarity or imperialism. Your job is not to recite "
+        "leftist talking points; it is to surface structural factors that other "
+        "perspectives may overlook."
+    ),
+    "centrist": (
+        "You analyse political events through the lens of pragmatic trade-offs "
+        "and institutional reform. Focus on evidence quality, policy feasibility, "
+        "second-order effects, institutional capacity, stakeholder alignment, "
+        "and precedent. Your job is not to be generically balanced; it is to find "
+        "what works and what the evidence says, even when that is uncomfortable "
+        "for all sides."
+    ),
+    "right": (
+        "You analyse political events through the lens of individual agency, "
+        "market mechanisms, and tradition. Focus on constitutional constraints, "
+        "unintended consequences of intervention, moral hazard, national interest, "
+        "cultural continuity, and fiscal discipline. Your job is not to recite "
+        "conservative talking points; it is to surface constraints and risks that "
+        "other perspectives may downplay."
+    ),
+    "people": (
+        "You analyse political events through the lens of lived experience and "
+        "public sentiment. Focus on how real people are affected, what public "
+        "discourse reveals, generational divides, trust in institutions, and the "
+        "gap between policy and reality. Your job is not to summarize social "
+        "media; it is to ground abstract policy debates in human impact and "
+        "popular understanding."
+    ),
+}
+
+DOMAIN_GUIDANCE = {
+    "geopolitics": "Consider alliances, deterrence, sovereignty, international law, regional security, and diplomatic leverage.",
+    "economics": "Consider GDP impact, distributional effects, market response, inflation, fiscal cost, and incentives.",
+    "social_policy": "Consider access, equity, household impact, implementation capacity, public trust, and unintended exclusion.",
+    "military": "Consider capability, readiness, escalation risk, deterrence, logistics, rules of engagement, and civil-military constraints.",
+    "technology": "Consider innovation incentives, platform power, security, privacy, supply chains, standards, and regulatory capacity.",
+    "environment": "Consider emissions, adaptation, ecosystem impact, energy trade-offs, distributional costs, and long-term risk.",
+}
+
+ALL_LANES_REASONING_INSTRUCTION = (
+    "For each claim, explain why this perspective reaches the conclusion: "
+    "name the premises, values, trade-offs, or evidence that lead to this view. "
+    "Do not just state a position. If the sources include evidence that "
+    "contradicts this perspective's usual position, include that evidence too."
+)
+
 
 class GenericClaimItem(BaseModel):
     """Single analyst claim with source identifiers."""
@@ -121,6 +172,56 @@ def _fallback_claims_from_sources(
     return claims
 
 
+def _extract_research_domain(state_values: Mapping[str, Any]) -> str:
+    """Read the optional research-plan domain from dataclasses or mappings."""
+    research_plan = state_values.get("research_plan")
+    if isinstance(research_plan, Mapping):
+        domain = research_plan.get("domain", "")
+    else:
+        domain = getattr(research_plan, "domain", "")
+    if not isinstance(domain, str):
+        return ""
+    return domain.strip().lower().replace("-", "_").replace(" ", "_")
+
+
+def _domain_guidance(domain: str) -> str:
+    """Return prompt guidance for a research domain, with a safe fallback."""
+    if not domain:
+        return (
+            "No specific research domain was provided. Adapt the analytical lens "
+            "to the query and avoid assuming a domain that is not supported by "
+            "the sources."
+        )
+    guidance = DOMAIN_GUIDANCE.get(domain)
+    if guidance:
+        return f"Research domain: {domain}. {guidance}"
+    return (
+        f"Research domain: {domain}. Apply the lane's analytical lens to the "
+        "domain-specific actors, incentives, institutions, and trade-offs visible "
+        "in the sources."
+    )
+
+
+def _lane_lens(lane_key: str, ideology: str) -> str:
+    """Return the lane-specific analytical lens, falling back safely."""
+    return LANE_ANALYTICAL_LENSES.get(
+        lane_key,
+        (
+            f"You analyse political events from the {ideology} perspective. "
+            "Focus on the values, incentives, institutions, and trade-offs this "
+            "perspective would treat as most important."
+        ),
+    )
+
+
+def _analyst_system_prompt(lane_key: str, ideology: str) -> str:
+    """Build the lane-specific analyst system prompt."""
+    return (
+        "You are a political analyst who writes precise, source-grounded claims.\n\n"
+        f"{_lane_lens(lane_key, ideology)}"
+    )
+
+
 def generic_analyst_agent(
     state: PipelineState,
     infosphere_sources: dict[str, list[tuple[str, str]]],
@@ -145,6 +246,10 @@ def generic_analyst_agent(
     reference_block = "\n".join(
         f"- {name} ({url})" for name, url in infosphere_sources[lane_key]
     )
+    research_domain = _extract_research_domain(state_values)
+    domain_guidance = _domain_guidance(research_domain)
+    lane_lens = _lane_lens(lane_key, ideology)
+    system_prompt = _analyst_system_prompt(lane_key, ideology)
     response_language = "Polish" if language == "polish" else "English"
     according_to = "Według" if language == "polish" else "According to"
     model_name = get_model(model_key)
@@ -152,17 +257,20 @@ def generic_analyst_agent(
 
     output = invoke_chain(
         schema=GenericClaimsOutput,
-        system_prompt="You are a political analyst who writes precise, source-grounded claims.",
+        system_prompt=system_prompt,
         human_prompt=(
             "Query: {query}\n"
             "Response language: {response_language}\n\n"
+            "Analytical lens:\n{lane_lens}\n\n"
+            "Domain guidance:\n{domain_guidance}\n\n"
             "Sources:\n{source_block}\n\n"
             "Preferred references (use for framing; do not invent citations):\n"
             "{reference_block}\n\n"
-            "Task: Provide 3-5 analytically cautious claims from the perspective: {ideology}.\n"
+            "Task: Provide 3-5 analytically cautious claims from the {perspective_label} perspective ({ideology}).\n"
             "- Use only the sources provided.\n"
             "- Never return an empty claims list. If 3-5 is not possible, return 1-3 claims.\n"
             "- If sources are descriptive, still extract factual claims in the form '{according_to} <ID>, ...'.\n"
+            "- {reasoning_instruction}\n"
             "- Each claim must cite one or more source IDs.\n"
             "- Allowed source IDs: {allowed_source_ids}.\n"
             "Return JSON exactly like this example:\n"
@@ -175,7 +283,11 @@ def generic_analyst_agent(
             "according_to": according_to,
             "source_block": source_block,
             "reference_block": reference_block,
+            "lane_lens": lane_lens,
+            "domain_guidance": domain_guidance,
+            "perspective_label": perspective_label,
             "ideology": ideology,
+            "reasoning_instruction": ALL_LANES_REASONING_INSTRUCTION,
             "allowed_source_ids": allowed_source_ids,
             "example_source_id": example_source_id,
         },
@@ -200,13 +312,16 @@ def generic_analyst_agent(
         )
         retry = invoke_chain(
             schema=GenericClaimsOutput,
-            system_prompt="You are a political analyst who writes precise, source-grounded claims.",
+            system_prompt=system_prompt,
             human_prompt=(
                 "Query: {query}\n"
                 "Response language: {response_language}\n\n"
+                "Analytical lens:\n{lane_lens}\n\n"
+                "Domain guidance:\n{domain_guidance}\n\n"
                 "Sources:\n{source_block}\n\n"
                 "Task: Provide 2-3 factual claims from the sources. "
                 "If the sources are descriptive, still convert them into factual claims. "
+                "{reasoning_instruction} "
                 "Each claim must include non-empty text and one or more source IDs from: {allowed_source_ids}. "
                 'Return JSON exactly like: {{"claims": [{{"text": "{according_to} {example_source_id}, ...", "source_ids": ["{example_source_id}"]}}]}}. '
                 'Never return {{"claims": []}}.'
@@ -215,7 +330,10 @@ def generic_analyst_agent(
                 "query": state["query"],
                 "response_language": response_language,
                 "according_to": according_to,
+                "lane_lens": lane_lens,
+                "domain_guidance": domain_guidance,
                 "source_block": source_block,
+                "reasoning_instruction": ALL_LANES_REASONING_INSTRUCTION,
                 "allowed_source_ids": allowed_source_ids,
                 "example_source_id": example_source_id,
             },
@@ -249,6 +367,7 @@ def generic_analyst_agent(
                     "Sources:\n{source_block}\n\n"
                     "Task: Repair the previous output into valid non-empty JSON with key `claims`.\n"
                     "- Keep only source-grounded factual claims.\n"
+                    "- Preserve or add the lane-specific reasoning required here: {reasoning_instruction}\n"
                     "- Use source IDs from: {allowed_source_ids}.\n"
                     "- At least 1 claim is required.\n"
                     "Previous output summary:\n{previous_claims_block}\n\n"
@@ -260,6 +379,7 @@ def generic_analyst_agent(
                     "response_language": response_language,
                     "according_to": according_to,
                     "source_block": source_block,
+                    "reasoning_instruction": ALL_LANES_REASONING_INSTRUCTION,
                     "allowed_source_ids": allowed_source_ids,
                     "previous_claims_block": previous_claims_block,
                     "example_source_id": example_source_id,

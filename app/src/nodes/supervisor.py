@@ -12,22 +12,38 @@ from nodes.runtime_config import runtime_language, runtime_report_mode
 from render import merge_sources
 
 logger = logging.getLogger(__name__)
-VERDICT_ORDER = ("TRUE", "PARTIALLY TRUE", "MISLEADING", "FALSE")
+VERDICT_ORDER = ("TRUE", "PARTIALLY_TRUE", "CONTESTED", "UNVERIFIED")
 MAX_COMPACT_RATIONALE_BULLETS = 3
 MAX_COMPACT_SOURCE_ITEMS = 5
 MAX_BULLET_CHARS = 220
+MAX_SOURCE_TITLE_CHARS = 90
 CONSENSUS_NAME_PATTERN = re.compile(r"\b([A-Z][a-z]+(?:\s+[A-Z]\.?)?\s+[A-Z][a-z]+)\b")
+SOURCE_ID_PATTERN = re.compile(r"\b([LCRPF])(\d+)\b")
+_SOURCE_LABELS_PL = {
+    "L": ("Źródło lewicowe", "źródła lewicowego"),
+    "C": ("Źródło centrowe", "źródła centrowego"),
+    "R": ("Źródło prawicowe", "źródła prawicowego"),
+    "P": ("Źródło społeczne", "źródła społecznego"),
+    "F": ("Źródło weryfikacyjne", "źródła weryfikacyjnego"),
+}
+_SOURCE_LABELS_EN = {
+    "L": ("Left source", "left source"),
+    "C": ("Center source", "center source"),
+    "R": ("Right source", "right source"),
+    "P": ("People source", "people source"),
+    "F": ("Fact-check source", "fact-check source"),
+}
 _VERDICT_BADGE_PL = {
     "TRUE": "PRAWDA ✓",
-    "PARTIALLY TRUE": "CZĘŚCIOWO PRAWDA ~",
-    "MISLEADING": "MYLĄCE ?",
-    "FALSE": "FAŁSZ ✗",
+    "PARTIALLY_TRUE": "CZĘŚCIOWO PRAWDA ~",
+    "CONTESTED": "SPORNE ?",
+    "UNVERIFIED": "NIEZWERYFIKOWANE ?",
 }
 _VERDICT_BADGE_EN = {
     "TRUE": "TRUE ✓",
-    "PARTIALLY TRUE": "PARTIALLY TRUE ~",
-    "MISLEADING": "MISLEADING ?",
-    "FALSE": "FALSE ✗",
+    "PARTIALLY_TRUE": "PARTIALLY TRUE ~",
+    "CONTESTED": "CONTESTED ?",
+    "UNVERIFIED": "UNVERIFIED ?",
 }
 
 
@@ -55,6 +71,34 @@ def _truncate_text(text: str, max_chars: int = MAX_BULLET_CHARS) -> str:
     if len(compact) <= max_chars:
         return compact
     return compact[: max_chars - 3].rstrip() + "..."
+
+
+def _source_label(source_id: str, language: str, *, sentence: bool = False) -> str:
+    """Return a human-readable source label for display."""
+    match = SOURCE_ID_PATTERN.fullmatch(source_id.strip())
+    if not match:
+        return source_id
+    prefix, number = match.groups()
+    labels = _SOURCE_LABELS_PL if language == "polish" else _SOURCE_LABELS_EN
+    base_label = labels.get(prefix, (source_id, source_id))[1 if sentence else 0]
+    number_label = "nr" if language == "polish" else "#"
+    return f"{base_label} {number_label} {number}"
+
+
+def _replace_source_ids_for_display(text: str, language: str) -> str:
+    """Replace terse source IDs in claim text with readable labels."""
+
+    def replacement(match: re.Match[str]) -> str:
+        return _source_label(match.group(0), language, sentence=True)
+
+    return SOURCE_ID_PATTERN.sub(replacement, text)
+
+
+def _render_source_link(source: Source, language: str) -> str:
+    """Render one source as a readable markdown link."""
+    label = _source_label(source.id, language)
+    title = _truncate_text(source.title, MAX_SOURCE_TITLE_CHARS)
+    return f"[{label}: {title}]({source.url})"
 
 
 def _extract_reason_bullets(text: str, *, max_items: int) -> list[str]:
@@ -90,13 +134,18 @@ def _extract_reason_bullets(text: str, *, max_items: int) -> list[str]:
     return bullets
 
 
-def _render_sources(state: PipelineState, *, max_items: int | None = None) -> str:
+def _render_sources(
+    state: PipelineState, *, language: str, max_items: int | None = None
+) -> str:
     """Render only source id, title, and URL for readability."""
     sources = merge_sources(state)
     if not sources:
         return "- No sources collected."
     selected = sources if max_items is None else sources[:max_items]
-    lines = [f"- [{src.id}] {src.title} ({src.url})" for src in selected]
+    lines = [
+        f"- {_source_label(src.id, language)}: {src.title} ({src.url})"
+        for src in selected
+    ]
     if max_items is not None and len(sources) > max_items:
         lines.append(f"- ... {len(sources) - max_items} additional sources omitted")
     return "\n".join(lines)
@@ -105,7 +154,7 @@ def _render_sources(state: PipelineState, *, max_items: int | None = None) -> st
 def _fact_verdict_counts(state: PipelineState) -> Counter[str]:
     counts: Counter[str] = Counter()
     for item in state["fact_checks"]:
-        verdict = item.verdict.strip().upper()
+        verdict = item.verdict.strip().upper().replace(" ", "_")
         counts[verdict] += 1
     return counts
 
@@ -115,7 +164,8 @@ def _infer_consensus_entity(state: PipelineState) -> str:
     claim_texts = [
         item.claim.text
         for item in state["fact_checks"]
-        if item.verdict.strip().upper() in {"TRUE", "PARTIALLY TRUE"}
+        if item.verdict.strip().upper().replace(" ", "_")
+        in {"TRUE", "PARTIALLY_TRUE"}
     ]
     if len(claim_texts) < 2:
         return ""
@@ -134,7 +184,7 @@ def _infer_consensus_entity(state: PipelineState) -> str:
 def _build_verdict_lookup(state: PipelineState) -> dict[str, str]:
     """Return claim text → upper-cased verdict from fact_checks."""
     return {
-        fc.claim.text.strip(): fc.verdict.strip().upper()
+        fc.claim.text.strip(): fc.verdict.strip().upper().replace(" ", "_")
         for fc in state["fact_checks"]
         if fc.claim.text.strip()
     }
@@ -145,26 +195,29 @@ def _render_lane_claims(
     verdict_lookup: dict[str, str],
     badges: dict[str, str],
     source_lookup: dict[str, Source],
+    language: str,
 ) -> list[str]:
-    """Render every claim with its verdict badge and inline source links."""
+    """Render lane claims with verdict badges only when directly available."""
     if not claims:
         return [
             "- (brak twierdzeń)" if badges is _VERDICT_BADGE_PL else "- (no claims)"
         ]
     lines = []
     for claim in claims:
-        text = _truncate_text(claim.text)
+        display_text = _replace_source_ids_for_display(claim.text, language)
+        text = _truncate_text(display_text)
         verdict = verdict_lookup.get(claim.text.strip(), "")
-        badge = badges.get(verdict, "– ?") if verdict else "– ?"
+        badge = badges.get(verdict, "") if verdict else ""
         source_parts = []
         for sid in claim.source_ids:
             src = source_lookup.get(sid)
             if src:
-                source_parts.append(f"[{src.title}]({src.url})")
+                source_parts.append(_render_source_link(src, language))
+        prefix = f"[{badge}] " if badge else ""
         if source_parts:
-            lines.append(f"- [{badge}] {text} — {', '.join(source_parts)}")
+            lines.append(f"- {prefix}{text} — {', '.join(source_parts)}")
         else:
-            lines.append(f"- [{badge}] {text}")
+            lines.append(f"- {prefix}{text}")
     return lines
 
 
@@ -196,8 +249,8 @@ def make_supervisor_step(
         answer_label = "Odpowiedz:"
         rationale_label = "Uzasadnienie:"
         compact_rationale_label = "Dlaczego:"
-        facts_label = "Weryfikacja faktow:"
-        compact_facts_label = "Podsumowanie fact-checku:"
+        facts_label = "Weryfikacja:"
+        compact_facts_label = "Podsumowanie weryfikacji:"
         compact_sources_label = "Najwazniejsze zrodla:"
         claims_label = "Twierdzenia analitykow:"
         lane_labels = ("Lewica:", "Centrum:", "Prawica:", "Osoby:")
@@ -207,8 +260,8 @@ def make_supervisor_step(
         answer_label = "Answer:"
         rationale_label = "Rationale:"
         compact_rationale_label = "Why:"
-        facts_label = "Fact-check:"
-        compact_facts_label = "Fact-check summary:"
+        facts_label = "Verification:"
+        compact_facts_label = "Verification summary:"
         compact_sources_label = "Top sources:"
         claims_label = "Analysts' claims:"
         lane_labels = ("Left:", "Center:", "Right:", "People:")
@@ -266,11 +319,18 @@ def make_supervisor_step(
             )
             lines.append(
                 f"{compact_facts_label} {verdict_counts_summary} "
-                f"(total={len(state['fact_checks'])}, sources={len(state['fact_sources'])})."
+                f"(verified claims={len(state['fact_checks'])}, "
+                f"additional verification sources={len(state['fact_sources'])})."
             )
             lines.append("")
             lines.append(compact_sources_label)
-            lines.append(_render_sources(state, max_items=MAX_COMPACT_SOURCE_ITEMS))
+            lines.append(
+                _render_sources(
+                    state,
+                    language=language,
+                    max_items=MAX_COMPACT_SOURCE_ITEMS,
+                )
+            )
         else:
             if synthesis_details:
                 lines.append(rationale_label)
@@ -289,13 +349,16 @@ def make_supervisor_step(
                 lines.append(lane_label)
                 lines.extend(
                     _render_lane_claims(
-                        lane_claims, verdict_lookup, badges, source_lookup
+                        lane_claims, verdict_lookup, badges, source_lookup, language
                     )
                 )
             lines.append("")
             lines.append(
-                f"{facts_label} {len(state['fact_checks'])} verdicts from "
-                f"{len(state['fact_sources'])} sources."
+                f"{facts_label} {len(state['fact_checks'])} zweryfikowanych twierdzen; "
+                f"{len(state['fact_sources'])} dodatkowych zrodel weryfikacyjnych."
+                if language == "polish"
+                else f"{facts_label} {len(state['fact_checks'])} verified claims; "
+                f"{len(state['fact_sources'])} additional verification sources."
             )
 
         final_report = "\n".join(lines)

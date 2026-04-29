@@ -9,12 +9,12 @@ from pydantic import BaseModel, Field, field_validator
 
 from config import get_model
 from llm import invoke_structured_chain
-from models import Claim, FactCheckResult, PipelineState, Source
+from models import Claim, FactCheckResult, PipelineState, Source, SynthesizedClaim
 from nodes.runtime_config import runtime_infosphere_sources, runtime_language
 from search import web_searcher
 
 logger = logging.getLogger(__name__)
-SUPPORTED_VERDICTS = {"TRUE", "PARTIALLY TRUE", "MISLEADING", "FALSE"}
+SUPPORTED_VERDICTS = {"TRUE", "PARTIALLY_TRUE", "CONTESTED", "UNVERIFIED"}
 CLAIM_MATCH_THRESHOLD = 0.85
 
 
@@ -22,11 +22,21 @@ class FactCheckItem(BaseModel):
     """Single fact-check result for a claim."""
 
     claim_text: str = ""
-    verdict: Literal["TRUE", "PARTIALLY TRUE", "MISLEADING", "FALSE"] | str = ""
+    verdict: (
+        Literal["TRUE", "PARTIALLY_TRUE", "CONTESTED", "UNVERIFIED"] | str
+    ) = ""
+    confidence: float = 0.0
     rationale: str = ""
     source_ids: List[str] = Field(default_factory=list)
+    supporting_source_ids: List[str] = Field(default_factory=list)
+    contradicting_source_ids: List[str] = Field(default_factory=list)
 
-    @field_validator("source_ids", mode="before")
+    @field_validator(
+        "source_ids",
+        "supporting_source_ids",
+        "contradicting_source_ids",
+        mode="before",
+    )
     @classmethod
     def _coerce_source_ids(cls, value: Any) -> list[str]:
         if value is None:
@@ -87,13 +97,72 @@ def _dedupe_sources_by_url(sources: list[Source]) -> list[Source]:
     return deduped
 
 
+def _normalize_verdict(value: str) -> str:
+    """Return canonical weighted verdict labels."""
+    verdict = " ".join((value or "").strip().upper().replace("-", "_").split())
+    verdict = verdict.replace(" ", "_")
+    if verdict in {"PARTIALLYTRUE", "PARTLY_TRUE", "PARTIAL_TRUE"}:
+        verdict = "PARTIALLY_TRUE"
+    if verdict in {"MISLEADING", "FALSE"}:
+        verdict = "UNVERIFIED"
+    if verdict not in SUPPORTED_VERDICTS:
+        return "UNVERIFIED"
+    return verdict
+
+
+def _confidence_for_verdict(verdict: str, model_confidence: float) -> float:
+    """Clamp model confidence into the tier implied by the verdict."""
+    try:
+        confidence = float(model_confidence)
+    except (TypeError, ValueError):
+        confidence = 0.0
+    confidence = min(max(confidence, 0.0), 1.0)
+    if confidence:
+        return confidence
+    if verdict == "TRUE":
+        return 0.85
+    if verdict == "PARTIALLY_TRUE":
+        return 0.65
+    if verdict == "CONTESTED":
+        return 0.40
+    return 0.20
+
+
 def _fallback_result_for_claim(claim: Claim, rationale: str) -> FactCheckResult:
     """Build a deterministic fallback fact-check result for one claim."""
     return FactCheckResult(
         claim=Claim(text=claim.text, source_ids=[]),
-        verdict="MISLEADING",
+        verdict="UNVERIFIED",
+        confidence=0.20,
         rationale=rationale,
     )
+
+
+def _synthesized_claims_for_fact_check(state: PipelineState) -> list[SynthesizedClaim]:
+    """Return synthesized claims or a backward-compatible lane-claim fallback."""
+    synthesized = state.get("synthesized_claims", [])
+    if synthesized:
+        return synthesized
+
+    fallback: list[SynthesizedClaim] = []
+    for lane, claims in (
+        ("left", state["left_claims"]),
+        ("centrist", state["centrist_claims"]),
+        ("right", state["right_claims"]),
+        ("people", state["people_claims"]),
+    ):
+        for claim in claims:
+            fallback.append(
+                SynthesizedClaim(
+                    text=claim.text,
+                    source_ids=claim.source_ids,
+                    asserted_by=[lane],
+                    contradicted_by=[],
+                    confidence=0.50,
+                    category="unique_insight",
+                )
+            )
+    return fallback
 
 
 def cross_check_facts_agent(
@@ -116,12 +185,11 @@ def cross_check_facts_agent(
     source_block = "\n".join(
         f"{s.id}: {s.title} - {s.notes} ({s.url})" for s in context_sources
     )
-    claims = (
-        state["left_claims"]
-        + state["centrist_claims"]
-        + state["right_claims"]
-        + state["people_claims"]
-    )
+    synthesized_claims = _synthesized_claims_for_fact_check(state)
+    claims = [
+        Claim(text=item.text, source_ids=item.source_ids)
+        for item in synthesized_claims
+    ]
     logger.info(
         "Fact-check: context_sources=%d fact_sources=%d claims=%d",
         len(context_sources),
@@ -138,8 +206,14 @@ def cross_check_facts_agent(
             sources,
         )
     claims_block = "\n".join(
-        f"- {c.text} (Sources: {', '.join(c.source_ids) if c.source_ids else 'none'})"
-        for c in claims
+        (
+            f"- {item.text} "
+            f"(Category: {item.category}; Cross-lane confidence: {item.confidence:.2f}; "
+            f"Asserted by: {', '.join(item.asserted_by) or 'none'}; "
+            f"Contradicted by: {', '.join(item.contradicted_by) or 'none'}; "
+            f"Sources: {', '.join(item.source_ids) if item.source_ids else 'none'})"
+        )
+        for item in synthesized_claims
     )
     claims_count = len(claims)
     reference_block = "\n".join(
@@ -158,16 +232,22 @@ def cross_check_facts_agent(
             "{reference_block}\n\n"
             "Task: Fact-check each claim strictly against the provided sources. "
             "Do not speculate or add outside knowledge. "
-            "Use verdicts: TRUE, PARTIALLY TRUE, MISLEADING, FALSE. "
+            "Use verdicts: TRUE, PARTIALLY_TRUE, CONTESTED, UNVERIFIED. "
+            "TRUE means multiple independent sources confirm the claim. "
+            "PARTIALLY_TRUE means the core claim is supported but important context is missing. "
+            "CONTESTED means provided sources disagree or the claim is condition-dependent. "
+            "UNVERIFIED means evidence is insufficient in the provided sources. "
             "Write the rationale in {response_language}. Keep the verdict labels exactly as specified.\n"
             "Output requirements:\n"
             "- Return a JSON object with key `results`.\n"
             "- Return exactly {claims_count} items in `results` (one per claim).\n"
             "- `claim_text` should correspond to one input claim text (minor wording differences are acceptable).\n"
-            "- If evidence is insufficient, still return that claim with verdict `MISLEADING` and rationale "
+            "- Include confidence from 0.0 to 1.0.\n"
+            "- If evidence is insufficient, still return that claim with verdict `UNVERIFIED` and rationale "
             "'Insufficient evidence in provided sources'.\n"
             "Return JSON exactly like:\n"
-            '{{"results": [{{"claim_text": "...", "verdict": "MISLEADING", "rationale": "...", "source_ids": []}}]}}'
+            '{{"results": [{{"claim_text": "...", "verdict": "UNVERIFIED", "confidence": 0.2, '
+            '"rationale": "...", "supporting_source_ids": [], "contradicting_source_ids": []}}]}}'
         ),
         variables={
             "source_block": source_block,
@@ -202,22 +282,29 @@ def cross_check_facts_agent(
         if matched_claim_text is None or matched_claim_text in seen_claims:
             continue
 
-        verdict = item.verdict.strip().upper()
-        if verdict not in SUPPORTED_VERDICTS:
-            verdict = "MISLEADING"
+        verdict = _normalize_verdict(item.verdict)
+        confidence = _confidence_for_verdict(verdict, item.confidence)
         rationale = (
             item.rationale.strip() or "Insufficient evidence in provided sources."
         )
-        source_ids = [
+        supporting_sources = [
             sid.strip()
-            for sid in item.source_ids
+            for sid in (item.supporting_source_ids or item.source_ids)
+            if isinstance(sid, str) and sid.strip() in context_source_ids
+        ]
+        contradicting_sources = [
+            sid.strip()
+            for sid in item.contradicting_source_ids
             if isinstance(sid, str) and sid.strip() in context_source_ids
         ]
         results.append(
             FactCheckResult(
-                claim=Claim(text=matched_claim_text, source_ids=source_ids),
+                claim=Claim(text=matched_claim_text, source_ids=supporting_sources),
                 verdict=verdict,
+                confidence=confidence,
                 rationale=rationale,
+                supporting_sources=supporting_sources,
+                contradicting_sources=contradicting_sources,
             )
         )
         seen_claims.add(matched_claim_text)

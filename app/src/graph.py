@@ -18,18 +18,17 @@ from nodes import (
     center_analyst_agent,
     compose_final_agent,
     cross_check_facts_agent,
-    extract_claims_for_verification,
     ingest_request,
     left_analyst_agent,
     people_analyst_agent,
     right_analyst_agent,
-    run_referee_checks,
     search_center_pool,
     search_left_pool,
     search_people_pool,
     search_right_pool,
     summarize_referee_block,
     supervisor_step,
+    synthesize_perspectives_agent,
 )
 
 DEFAULT_INFOSPHERE = "english"
@@ -43,7 +42,7 @@ def _normalize_report_mode(report_mode: str) -> str:
     return normalized
 
 
-def _route_after_referee(state: PipelineState) -> Literal["continue", "blocked"]:
+def _route_after_synthesis(state: PipelineState) -> Literal["continue", "blocked"]:
     report = state.get("referee_report")
     if not isinstance(report, RefereeReport):
         return "blocked"
@@ -92,10 +91,9 @@ def build_graph(
     graph.add_node("center_analyst", center_analyst_agent)
     graph.add_node("right_analyst", right_analyst_agent)
     graph.add_node("people_analyst", people_analyst_agent)
-    graph.add_node("referee", run_referee_checks)
+    graph.add_node("synthesize_perspectives", synthesize_perspectives_agent)
     graph.add_node("referee_blocked_summary", summarize_referee_block)
-    graph.add_node("extract_claims", extract_claims_for_verification)
-    graph.add_node("cross_check_facts", cross_check_facts_agent)
+    graph.add_node("fact_check", cross_check_facts_agent)
     graph.add_node("compose_final", compose_final_agent)
     graph.add_node("supervisor", supervisor_step)
 
@@ -109,21 +107,20 @@ def build_graph(
     graph.add_edge("search_center_pool", "center_analyst")
     graph.add_edge("search_right_pool", "right_analyst")
     graph.add_edge("search_people_pool", "people_analyst")
-    graph.add_edge("left_analyst", "referee")
-    graph.add_edge("center_analyst", "referee")
-    graph.add_edge("right_analyst", "referee")
-    graph.add_edge("people_analyst", "referee")
+    graph.add_edge("left_analyst", "synthesize_perspectives")
+    graph.add_edge("center_analyst", "synthesize_perspectives")
+    graph.add_edge("right_analyst", "synthesize_perspectives")
+    graph.add_edge("people_analyst", "synthesize_perspectives")
     graph.add_conditional_edges(
-        "referee",
-        _route_after_referee,
+        "synthesize_perspectives",
+        _route_after_synthesis,
         {
-            "continue": "extract_claims",
+            "continue": "fact_check",
             "blocked": "referee_blocked_summary",
         },
     )
     graph.add_edge("referee_blocked_summary", "supervisor")
-    graph.add_edge("extract_claims", "cross_check_facts")
-    graph.add_edge("cross_check_facts", "compose_final")
+    graph.add_edge("fact_check", "compose_final")
     graph.add_edge("compose_final", "supervisor")
     graph.add_edge("supervisor", END)
 

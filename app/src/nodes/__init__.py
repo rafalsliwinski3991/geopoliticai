@@ -4,11 +4,10 @@ from nodes.build_research_plan import build_research_plan_step
 from nodes.center_analyst import center_analyst_agent
 from nodes.compose_final import compose_final_agent
 from nodes.cross_check_facts import cross_check_facts_agent
-from nodes.extract_claims import extract_claims_for_verification
 from nodes.ingest_request import ingest_request
 from nodes.left_analyst import left_analyst_agent
 from nodes.people_analyst import people_analyst_agent
-from nodes.referee import run_referee_checks, summarize_referee_block
+from nodes.referee import summarize_referee_block
 from nodes.right_analyst import right_analyst_agent
 from nodes.search_pools import (
     search_center_pool,
@@ -17,22 +16,22 @@ from nodes.search_pools import (
     search_right_pool,
 )
 from nodes.supervisor import supervisor_step
+from nodes.synthesize_perspectives import synthesize_perspectives_agent
 
 __all__ = [
     "build_research_plan_step",
     "center_analyst_agent",
     "compose_final_agent",
     "cross_check_facts_agent",
-    "extract_claims_for_verification",
     "ingest_request",
     "left_analyst_agent",
     "people_analyst_agent",
     "right_analyst_agent",
-    "run_referee_checks",
     "summarize_referee_block",
     "search_center_pool",
     "search_left_pool",
     "search_people_pool",
     "search_right_pool",
     "supervisor_step",
+    "synthesize_perspectives_agent",
 ]

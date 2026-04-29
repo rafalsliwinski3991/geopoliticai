@@ -108,6 +108,79 @@ def test_web_searcher_keeps_each_lane_within_configured_domains(monkeypatch) -> 
     assert "https://www.economist.com/world/2026/03/01/example" in urls
 
 
+def test_web_searcher_uses_all_queries_and_two_results_per_domain(monkeypatch) -> None:
+    captured_queries: list[str] = []
+
+    def fake_get(self, url, *, params, timeout):
+        captured_queries.append(params["q"])
+        if params["q"].startswith("first angle"):
+            return _brave_response(
+                [
+                    {
+                        "title": "Result A",
+                        "url": "https://www.brookings.edu/articles/a",
+                        "description": "Allowed first result.",
+                    },
+                    {
+                        "title": "Result B",
+                        "url": "https://www.brookings.edu/articles/b",
+                        "description": "Allowed second result.",
+                    },
+                    {
+                        "title": "Result C",
+                        "url": "https://www.brookings.edu/articles/c",
+                        "description": "Allowed third result should be capped.",
+                    },
+                ]
+            )
+        return _brave_response(
+            [
+                {
+                    "title": "Duplicate B",
+                    "url": "https://www.brookings.edu/articles/b",
+                    "description": "Duplicate URL should be skipped.",
+                },
+                {
+                    "title": "Result D",
+                    "url": "https://www.brookings.edu/articles/d",
+                    "description": "Allowed result from second query.",
+                },
+                {
+                    "title": "Wikipedia",
+                    "url": "https://en.wikipedia.org/wiki/Example",
+                    "description": "Out-of-domain result should be dropped.",
+                },
+                {
+                    "title": "Result E",
+                    "url": "https://www.brookings.edu/articles/e",
+                    "description": "Second allowed result from second query.",
+                },
+            ]
+        )
+
+    monkeypatch.setattr(httpx.Client, "get", fake_get)
+
+    state = {
+        "query": "fallback query",
+        "research_plan": ResearchPlan(queries=["first angle", "second angle"]),
+    }
+    references = [("Brookings Institution", "https://www.brookings.edu")]
+
+    sources = search.web_searcher(state, "centrist", references)  # type: ignore[arg-type]
+
+    assert captured_queries == [
+        "first angle site:brookings.edu",
+        "second angle site:brookings.edu",
+    ]
+    assert [source.id for source in sources] == ["C1", "C2", "C3", "C4"]
+    assert [source.url for source in sources] == [
+        "https://www.brookings.edu/articles/a",
+        "https://www.brookings.edu/articles/b",
+        "https://www.brookings.edu/articles/d",
+        "https://www.brookings.edu/articles/e",
+    ]
+
+
 def test_build_biased_query_uses_reference_domain_without_path() -> None:
     query = search._build_biased_query(
         "query",

@@ -3,7 +3,7 @@
 import operator
 import re
 from dataclasses import dataclass, field
-from typing import Annotated, Any, Literal, TypedDict
+from typing import Annotated, Literal, TypedDict
 
 _POLISH_DIACRITICS = frozenset("ąćęłńóśźżĄĆĘŁŃÓŚŹŻ")
 _POLISH_STOPWORDS = frozenset(
@@ -77,6 +77,21 @@ class FactCheckResult:
     claim: Claim
     verdict: str
     rationale: str
+    confidence: float = 0.0
+    supporting_sources: list[str] = field(default_factory=list)
+    contradicting_sources: list[str] = field(default_factory=list)
+
+
+@dataclass
+class SynthesizedClaim:
+    """A cross-lane claim prepared for fact-checking."""
+
+    text: str
+    source_ids: list[str] = field(default_factory=list)
+    asserted_by: list[str] = field(default_factory=list)
+    contradicted_by: list[str] = field(default_factory=list)
+    confidence: float = 0.0
+    category: Literal["consensus", "contested", "unique_insight"] = "unique_insight"
 
 
 @dataclass
@@ -85,7 +100,7 @@ class ResearchPlan:
 
     queries: list[str] = field(default_factory=list)
     entities: list[str] = field(default_factory=list)
-    timeframe: str = ""
+    domain: str = ""
     must_find: list[str] = field(default_factory=list)
 
 
@@ -118,7 +133,7 @@ class PipelineState(TypedDict):
     final_output: str
     research_plan: ResearchPlan
     referee_report: RefereeReport
-    extracted_claims: Annotated[list[dict[str, Any]], operator.add]
+    synthesized_claims: Annotated[list[SynthesizedClaim], operator.add]
 
 
 def detect_language(query: str) -> str:
@@ -167,5 +182,5 @@ def build_initial_pipeline_state(
         "final_output": "",
         "research_plan": ResearchPlan(),
         "referee_report": RefereeReport(),
-        "extracted_claims": [],
+        "synthesized_claims": [],
     }
