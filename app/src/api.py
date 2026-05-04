@@ -19,7 +19,7 @@ from pydantic import BaseModel, Field, field_validator
 
 import database
 from config import init_environment, require_env
-from graph import build_graph, build_runtime_config, run_pipeline
+from graph import build_checkpointer, build_graph, build_runtime_config
 from models import build_initial_pipeline_state, normalize_language
 
 logger = logging.getLogger(__name__)
@@ -31,6 +31,9 @@ DEFAULT_ALLOWED_ORIGINS = (
 MAX_QUERY_LENGTH = 2_000
 DEFAULT_RATE_LIMIT_REQUESTS = 20
 DEFAULT_RATE_LIMIT_WINDOW_SECONDS = 60
+
+_GRAPH_CACHE: dict[str, object] = {}
+_CHECKPOINTER = None
 
 _rate_limit_store: dict[str, deque[float]] = defaultdict(deque)
 _rate_limit_lock = Lock()
@@ -70,9 +73,13 @@ async def lifespan(_app: FastAPI) -> AsyncGenerator[None, None]:
     """Initialize and close optional application resources."""
     init_environment()
     require_env()
+    global _CHECKPOINTER
     db_url = os.getenv("DATABASE_URL")
     if db_url:
         await database.init_pool(db_url)
+    _CHECKPOINTER = build_checkpointer(db_url)
+    _GRAPH_CACHE["english"] = build_graph(infosphere="english", checkpointer=_CHECKPOINTER)
+    _GRAPH_CACHE["polish"] = build_graph(infosphere="polish", checkpointer=_CHECKPOINTER)
     yield
     await database.close_pool()
 
@@ -100,6 +107,11 @@ class RunPipelineRequest(BaseModel):
     infosphere: Literal["english", "polish"] = Field(
         "polish", description="Which infosphere sources to use: english or polish"
     )
+    thread_id: str | None = Field(
+        default=None,
+        max_length=128,
+        description="Optional thread identifier for checkpoint isolation.",
+    )
 
     @field_validator("query")
     @classmethod
@@ -107,6 +119,16 @@ class RunPipelineRequest(BaseModel):
         cleaned = " ".join(value.split())
         if not cleaned:
             raise ValueError("Query must not be empty.")
+        return cleaned
+
+    @field_validator("thread_id")
+    @classmethod
+    def _validate_thread_id(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        cleaned = value.strip()
+        if not cleaned:
+            raise ValueError("thread_id must not be empty when provided.")
         return cleaned
 
 
@@ -235,12 +257,15 @@ async def run_pipeline_stream_endpoint(
 
     async def _generate() -> AsyncGenerator[str, None]:
         try:
-            graph = build_graph(infosphere=payload.infosphere)
+            graph = _GRAPH_CACHE[payload.infosphere]
             initial_state = build_initial_pipeline_state(
                 payload.query,
                 language=normalize_language(payload.infosphere),
             )
-            config = build_runtime_config(infosphere=payload.infosphere)
+            config = build_runtime_config(
+                infosphere=payload.infosphere,
+                thread_id=payload.thread_id,
+            )
             seen_nodes: set[str] = set()
             final_output: str | None = None
 
@@ -300,6 +325,19 @@ async def run_pipeline_stream_endpoint(
     )
 
 
+
+
+def run_pipeline(query: str, infosphere: Literal["english", "polish"], thread_id: str | None = None) -> str:
+    """Run the pipeline using a precompiled graph for the selected infosphere."""
+    graph = _GRAPH_CACHE[infosphere]
+    initial_state = build_initial_pipeline_state(
+        query,
+        language=normalize_language(infosphere),
+    )
+    config = build_runtime_config(infosphere=infosphere, thread_id=thread_id)
+    result = graph.invoke(initial_state, config=config)
+    return str(result["final_output"])
+
 @router.post("/run_pipeline", response_model=RunPipelineResponse)
 async def run_pipeline_endpoint(
     payload: RunPipelineRequest,
@@ -311,7 +349,14 @@ async def run_pipeline_endpoint(
     client_id = _resolve_client_id(request)
     log_id = await database.log_prompt(payload.query, client_id)
     try:
-        output = run_pipeline(payload.query, infosphere=payload.infosphere)
+        if payload.thread_id is None:
+            output = run_pipeline(payload.query, infosphere=payload.infosphere)
+        else:
+            output = run_pipeline(
+                payload.query,
+                infosphere=payload.infosphere,
+                thread_id=payload.thread_id,
+            )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     if log_id is not None:

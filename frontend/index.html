@@ -5,8 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>PoliticalAgent</title>
     <link rel="icon" type="image/png" href="assets/logo.png">
-    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dompurify@3.2.6/dist/purify.min.js" crossorigin="anonymous"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js" crossorigin="anonymous"></script>
     <style>
       @import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&display=swap");
 
@@ -553,7 +554,10 @@
           },
 
           renderContent(msg) {
-            if (msg.role === "bot") return marked.parse(msg.text ?? "");
+            if (msg.role === "bot") {
+              const rendered = marked.parse(msg.text ?? "");
+              return DOMPurify.sanitize(rendered);
+            }
             const el = document.createElement("div");
             el.textContent = msg.text;
             return el.innerHTML;
