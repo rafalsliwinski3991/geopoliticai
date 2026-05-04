@@ -553,5 +553,6 @@ Set variables in `.env` at the repo root (loaded by docker compose) or `app/.env
 - Polish and English prompts and sources are not interchangeable. Both the LLM prompts and curated `INFOSPHERE_SOURCES` switch on the `language` or `infosphere` value passed through LangGraph runtime config.
 - The graph is recompiled per request in the streaming endpoint (`build_graph(infosphere=...)`) and both sync and streaming paths pass per-request values with `build_runtime_config()`.
 - `compose_final` depends on the referee not having blocked. If you change routing, also update the `_route_after_referee` conditional in `graph.py`.
+- Referee policy is documented in `docs/referee-policy.md`; keep this document aligned with referee-node prompt and threshold changes.
 - CI uses the stale top-level `requirements.txt`, not `app/pyproject.toml`. If you change runtime dependencies in `pyproject.toml`, CI will not pick them up unless you also update `requirements.txt` or fix the workflow.
 - Prefer `rg` for repository searches and keep edits scoped to the task. Do not modify `.env` files or secrets unless the user explicitly asks.
