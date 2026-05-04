@@ -4,6 +4,9 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
+from importlib import import_module
+
+from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.graph import END, START, StateGraph
 
 from config import get_infosphere_sources
@@ -34,6 +37,14 @@ from nodes import (
 
 DEFAULT_INFOSPHERE = "english"
 DEFAULT_REPORT_MODE = "full"
+
+
+def build_checkpointer(database_url: str | None) -> Any:
+    """Build a checkpointer for graph persistence."""
+    if database_url and database_url.strip():
+        postgres_module = import_module("langgraph.checkpoint.postgres")
+        return postgres_module.PostgresSaver.from_conn_string(database_url)
+    return InMemorySaver()
 
 
 def _normalize_report_mode(report_mode: str) -> str:
@@ -127,9 +138,8 @@ def build_graph(
     graph.add_edge("compose_final", "supervisor")
     graph.add_edge("supervisor", END)
 
-    if checkpointer is None:
-        return graph.compile(name="GeopoliticAI")
-    return graph.compile(checkpointer=checkpointer, name="GeopoliticAI")
+    active_checkpointer = checkpointer if checkpointer is not None else InMemorySaver()
+    return graph.compile(checkpointer=active_checkpointer, name="GeopoliticAI")
 
 
 def run_pipeline(

@@ -1,6 +1,9 @@
-"""Backward-compatible entrypoint for the GeopoliticAI POC."""
+"""Repository-root shim entrypoint.
 
-from geopoliticai.cli import main
+Use this only for backward compatibility; the live application lives under app/src.
+"""
+
+from cli import main
 
 if __name__ == "__main__":
     main()
