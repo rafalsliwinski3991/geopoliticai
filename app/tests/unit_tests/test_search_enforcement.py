@@ -1,9 +1,9 @@
 import httpx
 import pytest
 
-import search
-from models import Claim, ResearchPlan
-from nodes import generic_analyst
+from geopoliticai import search
+from geopoliticai.models import Claim, ResearchPlan
+from geopoliticai.nodes import generic_analyst
 
 
 def _brave_response(results: list[dict]) -> httpx.Response:

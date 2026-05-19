@@ -1,4 +1,4 @@
-from graph import graph
+from geopoliticai.graph import graph
 
 
 def test_graph_exposes_pipeline_nodes() -> None:

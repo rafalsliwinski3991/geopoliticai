@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-import database
+from geopoliticai import database
 
 
 @pytest.mark.anyio
@@ -20,7 +20,7 @@ async def test_log_prompt_returns_none_when_pool_unavailable() -> None:
 @pytest.mark.anyio
 async def test_log_prompt_returns_row_id_on_success() -> None:
     """Test log_prompt returns the inserted row ID."""
-    with patch("database._resolve_location", return_value="Test, City"):
+    with patch("geopoliticai.database._resolve_location", return_value="Test, City"):
         mock_conn = MagicMock()
         mock_conn.fetchval = AsyncMock(return_value=42)
 
@@ -32,7 +32,7 @@ async def test_log_prompt_returns_row_id_on_success() -> None:
             )
         )
 
-        with patch("database._pool", mock_pool):
+        with patch("geopoliticai.database._pool", mock_pool):
             result = await database.log_prompt("test query", "192.168.1.1")
 
     assert result == 42
@@ -46,7 +46,7 @@ async def test_log_prompt_returns_row_id_on_success() -> None:
 @pytest.mark.anyio
 async def test_log_prompt_handles_exception_gracefully() -> None:
     """Test log_prompt returns None if database operation fails."""
-    with patch("database._resolve_location", return_value="Test, City"):
+    with patch("geopoliticai.database._resolve_location", return_value="Test, City"):
         mock_conn = MagicMock()
         mock_conn.fetchval = AsyncMock(side_effect=Exception("DB error"))
 
@@ -58,7 +58,7 @@ async def test_log_prompt_handles_exception_gracefully() -> None:
             )
         )
 
-        with patch("database._pool", mock_pool):
+        with patch("geopoliticai.database._pool", mock_pool):
             result = await database.log_prompt("test query", "192.168.1.1")
 
     assert result is None
@@ -86,7 +86,7 @@ async def test_log_output_updates_row_on_success() -> None:
         )
     )
 
-    with patch("database._pool", mock_pool):
+    with patch("geopoliticai.database._pool", mock_pool):
         await database.log_output(42, "test output")
 
     mock_conn.execute.assert_called_once()
@@ -113,7 +113,7 @@ async def test_log_output_handles_exception_gracefully() -> None:
         )
     )
 
-    with patch("database._pool", mock_pool):
+    with patch("geopoliticai.database._pool", mock_pool):
         # Should not raise exception
         await database.log_output(1, "test output")
 
@@ -122,7 +122,7 @@ async def test_log_output_handles_exception_gracefully() -> None:
 async def test_log_prompt_resolves_location() -> None:
     """Test log_prompt resolves geolocation for IP."""
     with patch(
-        "database._resolve_location",
+        "geopoliticai.database._resolve_location",
         new_callable=AsyncMock,
         return_value="New York, United States",
     ) as mock_location:
@@ -137,7 +137,7 @@ async def test_log_prompt_resolves_location() -> None:
             )
         )
 
-        with patch("database._pool", mock_pool):
+        with patch("geopoliticai.database._pool", mock_pool):
             await database.log_prompt("test query", "8.8.8.8")
 
             # Verify location resolution was called

@@ -1,0 +1,32 @@
+"""Centrist analyst agent for generating claims from sources."""
+
+from typing import Any
+
+from langchain_core.runnables import RunnableConfig
+
+from geopoliticai.llm import invoke_structured_chain
+from geopoliticai.models import PipelineState
+from geopoliticai.nodes.generic_analyst import generic_analyst_agent
+from geopoliticai.nodes.runtime_config import (
+    runtime_infosphere_sources,
+    runtime_language,
+)
+
+
+def center_analyst_agent(
+    state: PipelineState,
+    config: RunnableConfig | None = None,
+) -> dict[str, Any]:
+    """Generate centrist claims grounded in the provided sources."""
+    return generic_analyst_agent(
+        state,
+        runtime_infosphere_sources(state, config),
+        runtime_language(state, config),
+        lane_key="centrist",
+        ideology="centrist",
+        model_key="center_analyst",
+        log_label="Centrist",
+        perspective_label="Centrist",
+        fallback_limit=2,
+        invoke_chain=invoke_structured_chain,
+    )

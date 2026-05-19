@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
-from api import app
+from geopoliticai.api import app
 
 
 @pytest.fixture
@@ -35,9 +35,9 @@ async def test_run_pipeline_stream_logs_prompt_and_output() -> None:
     mock_graph = AsyncMock()
     mock_graph.astream_events = AsyncMock(return_value=_mock_stream_events(mock_state))
 
-    with patch("api.database.log_prompt", mock_log_prompt):
-        with patch("api.database.log_output", mock_log_output):
-            with patch("api.build_graph", return_value=mock_graph):
+    with patch("geopoliticai.api.database.log_prompt", mock_log_prompt):
+        with patch("geopoliticai.api.database.log_output", mock_log_output):
+            with patch("geopoliticai.api.get_compiled_graph", return_value=mock_graph):
                 client = TestClient(app)
                 response = client.post(
                     "/api/run_pipeline/stream",
@@ -64,9 +64,9 @@ async def test_run_pipeline_logs_prompt_and_output_via_background_task() -> None
     def mock_run_pipeline(query: str, infosphere: str) -> str:
         return "pipeline output"
 
-    with patch("api.database.log_prompt", mock_log_prompt):
-        with patch("api.database.log_output", mock_log_output):
-            with patch("api.run_pipeline", mock_run_pipeline):
+    with patch("geopoliticai.api.database.log_prompt", mock_log_prompt):
+        with patch("geopoliticai.api.database.log_output", mock_log_output):
+            with patch("geopoliticai.api.run_pipeline", mock_run_pipeline):
                 client = TestClient(app)
                 response = client.post(
                     "/api/run_pipeline",
@@ -87,8 +87,8 @@ def test_run_pipeline_returns_output() -> None:
     mock_run_pipeline_output = "test result"
     mock_log_prompt = AsyncMock(return_value=1)
 
-    with patch("api.run_pipeline", return_value=mock_run_pipeline_output):
-        with patch("api.database.log_prompt", mock_log_prompt):
+    with patch("geopoliticai.api.run_pipeline", return_value=mock_run_pipeline_output):
+        with patch("geopoliticai.api.database.log_prompt", mock_log_prompt):
             client = TestClient(app)
             response = client.post(
                 "/api/run_pipeline",
@@ -132,8 +132,8 @@ def test_run_pipeline_normalizes_whitespace() -> None:
     """Test endpoint normalizes whitespace in query."""
     mock_log_prompt = AsyncMock(return_value=1)
 
-    with patch("api.run_pipeline", return_value="output"):
-        with patch("api.database.log_prompt", mock_log_prompt):
+    with patch("geopoliticai.api.run_pipeline", return_value="output"):
+        with patch("geopoliticai.api.database.log_prompt", mock_log_prompt):
             client = TestClient(app)
             response = client.post(
                 "/api/run_pipeline",
@@ -153,7 +153,7 @@ def test_run_pipeline_normalizes_whitespace() -> None:
 
 def test_rate_limiting_enforced() -> None:
     """Test rate limiting is enforced."""
-    import api
+    from geopoliticai import api
 
     # Clear rate limit store before test
     api._rate_limit_store.clear()
@@ -161,8 +161,8 @@ def test_rate_limiting_enforced() -> None:
     client = TestClient(app)
     mock_log_prompt = AsyncMock(return_value=1)
 
-    with patch("api.run_pipeline", return_value="output"):
-        with patch("api.database.log_prompt", mock_log_prompt):
+    with patch("geopoliticai.api.run_pipeline", return_value="output"):
+        with patch("geopoliticai.api.database.log_prompt", mock_log_prompt):
             # Make requests up to the rate limit
             for i in range(20):  # DEFAULT_RATE_LIMIT_REQUESTS = 20
                 response = client.post(

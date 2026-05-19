@@ -3,7 +3,7 @@ from collections.abc import Callable
 
 import pytest
 
-from config import (
+from geopoliticai.config import (
     DEFAULT_ANALYST_ADDITIONAL_SOURCES,
     DEFAULT_OPENAI_MAX_OUTPUT_TOKENS,
     DEFAULT_OPENAI_TIMEOUT_SECONDS,
@@ -79,7 +79,7 @@ def test_env_config_accessors_preserve_parsing_behavior(
     range_warning: str,
     fallback_text: str,
 ) -> None:
-    caplog.set_level(logging.WARNING, logger="config")
+    caplog.set_level(logging.WARNING, logger="geopoliticai.config")
 
     monkeypatch.delenv(env_var, raising=False)
     assert getter() == default_value

@@ -6,17 +6,20 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project layout
 
-The live code lives under `app/`. The repository root also contains a stale `Dockerfile`, `main.py`, and `requirements.txt` that import a no-longer-existing `geopoliticai` package — **do not use them**, they only persist because the GitHub Actions workflow (`.github/workflows/unit-tests.yml`) still references `requirements.txt`. The shipped image is built from `app/Dockerfile`, and the CLI/API entrypoints are in `app/src/`.
+The live code lives under `app/src/geopoliticai/` as a proper installable package. The shipped image is built from `app/Dockerfile`, and the CLI/API entrypoints are inside the package.
 
-- `app/src/` — Python package; treated as the import root (`PYTHONPATH=/app/src` in containers). Modules use bare `from agents import ...`, `from models import ...` style, so the package directory must be on `sys.path`.
-- `frontend/` — single `index.html` (Alpine.js + `marked.js` from CDN) plus `assets/`. No bundler. Served either directly by FastAPI (dev) or by nginx (prod).
+- `app/src/geopoliticai/` — the Python package. Modules import each other as `from geopoliticai.X import ...`. Installed via `app/pyproject.toml`; src layout (`tool.setuptools.package-dir = {"": "src"}`).
+- `app/src/geopoliticai/nodes/` — LangGraph node callables; `nodes/__init__.py` re-exports the canonical names used by `graph.py`.
+- `app/evals/` — regression dataset (`dataset.jsonl`), runner (`run_evals.py`), and scoring helpers (`metrics.py`). See `app/evals/README.md`.
+- `docs/` — policy and methodology docs: `referee-policy.md`, `sources-methodology.md`, `sources-changelog.md`, `observability.md`. Edit these alongside the code they describe.
+- `frontend/` — single `index.html` (Alpine.js + `marked.js` + DOMPurify from CDN, all with SRI hashes) plus `assets/`. No bundler. Served either directly by FastAPI (dev) or by nginx (prod).
 - `docker-compose.yml` + `docker-compose.override.yml` — local dev. The override mounts `app/src` and `frontend/` into the backend container, exposes port `3000:8000`, and runs uvicorn with `--reload`. The frontend container is gated behind the `production` profile, so `docker compose up` runs only postgres + backend.
 - `docker-compose.prod.yml` — adds restart policies, the `/api/health` healthcheck, TLS cert mount (`/etc/letsencrypt`), and basic-auth env vars; activates the frontend service.
-- `app/langgraph.json` — registers `src/graph.py:graph` for LangGraph Studio (`langgraph dev`).
+- `app/langgraph.json` — registers `src/geopoliticai/graph.py:graph` for LangGraph Studio (`langgraph dev`).
 
 ## Architecture
 
-A multi-agent political analysis pipeline built on **LangGraph** (`StateGraph` over a `PipelineState` TypedDict) and **FastAPI**. The single source of truth for the flow is `app/src/graph.py`.
+A multi-agent political analysis pipeline built on **LangGraph** (`StateGraph` over a `PipelineState` TypedDict) and **FastAPI**. The single source of truth for the flow is `app/src/geopoliticai/graph.py`.
 
 Pipeline shape (fan-out → converge → fact-check → compose):
 
@@ -25,18 +28,21 @@ ingest_request → build_research_plan → ┬─ search_left_pool   → left_an
                                        ├─ search_center_pool → center_analyst  ─┤
                                        ├─ search_right_pool  → right_analyst   ─┼→ referee ──(blocked)──→ referee_blocked_summary → supervisor → END
                                        └─ search_people_pool → people_analyst  ─┘                │
-                                                                                                 └──(continue)──→ extract_claims → cross_check_facts → compose_final → supervisor → END
+                                                                                                 └──(continue)──→ extract_claims_lane (×4 via Send) → cross_check_facts → compose_final → supervisor → END
 ```
 
-- **Lanes** (`left`, `centrist`, `right`, `people`, plus `fact` for cross-checking): each lane has a curated source allow-list per infosphere defined in `app/src/config.py` (`ENGLISH_INFOSPHERE_SOURCES`, `POLISH_INFOSPHERE_SOURCES`). Search queries are constrained with `site:` filters built from those domains.
-- **Infosphere** (`"english"` | `"polish"`): selected explicitly via the `--infosphere` CLI flag or the `infosphere` field in API requests. CLI auto-detects via `detect_language()` in `models.py` (Polish diacritics + stopword tokens). The infosphere drives both source pools and prompt language.
-- **Referee** can short-circuit the pipeline (returns `blocked: true`), routing through `referee_blocked_summary` instead of fact-checking.
+- **Lanes** (`left`, `centrist`, `right`, `people`, plus `fact` for cross-checking): each lane has a curated source allow-list per infosphere defined in `geopoliticai/config.py` (`ENGLISH_INFOSPHERE_SOURCES`, `POLISH_INFOSPHERE_SOURCES`, both stamped with `SOURCES_VERSION`). Search queries are constrained with `site:` filters built from those domains. See `docs/sources-methodology.md`.
+- **Infosphere** (`"english"` | `"polish"`): selected explicitly via the `--infosphere` CLI flag or the `infosphere` field in API requests. CLI auto-detects via `detect_language()` in `models.py` (Polish diacritics + stopword tokens). The infosphere flows through `RunnableConfig.configurable` at invoke time, NOT via `functools.partial` at graph construction.
+- **Compiled graph singleton**: `graph.py` builds one `Pregel` instance at import time and exposes it as `graph`, `GRAPH_EN`, and `GRAPH_PL` (aliases for forward-compatibility). The API streaming endpoint reuses the singleton — `build_graph()` is no longer called per request.
+- **Claim extraction** runs in parallel via `Send` (LangGraph map-reduce). `_route_after_referee` returns either `"referee_blocked_summary"` (block) or a list of `Send("extract_claims_lane", ...)` (one per lane); the `extracted_claims` field on `PipelineState` has an `operator.add` reducer that merges the workers' outputs.
+- **Checkpointer**: `build_checkpointer()` returns `PostgresSaver` when `DATABASE_URL` is set (requires `pip install ".[postgres]"`); otherwise `InMemorySaver`. Callers pass it explicitly via `build_graph(..., checkpointer=...)`.
+- **Referee** can short-circuit the pipeline (returns `blocked: true`), routing through `referee_blocked_summary` instead of fact-checking. Policy and block-list are documented in `docs/referee-policy.md` and locked by `tests/unit_tests/test_referee_policy.py`.
 - **`compose_final`** writes the user-facing report; **`supervisor`** is the terminal node that emits `final_output`.
-- **OpenAI calls** go through `app/src/llm.py`, which wraps both the Responses API and Chat Completions with JSON-mode output and graceful retries for `max_completion_tokens`/`temperature` compatibility issues across model variants. All structured outputs use `StructuredOutputChain` (Pydantic schema → JSON object).
-- **Search** (`app/src/search.py`) calls Brave Search, restricted to lane-allowed domains; results are renumbered with lane-prefixed source IDs (`L1`, `C1`, `R1`, `P1`, `F1`).
-- **Persistence**: `app/src/database.py` is an optional asyncpg pool that logs prompts and outputs into a `prompt_logs` table. Activated only when `DATABASE_URL` is set; otherwise log calls become no-ops. The pool is initialised in the FastAPI `lifespan` hook.
-- **API**: `app/src/api.py` exposes `POST /api/run_pipeline` (sync) and `POST /api/run_pipeline/stream` (SSE with per-node progress events). Both enforce an in-process token-bucket rate limit keyed by `X-Forwarded-For` (or `request.client.host`). The streaming endpoint uses `graph.astream_events(version="v2")` and emits Polish or English progress labels based on the request's `infosphere`.
-- **Frontend integration**: in dev, FastAPI mounts `/assets` and serves `frontend/index.html` at `/` via `FileResponse` (paths controlled by `FRONTEND_HTML_PATH`). In prod, nginx serves the static frontend and proxies `/api/` to the backend. `frontend/nginx.conf` is the prod config (TLS + basic auth via `docker-entrypoint.sh` writing `htpasswd`); `frontend/nginx.local.conf` exists but is not currently wired into any compose file.
+- **OpenAI calls** go through `geopoliticai/llm.py`, which wraps both the Responses API and Chat Completions with JSON-mode output and graceful retries for `max_completion_tokens`/`temperature` compatibility issues across model variants. All structured outputs use `StructuredOutputChain` (Pydantic schema → JSON object).
+- **Search** (`geopoliticai/search.py`) calls Brave Search, restricted to lane-allowed domains; results are renumbered with lane-prefixed source IDs (`L1`, `C1`, `R1`, `P1`, `F1`).
+- **Persistence**: `geopoliticai/database.py` is an optional asyncpg pool that logs prompts and outputs into a `prompt_logs` table. Activated only when `DATABASE_URL` is set; otherwise log calls become no-ops. The pool is initialised in the FastAPI `lifespan` hook.
+- **API**: `geopoliticai/api.py` exposes `POST /api/run_pipeline` (sync) and `POST /api/run_pipeline/stream` (SSE with per-node progress events). Both enforce an in-process token-bucket rate limit keyed by `X-Forwarded-For` (or `request.client.host`); in prod, nginx adds a second `limit_req_zone` layer (defense in depth — see `frontend/nginx.conf`). The streaming endpoint uses `graph.astream_events(version="v2")` and emits Polish or English progress labels based on the request's `infosphere`.
+- **Frontend integration**: in dev, FastAPI mounts `/assets` and serves `frontend/index.html` at `/` via `FileResponse` (paths controlled by `FRONTEND_HTML_PATH`). In prod, nginx serves the static frontend and proxies `/api/` to the backend. `frontend/nginx.conf` is the prod config (TLS + basic auth via `docker-entrypoint.sh` writing `htpasswd`, plus `/api/*` rate-limit); `frontend/nginx.local.conf` exists but is not currently wired into any compose file. The frontend sanitises LLM-generated markdown with **DOMPurify** before `x-html` injection; all CDN scripts are pinned with SRI hashes.
 
 
 ## LangGraph Agentic Workflows — Best Practices
@@ -512,9 +518,10 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 # LangGraph Studio (uses app/langgraph.json)
 langgraph dev
 
-# CLI invocation
-python src/cli.py "your query" --infosphere polish --report full
-python src/cli.py "your query" --report compact --log-level DEBUG
+# CLI invocation (after `uv sync` installs the package, `geopoliticai` is on PATH)
+uv run geopoliticai "your query" --infosphere polish --report full
+uv run geopoliticai "your query" --report compact --log-level DEBUG
+uv run python -m geopoliticai.cli "your query"  # alternative — avoids the console-script lookup
 
 # Tests
 make test                               # unit tests (tests/unit_tests/)
@@ -543,8 +550,10 @@ Set in `.env` at the repo root (loaded by docker compose) or `app/.env` (loaded 
 
 ## Things that bite
 
-- **Don't add new top-level Python modules to the repo root.** Imports inside `app/src/` assume `src/` is on `sys.path` (set as `PYTHONPATH=/app/src` in the override compose; `tool.setuptools.package-dir` in `pyproject.toml`). Adding `geopoliticai/` at the root will not be picked up.
-- **Polish vs English prompts and sources are not interchangeable.** Both the LLM prompts and the curated `INFOSPHERE_SOURCES` switch on the `language`/`infosphere` argument that's threaded through every node via `functools.partial` in `build_graph()`.
-- **The graph is recompiled per request in the streaming endpoint** (`build_graph(infosphere=...)`) so that the per-language partials are correct. The synchronous endpoint goes through `run_pipeline()` which does the same.
-- **`compose_final`** depends on referee not having blocked — if you change routing, also update the `_route_after_referee` conditional in `graph.py`.
-- **CI uses the stale top-level `requirements.txt`**, not `app/pyproject.toml`. If you change runtime deps in `pyproject.toml`, the CI workflow won't pick them up unless you also update `requirements.txt` (or fix the workflow).
+- **Polish vs English prompts and sources are not interchangeable.** Both the LLM prompts and the curated `INFOSPHERE_SOURCES` switch on the `language`/`infosphere` value passed via `RunnableConfig.configurable` and read by nodes through `runtime_config.runtime_language()` / `runtime_infosphere_sources()`.
+- **The graph is a singleton — do not recompile per request.** `geopoliticai/graph.py` builds the `Pregel` instance at import time and exposes `graph`, `GRAPH_EN`, `GRAPH_PL`. The streaming endpoint reuses `get_compiled_graph(infosphere)`. Tests that patched `api.build_graph` must patch `geopoliticai.api.get_compiled_graph` instead.
+- **`compose_final`** depends on referee not having blocked — if you change routing, also update the `_route_after_referee` function in `graph.py`. It now returns either `"referee_blocked_summary"` or a list of `Send` objects, not a `Literal`.
+- **Claim extraction is fan-out via Send.** `extract_claims_lane` is one node executed N times (one per lane); results merge through the `operator.add` reducer on `PipelineState.extracted_claims`. If you add a new lane, update `_LANES` in `nodes/extract_claims.py`.
+- **Source allow-lists are versioned.** Bump `SOURCES_VERSION` in `geopoliticai/config.py` and append to `docs/sources-changelog.md` whenever `ENGLISH_INFOSPHERE_SOURCES` or `POLISH_INFOSPHERE_SOURCES` change. The methodology lives in `docs/sources-methodology.md`.
+- **Referee policy is a public document.** Loaded-term changes go through `docs/referee-policy.md` and `tests/unit_tests/test_referee_policy.py`.
+- **CI installs from `app/pyproject.toml`.** `.github/workflows/unit-tests.yml` runs `uv sync --frozen` inside `app/`. No top-level `requirements.txt` shim — runtime deps belong in `pyproject.toml`.

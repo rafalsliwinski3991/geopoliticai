@@ -1,5 +1,5 @@
-from models import Claim, FactCheckResult, build_initial_pipeline_state
-from nodes import compose_final
+from geopoliticai.models import Claim, FactCheckResult, build_initial_pipeline_state
+from geopoliticai.nodes import compose_final
 
 _ENGLISH_CONFIG = {"configurable": {"language": "english"}}
 

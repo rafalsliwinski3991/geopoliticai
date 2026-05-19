@@ -3,7 +3,7 @@ from typing import Any, ClassVar
 from langchain_core.exceptions import OutputParserException
 from pydantic import BaseModel
 
-import llm
+from geopoliticai import llm
 
 
 class SampleOutput(BaseModel):

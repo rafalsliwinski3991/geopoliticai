@@ -1,13 +1,14 @@
 [project]
-name = "agent"
-version = "0.0.1"
-description = "GeopoliticAI LangGraph application."
+name = "geopoliticai"
+version = "0.2.0"
+description = "Multi-perspective political analysis pipeline built on LangGraph and FastAPI."
 authors = [
-    { name = "William Fu-Hinthorn", email = "13333726+hinthornw@users.noreply.github.com" },
+    { name = "GeopoliticAI maintainers" },
 ]
 readme = "README.md"
 license = { text = "MIT" }
 requires-python = ">=3.10"
+keywords = ["langgraph", "fastapi", "political-analysis", "fact-checking"]
 dependencies = [
     "fastapi>=0.110,<1.0",
     "langchain-core>=0.3,<1.0",
@@ -21,9 +22,13 @@ dependencies = [
     "uvicorn[standard]>=0.29,<1.0",
 ]
 
-
 [project.optional-dependencies]
 dev = ["mypy>=1.11.1", "ruff>=0.6.1"]
+postgres = ["langgraph-checkpoint-postgres>=3.0,<4.0", "psycopg[binary]>=3.1,<4.0"]
+evals = ["langsmith>=0.1.100"]
+
+[project.scripts]
+geopoliticai = "geopoliticai.cli:main"
 
 [build-system]
 requires = ["setuptools>=73.0.0", "wheel"]
@@ -31,22 +36,10 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
-py-modules = [
-    "api",
-    "cli",
-    "config",
-    "graph",
-    "llm",
-    "models",
-    "planning",
-    "render",
-    "search",
-]
 
 [tool.setuptools.packages.find]
 where = ["src"]
-include = ["nodes*"]
-
+include = ["geopoliticai*"]
 
 [tool.setuptools.package-data]
 "*" = ["py.typed"]
