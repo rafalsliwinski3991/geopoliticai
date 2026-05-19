@@ -18,8 +18,14 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, field_validator
 
 import database
-from config import init_environment, require_env
+from config import (
+    get_rate_limit_requests,
+    get_rate_limit_window_seconds,
+    init_environment,
+    require_env,
+)
 from graph import build_runtime_config, graph, run_pipeline
+from i18n import progress_labels, stream_error_messages
 from models import build_initial_pipeline_state, normalize_language
 
 logger = logging.getLogger(__name__)
@@ -29,9 +35,14 @@ DEFAULT_ALLOWED_ORIGINS = (
     "http://localhost:5173",
 )
 MAX_QUERY_LENGTH = 2_000
-DEFAULT_RATE_LIMIT_REQUESTS = 20
-DEFAULT_RATE_LIMIT_WINDOW_SECONDS = 60
 
+RATE_LIMIT_REQUESTS = get_rate_limit_requests()
+RATE_LIMIT_WINDOW_SECONDS = get_rate_limit_window_seconds()
+
+# In-process token bucket. Each `uvicorn --workers N` worker keeps an
+# independent window, so put a single worker behind your load balancer if
+# cross-worker rate limiting matters. The lock guards the dict against
+# concurrent async-task access within one worker.
 _rate_limit_store: dict[str, deque[float]] = defaultdict(deque)
 _rate_limit_lock = Lock()
 
@@ -40,29 +51,6 @@ def _parse_allowed_origins() -> list[str]:
     raw = os.getenv("CORS_ALLOW_ORIGINS", "")
     origins = [item.strip() for item in raw.split(",") if item.strip()]
     return origins or list(DEFAULT_ALLOWED_ORIGINS)
-
-
-def _read_positive_int_env(var_name: str, default: int) -> int:
-    raw = os.getenv(var_name)
-    if raw is None or not raw.strip():
-        return default
-    try:
-        value = int(raw)
-    except ValueError:
-        return default
-    if value <= 0:
-        return default
-    return value
-
-
-RATE_LIMIT_REQUESTS = _read_positive_int_env(
-    "API_RATE_LIMIT_REQUESTS",
-    DEFAULT_RATE_LIMIT_REQUESTS,
-)
-RATE_LIMIT_WINDOW_SECONDS = _read_positive_int_env(
-    "API_RATE_LIMIT_WINDOW_SECONDS",
-    DEFAULT_RATE_LIMIT_WINDOW_SECONDS,
-)
 
 
 @asynccontextmanager
@@ -172,42 +160,13 @@ def healthcheck() -> dict[str, str]:
     return {"status": "ok"}
 
 
-_NODE_LABELS_PL: dict[str, str] = {
-    "ingest_request": "Przetwarzam zapytanie...",
-    "build_research_plan": "Buduję plan badań...",
-    "search_left_pool": "Przeszukuję lewicowe źródła...",
-    "search_center_pool": "Przeszukuję centrowe źródła...",
-    "search_right_pool": "Przeszukuję prawicowe źródła...",
-    "search_people_pool": "Przeszukuję profile osób...",
-    "left_analyst": "Analizuję perspektywę lewicową...",
-    "center_analyst": "Analizuję perspektywę centrową...",
-    "right_analyst": "Analizuję perspektywę prawicową...",
-    "people_analyst": "Analizuję profile osób...",
-    "referee": "Weryfikuję treść raportu...",
-    "referee_blocked_summary": "Podsumowuję blokadę...",
-    "extract_claims": "Wyodrębniam twierdzenia...",
-    "cross_check_facts": "Sprawdzam fakty krzyżowo...",
-    "compose_final": "Komponuję raport końcowy...",
-    "supervisor": "Finalizuję odpowiedź...",
-}
-_NODE_LABELS_EN: dict[str, str] = {
-    "ingest_request": "Processing query...",
-    "build_research_plan": "Building research plan...",
-    "search_left_pool": "Searching left-leaning sources...",
-    "search_center_pool": "Searching centrist sources...",
-    "search_right_pool": "Searching right-leaning sources...",
-    "search_people_pool": "Searching people profiles...",
-    "left_analyst": "Analyzing left perspective...",
-    "center_analyst": "Analyzing centrist perspective...",
-    "right_analyst": "Analyzing right perspective...",
-    "people_analyst": "Analyzing people profiles...",
-    "referee": "Verifying report content...",
-    "referee_blocked_summary": "Summarizing block...",
-    "extract_claims": "Extracting claims...",
-    "cross_check_facts": "Cross-checking facts...",
-    "compose_final": "Composing final report...",
-    "supervisor": "Finalizing answer...",
-}
+async def _begin_request(
+    request: Request, payload: RunPipelineRequest
+) -> int | None:
+    """Run the shared rate-limit + prompt-logging preamble; return the log row id."""
+    _enforce_rate_limit(request)
+    client_id = _resolve_client_id(request)
+    return await database.log_prompt(payload.query, client_id)
 
 
 @router.post("/run_pipeline/stream")
@@ -217,21 +176,9 @@ async def run_pipeline_stream_endpoint(
     background_tasks: BackgroundTasks,
 ) -> StreamingResponse:
     """Run the pipeline and stream progress events over SSE."""
-    _enforce_rate_limit(request)
-    client_id = _resolve_client_id(request)
-    log_id = await database.log_prompt(payload.query, client_id)
-
-    node_labels = _NODE_LABELS_PL if payload.infosphere == "polish" else _NODE_LABELS_EN
-    empty_msg = (
-        "Backend zwrócił pustą odpowiedź."
-        if payload.infosphere == "polish"
-        else "Backend returned an empty response."
-    )
-    unexpected_msg = (
-        "Nieoczekiwany błąd: {}"
-        if payload.infosphere == "polish"
-        else "Unexpected error: {}"
-    )
+    log_id = await _begin_request(request, payload)
+    node_labels = progress_labels(payload.infosphere)
+    empty_msg, unexpected_msg = stream_error_messages(payload.infosphere)
 
     async def _generate() -> AsyncGenerator[str, None]:
         try:
@@ -306,9 +253,7 @@ async def run_pipeline_endpoint(
     background_tasks: BackgroundTasks,
 ) -> RunPipelineResponse:
     """Run the pipeline synchronously and return its final output."""
-    _enforce_rate_limit(request)
-    client_id = _resolve_client_id(request)
-    log_id = await database.log_prompt(payload.query, client_id)
+    log_id = await _begin_request(request, payload)
     try:
         output = run_pipeline(payload.query, infosphere=payload.infosphere)
     except ValueError as exc:

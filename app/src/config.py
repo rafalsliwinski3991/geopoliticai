@@ -72,6 +72,8 @@ DEFAULT_MODEL = "gpt-4o-mini"
 DEFAULT_ANALYST_ADDITIONAL_SOURCES = 0
 DEFAULT_OPENAI_TIMEOUT_SECONDS = 60.0
 DEFAULT_OPENAI_MAX_OUTPUT_TOKENS = 4096
+DEFAULT_RATE_LIMIT_REQUESTS = 20
+DEFAULT_RATE_LIMIT_WINDOW_SECONDS = 60
 REQUIRED_ENV_VARS = ("OPENAI_API_KEY", "BRAVE_SEARCH_KEY")
 
 AGENT_MODEL_NAMES: dict[str, str] = {
@@ -184,6 +186,32 @@ def get_openai_max_output_tokens() -> int:
     return _get_env_var(
         "OPENAI_MAX_OUTPUT_TOKENS",
         DEFAULT_OPENAI_MAX_OUTPUT_TOKENS,
+        parser=int,
+        validator=lambda value: value > 0,
+        expected_type="an integer",
+        expected_value="a positive integer",
+        default_format="%d",
+    )
+
+
+def get_rate_limit_requests() -> int:
+    """Return the max number of API requests allowed per rate-limit window."""
+    return _get_env_var(
+        "API_RATE_LIMIT_REQUESTS",
+        DEFAULT_RATE_LIMIT_REQUESTS,
+        parser=int,
+        validator=lambda value: value > 0,
+        expected_type="an integer",
+        expected_value="a positive integer",
+        default_format="%d",
+    )
+
+
+def get_rate_limit_window_seconds() -> int:
+    """Return the rolling window size (seconds) used by the API rate limiter."""
+    return _get_env_var(
+        "API_RATE_LIMIT_WINDOW_SECONDS",
+        DEFAULT_RATE_LIMIT_WINDOW_SECONDS,
         parser=int,
         validator=lambda value: value > 0,
         expected_type="an integer",

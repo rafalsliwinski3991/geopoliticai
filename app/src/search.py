@@ -95,6 +95,36 @@ def _normalize_source_notes(
     return compact[: max_chars - 3].rstrip() + "..."
 
 
+def _try_add_source_from_item(
+    item: dict[str, Any],
+    sources: List[Source],
+    seen_urls: set[str],
+    allowed_domains: set[str],
+) -> bool:
+    """Validate a Brave Search item and append it to `sources` if accepted.
+
+    Returns True if the item produced a new source. The source ID is left as
+    a placeholder; callers must run `_renumber_lane_sources` afterwards.
+    """
+    raw_notes = (item.get("description") or "").strip()
+    url = (item.get("url") or "").strip()
+    if not url or url in seen_urls:
+        return False
+    if not _url_matches_allowed_domains(url, allowed_domains):
+        return False
+    seen_urls.add(url)
+    sources.append(
+        Source(
+            id="",
+            title=(item.get("title") or "Untitled").strip(),
+            url=url,
+            notes=_normalize_source_notes(raw_notes),
+            content_excerpt=raw_notes or None,
+        )
+    )
+    return True
+
+
 def _brave_search(client: httpx.Client, query: str, count: int) -> list[dict[str, Any]]:
     """Execute a single Brave Search query and return raw result dicts."""
     resp = client.get(
@@ -165,36 +195,9 @@ def web_searcher(
                 )
                 continue
             for item in items:
-                raw_notes = (item.get("description") or "").strip()
-                url = (item.get("url") or "").strip()
-                if not url or url in seen_urls:
-                    continue
-                if not _url_matches_allowed_domains(url, {domain}):
-                    logger.debug(
-                        "Web searcher (%s): dropped out-of-domain URL %s for domain=%s",
-                        agent_key,
-                        url,
-                        domain,
-                    )
-                    continue
-                seen_urls.add(url)
-                sources.append(
-                    Source(
-                        id=_source_id_for_lane(agent_key, len(sources) + 1),
-                        title=(item.get("title") or "Untitled").strip(),
-                        url=url,
-                        notes=_normalize_source_notes(raw_notes),
-                        content_excerpt=raw_notes or None,
-                    )
-                )
-                logger.debug(
-                    "Web searcher (%s): selected source=%s url=%s",
-                    agent_key,
-                    item.get("title"),
-                    url,
-                )
-                # Keep at most one item per configured domain.
-                break
+                if _try_add_source_from_item(item, sources, seen_urls, {domain}):
+                    # Keep at most one item per configured domain.
+                    break
 
         if not sources:
             combined_query = _build_biased_query(query, references)
@@ -212,21 +215,8 @@ def web_searcher(
                 )
                 return []
             for item in items:
-                raw_notes = (item.get("description") or "").strip()
-                url = (item.get("url") or "").strip()
-                if not url or url in seen_urls:
-                    continue
-                if not _url_matches_allowed_domains(url, set(allowed_domains)):
-                    continue
-                seen_urls.add(url)
-                sources.append(
-                    Source(
-                        id=_source_id_for_lane(agent_key, len(sources) + 1),
-                        title=(item.get("title") or "Untitled").strip(),
-                        url=url,
-                        notes=_normalize_source_notes(raw_notes),
-                        content_excerpt=raw_notes or None,
-                    )
+                _try_add_source_from_item(
+                    item, sources, seen_urls, set(allowed_domains)
                 )
                 if len(sources) >= len(allowed_domains):
                     break
