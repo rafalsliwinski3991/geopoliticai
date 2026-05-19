@@ -37,7 +37,7 @@ async def test_run_pipeline_stream_logs_prompt_and_output() -> None:
 
     with patch("api.database.log_prompt", mock_log_prompt):
         with patch("api.database.log_output", mock_log_output):
-            with patch("api.build_graph", return_value=mock_graph):
+            with patch("api.graph", mock_graph):
                 client = TestClient(app)
                 response = client.post(
                     "/api/run_pipeline/stream",

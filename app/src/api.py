@@ -19,7 +19,7 @@ from pydantic import BaseModel, Field, field_validator
 
 import database
 from config import init_environment, require_env
-from graph import build_graph, build_runtime_config, run_pipeline
+from graph import build_runtime_config, graph, run_pipeline
 from models import build_initial_pipeline_state, normalize_language
 
 logger = logging.getLogger(__name__)
@@ -235,7 +235,6 @@ async def run_pipeline_stream_endpoint(
 
     async def _generate() -> AsyncGenerator[str, None]:
         try:
-            graph = build_graph(infosphere=payload.infosphere)
             initial_state = build_initial_pipeline_state(
                 payload.query,
                 language=normalize_language(payload.infosphere),

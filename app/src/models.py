@@ -100,7 +100,16 @@ class RefereeReport:
 
 
 class PipelineState(TypedDict):
-    """LangGraph state shared by all pipeline nodes."""
+    """LangGraph state shared by all pipeline nodes.
+
+    Reducer choice per field:
+      - `*_sources`, `fact_checks`, `extracted_claims` use the `add` reducer
+        because they have multiple writers (e.g. the `search_*` and analyst
+        nodes both append sources for the same lane).
+      - `*_claims` are plain lists because each lane's claims are written by
+        a single analyst (`left_analyst` -> `left_claims`, etc.), so the
+        default overwrite semantics are correct and intentional.
+    """
 
     query: str
     language: str

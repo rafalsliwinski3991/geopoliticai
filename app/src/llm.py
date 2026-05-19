@@ -72,7 +72,6 @@ class StructuredOutputChain:
         )
         token_limits = _structured_output_token_limits(get_openai_max_output_tokens())
         timeout = get_openai_timeout_seconds()
-        last_error: Exception | None = None
         for token_limit in token_limits:
             llm = ChatOpenAI(
                 model=model,
@@ -87,16 +86,11 @@ class StructuredOutputChain:
             except Exception as exc:
                 if not _is_length_limit_error(exc) or token_limit == token_limits[-1]:
                     raise
-                last_error = exc
                 logger.warning(
                     "Structured output for schema=%s hit token limit=%d; retrying with a larger limit.",
                     self.schema.__name__,
                     token_limit,
                 )
-        else:
-            if last_error is not None:
-                raise last_error
-            raise ValueError("Structured output retry loop ended without a result.")
 
         if isinstance(result, self.schema):
             return result

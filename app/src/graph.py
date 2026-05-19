@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any, Literal
 
 from langgraph.graph import END, START, StateGraph
+from langgraph.types import RetryPolicy
 
 from config import get_infosphere_sources
 from models import (
@@ -34,6 +35,14 @@ from nodes import (
 
 DEFAULT_INFOSPHERE = "english"
 DEFAULT_REPORT_MODE = "full"
+RECURSION_LIMIT = 25
+
+# Conservative retry for LLM-heavy nodes: failures are expensive and usually
+# need a backoff to clear (rate limits, transient model errors).
+_LLM_RETRY = RetryPolicy(max_attempts=3, backoff_factor=2.0)
+# Aggressive retry for IO-heavy search nodes: failures are cheap to retry
+# and most are transient HTTP errors against Brave Search.
+_SEARCH_RETRY = RetryPolicy(max_attempts=5, backoff_factor=0.5)
 
 
 def _normalize_report_mode(report_mode: str) -> str:
@@ -55,7 +64,7 @@ def build_runtime_config(
     report_mode: str = DEFAULT_REPORT_MODE,
     *,
     thread_id: str | None = None,
-) -> dict[str, dict[str, Any]]:
+) -> dict[str, Any]:
     """Build LangGraph runtime configuration shared by sync and stream entrypoints."""
     normalized_report_mode = _normalize_report_mode(report_mode)
     language = normalize_language(infosphere)
@@ -68,7 +77,7 @@ def build_runtime_config(
         if not thread_id.strip():
             raise ValueError("thread_id must not be empty when provided.")
         configurable["thread_id"] = thread_id
-    return {"configurable": configurable}
+    return {"configurable": configurable, "recursion_limit": RECURSION_LIMIT}
 
 
 def build_graph(
@@ -84,19 +93,23 @@ def build_graph(
 
     graph.add_node("ingest_request", ingest_request)
     graph.add_node("build_research_plan", build_research_plan_step)
-    graph.add_node("search_left_pool", search_left_pool)
-    graph.add_node("search_center_pool", search_center_pool)
-    graph.add_node("search_right_pool", search_right_pool)
-    graph.add_node("search_people_pool", search_people_pool)
-    graph.add_node("left_analyst", left_analyst_agent)
-    graph.add_node("center_analyst", center_analyst_agent)
-    graph.add_node("right_analyst", right_analyst_agent)
-    graph.add_node("people_analyst", people_analyst_agent)
-    graph.add_node("referee", run_referee_checks)
-    graph.add_node("referee_blocked_summary", summarize_referee_block)
-    graph.add_node("extract_claims", extract_claims_for_verification)
-    graph.add_node("cross_check_facts", cross_check_facts_agent)
-    graph.add_node("compose_final", compose_final_agent)
+    graph.add_node("search_left_pool", search_left_pool, retry_policy=_SEARCH_RETRY)
+    graph.add_node("search_center_pool", search_center_pool, retry_policy=_SEARCH_RETRY)
+    graph.add_node("search_right_pool", search_right_pool, retry_policy=_SEARCH_RETRY)
+    graph.add_node("search_people_pool", search_people_pool, retry_policy=_SEARCH_RETRY)
+    graph.add_node("left_analyst", left_analyst_agent, retry_policy=_LLM_RETRY)
+    graph.add_node("center_analyst", center_analyst_agent, retry_policy=_LLM_RETRY)
+    graph.add_node("right_analyst", right_analyst_agent, retry_policy=_LLM_RETRY)
+    graph.add_node("people_analyst", people_analyst_agent, retry_policy=_LLM_RETRY)
+    graph.add_node("referee", run_referee_checks, retry_policy=_LLM_RETRY)
+    graph.add_node(
+        "referee_blocked_summary", summarize_referee_block, retry_policy=_LLM_RETRY
+    )
+    graph.add_node(
+        "extract_claims", extract_claims_for_verification, retry_policy=_LLM_RETRY
+    )
+    graph.add_node("cross_check_facts", cross_check_facts_agent, retry_policy=_LLM_RETRY)
+    graph.add_node("compose_final", compose_final_agent, retry_policy=_LLM_RETRY)
     graph.add_node("supervisor", supervisor_step)
 
     graph.add_edge(START, "ingest_request")
@@ -144,10 +157,17 @@ def run_pipeline(
     normalized_report_mode = _normalize_report_mode(report_mode)
     language = normalize_language(infosphere)
 
-    app = build_graph(
-        infosphere=infosphere,
-        report_mode=normalized_report_mode,
-        checkpointer=checkpointer,
+    # Reuse the module-level compiled graph; only recompile when the caller
+    # supplied a checkpointer (the only configurable that changes the graph
+    # itself rather than just per-run config).
+    app = (
+        build_graph(
+            infosphere=infosphere,
+            report_mode=normalized_report_mode,
+            checkpointer=checkpointer,
+        )
+        if checkpointer is not None
+        else graph
     )
     initial_state = build_initial_pipeline_state(
         query,
