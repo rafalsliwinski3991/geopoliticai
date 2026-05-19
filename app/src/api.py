@@ -45,6 +45,10 @@ RATE_LIMIT_WINDOW_SECONDS = get_rate_limit_window_seconds()
 # concurrent async-task access within one worker.
 _rate_limit_store: dict[str, deque[float]] = defaultdict(deque)
 _rate_limit_lock = Lock()
+# Sweep stale entries (one-shot clients that never return) every N requests
+# to keep `_rate_limit_store` from growing unbounded over the process lifetime.
+_RATE_LIMIT_SWEEP_INTERVAL = 256
+_rate_limit_request_counter = 0
 
 
 def _parse_allowed_origins() -> list[str]:
@@ -118,10 +122,29 @@ def _resolve_client_id(request: Request) -> str:
     return "unknown"
 
 
+def _sweep_rate_limit_store(now: float) -> None:
+    """Evict client IDs whose windows are entirely in the past. Caller holds the lock."""
+    cutoff = now - RATE_LIMIT_WINDOW_SECONDS
+    stale = [cid for cid, ts in _rate_limit_store.items() if not ts or ts[-1] < cutoff]
+    for cid in stale:
+        del _rate_limit_store[cid]
+
+
 def _enforce_rate_limit(request: Request) -> None:
+    """Apply the in-process per-client token-bucket rate limit.
+
+    Note: state lives in this worker only. With `uvicorn --workers >1`,
+    each worker maintains an independent window; deploy with a single
+    worker (or sticky-route per client) if cross-worker enforcement is
+    needed.
+    """
+    global _rate_limit_request_counter
     now = time.monotonic()
     client_id = _resolve_client_id(request)
     with _rate_limit_lock:
+        _rate_limit_request_counter += 1
+        if _rate_limit_request_counter % _RATE_LIMIT_SWEEP_INTERVAL == 0:
+            _sweep_rate_limit_store(now)
         timestamps = _rate_limit_store[client_id]
         cutoff = now - RATE_LIMIT_WINDOW_SECONDS
         while timestamps and timestamps[0] < cutoff:

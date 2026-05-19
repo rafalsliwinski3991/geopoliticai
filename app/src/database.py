@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any, cast
 
 import asyncpg  # type: ignore[import-untyped]
 import httpx
 
+logger = logging.getLogger(__name__)
 _pool: Any | None = None
 
 
@@ -79,6 +81,7 @@ async def log_prompt(prompt: str, ip: str) -> int | None:
             )
             return cast(int, row_id)
     except Exception:
+        logger.warning("Failed to write prompt log row.", exc_info=True)
         return None
 
 
@@ -94,4 +97,4 @@ async def log_output(log_id: int, output: str) -> None:
                 log_id,
             )
     except Exception:
-        pass
+        logger.warning("Failed to update prompt log row %s.", log_id, exc_info=True)
