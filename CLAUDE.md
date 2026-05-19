@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project layout
 
-The live code lives under `app/`. The repository root also contains a stale `Dockerfile`, `main.py`, and `requirements.txt` that import a no-longer-existing `geopoliticai` package — **do not use them**, they only persist because the GitHub Actions workflow (`.github/workflows/unit-tests.yml`) still references `requirements.txt`. The shipped image is built from `app/Dockerfile`, and the CLI/API entrypoints are in `app/src/`.
+The live code lives under `app/`. The shipped image is built from `app/Dockerfile`, and the CLI/API entrypoints are in `app/src/`.
 
 - `app/src/` — Python package; treated as the import root (`PYTHONPATH=/app/src` in containers). Modules use bare `from agents import ...`, `from models import ...` style, so the package directory must be on `sys.path`.
 - `frontend/` — single `index.html` (Alpine.js + `marked.js` from CDN) plus `assets/`. No bundler. Served either directly by FastAPI (dev) or by nginx (prod).
@@ -36,7 +36,7 @@ ingest_request → build_research_plan → ┬─ search_left_pool   → left_an
 - **Search** (`app/src/search.py`) calls Brave Search, restricted to lane-allowed domains; results are renumbered with lane-prefixed source IDs (`L1`, `C1`, `R1`, `P1`, `F1`).
 - **Persistence**: `app/src/database.py` is an optional asyncpg pool that logs prompts and outputs into a `prompt_logs` table. Activated only when `DATABASE_URL` is set; otherwise log calls become no-ops. The pool is initialised in the FastAPI `lifespan` hook.
 - **API**: `app/src/api.py` exposes `POST /api/run_pipeline` (sync) and `POST /api/run_pipeline/stream` (SSE with per-node progress events). Both enforce an in-process token-bucket rate limit keyed by `X-Forwarded-For` (or `request.client.host`). The streaming endpoint uses `graph.astream_events(version="v2")` and emits Polish or English progress labels based on the request's `infosphere`.
-- **Frontend integration**: in dev, FastAPI mounts `/assets` and serves `frontend/index.html` at `/` via `FileResponse` (paths controlled by `FRONTEND_HTML_PATH`). In prod, nginx serves the static frontend and proxies `/api/` to the backend. `frontend/nginx.conf` is the prod config (TLS + basic auth via `docker-entrypoint.sh` writing `htpasswd`); `frontend/nginx.local.conf` exists but is not currently wired into any compose file.
+- **Frontend integration**: in dev, FastAPI mounts `/assets` and serves `frontend/index.html` at `/` via `FileResponse` (paths controlled by `FRONTEND_HTML_PATH`). In prod, nginx serves the static frontend and proxies `/api/` to the backend. `frontend/nginx.conf` is the prod config (TLS + basic auth via `docker-entrypoint.sh` writing `htpasswd`).
 
 
 ## LangGraph Agentic Workflows — Best Practices
@@ -543,8 +543,6 @@ Set in `.env` at the repo root (loaded by docker compose) or `app/.env` (loaded 
 
 ## Things that bite
 
-- **Don't add new top-level Python modules to the repo root.** Imports inside `app/src/` assume `src/` is on `sys.path` (set as `PYTHONPATH=/app/src` in the override compose; `tool.setuptools.package-dir` in `pyproject.toml`). Adding `geopoliticai/` at the root will not be picked up.
-- **Polish vs English prompts and sources are not interchangeable.** Both the LLM prompts and the curated `INFOSPHERE_SOURCES` switch on the `language`/`infosphere` argument that's threaded through every node via `functools.partial` in `build_graph()`.
-- **The graph is recompiled per request in the streaming endpoint** (`build_graph(infosphere=...)`) so that the per-language partials are correct. The synchronous endpoint goes through `run_pipeline()` which does the same.
+- **Don't add new top-level Python modules to the repo root.** Imports inside `app/src/` assume `src/` is on `sys.path` (set as `PYTHONPATH=/app/src` in the override compose; `tool.setuptools.package-dir` in `pyproject.toml`).
+- **Polish vs English prompts and sources are not interchangeable.** Both the LLM prompts and the curated `INFOSPHERE_SOURCES` switch on the `language`/`infosphere` argument that flows through `build_runtime_config(infosphere=...)` into each node via LangGraph's runtime config. There is no per-request graph rebuild; the module-level `graph` is reused.
 - **`compose_final`** depends on referee not having blocked — if you change routing, also update the `_route_after_referee` conditional in `graph.py`.
-- **CI uses the stale top-level `requirements.txt`**, not `app/pyproject.toml`. If you change runtime deps in `pyproject.toml`, the CI workflow won't pick them up unless you also update `requirements.txt` (or fix the workflow).

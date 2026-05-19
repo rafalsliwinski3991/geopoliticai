@@ -42,7 +42,7 @@ ingest_request -> build_research_plan
 - **Search** (`app/src/search.py`) calls Brave Search, restricted to lane-allowed domains; results are renumbered with lane-prefixed source IDs (`L1`, `C1`, `R1`, `P1`, `F1`).
 - **Persistence**: `app/src/database.py` is an optional asyncpg pool that logs prompts and outputs into a `prompt_logs` table. Activated only when `DATABASE_URL` is set; otherwise log calls become no-ops. The pool is initialized in the FastAPI `lifespan` hook.
 - **API**: `app/src/api.py` exposes `POST /api/run_pipeline` (sync) and `POST /api/run_pipeline/stream` (SSE with per-node progress events). Both enforce an in-process token-bucket rate limit keyed by `X-Forwarded-For` or `request.client.host`. The streaming endpoint uses `graph.astream_events(version="v2")` and emits Polish or English progress labels based on the request's `infosphere`.
-- **Frontend integration**: in dev, FastAPI mounts `/assets` and serves `frontend/index.html` at `/` via `FileResponse` (paths controlled by `FRONTEND_HTML_PATH`). In prod, nginx serves the static frontend and proxies `/api/` to the backend. `frontend/nginx.conf` is the prod config with TLS and basic auth via `docker-entrypoint.sh` writing `htpasswd`; `frontend/nginx.local.conf` exists but is not currently wired into any compose file.
+- **Frontend integration**: in dev, FastAPI mounts `/assets` and serves `frontend/index.html` at `/` via `FileResponse` (paths controlled by `FRONTEND_HTML_PATH`). In prod, nginx serves the static frontend and proxies `/api/` to the backend. `frontend/nginx.conf` is the prod config with TLS and basic auth via `docker-entrypoint.sh` writing `htpasswd`.
 
 
 ## LangGraph Agentic Workflows — Best Practices
