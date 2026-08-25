@@ -8,7 +8,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 The live code lives under `app/`. The repository root also contains a stale `Dockerfile`, `main.py`, and `requirements.txt` that import a no-longer-existing `geopoliticai` package — **do not use them**, they only persist because the GitHub Actions workflow (`.github/workflows/unit-tests.yml`) still references `requirements.txt`. The shipped image is built from `app/Dockerfile`, and the CLI/API entrypoints are in `app/src/`.
 
-- `app/src/` — Python package; treated as the import root (`PYTHONPATH=/app/src` in containers). Modules use bare `from agents import ...`, `from models import ...` style, so the package directory must be on `sys.path`.
+- `app/src/` — Python package; treated as the import root (`PYTHONPATH=/app/src` in containers). Modules use bare imports such as `from nodes import ...`, `from models import ...`, so the package directory must be on `sys.path`. `app/src/nodes/` contains all LangGraph node callables.
+- `.github/skills/` — repository-local GitHub Copilot skills migrated from the local Claude skill collection, including their references and helper scripts.
 - `frontend/` — single `index.html` (Alpine.js + `marked.js` from CDN) plus `assets/`. No bundler. Served either directly by FastAPI (dev) or by nginx (prod).
 - `docker-compose.yml` + `docker-compose.override.yml` — local dev. The override mounts `app/src` and `frontend/` into the backend container, exposes port `3000:8000`, and runs uvicorn with `--reload`. The frontend container is gated behind the `production` profile, so `docker compose up` runs only postgres + backend.
 - `docker-compose.prod.yml` — adds restart policies, the `/api/health` healthcheck, TLS cert mount (`/etc/letsencrypt`), and basic-auth env vars; activates the frontend service.
@@ -25,14 +26,14 @@ ingest_request → build_research_plan → ┬─ search_left_pool   → left_an
                                        ├─ search_center_pool → center_analyst  ─┤
                                        ├─ search_right_pool  → right_analyst   ─┼→ referee ──(blocked)──→ referee_blocked_summary → supervisor → END
                                        └─ search_people_pool → people_analyst  ─┘                │
-                                                                                                 └──(continue)──→ extract_claims → cross_check_facts → compose_final → supervisor → END
+                                                                                                 └──(continue)──→ cross_check_facts → compose_final → supervisor → END
 ```
 
 - **Lanes** (`left`, `centrist`, `right`, `people`, plus `fact` for cross-checking): each lane has a curated source allow-list per infosphere defined in `app/src/config.py` (`ENGLISH_INFOSPHERE_SOURCES`, `POLISH_INFOSPHERE_SOURCES`). Search queries are constrained with `site:` filters built from those domains.
 - **Infosphere** (`"english"` | `"polish"`): selected explicitly via the `--infosphere` CLI flag or the `infosphere` field in API requests. CLI auto-detects via `detect_language()` in `models.py` (Polish diacritics + stopword tokens). The infosphere drives both source pools and prompt language.
 - **Referee** can short-circuit the pipeline (returns `blocked: true`), routing through `referee_blocked_summary` instead of fact-checking.
 - **`compose_final`** writes the user-facing report; **`supervisor`** is the terminal node that emits `final_output`.
-- **OpenAI calls** go through `app/src/llm.py`, which wraps both the Responses API and Chat Completions with JSON-mode output and graceful retries for `max_completion_tokens`/`temperature` compatibility issues across model variants. All structured outputs use `StructuredOutputChain` (Pydantic schema → JSON object).
+- **OpenAI calls** go through `app/src/llm.py`: structured nodes use `StructuredOutputChain`, final synthesis uses `TextOutputChain` for streaming, and provider failures cross an `LLMInvocationError` boundary. Structured calls use an explicit retry budget and a single output-token ceiling.
 - **Search** (`app/src/search.py`) calls Brave Search, restricted to lane-allowed domains; results are renumbered with lane-prefixed source IDs (`L1`, `C1`, `R1`, `P1`, `F1`).
 - **Persistence**: `app/src/database.py` is an optional asyncpg pool that logs prompts and outputs into a `prompt_logs` table. Activated only when `DATABASE_URL` is set; otherwise log calls become no-ops. The pool is initialised in the FastAPI `lifespan` hook.
 - **API**: `app/src/api.py` exposes `POST /api/run_pipeline` (sync) and `POST /api/run_pipeline/stream` (SSE with per-node progress events). Both enforce an in-process token-bucket rate limit keyed by `X-Forwarded-For` (or `request.client.host`). The streaming endpoint uses `graph.astream_events(version="v2")` and emits Polish or English progress labels based on the request's `infosphere`.
@@ -188,7 +189,7 @@ class AgentState(TypedDict):
 | **Node-level** | `try/except` inside node | Add to `errors` state, increment counter, continue |
 | **Graph-level** | Conditional edge on `error_count` | Route to fallback or error_handler node |
 | **Application-level** | Wrap `graph.invoke()` | Handle `GraphInterruptException`, timeouts, unrecoverable failures |
-| **Guardrails** | `recursion_limit` in `graph.compile()` | Prevent infinite loops — set explicitly |
+| **Guardrails** | Top-level runtime `recursion_limit` config | Prevent infinite loops — set explicitly |
 
 ```python
 import traceback
@@ -206,7 +207,7 @@ def safe_tool_node(state: AgentState) -> dict:
         }
 
 # Set recursion_limit to avoid runaway loops
-app = graph.compile(checkpointer=checkpointer, recursion_limit=25)
+result = app.invoke(input_state, {"configurable": {}, "recursion_limit": 25})
 ```
 
 ---
@@ -427,7 +428,6 @@ app = graph.compile(
     checkpointer=checkpointer,         # mandatory for production
     interrupt_before=["human_review"], # pause before sensitive nodes
     interrupt_after=[],                # pause after specific nodes if needed
-    recursion_limit=25,                # guard against infinite loops (default 25)
     # store=store,                     # attach long-term memory store
 )
 
@@ -468,7 +468,7 @@ def test_full_agent_flow():
 ```
 Graph compile checklist:
   ✅ Persistent checkpointer (PostgresSaver in prod, InMemorySaver in dev)
-  ✅ recursion_limit set explicitly
+  ✅ recursion_limit passed as top-level invoke/stream config
   ✅ LangSmith tracing enabled
   ✅ interrupt_before for all HITL nodes
   ✅ graph.get_graph().print_ascii() — verify topology before deploy
@@ -535,7 +535,7 @@ Set in `.env` at the repo root (loaded by docker compose) or `app/.env` (loaded 
 - `OPENAI_API_KEY`, `BRAVE_SEARCH_KEY` — required; `require_env()` raises on startup if missing.
 - `DATABASE_URL` — optional; without it, prompt logging is silently disabled.
 - `CORS_ALLOW_ORIGINS` — comma-separated; defaults to localhost variants.
-- `OPENAI_MODEL`, `OPENAI_TIMEOUT_SECONDS`, `OPENAI_MAX_OUTPUT_TOKENS`, `ANALYST_ADDITIONAL_SOURCES` — tuning knobs read by `config.py`.
+- `OPENAI_TIMEOUT_SECONDS`, `OPENAI_MAX_OUTPUT_TOKENS`, `ANALYST_ADDITIONAL_SOURCES` — tuning knobs read by `config.py`. Pipeline nodes are pinned per agent in `AGENT_MODEL_NAMES`; `OPENAI_MODEL` is not consulted by those nodes.
 - `API_RATE_LIMIT_REQUESTS`, `API_RATE_LIMIT_WINDOW_SECONDS` — rate-limit overrides.
 - `AUTH_USER`, `AUTH_PASSWORD` — only consumed by the prod frontend container's entrypoint to generate `htpasswd` for nginx basic auth.
 - `LANGSMITH_API_KEY`, `LANGSMITH_PROJECT` — optional tracing.
@@ -544,7 +544,7 @@ Set in `.env` at the repo root (loaded by docker compose) or `app/.env` (loaded 
 ## Things that bite
 
 - **Don't add new top-level Python modules to the repo root.** Imports inside `app/src/` assume `src/` is on `sys.path` (set as `PYTHONPATH=/app/src` in the override compose; `tool.setuptools.package-dir` in `pyproject.toml`). Adding `geopoliticai/` at the root will not be picked up.
-- **Polish vs English prompts and sources are not interchangeable.** Both the LLM prompts and the curated `INFOSPHERE_SOURCES` switch on the `language`/`infosphere` argument that's threaded through every node via `functools.partial` in `build_graph()`.
-- **The graph is recompiled per request in the streaming endpoint** (`build_graph(infosphere=...)`) so that the per-language partials are correct. The synchronous endpoint goes through `run_pipeline()` which does the same.
+- **Polish vs English prompts and sources are not interchangeable.** Nodes receive `infosphere_sources`, `language`, and `report_mode` through `RunnableConfig["configurable"]` via `nodes/runtime_config.py`; do not reintroduce partial wrappers.
+- **The module-level graph is compiled once.** Both synchronous and streaming paths pass per-request values with `build_runtime_config()`.
 - **`compose_final`** depends on referee not having blocked — if you change routing, also update the `_route_after_referee` conditional in `graph.py`.
 - **CI uses the stale top-level `requirements.txt`**, not `app/pyproject.toml`. If you change runtime deps in `pyproject.toml`, the CI workflow won't pick them up unless you also update `requirements.txt` (or fix the workflow).
