@@ -31,7 +31,7 @@ Providers are identified by their repository configuration directories:
 | langgraph-typescript-quickstart | yes | yes | yes | yes |
 | langsmith-online-eval-engineering | yes | yes | yes | yes |
 | managed-deep-agents | yes | yes | yes | yes |
-| swarm | yes | yes | yes | yes |
+| swarm | no | no | yes | no |
 
 The Claude `grill-me` skill stores its session files under
 `docs/brainstorming/`, not at the repository root.

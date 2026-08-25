@@ -30,6 +30,7 @@ ever removed.
   `.klaussy-version` file is metadata.
 - `.github/skills/` - GitHub Copilot skills and bundled references/scripts.
 - `.opencode/skills/` - OpenCode-compatible copy of the same skill bundle.
+- `swarm` is currently available only under `.claude/skills/`.
 - `app/langgraph.json` - LangGraph CLI registration for `src/graph.py:graph`.
 - `docker-compose*.yml` - development and production service definitions.
 

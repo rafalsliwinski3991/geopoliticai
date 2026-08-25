@@ -23,6 +23,7 @@ requirements file, so do not treat it as the application source of truth.
   `.klaussy-version` file is metadata.
 - `.github/skills/` contains Copilot skills; `.opencode/skills/` is their
   OpenCode-compatible mirror.
+- The `swarm` skill is available only under `.claude/skills/`.
 
 ## Architecture
 

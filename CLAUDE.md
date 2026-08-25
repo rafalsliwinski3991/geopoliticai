@@ -27,6 +27,7 @@ it.
   `.klaussy-version` file is metadata.
 - `.github/skills/` - Copilot skills, references, scripts, and templates.
 - `.opencode/skills/` - OpenCode-compatible mirror of those skills.
+- `swarm` is currently available only under `.claude/skills/`.
 - `app/langgraph.json` - LangGraph CLI entrypoint configuration.
 
 ## Workflow
