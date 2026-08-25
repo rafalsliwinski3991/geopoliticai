@@ -4,7 +4,7 @@ description: >
   plans and review code for correctness, architecture, edge cases, security,
   concurrency issues, maintainability, and missing tests.
 mode: subagent
-model: nvidia/nemotron-3-super-120b-a12b
+model: nvidia/nemotron-3-ultra
 steps: 12
 permissions:
   - action: edit
