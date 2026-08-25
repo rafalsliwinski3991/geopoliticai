@@ -36,12 +36,12 @@ The design tree is a durable artifact, not just conversation scrollback — pers
 **Resolve the save path once, at the start of the session** (this is a fact to find, not something to ask the user): run `git rev-parse --show-toplevel` to get the repo root; if that fails (not inside a git repo), fall back to the current working directory. The target file lives at:
 
 ```
-<repo_root>/brainstorming/<YYYYMonDD>_brainstorm_v<N>.md
+<repo_root>/docs/brainstorming/<YYYYMonDD>_brainstorm_v<N>.md
 ```
 
 - Date format matches `2026Aug24` (4-digit year, 3-letter capitalized month abbreviation, 2-digit day) — today's date.
-- `<N>` picks out *this* session's file: list `<repo_root>/brainstorming/` for files already matching today's date prefix, and use one past the highest number found (start at `v1` if none exist today). Do this exactly once, at session start, so this session claims its own number even if other sessions ran earlier the same day.
-- Create the `brainstorming/` directory if it doesn't exist.
+- `<N>` picks out *this* session's file: list `<repo_root>/docs/brainstorming/` for files already matching today's date prefix, and use one past the highest number found (start at `v1` if none exist today). Do this exactly once, at session start, so this session claims its own number even if other sessions ran earlier the same day.
+- Create the `docs/brainstorming/` directory if it doesn't exist.
 - For the rest of *this* session, keep writing to that same claimed file — updated in place round over round, never advancing to `v<N+1>` mid-session. The version only advances again when the *next* fresh session starts.
 
 **Write an initial version of the file** as soon as the first round is posed (don't wait for an answer to exist before the topic and open questions are captured), then **overwrite it again after every round the user answers**, before computing and asking the next round. Structure the file as:

@@ -16,6 +16,8 @@ requirements file, so do not treat it as the application source of truth.
 - `app/src/nodes/` contains all LangGraph nodes.
 - `app/tests/` contains unit and integration tests.
 - `frontend/` is a static Alpine.js/`marked.js` frontend with no bundler.
+- `docs/brainstorming/` contains durable session artifacts created by Claude's
+  `grill-me` skill.
 - `ai_tools_tables.md` inventories repository skills and hooks by provider.
 - `.claude/hooks/` contains no active hook implementations; its remaining
   `.klaussy-version` file is metadata.

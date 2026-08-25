@@ -19,6 +19,8 @@ it.
 - `app/src/nodes/` - all graph node implementations.
 - `app/tests/` - unit and integration tests.
 - `frontend/` - static Alpine.js/`marked.js` frontend and assets.
+- `docs/brainstorming/` - durable session artifacts created by the Claude
+  `grill-me` skill.
 - `ai_tools_tables.md` - provider-by-provider inventory of repository skills
   and hooks.
 - `.claude/hooks/` - contains no active hook implementations; its remaining

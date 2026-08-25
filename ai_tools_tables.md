@@ -33,14 +33,14 @@ Providers are identified by their repository configuration directories:
 | managed-deep-agents | yes | yes | yes | yes |
 | swarm | yes | yes | yes | yes |
 
+The Claude `grill-me` skill stores its session files under
+`docs/brainstorming/`, not at the repository root.
+
 ## Hooks
 
-The hook table includes executable hook implementations only. The Claude
+The hook table includes executable hook implementations only. There are
+currently no active repository-local hooks for any provider. The Claude
 `.claude/hooks/.klaussy-version` file is metadata and is therefore excluded.
 
 | Hook | GitHub Copilot | OpenCode | Claude | Codex |
 |---|---:|---:|---:|---:|
-| dependency_guard.py | no | no | no | no |
-| plan_guidance.py | no | no | no | no |
-| read_injection_guard.py | no | no | no | no |
-| self_review_guard.py | no | no | no | no |
