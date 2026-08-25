@@ -4,7 +4,6 @@ from nodes.build_research_plan import build_research_plan_step
 from nodes.center_analyst import center_analyst_agent
 from nodes.compose_final import compose_final_agent
 from nodes.cross_check_facts import cross_check_facts_agent
-from nodes.extract_claims import extract_claims_for_verification
 from nodes.ingest_request import ingest_request
 from nodes.left_analyst import left_analyst_agent
 from nodes.people_analyst import people_analyst_agent
@@ -23,7 +22,6 @@ __all__ = [
     "center_analyst_agent",
     "compose_final_agent",
     "cross_check_facts_agent",
-    "extract_claims_for_verification",
     "ingest_request",
     "left_analyst_agent",
     "people_analyst_agent",

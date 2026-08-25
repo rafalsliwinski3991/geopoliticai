@@ -8,10 +8,10 @@ from langchain_core.runnables import RunnableConfig
 from pydantic import BaseModel, Field, field_validator
 
 from config import get_model
-from llm import invoke_structured_chain
-from models import Claim, FactCheckResult, PipelineState, Source
+from llm import LLMInvocationError, invoke_structured_chain
+from models import Claim, FactCheckResult, PipelineState, Source, build_error_record
 from nodes.runtime_config import runtime_infosphere_sources, runtime_language
-from search import web_searcher
+from search import SearchExhaustedError, web_searcher
 
 logger = logging.getLogger(__name__)
 SUPPORTED_VERDICTS = {"TRUE", "PARTIALLY TRUE", "MISLEADING", "FALSE"}
@@ -103,7 +103,13 @@ def cross_check_facts_agent(
     """Run fact checks for all claims and return structured verdicts."""
     infosphere_sources = runtime_infosphere_sources(state, config)
     language = runtime_language(state, config)
-    fact_sources = web_searcher(state, "fact", infosphere_sources["fact"])
+    errors = []
+    try:
+        fact_sources = web_searcher(state, "fact", infosphere_sources["fact"])
+    except SearchExhaustedError as exc:
+        logger.warning("Fact-check: fact search failed, using lane sources: %s", exc)
+        fact_sources = []
+        errors.append(build_error_record("cross_check_facts_search", exc))
     all_context_sources = (
         state["left_sources"]
         + state["centrist_sources"]
@@ -148,37 +154,49 @@ def cross_check_facts_agent(
     response_language = "Polish" if language == "polish" else "English"
     model_name = get_model("cross_check_facts")
 
-    data = invoke_structured_chain(
-        schema=FactCheckOutput,
-        system_prompt="You are a meticulous fact-checker who only uses the provided sources.",
-        human_prompt=(
-            "Sources:\n{source_block}\n\n"
-            "Claims:\n{claims_block}\n\n"
-            "Preferred fact-check references (use for methods; do not invent citations):\n"
-            "{reference_block}\n\n"
-            "Task: Fact-check each claim strictly against the provided sources. "
-            "Do not speculate or add outside knowledge. "
-            "Use verdicts: TRUE, PARTIALLY TRUE, MISLEADING, FALSE. "
-            "Write the rationale in {response_language}. Keep the verdict labels exactly as specified.\n"
-            "Output requirements:\n"
-            "- Return a JSON object with key `results`.\n"
-            "- Return exactly {claims_count} items in `results` (one per claim).\n"
-            "- `claim_text` should correspond to one input claim text (minor wording differences are acceptable).\n"
-            "- If evidence is insufficient, still return that claim with verdict `MISLEADING` and rationale "
-            "'Insufficient evidence in provided sources'.\n"
-            "Return JSON exactly like:\n"
-            '{{"results": [{{"claim_text": "...", "verdict": "MISLEADING", "rationale": "...", "source_ids": []}}]}}'
-        ),
-        variables={
-            "source_block": source_block,
-            "claims_block": claims_block,
-            "reference_block": reference_block,
-            "response_language": response_language,
-            "claims_count": claims_count,
-        },
-        temperature=0.0,
-        model=model_name,
-    )
+    try:
+        data = invoke_structured_chain(
+            schema=FactCheckOutput,
+            system_prompt="You are a meticulous fact-checker who only uses the provided sources.",
+            human_prompt=(
+                "Sources:\n{source_block}\n\n"
+                "Claims:\n{claims_block}\n\n"
+                "Preferred fact-check references (use for methods; do not invent citations):\n"
+                "{reference_block}\n\n"
+                "Task: Fact-check each claim strictly against the provided sources. "
+                "Do not speculate or add outside knowledge. "
+                "Use verdicts: TRUE, PARTIALLY TRUE, MISLEADING, FALSE. "
+                "Write the rationale in {response_language}. Keep the verdict labels exactly as specified.\n"
+                "Output requirements:\n"
+                "- Return a JSON object with key `results`.\n"
+                "- Return exactly {claims_count} items in `results` (one per claim).\n"
+                "- `claim_text` should correspond to one input claim text (minor wording differences are acceptable).\n"
+                "- If evidence is insufficient, still return that claim with verdict `MISLEADING` and rationale "
+                "'Insufficient evidence in provided sources'.\n"
+                "Return JSON exactly like:\n"
+                '{{"results": [{{"claim_text": "...", "verdict": "MISLEADING", "rationale": "...", "source_ids": []}}]}}'
+            ),
+            variables={
+                "source_block": source_block,
+                "claims_block": claims_block,
+                "reference_block": reference_block,
+                "response_language": response_language,
+                "claims_count": claims_count,
+            },
+            temperature=0.0,
+            model=model_name,
+        )
+    except LLMInvocationError as exc:
+        rationale = (
+            "Nie udalo sie zweryfikowac twierdzenia z powodu bledu modelu."
+            if language == "polish"
+            else "The claim could not be verified because the model failed."
+        )
+        return {
+            "fact_sources": fact_sources,
+            "fact_checks": [_fallback_result_for_claim(claim, rationale) for claim in claims],
+            "errors": errors + [build_error_record("cross_check_facts", exc)],
+        }
     raw_results = list(getattr(data, "results", []))
     logger.debug("Fact-check: LLM raw results count=%d", len(raw_results))
     for idx, raw_item in enumerate(raw_results, start=1):
@@ -262,4 +280,5 @@ def cross_check_facts_agent(
     return {
         "fact_sources": fact_sources,
         "fact_checks": results,
+        "errors": errors,
     }

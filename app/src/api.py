@@ -16,10 +16,17 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, field_validator
+from starlette.concurrency import run_in_threadpool
 
 import database
 from config import init_environment, require_env
-from graph import build_graph, build_runtime_config, run_pipeline
+from graph import (
+    build_runtime_config,
+    invoke_pipeline,
+)
+from graph import (
+    graph as pipeline_graph,
+)
 from models import build_initial_pipeline_state, normalize_language
 
 logger = logging.getLogger(__name__)
@@ -185,7 +192,6 @@ _NODE_LABELS_PL: dict[str, str] = {
     "people_analyst": "Analizuję profile osób...",
     "referee": "Weryfikuję treść raportu...",
     "referee_blocked_summary": "Podsumowuję blokadę...",
-    "extract_claims": "Wyodrębniam twierdzenia...",
     "cross_check_facts": "Sprawdzam fakty krzyżowo...",
     "compose_final": "Komponuję raport końcowy...",
     "supervisor": "Finalizuję odpowiedź...",
@@ -203,7 +209,6 @@ _NODE_LABELS_EN: dict[str, str] = {
     "people_analyst": "Analyzing people profiles...",
     "referee": "Verifying report content...",
     "referee_blocked_summary": "Summarizing block...",
-    "extract_claims": "Extracting claims...",
     "cross_check_facts": "Cross-checking facts...",
     "compose_final": "Composing final report...",
     "supervisor": "Finalizing answer...",
@@ -214,7 +219,6 @@ _NODE_LABELS_EN: dict[str, str] = {
 async def run_pipeline_stream_endpoint(
     payload: RunPipelineRequest,
     request: Request,
-    background_tasks: BackgroundTasks,
 ) -> StreamingResponse:
     """Run the pipeline and stream progress events over SSE."""
     _enforce_rate_limit(request)
@@ -228,14 +232,13 @@ async def run_pipeline_stream_endpoint(
         else "Backend returned an empty response."
     )
     unexpected_msg = (
-        "Nieoczekiwany błąd: {}"
+        "Wystąpił nieoczekiwany błąd. Spróbuj ponownie."
         if payload.infosphere == "polish"
-        else "Unexpected error: {}"
+        else "An unexpected error occurred. Please try again."
     )
 
     async def _generate() -> AsyncGenerator[str, None]:
         try:
-            graph = build_graph(infosphere=payload.infosphere)
             initial_state = build_initial_pipeline_state(
                 payload.query,
                 language=normalize_language(payload.infosphere),
@@ -244,7 +247,7 @@ async def run_pipeline_stream_endpoint(
             seen_nodes: set[str] = set()
             final_output: str | None = None
 
-            async for event in graph.astream_events(
+            async for event in pipeline_graph.astream_events(
                 initial_state, config=config, version="v2"
             ):
                 etype = event.get("event", "")
@@ -265,6 +268,15 @@ async def run_pipeline_stream_endpoint(
                     )
                     yield f"data: {data}\n\n"
 
+                if (
+                    etype == "on_chat_model_stream"
+                    and node == "compose_final"
+                ):
+                    text = _chunk_text(event.get("data", {}).get("chunk"))
+                    if text:
+                        data = json.dumps({"type": "token", "content": text})
+                        yield f"data: {data}\n\n"
+
                 if etype == "on_chain_end" and event.get("name") == "GeopoliticAI":
                     output = event.get("data", {}).get("output", {})
                     if isinstance(output, dict):
@@ -283,14 +295,9 @@ async def run_pipeline_stream_endpoint(
                 data = json.dumps({"type": "error", "message": empty_msg})
             yield f"data: {data}\n\n"
 
-        except ValueError as exc:
-            logger.warning("Streaming pipeline rejected request: %s", exc)
-            data = json.dumps({"type": "error", "message": str(exc)})
-            yield f"data: {data}\n\n"
-        except Exception as exc:
+        except Exception:
             logger.exception("Streaming pipeline failed unexpectedly.")
-            msg = unexpected_msg.format(exc)
-            data = json.dumps({"type": "error", "message": msg})
+            data = json.dumps({"type": "error", "message": unexpected_msg})
             yield f"data: {data}\n\n"
 
     return StreamingResponse(
@@ -311,12 +318,31 @@ async def run_pipeline_endpoint(
     client_id = _resolve_client_id(request)
     log_id = await database.log_prompt(payload.query, client_id)
     try:
-        output = run_pipeline(payload.query, infosphere=payload.infosphere)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        output = await run_in_threadpool(
+            invoke_pipeline, pipeline_graph, payload.query, payload.infosphere
+        )
+    except Exception:
+        logger.exception("Pipeline failed unexpectedly.")
+        raise HTTPException(status_code=500, detail="Internal server error.") from None
     if log_id is not None:
         background_tasks.add_task(database.log_output, log_id, output)
     return RunPipelineResponse(output=_sanitize_output(output))
 
 
 app.include_router(router)
+
+
+def _chunk_text(chunk: object) -> str:
+    """Extract text only from a streamed LangChain content chunk."""
+    content = getattr(chunk, "content", chunk)
+    if isinstance(content, str):
+        return content
+    if not isinstance(content, list):
+        return ""
+    text_parts: list[str] = []
+    for block in content:
+        if isinstance(block, dict) and block.get("type") == "text":
+            text = block.get("text")
+            if isinstance(text, str):
+                text_parts.append(text)
+    return "".join(text_parts)

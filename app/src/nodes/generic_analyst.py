@@ -10,8 +10,8 @@ from typing import Any, Callable, List, cast
 from pydantic import BaseModel, Field, field_validator
 
 from config import get_model
-from llm import invoke_structured_chain
-from models import Claim, PipelineState, Source
+from llm import LLMInvocationError, invoke_structured_chain
+from models import Claim, PipelineState, Source, build_error_record
 
 logger = logging.getLogger(__name__)
 ANALYST_SOURCE_NOTE_CHARS = 220
@@ -39,7 +39,7 @@ class GenericClaimsOutput(BaseModel):
     claims: List[GenericClaimItem] = Field(default_factory=list)
 
 
-def _extract_claims(items: List[GenericClaimItem]) -> List[Claim]:
+def _claims_from_items(items: List[GenericClaimItem]) -> List[Claim]:
     """Convert model claim items into validated Claim objects."""
     claims: List[Claim] = []
     for item in items:
@@ -150,44 +150,69 @@ def generic_analyst_agent(
     model_name = get_model(model_key)
     example_source_id = sources[0].id if sources else "S1"
 
-    output = invoke_chain(
-        schema=GenericClaimsOutput,
-        system_prompt="You are a political analyst who writes precise, source-grounded claims.",
-        human_prompt=(
-            "Query: {query}\n"
-            "Response language: {response_language}\n\n"
-            "Sources:\n{source_block}\n\n"
-            "Preferred references (use for framing; do not invent citations):\n"
-            "{reference_block}\n\n"
-            "Task: Provide 3-5 analytically cautious claims from the perspective: {ideology}.\n"
-            "- Use only the sources provided.\n"
-            "- Never return an empty claims list. If 3-5 is not possible, return 1-3 claims.\n"
-            "- If sources are descriptive, still extract factual claims in the form '{according_to} <ID>, ...'.\n"
-            "- Each claim must cite one or more source IDs.\n"
-            "- Allowed source IDs: {allowed_source_ids}.\n"
-            "Return JSON exactly like this example:\n"
-            '{{"claims": [{{"text": "{according_to} {example_source_id}, ...", "source_ids": ["{example_source_id}"]}}]}}\n'
-            'Never return {{"claims": []}}.'
-        ),
-        variables={
-            "query": state["query"],
-            "response_language": response_language,
-            "according_to": according_to,
-            "source_block": source_block,
-            "reference_block": reference_block,
-            "ideology": ideology,
-            "allowed_source_ids": allowed_source_ids,
-            "example_source_id": example_source_id,
-        },
-        temperature=0.2,
-        model=model_name,
-    )
+    def fallback_for_error(exc: LLMInvocationError) -> dict[str, Any]:
+        """Return one deterministic lane fallback for any failed LLM attempt."""
+        claims = _fallback_claims_from_sources(
+            sources, limit=fallback_limit, language=language
+        )
+        if not claims:
+            fallback_id = sources[0].id if sources else ""
+            claims = [
+                Claim(
+                    text=(
+                        f"Perspektywa {perspective_label}: {state['query']}"
+                        if language == "polish"
+                        else f"{perspective_label} perspective on: {state['query']}"
+                    ),
+                    source_ids=[fallback_id] if fallback_id else [],
+                )
+            ]
+        return {
+            claims_key: claims,
+            "errors": [build_error_record(f"{lane_key}_analyst", exc)],
+        }
+
+    try:
+        output = invoke_chain(
+            schema=GenericClaimsOutput,
+            system_prompt="You are a political analyst who writes precise, source-grounded claims.",
+            human_prompt=(
+                "Query: {query}\n"
+                "Response language: {response_language}\n\n"
+                "Sources:\n{source_block}\n\n"
+                "Preferred references (use for framing; do not invent citations):\n"
+                "{reference_block}\n\n"
+                "Task: Provide 3-5 analytically cautious claims from the perspective: {ideology}.\n"
+                "- Use only the sources provided.\n"
+                "- Never return an empty claims list. If 3-5 is not possible, return 1-3 claims.\n"
+                "- If sources are descriptive, still extract factual claims in the form '{according_to} <ID>, ...'.\n"
+                "- Each claim must cite one or more source IDs.\n"
+                "- Allowed source IDs: {allowed_source_ids}.\n"
+                "Return JSON exactly like this example:\n"
+                '{{"claims": [{{"text": "{according_to} {example_source_id}, ...", "source_ids": ["{example_source_id}"]}}]}}\n'
+                'Never return {{"claims": []}}.'
+            ),
+            variables={
+                "query": state["query"],
+                "response_language": response_language,
+                "according_to": according_to,
+                "source_block": source_block,
+                "reference_block": reference_block,
+                "ideology": ideology,
+                "allowed_source_ids": allowed_source_ids,
+                "example_source_id": example_source_id,
+            },
+            temperature=0.2,
+            model=model_name,
+        )
+    except LLMInvocationError as exc:
+        return fallback_for_error(exc)
     initial_raw_claims = getattr(output, "claims", [])
     logger.debug(
         "%s analyst: initial raw output claims=%r", log_label, initial_raw_claims
     )
     claims = _keep_claims_with_allowed_sources(
-        _extract_claims(initial_raw_claims),
+        _claims_from_items(initial_raw_claims),
         allowed_source_id_set,
         log_label=log_label,
     )
@@ -198,36 +223,39 @@ def generic_analyst_agent(
             log_label,
             len(sources),
         )
-        retry = invoke_chain(
-            schema=GenericClaimsOutput,
-            system_prompt="You are a political analyst who writes precise, source-grounded claims.",
-            human_prompt=(
-                "Query: {query}\n"
-                "Response language: {response_language}\n\n"
-                "Sources:\n{source_block}\n\n"
-                "Task: Provide 2-3 factual claims from the sources. "
-                "If the sources are descriptive, still convert them into factual claims. "
-                "Each claim must include non-empty text and one or more source IDs from: {allowed_source_ids}. "
-                'Return JSON exactly like: {{"claims": [{{"text": "{according_to} {example_source_id}, ...", "source_ids": ["{example_source_id}"]}}]}}. '
-                'Never return {{"claims": []}}.'
-            ),
-            variables={
-                "query": state["query"],
-                "response_language": response_language,
-                "according_to": according_to,
-                "source_block": source_block,
-                "allowed_source_ids": allowed_source_ids,
-                "example_source_id": example_source_id,
-            },
-            temperature=0.1,
-            model=model_name,
-        )
+        try:
+            retry = invoke_chain(
+                schema=GenericClaimsOutput,
+                system_prompt="You are a political analyst who writes precise, source-grounded claims.",
+                human_prompt=(
+                    "Query: {query}\n"
+                    "Response language: {response_language}\n\n"
+                    "Sources:\n{source_block}\n\n"
+                    "Task: Provide 2-3 factual claims from the sources. "
+                    "If the sources are descriptive, still convert them into factual claims. "
+                    "Each claim must include non-empty text and one or more source IDs from: {allowed_source_ids}. "
+                    'Return JSON exactly like: {{"claims": [{{"text": "{according_to} {example_source_id}, ...", "source_ids": ["{example_source_id}"]}}]}}. '
+                    'Never return {{"claims": []}}.'
+                ),
+                variables={
+                    "query": state["query"],
+                    "response_language": response_language,
+                    "according_to": according_to,
+                    "source_block": source_block,
+                    "allowed_source_ids": allowed_source_ids,
+                    "example_source_id": example_source_id,
+                },
+                temperature=0.1,
+                model=model_name,
+            )
+        except LLMInvocationError as exc:
+            return fallback_for_error(exc)
         retry_raw_claims = getattr(retry, "claims", [])
         logger.debug(
             "%s analyst: retry raw output claims=%r", log_label, retry_raw_claims
         )
         claims = _keep_claims_with_allowed_sources(
-            _extract_claims(retry_raw_claims),
+            _claims_from_items(retry_raw_claims),
             allowed_source_id_set,
             log_label=log_label,
         )
@@ -240,33 +268,36 @@ def generic_analyst_agent(
                 )
                 or "[]"
             )
-            repair = invoke_chain(
-                schema=GenericClaimsOutput,
-                system_prompt="You repair JSON outputs for schema compliance.",
-                human_prompt=(
-                    "Query: {query}\n"
-                    "Response language: {response_language}\n\n"
-                    "Sources:\n{source_block}\n\n"
-                    "Task: Repair the previous output into valid non-empty JSON with key `claims`.\n"
-                    "- Keep only source-grounded factual claims.\n"
-                    "- Use source IDs from: {allowed_source_ids}.\n"
-                    "- At least 1 claim is required.\n"
-                    "Previous output summary:\n{previous_claims_block}\n\n"
-                    'Return JSON exactly like: {{"claims": [{{"text": "{according_to} {example_source_id}, ...", "source_ids": ["{example_source_id}"]}}]}}.\n'
-                    'Never return {{"claims": []}}.'
-                ),
-                variables={
-                    "query": state["query"],
-                    "response_language": response_language,
-                    "according_to": according_to,
-                    "source_block": source_block,
-                    "allowed_source_ids": allowed_source_ids,
-                    "previous_claims_block": previous_claims_block,
-                    "example_source_id": example_source_id,
-                },
-                temperature=0.0,
-                model=model_name,
-            )
+            try:
+                repair = invoke_chain(
+                    schema=GenericClaimsOutput,
+                    system_prompt="You repair JSON outputs for schema compliance.",
+                    human_prompt=(
+                        "Query: {query}\n"
+                        "Response language: {response_language}\n\n"
+                        "Sources:\n{source_block}\n\n"
+                        "Task: Repair the previous output into valid non-empty JSON with key `claims`.\n"
+                        "- Keep only source-grounded factual claims.\n"
+                        "- Use source IDs from: {allowed_source_ids}.\n"
+                        "- At least 1 claim is required.\n"
+                        "Previous output summary:\n{previous_claims_block}\n\n"
+                        'Return JSON exactly like: {{"claims": [{{"text": "{according_to} {example_source_id}, ...", "source_ids": ["{example_source_id}"]}}]}}.\n'
+                        'Never return {{"claims": []}}.'
+                    ),
+                    variables={
+                        "query": state["query"],
+                        "response_language": response_language,
+                        "according_to": according_to,
+                        "source_block": source_block,
+                        "allowed_source_ids": allowed_source_ids,
+                        "previous_claims_block": previous_claims_block,
+                        "example_source_id": example_source_id,
+                    },
+                    temperature=0.0,
+                    model=model_name,
+                )
+            except LLMInvocationError as exc:
+                return fallback_for_error(exc)
             repair_raw_claims = getattr(repair, "claims", [])
             logger.debug(
                 "%s analyst: repair raw output claims=%r",
@@ -274,7 +305,7 @@ def generic_analyst_agent(
                 repair_raw_claims,
             )
             claims = _keep_claims_with_allowed_sources(
-                _extract_claims(repair_raw_claims),
+                _claims_from_items(repair_raw_claims),
                 allowed_source_id_set,
                 log_label=log_label,
             )

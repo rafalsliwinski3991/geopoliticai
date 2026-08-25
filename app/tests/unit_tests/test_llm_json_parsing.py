@@ -1,6 +1,6 @@
 from typing import Any, ClassVar
 
-from langchain_core.exceptions import OutputParserException
+import pytest
 from pydantic import BaseModel
 
 import llm
@@ -67,6 +67,7 @@ def test_invoke_structured_chain_uses_chat_openai_structured_output(
             "temperature": 0.2,
             "max_completion_tokens": 321,
             "timeout": 12.5,
+            "max_retries": llm.DEFAULT_MAX_RETRIES,
         }
     ]
     assert _FakeChatOpenAI.schemas == [SampleOutput]
@@ -91,29 +92,14 @@ def test_structured_output_chain_validates_mapping_results(monkeypatch) -> None:
     assert result == SampleOutput(synthesis="validated")
 
 
-def test_structured_output_chain_retries_when_output_hits_length_limit(
-    monkeypatch,
-) -> None:
-    _reset_fake_chat_openai(
-        [
-            OutputParserException(
-                "Could not parse response content as the length limit was reached"
-            ),
-            SampleOutput(synthesis="retried"),
-        ]
-    )
+def test_structured_output_chain_wraps_invocation_errors(monkeypatch) -> None:
+    _reset_fake_chat_openai(ValueError("provider failure"))
     monkeypatch.setattr(llm, "ChatOpenAI", _FakeChatOpenAI)
-    monkeypatch.setattr(llm, "get_openai_max_output_tokens", lambda: 100)
 
-    result = llm.StructuredOutputChain(
-        schema=SampleOutput,
-        system_prompt="System",
-        human_prompt="Human",
-        model="gpt-4o-mini",
-    ).invoke({})
-
-    assert result == SampleOutput(synthesis="retried")
-    assert [call["max_completion_tokens"] for call in _FakeChatOpenAI.calls] == [
-        100,
-        200,
-    ]
+    with pytest.raises(llm.LLMInvocationError):
+        llm.StructuredOutputChain(
+            schema=SampleOutput,
+            system_prompt="System",
+            human_prompt="Human",
+            model="gpt-4o-mini",
+        ).invoke({})

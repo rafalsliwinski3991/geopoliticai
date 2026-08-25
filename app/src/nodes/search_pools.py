@@ -4,9 +4,9 @@ from typing import Any
 
 from langchain_core.runnables import RunnableConfig
 
-from models import PipelineState
+from models import PipelineState, build_error_record
 from nodes.runtime_config import runtime_infosphere_sources
-from search import web_searcher
+from search import SearchExhaustedError, web_searcher
 
 
 def _search_lane_pool(
@@ -17,9 +17,11 @@ def _search_lane_pool(
 ) -> dict[str, Any]:
     """Populate a single lane's sources via the web searcher."""
     infosphere_sources = runtime_infosphere_sources(state, config)
-    return {
-        state_key: web_searcher(state, lane_key, infosphere_sources[lane_key]),
-    }
+    try:
+        sources = web_searcher(state, lane_key, infosphere_sources[lane_key])
+    except SearchExhaustedError as exc:
+        return {state_key: [], "errors": [build_error_record(f"search_{lane_key}", exc)]}
+    return {state_key: sources}
 
 
 def search_left_pool(

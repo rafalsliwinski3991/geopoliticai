@@ -3,7 +3,7 @@
 import operator
 import re
 from dataclasses import dataclass, field
-from typing import Annotated, Any, Literal, TypedDict
+from typing import Annotated, Literal, TypedDict
 
 _POLISH_DIACRITICS = frozenset("ąćęłńóśźżĄĆĘŁŃÓŚŹŻ")
 _POLISH_STOPWORDS = frozenset(
@@ -99,6 +99,19 @@ class RefereeReport:
     loaded_language: list[str] = field(default_factory=list)
 
 
+class ErrorRecord(TypedDict):
+    """One recoverable failure, recorded for operators rather than readers."""
+
+    node: str
+    error_type: str
+    message: str
+
+
+def build_error_record(node: str, exc: Exception) -> ErrorRecord:
+    """Construct one error record so every node emits the same shape."""
+    return {"node": node, "error_type": type(exc).__name__, "message": str(exc)}
+
+
 class PipelineState(TypedDict):
     """LangGraph state shared by all pipeline nodes."""
 
@@ -118,7 +131,7 @@ class PipelineState(TypedDict):
     final_output: str
     research_plan: ResearchPlan
     referee_report: RefereeReport
-    extracted_claims: Annotated[list[dict[str, Any]], operator.add]
+    errors: Annotated[list[ErrorRecord], operator.add]
 
 
 def detect_language(query: str) -> str:
@@ -140,6 +153,14 @@ def detect_language(query: str) -> str:
 def normalize_language(value: str) -> str:
     """Normalize language marker to supported values."""
     return "polish" if str(value).strip().lower() == "polish" else "english"
+
+
+def normalize_report_mode(value: str) -> str:
+    """Normalize and validate the report rendering mode."""
+    normalized = str(value).strip().lower()
+    if normalized not in {"compact", "full"}:
+        raise ValueError("report_mode must be one of: compact, full.")
+    return normalized
 
 
 def build_initial_pipeline_state(
@@ -167,5 +188,5 @@ def build_initial_pipeline_state(
         "final_output": "",
         "research_plan": ResearchPlan(),
         "referee_report": RefereeReport(),
-        "extracted_claims": [],
+        "errors": [],
     }

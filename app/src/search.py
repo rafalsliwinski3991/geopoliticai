@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
+import time
 from collections.abc import Mapping
 from dataclasses import replace
 from typing import Any, List, cast
@@ -23,6 +24,10 @@ LANE_SOURCE_PREFIXES = {
     "people": "P",
     "fact": "F",
 }
+
+
+class SearchExhaustedError(RuntimeError):
+    """Raised when every Brave request attempted for a lane failed."""
 
 
 def _source_id_for_lane(agent_key: str, index: int) -> str:
@@ -113,6 +118,29 @@ def _brave_search(client: httpx.Client, query: str, count: int) -> list[dict[str
     return cast(list[dict[str, Any]], results) if isinstance(results, list) else []
 
 
+def _is_transient_search_error(exc: httpx.HTTPError) -> bool:
+    """Return whether a Brave error can safely be retried."""
+    if isinstance(exc, (httpx.TimeoutException, httpx.TransportError)):
+        return True
+    if isinstance(exc, httpx.HTTPStatusError):
+        return exc.response.status_code == 429 or exc.response.status_code >= 500
+    return False
+
+
+def _retry_combined_search(
+    client: httpx.Client, query: str, count: int
+) -> list[dict[str, Any]]:
+    """Retry only transient failures of the combined-query fallback."""
+    for attempt in range(3):
+        try:
+            return _brave_search(client, query, count)
+        except httpx.HTTPError as exc:
+            if not _is_transient_search_error(exc) or attempt == 2:
+                raise
+            time.sleep(0.5 * (2**attempt))
+    raise RuntimeError("Combined search retry loop ended unexpectedly.")
+
+
 def web_searcher(
     state: PipelineState,
     agent_key: str,
@@ -150,6 +178,7 @@ def web_searcher(
     }
     sources: List[Source] = []
     seen_urls: set[str] = set()
+    domain_request_succeeded = False
 
     with httpx.Client(headers=headers) as client:
         # Query each configured domain directly so every lane stays inside its source list.
@@ -164,6 +193,7 @@ def web_searcher(
                     exc,
                 )
                 continue
+            domain_request_succeeded = True
             for item in items:
                 raw_notes = (item.get("description") or "").strip()
                 url = (item.get("url") or "").strip()
@@ -203,13 +233,17 @@ def web_searcher(
                 agent_key,
             )
             try:
-                items = _brave_search(
+                items = _retry_combined_search(
                     client, combined_query, count=max(len(allowed_domains) * 3, 3)
                 )
             except httpx.HTTPError as exc:
                 logger.warning(
                     "Web searcher (%s): combined query failed: %s", agent_key, exc
                 )
+                if not domain_request_succeeded:
+                    raise SearchExhaustedError(
+                        f"All Brave requests failed for lane={agent_key}."
+                    ) from exc
                 return []
             for item in items:
                 raw_notes = (item.get("description") or "").strip()

@@ -1,43 +1,16 @@
 """Compose the final synthesis using only TRUE-verified claims."""
 
-import json
 import logging
-from typing import Any, cast
+from typing import Any
 
 from langchain_core.runnables import RunnableConfig
-from pydantic import BaseModel, field_validator
 
 from config import get_model
-from llm import invoke_structured_chain
-from models import Claim, PipelineState
+from llm import LLMInvocationError, invoke_text_chain
+from models import Claim, PipelineState, build_error_record
 from nodes.runtime_config import runtime_language
 
 logger = logging.getLogger(__name__)
-
-
-class SynthesisOutput(BaseModel):
-    """Structured output for final synthesis."""
-
-    synthesis: str = ""
-
-    @field_validator("synthesis", mode="before")
-    @classmethod
-    def _coerce_synthesis_to_text(cls, value: Any) -> str:
-        """Normalize non-string synthesis payloads into text."""
-        if isinstance(value, str):
-            return value
-        if isinstance(value, dict):
-            lines: list[str] = []
-            for key, nested in value.items():
-                label = key.replace("_", " ").strip().capitalize()
-                if isinstance(nested, str):
-                    lines.append(f"{label}: {nested}")
-                else:
-                    lines.append(f"{label}: {json.dumps(nested, ensure_ascii=False)}")
-            return "\n".join(lines)
-        if isinstance(value, list):
-            return "\n".join(str(item) for item in value)
-        return str(value)
 
 
 def _all_claims(state: PipelineState) -> list[Claim]:
@@ -158,8 +131,7 @@ def compose_final_agent(
     model_name = get_model("compose_final")
 
     try:
-        data = invoke_structured_chain(
-            schema=SynthesisOutput,
+        synthesis = invoke_text_chain(
             system_prompt=(
                 "You are a precise final-answer agent. "
                 "Use only TRUE-verified claims provided by the pipeline."
@@ -173,8 +145,7 @@ def compose_final_agent(
                 "- First line must be: 'Short answer: ...'.\n"
                 "- Do not use claims that are not in the TRUE list.\n"
                 "- Include source IDs in the rationale when available.\n"
-                "- If the TRUE claims are still insufficient for a precise answer, explicitly say so.\n"
-                "Return JSON with exactly one key: synthesis (string)."
+                "- If the TRUE claims are still insufficient for a precise answer, explicitly say so."
             ),
             variables={
                 "query": state["query"],
@@ -183,11 +154,14 @@ def compose_final_agent(
             },
             temperature=0.0,
             model=model_name,
+            config=config,
         )
-    except Exception as exc:
+    except LLMInvocationError as exc:
         logger.warning("Compose final: LLM synthesis failed, using fallback: %s", exc)
-        return {"synthesis": _fallback_from_true_claims(true_claims, language)}
-    synthesis_data = cast(SynthesisOutput, data)
-    synthesis = _ensure_short_answer_prefix(synthesis_data.synthesis.strip(), language)
+        return {
+            "synthesis": _fallback_from_true_claims(true_claims, language),
+            "errors": [build_error_record("compose_final", exc)],
+        }
+    synthesis = _ensure_short_answer_prefix(synthesis.strip(), language)
 
     return {"synthesis": synthesis}

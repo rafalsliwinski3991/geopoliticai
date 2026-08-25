@@ -61,7 +61,7 @@ from config import (
             "expected an integer",
             "0",
             "expected a positive integer",
-            "Falling back to 4096.",
+            "Falling back to 16384.",
         ),
     ],
 )
