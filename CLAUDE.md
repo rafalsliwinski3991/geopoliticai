@@ -107,6 +107,9 @@ timeouts/token limits, analyst source counts, API rate limits, `LOG_LEVEL`,
 - After any codebase change, update `AGENTS.md`, `CLAUDE.md`, and
   `.github/copilot-instructions.md` together so all supported agents have
   current instructions.
+- After any addition, removal, rename, or modification of a provider's skills,
+  hooks, plugins, agents, or related AI-tool configuration, update
+  `ai_tools_tables.md` to keep the provider tables accurate.
 - Keep changes local to the owning module and preserve public APIs.
 - Return partial state updates from nodes; avoid in-place mutation.
 - Keep routing in graph edges and update `_route_after_referee` if the referee

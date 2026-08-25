@@ -74,3 +74,6 @@ Do not edit `.env` files or expose secrets.
 - After any codebase change, update `AGENTS.md`, `CLAUDE.md`, and
   `.github/copilot-instructions.md` together so all supported agents have
   current instructions.
+- After any addition, removal, rename, or modification of a provider's skills,
+  hooks, plugins, agents, or related AI-tool configuration, update
+  `ai_tools_tables.md` to keep the provider tables accurate.
