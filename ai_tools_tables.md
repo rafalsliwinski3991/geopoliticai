@@ -5,6 +5,27 @@ Providers are identified by their repository configuration directories:
 `.github` (GitHub Copilot), `.opencode` (OpenCode), `.claude` (Claude), and
 `.codex` (Codex).
 
+This file is the single home for repository AI-tool layout facts. The three
+codebase guidance files (`AGENTS.md`, `CLAUDE.md`, and
+`.github/copilot-instructions.md`) intentionally do not mention skills,
+hooks, agents, or agent definitions; keep it that way.
+
+After any addition, removal, rename, or modification of a provider's skills,
+hooks, plugins, agents, commands, or related AI-tool configuration, update
+this file to keep it accurate.
+
+## Repository Locations
+
+- `.github/skills/` - GitHub Copilot skills with bundled references and
+  scripts.
+- `.opencode/skills/` - OpenCode-compatible copy of the same skill bundle.
+- `.codex/skills/` - Codex copy of the shared skill bundle.
+- `.claude/skills/` - Claude skills; `swarm` and `grill-me` exist only here.
+- `.claude/hooks/` and `.codex/hooks/` - contain no active hook
+  implementations; the `.claude/hooks/.klaussy-version` file is metadata.
+- `docs/brainstorming/` - durable session artifacts written by the Claude
+  `grill-me` skill, not at the repository root.
+
 ## Skills
 
 | Skill | GitHub Copilot | OpenCode | Claude | Codex |
@@ -35,6 +56,20 @@ Providers are identified by their repository configuration directories:
 
 The Claude `grill-me` skill stores its session files under
 `docs/brainstorming/`, not at the repository root.
+
+## Agents
+
+| Agent | GitHub Copilot | OpenCode | Claude | Codex |
+|---|---:|---:|---:|---:|
+| critic | no | yes | no | no |
+
+The OpenCode `critic` agent (`.opencode/agents/critic.md`) is a read-only
+reviewer subagent running on `nvidia/nemotron-3-super-120b-a12b`. The root
+`opencode.json` grants the build agent subagent access to `critic` and the
+built-in `explore` agent only. The OpenCode slash commands
+`.opencode/commands/review.md` (`/review`) and
+`.opencode/commands/plan-review.md` (`/plan-review`) wrap the same critic;
+no other provider has matching commands.
 
 ## Hooks
 

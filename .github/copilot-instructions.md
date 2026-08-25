@@ -16,14 +16,6 @@ requirements file, so do not treat it as the application source of truth.
 - `app/src/nodes/` contains all LangGraph nodes.
 - `app/tests/` contains unit and integration tests.
 - `frontend/` is a static Alpine.js/`marked.js` frontend with no bundler.
-- `docs/brainstorming/` contains durable session artifacts created by Claude's
-  `grill-me` skill.
-- `ai_tools_tables.md` inventories repository skills and hooks by provider.
-- `.claude/hooks/` contains no active hook implementations; its remaining
-  `.klaussy-version` file is metadata.
-- `.github/skills/` contains Copilot skills; `.opencode/skills/` is their
-  OpenCode-compatible mirror.
-- The `swarm` skill is available only under `.claude/skills/`.
 
 ## Architecture
 
@@ -79,6 +71,4 @@ Do not edit `.env` files or expose secrets.
 - After any codebase change, update `AGENTS.md`, `CLAUDE.md`, and
   `.github/copilot-instructions.md` together so all supported agents have
   current instructions.
-- After any addition, removal, rename, or modification of a provider's skills,
-  hooks, plugins, agents, or related AI-tool configuration, update
-  `ai_tools_tables.md` to keep the provider tables accurate.
+

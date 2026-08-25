@@ -19,15 +19,6 @@ it.
 - `app/src/nodes/` - all graph node implementations.
 - `app/tests/` - unit and integration tests.
 - `frontend/` - static Alpine.js/`marked.js` frontend and assets.
-- `docs/brainstorming/` - durable session artifacts created by the Claude
-  `grill-me` skill.
-- `ai_tools_tables.md` - provider-by-provider inventory of repository skills
-  and hooks.
-- `.claude/hooks/` - contains no active hook implementations; its remaining
-  `.klaussy-version` file is metadata.
-- `.github/skills/` - Copilot skills, references, scripts, and templates.
-- `.opencode/skills/` - OpenCode-compatible mirror of those skills.
-- `swarm` is currently available only under `.claude/skills/`.
 - `app/langgraph.json` - LangGraph CLI entrypoint configuration.
 
 ## Workflow
@@ -112,9 +103,6 @@ timeouts/token limits, analyst source counts, API rate limits, `LOG_LEVEL`,
 - After any codebase change, update `AGENTS.md`, `CLAUDE.md`, and
   `.github/copilot-instructions.md` together so all supported agents have
   current instructions.
-- After any addition, removal, rename, or modification of a provider's skills,
-  hooks, plugins, agents, or related AI-tool configuration, update
-  `ai_tools_tables.md` to keep the provider tables accurate.
 - Keep changes local to the owning module and preserve public APIs.
 - Return partial state updates from nodes; avoid in-place mutation.
 - Keep routing in graph edges and update `_route_after_referee` if the referee

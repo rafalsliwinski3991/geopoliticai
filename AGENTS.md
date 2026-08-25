@@ -22,15 +22,6 @@ ever removed.
 - `app/tests/` - unit and integration tests.
 - `frontend/` - static Alpine.js and `marked.js` client, with assets; there is
   no frontend bundler.
-- `docs/brainstorming/` - durable session artifacts created by the Claude
-  `grill-me` skill.
-- `ai_tools_tables.md` - provider-by-provider inventory of repository skills
-  and hooks.
-- `.claude/hooks/` - contains no active hook implementations; its remaining
-  `.klaussy-version` file is metadata.
-- `.github/skills/` - GitHub Copilot skills and bundled references/scripts.
-- `.opencode/skills/` - OpenCode-compatible copy of the same skill bundle.
-- `swarm` is currently available only under `.claude/skills/`.
 - `app/langgraph.json` - LangGraph CLI registration for `src/graph.py:graph`.
 - `docker-compose*.yml` - development and production service definitions.
 
@@ -151,9 +142,6 @@ CI installs `app/pyproject.toml` with `uv sync --locked --dev` and runs
 - After any codebase change, update `AGENTS.md`, `CLAUDE.md`, and
   `.github/copilot-instructions.md` together so all supported agents have
   current instructions.
-- After any addition, removal, rename, or modification of a provider's skills,
-  hooks, plugins, agents, or related AI-tool configuration, update
-  `ai_tools_tables.md` to keep the provider tables accurate.
 - Keep state flat and return partial state dictionaries from nodes; do not
   mutate shared state in place.
 - Put routing in graph edges, especially changes to referee blocked/continue
