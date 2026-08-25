@@ -39,8 +39,9 @@ The Claude `grill-me` skill stores its session files under
 ## Hooks
 
 The hook table includes executable hook implementations only. There are
-currently no active repository-local hooks for any provider. The Claude
-`.claude/hooks/.klaussy-version` file is metadata and is therefore excluded.
+currently no active repository-local hooks or hook configuration for any
+provider. The Claude `.claude/hooks/.klaussy-version` file is metadata and is
+therefore excluded.
 
 | Hook | GitHub Copilot | OpenCode | Claude | Codex |
 |---|---:|---:|---:|---:|
