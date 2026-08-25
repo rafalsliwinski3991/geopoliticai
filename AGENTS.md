@@ -24,6 +24,8 @@ ever removed.
   no frontend bundler.
 - `ai_tools_tables.md` - provider-by-provider inventory of repository skills
   and hooks.
+- `.claude/hooks/` - contains no active hook implementations; its remaining
+  `.klaussy-version` file is metadata.
 - `.github/skills/` - GitHub Copilot skills and bundled references/scripts.
 - `.opencode/skills/` - OpenCode-compatible copy of the same skill bundle.
 - `app/langgraph.json` - LangGraph CLI registration for `src/graph.py:graph`.

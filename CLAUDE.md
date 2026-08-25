@@ -21,6 +21,8 @@ it.
 - `frontend/` - static Alpine.js/`marked.js` frontend and assets.
 - `ai_tools_tables.md` - provider-by-provider inventory of repository skills
   and hooks.
+- `.claude/hooks/` - contains no active hook implementations; its remaining
+  `.klaussy-version` file is metadata.
 - `.github/skills/` - Copilot skills, references, scripts, and templates.
 - `.opencode/skills/` - OpenCode-compatible mirror of those skills.
 - `app/langgraph.json` - LangGraph CLI entrypoint configuration.

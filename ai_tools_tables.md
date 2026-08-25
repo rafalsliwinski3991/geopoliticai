@@ -36,11 +36,11 @@ Providers are identified by their repository configuration directories:
 ## Hooks
 
 The hook table includes executable hook implementations only. The Claude
-`.klaussy-version` file is metadata and is therefore excluded.
+`.claude/hooks/.klaussy-version` file is metadata and is therefore excluded.
 
 | Hook | GitHub Copilot | OpenCode | Claude | Codex |
 |---|---:|---:|---:|---:|
-| dependency_guard.py | no | no | yes | no |
-| plan_guidance.py | no | no | yes | no |
-| read_injection_guard.py | no | no | yes | no |
-| self_review_guard.py | no | no | yes | no |
+| dependency_guard.py | no | no | no | no |
+| plan_guidance.py | no | no | no | no |
+| read_injection_guard.py | no | no | no | no |
+| self_review_guard.py | no | no | no | no |
