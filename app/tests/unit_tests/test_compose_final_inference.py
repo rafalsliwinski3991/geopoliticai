@@ -1,4 +1,5 @@
 from models import Claim, FactCheckResult, build_initial_pipeline_state
+from llm import LLMInvocationError
 from nodes import compose_final
 
 _ENGLISH_CONFIG = {"configurable": {"language": "english"}}
@@ -71,14 +72,12 @@ def test_compose_final_prompt_uses_true_claims_only(monkeypatch) -> None:
     state = _state_with_mixed_verdicts()
     captured: dict[str, str] = {}
 
-    def _fake_invoke_structured_chain(**kwargs):
+    def _fake_invoke_text_chain(**kwargs):
         captured.update(kwargs["variables"])
-        return compose_final.SynthesisOutput(
-            synthesis="Short answer: Answered from TRUE claims."
-        )
+        return "Short answer: Answered from TRUE claims."
 
     monkeypatch.setattr(
-        compose_final, "invoke_structured_chain", _fake_invoke_structured_chain
+        compose_final, "invoke_text_chain", _fake_invoke_text_chain
     )
 
     result = compose_final.compose_final_agent(state, _ENGLISH_CONFIG)  # type: ignore[arg-type]
@@ -93,9 +92,9 @@ def test_compose_final_fallback_when_llm_raises(monkeypatch) -> None:
     state = _state_with_mixed_verdicts()
 
     def _raise_invoke(**_kwargs):
-        raise ValueError("OpenAI returned an empty JSON response body.")
+        raise LLMInvocationError("OpenAI returned an empty JSON response body.")
 
-    monkeypatch.setattr(compose_final, "invoke_structured_chain", _raise_invoke)
+    monkeypatch.setattr(compose_final, "invoke_text_chain", _raise_invoke)
 
     result = compose_final.compose_final_agent(state, _ENGLISH_CONFIG)  # type: ignore[arg-type]
 
@@ -103,3 +102,4 @@ def test_compose_final_fallback_when_llm_raises(monkeypatch) -> None:
         "Short answer: Based on verified TRUE claims, Claim TRUE from left."
     )
     assert "Verified TRUE claims:" in result["synthesis"]
+    assert result["errors"][0]["node"] == "compose_final"

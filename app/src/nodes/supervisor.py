@@ -7,7 +7,7 @@ from typing import Any, Callable, List
 
 from langchain_core.runnables import RunnableConfig
 
-from models import Claim, PipelineState, Source
+from models import Claim, PipelineState, Source, normalize_report_mode
 from nodes.runtime_config import runtime_language, runtime_report_mode
 from render import merge_sources
 
@@ -110,6 +110,24 @@ def _fact_verdict_counts(state: PipelineState) -> Counter[str]:
     return counts
 
 
+def _lane_coverage(state: PipelineState) -> tuple[int, int]:
+    """Return (lanes with at least one source, total lanes)."""
+    lanes = (
+        state["left_sources"],
+        state["centrist_sources"],
+        state["right_sources"],
+        state["people_sources"],
+    )
+    return sum(1 for lane in lanes if lane), len(lanes)
+
+
+def _coverage_label(language: str, available: int, total: int) -> str:
+    """Return localized source-lane coverage."""
+    if language == "polish":
+        return f"{available} z {total} perspektyw dostępnych"
+    return f"{available} of {total} perspectives available"
+
+
 def _infer_consensus_entity(state: PipelineState) -> str:
     """Infer likely top entity from TRUE/PARTIALLY TRUE fact-check claims."""
     claim_texts = [
@@ -187,9 +205,7 @@ def make_supervisor_step(
     report_mode: str = "full",
 ) -> Callable[[PipelineState], dict[str, Any]]:
     """Return a callable that assembles a compact or full report."""
-    normalized_report_mode = report_mode.strip().lower()
-    if normalized_report_mode not in {"compact", "full"}:
-        raise ValueError("report_mode must be one of: compact, full.")
+    normalized_report_mode = normalize_report_mode(report_mode)
 
     if language == "polish":
         question_label = "Pytanie:"
@@ -264,9 +280,11 @@ def make_supervisor_step(
             verdict_counts_summary = " ".join(
                 f"{label}={verdict_counts.get(label, 0)}" for label in VERDICT_ORDER
             )
+            available, total = _lane_coverage(state)
             lines.append(
                 f"{compact_facts_label} {verdict_counts_summary} "
-                f"(total={len(state['fact_checks'])}, sources={len(state['fact_sources'])})."
+                f"(total={len(state['fact_checks'])}, sources={len(state['fact_sources'])}, "
+                f"{_coverage_label(language, available, total)})."
             )
             lines.append("")
             lines.append(compact_sources_label)
@@ -293,9 +311,11 @@ def make_supervisor_step(
                     )
                 )
             lines.append("")
+            available, total = _lane_coverage(state)
             lines.append(
                 f"{facts_label} {len(state['fact_checks'])} verdicts from "
-                f"{len(state['fact_sources'])} sources."
+                f"{len(state['fact_sources'])} sources "
+                f"({_coverage_label(language, available, total)})."
             )
 
         final_report = "\n".join(lines)

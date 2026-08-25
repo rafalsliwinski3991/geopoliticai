@@ -12,13 +12,13 @@ from models import (
     RefereeReport,
     build_initial_pipeline_state,
     normalize_language,
+    normalize_report_mode,
 )
 from nodes import (
     build_research_plan_step,
     center_analyst_agent,
     compose_final_agent,
     cross_check_facts_agent,
-    extract_claims_for_verification,
     ingest_request,
     left_analyst_agent,
     people_analyst_agent,
@@ -36,13 +36,6 @@ DEFAULT_INFOSPHERE = "english"
 DEFAULT_REPORT_MODE = "full"
 
 
-def _normalize_report_mode(report_mode: str) -> str:
-    normalized = report_mode.strip().lower()
-    if normalized not in {"compact", "full"}:
-        raise ValueError("report_mode must be one of: compact, full.")
-    return normalized
-
-
 def _route_after_referee(state: PipelineState) -> Literal["continue", "blocked"]:
     report = state.get("referee_report")
     if not isinstance(report, RefereeReport):
@@ -57,7 +50,7 @@ def build_runtime_config(
     thread_id: str | None = None,
 ) -> dict[str, dict[str, Any]]:
     """Build LangGraph runtime configuration shared by sync and stream entrypoints."""
-    normalized_report_mode = _normalize_report_mode(report_mode)
+    normalized_report_mode = normalize_report_mode(report_mode)
     language = normalize_language(infosphere)
     configurable: dict[str, Any] = {
         "infosphere_sources": get_infosphere_sources(language),
@@ -71,15 +64,8 @@ def build_runtime_config(
     return {"configurable": configurable}
 
 
-def build_graph(
-    infosphere: str = DEFAULT_INFOSPHERE,
-    report_mode: str = DEFAULT_REPORT_MODE,
-    *,
-    checkpointer: Any | None = None,
-) -> Any:
+def build_graph() -> Any:
     """Construct and compile the LangGraph pipeline."""
-    _normalize_report_mode(report_mode)
-    get_infosphere_sources(normalize_language(infosphere))
     graph = StateGraph(PipelineState)
 
     graph.add_node("ingest_request", ingest_request)
@@ -94,7 +80,6 @@ def build_graph(
     graph.add_node("people_analyst", people_analyst_agent)
     graph.add_node("referee", run_referee_checks)
     graph.add_node("referee_blocked_summary", summarize_referee_block)
-    graph.add_node("extract_claims", extract_claims_for_verification)
     graph.add_node("cross_check_facts", cross_check_facts_agent)
     graph.add_node("compose_final", compose_final_agent)
     graph.add_node("supervisor", supervisor_step)
@@ -117,19 +102,37 @@ def build_graph(
         "referee",
         _route_after_referee,
         {
-            "continue": "extract_claims",
+            "continue": "cross_check_facts",
             "blocked": "referee_blocked_summary",
         },
     )
     graph.add_edge("referee_blocked_summary", "supervisor")
-    graph.add_edge("extract_claims", "cross_check_facts")
     graph.add_edge("cross_check_facts", "compose_final")
     graph.add_edge("compose_final", "supervisor")
     graph.add_edge("supervisor", END)
 
-    if checkpointer is None:
-        return graph.compile(name="GeopoliticAI")
-    return graph.compile(checkpointer=checkpointer, name="GeopoliticAI")
+    return graph.compile(name="GeopoliticAI")
+
+
+def invoke_pipeline(
+    compiled_graph: Any,
+    query: str,
+    infosphere: str = DEFAULT_INFOSPHERE,
+    report_mode: str = DEFAULT_REPORT_MODE,
+    *,
+    thread_id: str | None = None,
+) -> str:
+    """Run one request against an already-compiled graph and return the report."""
+    normalized_report_mode = normalize_report_mode(report_mode)
+    language = normalize_language(infosphere)
+    initial_state = build_initial_pipeline_state(query, language=language)
+    config = build_runtime_config(
+        infosphere=infosphere,
+        report_mode=normalized_report_mode,
+        thread_id=thread_id,
+    )
+    result = compiled_graph.invoke(initial_state, config=config)
+    return str(result["final_output"])
 
 
 def run_pipeline(
@@ -138,28 +141,15 @@ def run_pipeline(
     report_mode: str = DEFAULT_REPORT_MODE,
     *,
     thread_id: str | None = None,
-    checkpointer: Any | None = None,
 ) -> str:
     """Execute the pipeline and return the final rendered report."""
-    normalized_report_mode = _normalize_report_mode(report_mode)
-    language = normalize_language(infosphere)
-
-    app = build_graph(
-        infosphere=infosphere,
-        report_mode=normalized_report_mode,
-        checkpointer=checkpointer,
-    )
-    initial_state = build_initial_pipeline_state(
+    return invoke_pipeline(
+        graph,
         query,
-        language=language,
-    )
-    config = build_runtime_config(
-        infosphere=infosphere,
-        report_mode=normalized_report_mode,
+        infosphere,
+        report_mode,
         thread_id=thread_id,
     )
-    result = app.invoke(initial_state, config=config)
-    return str(result["final_output"])
 
 
 graph = build_graph()

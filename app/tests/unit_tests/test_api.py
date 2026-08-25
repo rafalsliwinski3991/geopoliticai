@@ -33,11 +33,11 @@ async def test_run_pipeline_stream_logs_prompt_and_output() -> None:
     # Mock the graph execution
     mock_state = {"final_output": "test output"}
     mock_graph = AsyncMock()
-    mock_graph.astream_events = AsyncMock(return_value=_mock_stream_events(mock_state))
+    mock_graph.astream_events = lambda *_args, **_kwargs: _mock_stream_events(mock_state)
 
     with patch("api.database.log_prompt", mock_log_prompt):
         with patch("api.database.log_output", mock_log_output):
-            with patch("api.build_graph", return_value=mock_graph):
+            with patch("api.pipeline_graph", mock_graph):
                 client = TestClient(app)
                 response = client.post(
                     "/api/run_pipeline/stream",
@@ -54,6 +54,25 @@ async def test_run_pipeline_stream_logs_prompt_and_output() -> None:
     assert "test query" == call_args[0][0]
 
 
+def test_stream_forwards_only_compose_final_tokens() -> None:
+    """Only synthesis tokens are exposed as live preview SSE events."""
+    mock_log_prompt = AsyncMock(return_value=None)
+    mock_graph = AsyncMock()
+    mock_graph.astream_events = lambda *_args, **_kwargs: _mock_stream_events_with_tokens()
+
+    with patch("api.database.log_prompt", mock_log_prompt):
+        with patch("api.pipeline_graph", mock_graph):
+            response = TestClient(app).post(
+                "/api/run_pipeline/stream",
+                json={"query": "test query", "infosphere": "english"},
+            )
+
+    assert response.status_code == 200
+    assert '"type": "token", "content": "draft"' in response.text
+    assert "analyst token" not in response.text
+    assert '"type": "result", "output": "complete"' in response.text
+
+
 @pytest.mark.anyio
 async def test_run_pipeline_logs_prompt_and_output_via_background_task() -> None:
     """Test sync endpoint logs prompt and output via background task."""
@@ -61,12 +80,12 @@ async def test_run_pipeline_logs_prompt_and_output_via_background_task() -> None
     mock_log_output = AsyncMock()
 
     # Mock the pipeline execution
-    def mock_run_pipeline(query: str, infosphere: str) -> str:
+    def mock_invoke_pipeline(_graph, query: str, infosphere: str) -> str:
         return "pipeline output"
 
     with patch("api.database.log_prompt", mock_log_prompt):
         with patch("api.database.log_output", mock_log_output):
-            with patch("api.run_pipeline", mock_run_pipeline):
+            with patch("api.invoke_pipeline", mock_invoke_pipeline):
                 client = TestClient(app)
                 response = client.post(
                     "/api/run_pipeline",
@@ -87,7 +106,7 @@ def test_run_pipeline_returns_output() -> None:
     mock_run_pipeline_output = "test result"
     mock_log_prompt = AsyncMock(return_value=1)
 
-    with patch("api.run_pipeline", return_value=mock_run_pipeline_output):
+    with patch("api.invoke_pipeline", return_value=mock_run_pipeline_output):
         with patch("api.database.log_prompt", mock_log_prompt):
             client = TestClient(app)
             response = client.post(
@@ -132,7 +151,7 @@ def test_run_pipeline_normalizes_whitespace() -> None:
     """Test endpoint normalizes whitespace in query."""
     mock_log_prompt = AsyncMock(return_value=1)
 
-    with patch("api.run_pipeline", return_value="output"):
+    with patch("api.invoke_pipeline", return_value="output"):
         with patch("api.database.log_prompt", mock_log_prompt):
             client = TestClient(app)
             response = client.post(
@@ -161,7 +180,7 @@ def test_rate_limiting_enforced() -> None:
     client = TestClient(app)
     mock_log_prompt = AsyncMock(return_value=1)
 
-    with patch("api.run_pipeline", return_value="output"):
+    with patch("api.invoke_pipeline", return_value="output"):
         with patch("api.database.log_prompt", mock_log_prompt):
             # Make requests up to the rate limit
             for i in range(20):  # DEFAULT_RATE_LIMIT_REQUESTS = 20
@@ -185,9 +204,9 @@ def test_rate_limiting_enforced() -> None:
             assert response.status_code == 429
 
 
-def _mock_stream_events(state_dict: dict) -> list[dict]:
+async def _mock_stream_events(state_dict: dict):
     """Helper to create mock stream events."""
-    return [
+    for event in [
         {
             "event": "on_chain_start",
             "metadata": {"langgraph_node": "ingest_request"},
@@ -197,4 +216,28 @@ def _mock_stream_events(state_dict: dict) -> list[dict]:
             "name": "GeopoliticAI",
             "data": {"output": state_dict},
         },
-    ]
+    ]:
+        yield event
+
+
+async def _mock_stream_events_with_tokens():
+    """Create progress, mixed token, and terminal graph events."""
+    yield {
+        "event": "on_chain_start",
+        "metadata": {"langgraph_node": "compose_final"},
+    }
+    yield {
+        "event": "on_chat_model_stream",
+        "metadata": {"langgraph_node": "left_analyst"},
+        "data": {"chunk": "analyst token"},
+    }
+    yield {
+        "event": "on_chat_model_stream",
+        "metadata": {"langgraph_node": "compose_final"},
+        "data": {"chunk": "draft"},
+    }
+    yield {
+        "event": "on_chain_end",
+        "name": "GeopoliticAI",
+        "data": {"output": {"final_output": "complete"}},
+    }
