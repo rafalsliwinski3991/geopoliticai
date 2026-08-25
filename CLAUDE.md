@@ -19,6 +19,8 @@ it.
 - `app/src/nodes/` - all graph node implementations.
 - `app/tests/` - unit and integration tests.
 - `frontend/` - static Alpine.js/`marked.js` frontend and assets.
+- `ai_tools_tables.md` - provider-by-provider inventory of repository skills
+  and hooks.
 - `.github/skills/` - Copilot skills, references, scripts, and templates.
 - `.opencode/skills/` - OpenCode-compatible mirror of those skills.
 - `app/langgraph.json` - LangGraph CLI entrypoint configuration.

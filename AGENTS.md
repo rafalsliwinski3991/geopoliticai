@@ -22,6 +22,8 @@ ever removed.
 - `app/tests/` - unit and integration tests.
 - `frontend/` - static Alpine.js and `marked.js` client, with assets; there is
   no frontend bundler.
+- `ai_tools_tables.md` - provider-by-provider inventory of repository skills
+  and hooks.
 - `.github/skills/` - GitHub Copilot skills and bundled references/scripts.
 - `.opencode/skills/` - OpenCode-compatible copy of the same skill bundle.
 - `app/langgraph.json` - LangGraph CLI registration for `src/graph.py:graph`.
