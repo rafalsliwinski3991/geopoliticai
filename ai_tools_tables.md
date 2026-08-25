@@ -5,10 +5,10 @@ Providers are identified by their repository configuration directories:
 `.github` (GitHub Copilot), `.opencode` (OpenCode), `.claude` (Claude), and
 `.codex` (Codex).
 
-This file is the single home for repository AI-tool layout facts. The three
-codebase guidance files (`AGENTS.md`, `CLAUDE.md`, and
-`.github/copilot-instructions.md`) intentionally do not mention skills,
-hooks, agents, or agent definitions; keep it that way.
+This file is the single home for detailed repository AI-tool layout facts.
+The three codebase guidance files (`AGENTS.md`, `CLAUDE.md`, and
+`.github/copilot-instructions.md`) contain only the concise Codex development
+workflow.
 
 After any addition, removal, rename, or modification of a provider's skills,
 hooks, plugins, agents, commands, or related AI-tool configuration, update
@@ -20,6 +20,8 @@ this file to keep it accurate.
   scripts.
 - `.opencode/skills/` - OpenCode-compatible copy of the same skill bundle.
 - `.codex/skills/` - Codex copy of the shared skill bundle.
+- `.codex/config.toml` - project agent and thread settings.
+- `.codex/agents/` - four Codex role definitions.
 - `.claude/skills/` - Claude skills; `swarm` and `grill-me` exist only here.
 - `.claude/hooks/` and `.codex/hooks/` - contain no active hook
   implementations; the `.claude/hooks/.klaussy-version` file is metadata.
@@ -61,7 +63,18 @@ The Claude `grill-me` skill stores its session files under
 
 | Agent | GitHub Copilot | OpenCode | Claude | Codex |
 |---|---:|---:|---:|---:|
-| critic | no | yes | no | no |
+| orchestrator | no | no | no | yes |
+| explorer | no | no | no | yes |
+| builder | no | no | no | yes |
+| critic | no | yes | no | yes |
+
+The configured Codex defaults are: `orchestrator` uses `gpt-5.6-sol` with
+high reasoning and a read-only sandbox; `explorer` uses `gpt-5.6-luna` with
+medium reasoning and a read-only sandbox; `builder` uses `gpt-5.6-sol` with
+high reasoning and a workspace-write sandbox; and `critic` uses `gpt-5.6-sol`
+with high reasoning and a read-only sandbox. These sandbox modes are
+configured defaults, and project configuration loads only for trusted
+repositories.
 
 The OpenCode `critic` agent (`.opencode/agents/critic.md`) is a read-only
 reviewer subagent running on `nvidia/nemotron-3-super-120b-a12b`. The root
