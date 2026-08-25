@@ -553,5 +553,5 @@ Set variables in `.env` at the repo root (loaded by docker compose) or `app/.env
 - Polish and English prompts and sources are not interchangeable. Both the LLM prompts and curated `INFOSPHERE_SOURCES` switch on the `language` or `infosphere` value passed through LangGraph runtime config.
 - The module-level graph is compiled once. Both sync and streaming paths pass per-request values with `build_runtime_config()`.
 - `compose_final` depends on the referee not having blocked. If you change routing, also update the `_route_after_referee` conditional in `graph.py`.
-- CI uses the stale top-level `requirements.txt`, not `app/pyproject.toml`. If you change runtime dependencies in `pyproject.toml`, CI will not pick them up unless you also update `requirements.txt` or fix the workflow.
+- CI installs the locked `app/pyproject.toml` environment with `uv sync --locked --dev` from `app/`, then runs the tests there. Keep `app/uv.lock` current when changing runtime or test dependencies.
 - Prefer `rg` for repository searches and keep edits scoped to the task. Do not modify `.env` files or secrets unless the user explicitly asks.
