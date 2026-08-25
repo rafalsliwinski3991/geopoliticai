@@ -780,3 +780,977 @@ unconditional instruction invites a small model to manufacture conflict.
 Worst-case prompt size: 8 sources x 20,000 chars = 160k chars ≈ 40k tokens, inside `gpt-4o-mini`'s
 128k window. Typical runs land near 15k tokens.
 
+---
+
+## Step 6 — `app/src/graph.py`
+
+155 LOC -> ~90. All 15 `add_node` calls, `_route_after_referee`, the conditional edge,
+`normalize_report_mode`/`normalize_language` plumbing and `get_infosphere_sources` go. `configurable`
+now carries only `thread_id`, so `nodes/runtime_config.py` dies with the package (Q4).
+
+This module also becomes the **single shared implementation** behind both API endpoints (Q13).
+
+Full replacement:
+
+```python
+"""Graph construction and execution for the GeopoliticAI workflow."""
+
+from __future__ import annotations
+
+from collections.abc import AsyncIterator
+from typing import Any, Literal
+
+from langgraph.graph import END, START, StateGraph
+
+from answer import answer
+from llm import LLMInvocationError
+from models import PipelineState, build_initial_pipeline_state
+from search import search_and_fetch
+
+NODE_LABELS: dict[str, str] = {
+    "search_and_fetch": "Searching and reading sources...",
+    "answer": "Writing the answer...",
+}
+
+PipelineEvent = tuple[Literal["progress", "token"], str]
+
+
+def build_graph() -> Any:
+    """Construct and compile the two-node LangGraph pipeline."""
+    graph = StateGraph(PipelineState)
+    graph.add_node("search_and_fetch", search_and_fetch)
+    graph.add_node("answer", answer)
+    graph.add_edge(START, "search_and_fetch")
+    graph.add_edge("search_and_fetch", "answer")
+    graph.add_edge("answer", END)
+    return graph.compile(name="GeopoliticAI")
+
+
+graph = build_graph()
+
+
+def build_runtime_config(*, thread_id: str | None = None) -> dict[str, dict[str, Any]]:
+    """Build LangGraph runtime configuration shared by both entrypoints."""
+    configurable: dict[str, Any] = {}
+    if thread_id is not None:
+        if not thread_id.strip():
+            raise ValueError("thread_id must not be empty when provided.")
+        configurable["thread_id"] = thread_id
+    return {"configurable": configurable}
+
+
+def _chunk_text(chunk: object) -> str:
+    """Extract text only from a streamed LangChain content chunk."""
+    content = getattr(chunk, "content", chunk)
+    if isinstance(content, str):
+        return content
+    if not isinstance(content, list):
+        return ""
+    parts: list[str] = []
+    for block in content:
+        if isinstance(block, dict) and block.get("type") == "text":
+            text = block.get("text")
+            if isinstance(text, str):
+                parts.append(text)
+    return "".join(parts)
+
+
+async def astream_pipeline(
+    query: str,
+    *,
+    thread_id: str | None = None,
+) -> AsyncIterator[PipelineEvent]:
+    """Run one request, yielding ("progress", node) and ("token", text) events.
+
+    Raises PipelineError or LLMInvocationError. It never yields a degraded or
+    fabricated answer (Q6).
+    """
+    state = build_initial_pipeline_state(query)
+    config = build_runtime_config(thread_id=thread_id)
+    seen_nodes: set[str] = set()
+
+    async for event in graph.astream_events(state, config=config, version="v2"):
+        event_type = event.get("event", "")
+        node = event.get("metadata", {}).get("langgraph_node", "")
+        if (
+            event_type == "on_chain_start"
+            and node in NODE_LABELS
+            and node not in seen_nodes
+        ):
+            seen_nodes.add(node)
+            yield ("progress", node)
+        elif event_type == "on_chat_model_stream" and node == "answer":
+            text = _chunk_text(event.get("data", {}).get("chunk"))
+            if text:
+                yield ("token", text)
+
+
+async def run_pipeline(query: str, *, thread_id: str | None = None) -> str:
+    """Run one request and return the finished answer.
+
+    The synchronous path is the streaming path joined, so the two endpoints
+    cannot drift (Q13).
+    """
+    parts: list[str] = []
+    async for kind, text in astream_pipeline(query, thread_id=thread_id):
+        if kind == "token":
+            parts.append(text)
+    result = "".join(parts).strip()
+    if not result:
+        raise LLMInvocationError("Pipeline produced no answer text.")
+    return result
+```
+
+`invoke_pipeline(compiled_graph, ...)` is gone. Nothing calls the graph synchronously any more:
+both nodes are `async def`, so `graph.invoke()` would fail, and the API is already async.
+
+---
+
+## Step 7 — `app/src/api.py`
+
+Both endpoints stay; both now run through `astream_pipeline` / `run_pipeline` (Q13). `infosphere`
+leaves the request model, `report_mode` dies with `supervisor`, the 30-entry bilingual label maps
+collapse into `NODE_LABELS`, and errors become real errors instead of degraded 200s.
+
+### 7.1 Imports and request model
+
+```diff
+ import database
+ from config import init_environment, require_env
+-from graph import (
+-    build_runtime_config,
+-    invoke_pipeline,
+-)
+-from graph import (
+-    graph as pipeline_graph,
+-)
+-from models import build_initial_pipeline_state, normalize_language
++from graph import NODE_LABELS, astream_pipeline, run_pipeline
++from llm import LLMInvocationError
++from models import NoSourcesError, PipelineError, SearchUnavailableError
+```
+
+```diff
+ class RunPipelineRequest(BaseModel):
+     """Request payload for running the analysis pipeline."""
+
+     query: str = Field(
+         ...,
+         min_length=1,
+         max_length=MAX_QUERY_LENGTH,
+         description="Query to analyze",
+     )
+-    infosphere: Literal["english", "polish"] = Field(
+-        "polish", description="Which infosphere sources to use: english or polish"
+-    )
+```
+
+`Literal` and `run_in_threadpool` drop out of the imports with it.
+
+### 7.2 Error mapping
+
+New helpers, replacing the two bilingual message constants:
+
+```python
+_ERROR_STATUS: tuple[tuple[type[Exception], int], ...] = (
+    (NoSourcesError, 422),
+    (SearchUnavailableError, 503),
+    (LLMInvocationError, 502),
+)
+
+
+def _status_for(exc: Exception) -> int:
+    """Map a known pipeline failure onto an HTTP status code."""
+    for error_type, status in _ERROR_STATUS:
+        if isinstance(exc, error_type):
+            return status
+    return 500
+
+
+def _sse(payload: dict[str, str]) -> str:
+    """Serialize one SSE data frame."""
+    return f"data: {json.dumps(payload)}\n\n"
+```
+
+The messages carried in `NoSourcesError` / `SearchUnavailableError` are authored strings from
+`search.py`, safe to show a user. `LLMInvocationError`'s message is the fixed string
+`"Model call failed."`; the provider's exception stays in `__cause__` and reaches the log only.
+
+Delete `_NODE_LABELS_PL` and `_NODE_LABELS_EN` (30 entries) entirely.
+
+### 7.3 Streaming endpoint
+
+```python
+@router.post("/run_pipeline/stream")
+async def run_pipeline_stream_endpoint(
+    payload: RunPipelineRequest,
+    request: Request,
+) -> StreamingResponse:
+    """Run the pipeline and stream progress and answer tokens over SSE."""
+    _enforce_rate_limit(request)
+    client_id = _resolve_client_id(request)
+    log_id = await database.log_prompt(payload.query, client_id)
+
+    async def _generate() -> AsyncGenerator[str, None]:
+        parts: list[str] = []
+        try:
+            async for kind, value in astream_pipeline(payload.query):
+                if kind == "progress":
+                    yield _sse(
+                        {"type": "progress", "node": value, "label": NODE_LABELS[value]}
+                    )
+                else:
+                    parts.append(value)
+                    yield _sse({"type": "token", "content": value})
+
+            output = "".join(parts).strip()
+            if not output:
+                yield _sse(
+                    {"type": "error", "message": "The model returned an empty answer."}
+                )
+                return
+            yield _sse({"type": "result", "output": _sanitize_output(output)})
+            if log_id is not None:
+                await database.log_output(log_id, output)
+
+        except (PipelineError, LLMInvocationError) as exc:
+            logger.warning("Streaming pipeline failed: %s", exc)
+            yield _sse({"type": "error", "message": str(exc)})
+        except Exception:
+            logger.exception("Streaming pipeline failed unexpectedly.")
+            yield _sse(
+                {
+                    "type": "error",
+                    "message": "An unexpected error occurred. Please try again.",
+                }
+            )
+
+    return StreamingResponse(
+        _generate(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+```
+
+The SSE event vocabulary is unchanged — `progress` / `token` / `result` / `error` — so the frontend
+contract survives. What changes is that a failed run now emits `error` instead of a `result`
+carrying canned degraded prose.
+
+### 7.4 Synchronous endpoint
+
+```diff
+     log_id = await database.log_prompt(payload.query, client_id)
+     try:
+-        output = await run_in_threadpool(
+-            invoke_pipeline, pipeline_graph, payload.query, payload.infosphere
+-        )
++        output = await run_pipeline(payload.query)
++    except (PipelineError, LLMInvocationError) as exc:
++        logger.warning("Pipeline failed: %s", exc)
++        raise HTTPException(status_code=_status_for(exc), detail=str(exc)) from None
+     except Exception:
+         logger.exception("Pipeline failed unexpectedly.")
+         raise HTTPException(status_code=500, detail="Internal server error.") from None
+```
+
+Unchanged in this file: CORS, rate limiting, `_sanitize_output`, `_resolve_client_id`, the
+`lifespan` hook, static-frontend mounting, and `/api/health`.
+
+---
+
+## Step 8 — `app/src/cli.py`
+
+```diff
+ import argparse
++import asyncio
+ import sys
+
+ from config import init_environment, require_env
+ from graph import run_pipeline
+-from models import detect_language
+
+
+ def main() -> None:
+     """Parse CLI arguments and run the pipeline."""
+     parser = argparse.ArgumentParser(description="Run GeopoliticAI POC pipeline.")
+     parser.add_argument("query", help="Query to analyze")
+-    parser.add_argument(
+-        "--infosphere",
+-        choices=("english", "polish"),
+-        default=None,
+-        help=(
+-            "Force a specific infosphere. "
+-            "Defaults to auto-detecting from query language."
+-        ),
+-    )
+-    parser.add_argument(
+-        "--report",
+-        choices=("compact", "full"),
+-        default="compact",
+-        help="Output mode: compact summary or full report.",
+-    )
+     parser.add_argument(
+         "--log-level",
+         choices=("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"),
+         default=None,
+         help="Override logging level for this run.",
+     )
+     args = parser.parse_args()
+
+     init_environment(log_level=args.log_level)
+     require_env()
+
+-    infosphere = args.infosphere or detect_language(args.query)
+-    output = run_pipeline(
+-        args.query,
+-        infosphere=infosphere,
+-        report_mode=args.report,
+-    )
++    output = asyncio.run(run_pipeline(args.query))
+     data = str(output).encode("utf-8", errors="replace")
+```
+
+New invocation: `cd app && python src/cli.py "your query"`. The documented
+`--infosphere polish --report full` form is gone and every doc that shows it must change (Step 13).
+
+---
+
+## Step 9 — `frontend/index.html`
+
+Three edits. The SSE handling loop (`progress` / `token` / `result` / `error`) needs no change.
+
+**9.1 — remove the flag picker** (`index.html:339-355`):
+
+```diff
+-          <div class="lang-picker">
+-            <button
+-              class="lang-btn"
+-              :class="{ active: infosphere === 'polish' }"
+-              @click="infosphere = 'polish'"
+-              title="Polski"
+-              :disabled="isLoading"
+-            >🇵🇱</button>
+-            <button
+-              class="lang-btn"
+-              :class="{ active: infosphere === 'english' }"
+-              @click="infosphere = 'english'"
+-              title="English"
+-              :disabled="isLoading"
+-            >🇺🇸</button>
+-          </div>
+```
+
+**9.2 — unconditional English subtitle** (`index.html:333-336`):
+
+```diff
+-              <p x-text="infosphere === 'polish'
+-                ? 'Wieloperspektywiczna analiza geopolityczna z weryfikacją faktów.'
+-                : 'Multi-perspective geopolitical analysis with fact verification.'">
+-              </p>
++              <p>Geopolitical analysis grounded in cross-spectrum reporting.</p>
+```
+
+The old subtitle promised fact verification, which no longer exists in the pipeline.
+
+**9.3 — collapse the `I18N` map and drop `infosphere` from the component**:
+
+```diff
+-      const I18N = {
+-        polish: { ... },
+-        english: { ... },
+-      };
++      const I18N = {
++        welcome: "...",
++        timeout_error: "...",
++        connection_error: (msg) => `Connection error: ${msg}`,
++        server_error: (code) => `Server error (${code}).`,
++        time_locale: "en-US",
++      };
+```
+
+```diff
+           input: "",
+           isLoading: false,
+-          infosphere: "polish",
+           progressLog: [],
+
+           init() {
+-            this.messages = [{ role: "bot", text: I18N.polish.welcome, timestamp: new Date() }];
+-            this.$watch("infosphere", (lang) => {
+-              if (this.messages.length === 1 && this.messages[0].role === "bot") {
+-                this.messages[0].text = I18N[lang].welcome;
+-              }
+-            });
++            this.messages = [{ role: "bot", text: I18N.welcome, timestamp: new Date() }];
+             this.$nextTick(() => this.$refs.input?.focus());
+           },
+
+           t(key) {
+-            return I18N[this.infosphere][key];
++            return I18N[key];
+           },
+```
+
+```diff
+-                body: JSON.stringify({ query: text, infosphere: this.infosphere }),
++                body: JSON.stringify({ query: text }),
+```
+
+Also drop the now-unused `.lang-picker` / `.lang-btn` CSS rules and any Polish example-query
+strings in the welcome block.
+
+---
+
+## Step 10 — Deletions
+
+```bash
+cd app
+git rm -r src/nodes
+git rm src/planning.py src/render.py
+git rm tests/unit_tests/test_cleanup_pipeline.py \
+       tests/unit_tests/test_compose_final_inference.py \
+       tests/unit_tests/test_llm_json_parsing.py \
+       tests/unit_tests/test_configuration.py
+```
+
+That is 1,499 LOC of `src/nodes/**` plus 37 LOC of `planning.py` + `render.py`, and 312 LOC of
+tests that assert the removed design (TRUE-only funnel, referee routing, structured-output JSON
+repair, lane search pools).
+
+Sanity check that nothing still imports the deleted modules:
+
+```bash
+grep -rn "from nodes\|import nodes\|from planning\|from render\|infosphere\|report_mode\|referee\|fact_check\|Claim\b" app/src app/tests
+```
+
+Expected result after the rewrite: no matches.
+
+---
+
+## Step 11 — Tests
+
+Target: three things, per Q14. (1) Can an out-of-allowlist URL ever reach the prompt? (2) Do all
+three hard-fail paths actually fail hard? (3) Does the API contract hold on both endpoints,
+including streaming events and error shapes.
+
+| File | Fate |
+| --- | --- |
+| `tests/unit_tests/test_database.py` (148) | survives verbatim |
+| `tests/unit_tests/test_config_env.py` (105) | drop the `ANALYST_ADDITIONAL_SOURCES` parametrize case; the other two survive |
+| `tests/unit_tests/test_search_enforcement.py` (135) | rewritten -> `test_search.py` |
+| `tests/unit_tests/test_api.py` (243) | rewritten against the new contract |
+| `tests/unit_tests/test_fetch.py` | new |
+| `tests/unit_tests/test_answer.py` | new |
+| `tests/unit_tests/test_config_allowlist.py` | new |
+| `tests/integration_tests/test_graph.py` (17) | rewritten |
+
+### 11.1 `tests/unit_tests/test_config_allowlist.py` (new)
+
+Cheap invariants that catch the most likely hand-edit mistakes in a 28-entry list:
+
+```python
+from config import ALLOWED_DOMAINS, HARD_PAYWALLED_DOMAINS, SEARCH_BATCHES
+
+
+def test_batches_partition_the_allowlist() -> None:
+    batched = [domain for batch in SEARCH_BATCHES for domain in batch]
+    assert sorted(batched) == sorted(ALLOWED_DOMAINS)
+    assert len(batched) == len(set(batched)), "a domain appears in two batches"
+
+
+def test_paywalled_set_is_a_subset_of_the_allowlist() -> None:
+    assert HARD_PAYWALLED_DOMAINS <= set(ALLOWED_DOMAINS)
+
+
+def test_domains_are_bare_hosts() -> None:
+    for domain in ALLOWED_DOMAINS:
+        assert "://" not in domain and "/" not in domain
+        assert not domain.startswith("www.")
+```
+
+### 11.2 `tests/unit_tests/test_search.py` (new, replaces `test_search_enforcement.py`)
+
+```python
+import httpx
+import pytest
+
+import search
+from models import Candidate, NoSourcesError, SearchUnavailableError
+
+
+def _brave_response(results: list[dict]) -> httpx.Response:
+    request = httpx.Request("GET", search.BRAVE_SEARCH_URL)
+    return httpx.Response(200, json={"web": {"results": results}}, request=request)
+
+
+@pytest.fixture(autouse=True)
+def _set_brave_key(monkeypatch):
+    monkeypatch.setenv("BRAVE_SEARCH_KEY", "test-key")
+
+
+def test_allowed_domain_accepts_subdomains_and_rejects_lookalikes() -> None:
+    assert search.allowed_domain("https://www.bbc.com/news/x") == "bbc.com"
+    assert search.allowed_domain("https://edition.bbc.com/x") == "bbc.com"
+    assert search.allowed_domain("https://bbc.com.evil.example/x") is None
+    assert search.allowed_domain("https://en.wikipedia.org/wiki/X") is None
+
+
+def test_batch_query_stays_inside_brave_limits() -> None:
+    long_query = "word " * 400
+    built = search.build_batch_query(long_query, search.SEARCH_BATCHES[0])
+    assert len(built) <= search.BRAVE_MAX_QUERY_CHARS
+    assert len(built.split()) <= search.BRAVE_MAX_QUERY_WORDS
+    assert "site:reuters.com" in built
+
+
+def test_batch_query_drops_domains_before_exceeding_the_budget() -> None:
+    # 28 domains cannot fit; the builder must shed the tail, not truncate silently.
+    built = search.build_batch_query("ukraine ceasefire", search.ALLOWED_DOMAINS)
+    assert len(built) <= search.BRAVE_MAX_QUERY_CHARS
+    assert "site:reuters.com" in built  # the head is kept
+
+
+@pytest.mark.anyio
+async def test_out_of_allowlist_urls_never_become_candidates(monkeypatch) -> None:
+    response = _brave_response(
+        [
+            {"title": "Wikipedia", "url": "https://en.wikipedia.org/wiki/X",
+             "description": "out of scope"},
+            {"title": "Reuters report", "url": "https://www.reuters.com/world/x",
+             "description": "allowed"},
+        ]
+    )
+
+    async def fake_get(self, url, *, params=None, timeout=None):
+        return response
+
+    monkeypatch.setattr(httpx.AsyncClient, "get", fake_get)
+
+    async with httpx.AsyncClient() as client:
+        candidates = await search._brave_batch(client, "x", ("reuters.com",))
+
+    assert [c.url for c in candidates] == ["https://www.reuters.com/world/x"]
+
+
+def test_merge_caps_results_per_domain_and_defers_paywalls() -> None:
+    batch = [
+        Candidate("a", "https://reuters.com/1", "reuters.com"),
+        Candidate("b", "https://reuters.com/2", "reuters.com"),
+        Candidate("c", "https://reuters.com/3", "reuters.com"),
+    ]
+    paywalled = [Candidate("d", "https://ft.com/1", "ft.com")]
+    merged = search.merge_candidates([batch, paywalled])
+
+    assert [c.url for c in merged] == [
+        "https://reuters.com/1",
+        "https://reuters.com/2",
+        "https://ft.com/1",
+    ]
+
+
+@pytest.mark.anyio
+async def test_zero_allowlisted_results_raises(monkeypatch) -> None:
+    async def fake_get(self, url, *, params=None, timeout=None):
+        return _brave_response([{"title": "X", "url": "https://example.com/x"}])
+
+    monkeypatch.setattr(httpx.AsyncClient, "get", fake_get)
+
+    with pytest.raises(NoSourcesError):
+        await search.search_and_fetch({"query": "x", "sources": [], "answer": ""})
+
+
+@pytest.mark.anyio
+async def test_all_brave_requests_failing_raises(monkeypatch) -> None:
+    async def fake_get(self, url, *, params=None, timeout=None):
+        raise httpx.ConnectError("boom")
+
+    monkeypatch.setattr(httpx.AsyncClient, "get", fake_get)
+
+    with pytest.raises(SearchUnavailableError):
+        await search.search_and_fetch({"query": "x", "sources": [], "answer": ""})
+```
+
+> Note: `BRAVE_MAX_QUERY_CHARS`, `BRAVE_MAX_QUERY_WORDS`, `SEARCH_BATCHES`, `ALLOWED_DOMAINS` and
+> `MAX_SOURCE_CHARS` are reached through the `search` module namespace in these tests — `search.py`
+> imports them from `config`, so no second import is needed and a rename in `config.py` breaks the
+> tests loudly rather than silently.
+
+### 11.3 `tests/unit_tests/test_fetch.py` (new)
+
+The hard-fail path Q6 cares most about, plus the paywall behaviour Q18 was chosen for:
+
+```python
+import httpx
+import pytest
+
+import search
+from models import Candidate, NoSourcesError
+
+_ARTICLE_HTML = "<html><body><article><p>" + ("Real reporting. " * 60) + "</p></article></body></html>"
+_PAYWALL_HTML = "<html><body><div>Subscribe to continue reading.</div></body></html>"
+
+
+def _html_response(body: str, status: int = 200) -> httpx.Response:
+    request = httpx.Request("GET", "https://www.reuters.com/world/x")
+    return httpx.Response(
+        status, text=body, headers={"content-type": "text/html"}, request=request
+    )
+
+
+@pytest.mark.anyio
+async def test_fetch_failure_drops_the_source_rather_than_degrading(monkeypatch) -> None:
+    async def fake_get(self, url, *, timeout=None):
+        raise httpx.ReadTimeout("slow")
+
+    monkeypatch.setattr(httpx.AsyncClient, "get", fake_get)
+    candidate = Candidate("t", "https://www.reuters.com/world/x", "reuters.com")
+
+    async with httpx.AsyncClient() as client:
+        assert await search._fetch_and_extract(client, candidate) is None
+
+
+@pytest.mark.anyio
+async def test_paywall_stub_is_dropped(monkeypatch) -> None:
+    async def fake_get(self, url, *, timeout=None):
+        return _html_response(_PAYWALL_HTML)
+
+    monkeypatch.setattr(httpx.AsyncClient, "get", fake_get)
+    candidate = Candidate("t", "https://www.ft.com/x", "ft.com")
+
+    async with httpx.AsyncClient() as client:
+        assert await search._fetch_and_extract(client, candidate) is None
+
+
+@pytest.mark.anyio
+async def test_article_text_is_capped(monkeypatch) -> None:
+    huge = "<html><body><article><p>" + ("x " * 40_000) + "</p></article></body></html>"
+
+    async def fake_get(self, url, *, timeout=None):
+        return _html_response(huge)
+
+    monkeypatch.setattr(httpx.AsyncClient, "get", fake_get)
+    candidate = Candidate("t", "https://www.reuters.com/world/x", "reuters.com")
+
+    async with httpx.AsyncClient() as client:
+        source = await search._fetch_and_extract(client, candidate)
+
+    assert source is not None
+    assert len(source.text) <= search.MAX_SOURCE_CHARS
+```
+
+Plus one end-to-end node test asserting that when every fetch fails, `search_and_fetch` raises
+`NoSourcesError` rather than returning snippet-backed sources.
+
+### 11.4 `tests/unit_tests/test_answer.py` (new)
+
+```python
+import pytest
+
+import answer as answer_module
+from models import NoSourcesError, Source
+
+
+def test_sources_block_contains_no_numeric_ids() -> None:
+    sources = [
+        Source("Reuters report", "https://www.reuters.com/world/x", "body one"),
+        Source("BBC report", "https://www.bbc.com/news/y", "body two"),
+    ]
+    block = answer_module._sources_block(sources)
+
+    assert block.count("--- SOURCE ---") == 2
+    assert "https://www.reuters.com/world/x" in block
+    assert "SOURCE 1" not in block and "[1]" not in block
+
+
+def test_source_text_with_braces_survives_prompt_assembly() -> None:
+    # Regression guard: the old ChatPromptTemplate path raised KeyError here.
+    sources = [Source("t", "https://www.bbc.com/news/y", 'config = {"a": {"b": 1}}')]
+    block = answer_module._sources_block(sources)
+    assert '{"a": {"b": 1}}' in block
+
+
+@pytest.mark.anyio
+async def test_answer_raises_without_sources() -> None:
+    with pytest.raises(NoSourcesError):
+        await answer_module.answer({"query": "x", "sources": [], "answer": ""})
+
+
+@pytest.mark.anyio
+async def test_answer_joins_streamed_chunks(monkeypatch) -> None:
+    async def fake_stream(system_prompt, human_prompt, *, config=None):
+        for chunk in ("Hello ", "world."):
+            yield chunk
+
+    monkeypatch.setattr(answer_module, "astream_text", fake_stream)
+    state = {
+        "query": "x",
+        "sources": [Source("t", "https://www.bbc.com/news/y", "body")],
+        "answer": "",
+    }
+    assert await answer_module.answer(state) == {"answer": "Hello world."}
+```
+
+### 11.5 `tests/unit_tests/test_api.py` (rewritten)
+
+Keeps `test_health_check` and the prompt/output logging tests, updated to the new request body.
+New assertions:
+
+```python
+def test_request_rejects_unknown_infosphere_field_gracefully(client) -> None:
+    # `infosphere` is gone; pydantic ignores unknown fields by default, so the
+    # request must still succeed rather than 422.
+    ...
+
+
+def test_sync_endpoint_maps_no_sources_to_422() -> None:
+    async def boom(query, **kwargs):
+        raise NoSourcesError("No allow-listed sources were found for this query.")
+
+    with patch("api.run_pipeline", boom):
+        response = TestClient(app).post("/api/run_pipeline", json={"query": "x"})
+
+    assert response.status_code == 422
+    assert "allow-listed" in response.json()["detail"]
+
+
+def test_sync_endpoint_maps_search_unavailable_to_503() -> None: ...
+def test_sync_endpoint_maps_llm_failure_to_502() -> None: ...
+
+
+def test_stream_emits_progress_tokens_then_result() -> None:
+    async def fake_stream(query, **kwargs):
+        yield ("progress", "search_and_fetch")
+        yield ("token", "Hello ")
+        yield ("token", "world.")
+
+    with patch("api.astream_pipeline", fake_stream):
+        with patch("api.database.log_prompt", AsyncMock(return_value=None)):
+            response = TestClient(app).post(
+                "/api/run_pipeline/stream", json={"query": "x"}
+            )
+
+    events = _parse_sse(response.text)
+    assert [e["type"] for e in events] == ["progress", "token", "token", "result"]
+    assert events[0]["label"] == "Searching and reading sources..."
+    assert events[-1]["output"] == "Hello world."
+
+
+def test_stream_emits_error_event_and_no_result_on_failure() -> None:
+    async def fake_stream(query, **kwargs):
+        raise NoSourcesError("nothing usable")
+        yield  # pragma: no cover - makes this an async generator
+
+    with patch("api.astream_pipeline", fake_stream):
+        with patch("api.database.log_prompt", AsyncMock(return_value=None)):
+            response = TestClient(app).post(
+                "/api/run_pipeline/stream", json={"query": "x"}
+            )
+
+    events = _parse_sse(response.text)
+    assert [e["type"] for e in events] == ["error"]
+    assert events[0]["message"] == "nothing usable"
+```
+
+Delete `test_stream_forwards_only_compose_final_tokens` and every other test naming a removed node.
+
+### 11.6 `tests/integration_tests/test_graph.py` (rewritten)
+
+```python
+from graph import NODE_LABELS, build_graph
+
+
+def test_graph_exposes_exactly_two_nodes() -> None:
+    compiled = build_graph()
+    nodes = set(compiled.get_graph().nodes) - {"__start__", "__end__"}
+    assert nodes == {"search_and_fetch", "answer"}
+    assert set(NODE_LABELS) == nodes
+
+
+def test_graph_is_linear() -> None:
+    edges = {(e.source, e.target) for e in build_graph().get_graph().edges}
+    assert ("__start__", "search_and_fetch") in edges
+    assert ("search_and_fetch", "answer") in edges
+    assert ("answer", "__end__") in edges
+```
+
+`test_route_after_referee_blocks_invalid_or_blocked_reports` is deleted with the referee.
+
+### 11.7 `tests/conftest.py`
+
+Unchanged, but it now matters much more: nearly every new test is `@pytest.mark.anyio`, and the
+`anyio_backend` fixture it provides is what makes those run.
+
+---
+
+## Step 12 — Documentation (project rule: all three together)
+
+`CLAUDE.md`, `AGENTS.md`, and `.github/copilot-instructions.md` each need the same four edits:
+
+1. **Workflow section** — replace the 15-node diagram with:
+
+   ```text
+   START -> search_and_fetch -> answer -> END
+   ```
+
+   and the surrounding prose: `PipelineState` is three keys with no reducers; `ResearchPlan`,
+   `RefereeReport`, `Claim`, `FactCheckResult` are gone; search is constrained by one flat English
+   allow-list in `config.py`; three batched Brave queries; pages are fetched and extracted with
+   `trafilatura`; `configurable` carries only `thread_id`.
+
+2. **Project layout** — `app/src/nodes/` no longer exists; `planning.py` and `render.py` are gone;
+   `answer.py` is new.
+
+3. **Commands** — the CLI example loses its flags:
+
+   ```diff
+   -cd app && python src/cli.py "your query" --infosphere polish --report full
+   +cd app && python src/cli.py "your query"
+   ```
+
+4. **The false CI claim** (Q16 follow-up, flagged in the brainstorm as wrong *today*, independent
+   of this refactor). `.github/workflows/unit-tests.yml` runs `uv sync --locked --dev` with
+   `working-directory: app` and never touches the root `requirements.txt`:
+
+   ```diff
+   -CI still references the root `requirements.txt`, so account for that legacy
+   -workflow before removing it.
+   +CI does not reference the root `requirements.txt`: `.github/workflows/unit-tests.yml`
+   +runs `uv sync --locked --dev` with `working-directory: app`, and compose builds
+   +`./app` and `./frontend`. The root files are unused.
+   ```
+
+   The equivalent sentences are `CLAUDE.md:12-15`, `AGENTS.md:12-15`, and
+   `.github/copilot-instructions.md:12`.
+
+Also update the Working Rules bullets that reference removed concepts: `_route_after_referee`
+(no conditional edges remain) and "Keep Polish and English prompts, sources, and progress labels
+distinct" (there is one language now).
+
+`ai_tools_tables.md` needs **no change** — no skill, hook, plugin, agent, or AI-tool config is
+touched by this refactor.
+
+---
+
+## Step 13 — Root legacy files (post-refactor, Q16)
+
+Do this **after** the branch is green, as a separate commit. All three files are currently broken:
+`main.py` imports a nonexistent `geopoliticai` package, the root `Dockerfile` runs
+`uvicorn geopoliticai.api:app`, and the root `requirements.txt` pins `langgraph>=0.2,<1.0` — which
+*excludes* the `langgraph>=1.0.0` the app requires — plus an unused `tavily-python`.
+
+`main.py`:
+
+```python
+"""Backward-compatible entrypoint for the GeopoliticAI CLI."""
+
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent / "app" / "src"))
+
+from cli import main  # noqa: E402
+
+if __name__ == "__main__":
+    main()
+```
+
+`requirements.txt` — regenerate from the maintained environment so it can never drift again:
+
+```bash
+cd app && uv export --no-dev --no-hashes --format requirements-txt > ../requirements.txt
+```
+
+`Dockerfile` — point at `app/` and the real module path:
+
+```diff
+-CMD ["uvicorn", "geopoliticai.api:app", "--host", "0.0.0.0", "--port", "8000"]
++WORKDIR /app/app/src
++CMD ["uvicorn", "api:app", "--host", "0.0.0.0", "--port", "8000"]
+```
+
+Then re-verify the three guidance docs still describe the root files accurately.
+
+---
+
+## Verification
+
+Run in order; do not proceed past a red step.
+
+```bash
+cd app
+uv lock && uv sync --locked --dev
+make lint          # ruff + mypy --strict over src/ and tests/
+make test          # unit tests
+make integration_tests
+
+# graph shape, live
+langgraph dev      # confirm two nodes in Studio
+
+# one real end-to-end run
+python src/cli.py "What is the current state of the Ukraine ceasefire negotiations?"
+```
+
+Manual checks on that run's output, none of which a test can make:
+
+- [ ] Every factual sentence carries an inline markdown link (Q11).
+- [ ] **Click three or four of those links.** Q11 accepts hand-transcribed URLs, so broken links
+      are the expected failure mode and nothing in the pipeline detects them.
+- [ ] Cited outlets span more than one lean — if all eight sources are one publisher, `MAX_PER_DOMAIN`
+      or the batch mix needs work.
+- [ ] Where sources genuinely differ, the answer names the disagreement and attributes it; where
+      they agree, it has not invented one (Q12).
+- [ ] Attribution is correct: spot-check one claim against the article it links to (Q9 + Q10 risk).
+
+Then the frontend and the failure paths:
+
+```bash
+cd .. && make up
+```
+
+- [ ] `POST /api/run_pipeline/stream` streams `progress` -> `token` -> `result`.
+- [ ] With `BRAVE_SEARCH_KEY` unset, both endpoints return a visible error, not a canned answer.
+- [ ] A deliberately obscure query (one with no allow-list coverage) produces a 422 / `error`
+      event, not a fabricated answer.
+- [ ] The Polish flag picker is gone and the UI is English throughout.
+- [ ] With `DATABASE_URL` set, `prompt_logs` gains a row with both prompt and output.
+
+Finally: `grep -rn "infosphere\|polish\|referee\|Claim\b" app/src frontend` returns nothing.
+
+---
+
+## Risks and open flags
+
+Carried from the brainstorm, plus what this plan surfaced.
+
+**Flagged in the brainstorm, still open:**
+
+1. **Brave query limits are assumed, not verified.** `BRAVE_MAX_QUERY_CHARS = 400` /
+   `BRAVE_MAX_QUERY_WORDS = 50` are the documented values as understood; confirm against current
+   Brave docs before trusting `build_batch_query`'s budget arithmetic. The builder degrades safely
+   (drops trailing domains with a warning) if the real limit is lower.
+2. **Brave Goggles** would replace `site:` batching entirely and remove the query-length problem.
+   Verify availability on the current plan; if available, `SEARCH_BATCHES` collapses to one query.
+3. **Broken inline links** from hand-transcribed URLs (Q11) — undetectable in-pipeline by design.
+4. **Wrong-source attribution** (Q9 + Q10): `gpt-4o-mini` over 8 long documents with no judge and
+   no fallback. The prompt log (Q15) is the only place this can be caught, after the fact.
+5. **Manufactured disagreement** (Q12) — mitigated only by the conditional wording of rule 2.
+
+**Surfaced while writing this plan:**
+
+6. **Six of the 28 domains are hard-paywalled** (`wsj`, `ft`, `economist`, `nytimes`,
+   `washingtonpost`, `bloomberg`) and will usually be dropped by `trafilatura`. They stay in the
+   list — a free article from them is as good as any — but `HARD_PAYWALLED_DOMAINS` defers them in
+   fetch ordering so they do not consume the 10 fetch slots. **This is a recommendation, not a
+   settled decision**; deleting the set changes only ordering. If the visible error rate is still
+   too high after a week of real queries, widening the free-to-read half of the list is the lever.
+7. **Query trimming for Brave.** The API accepts 2,000-character queries; Brave takes ~400 and the
+   site filter needs ~200 of them. `_trim_query` keeps the first ~20 words / 140 chars. A long,
+   conversational question therefore reaches Brave truncated — and Q7 removed the LLM planner that
+   would otherwise compress it. This is the sharpest edge in the design: recall on verbose queries
+   rests entirely on the first 20 words.
+8. **`ChatPromptTemplate` removal is load-bearing**, not stylistic. Any future reintroduction of
+   templated prompts around source text will raise `KeyError` on the first article containing a
+   brace. `test_answer.py::test_source_text_with_braces_survives_prompt_assembly` guards it.
+9. **The sync endpoint now buffers the whole stream in memory** before responding. At ~16k output
+   tokens that is trivial, but it is a behaviour change from the old threadpool call.
+10. **No checkpointer, still.** `thread_id` remains configuration context only; nothing resumes.
