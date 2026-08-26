@@ -22,6 +22,7 @@ from agents.expert import NODE_LABELS, astream_pipeline, run_pipeline
 from config import init_environment, require_env
 from llm import LLMInvocationError
 from models import NoSourcesError, PipelineError, SearchUnavailableError
+from tracing import init_tracing
 
 logger = logging.getLogger(__name__)
 DEFAULT_ALLOWED_ORIGINS = (
@@ -67,6 +68,7 @@ RATE_LIMIT_WINDOW_SECONDS = _read_positive_int_env(
 async def lifespan(_app: FastAPI) -> AsyncGenerator[None, None]:
     """Initialize and close optional application resources."""
     init_environment()
+    init_tracing()
     require_env()
     db_url = os.getenv("DATABASE_URL")
     if db_url:

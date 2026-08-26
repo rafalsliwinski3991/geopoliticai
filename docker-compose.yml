@@ -14,8 +14,11 @@ services:
     environment:
       LOG_LEVEL: INFO
       DATABASE_URL: postgresql://geopoliticai:${POSTGRES_PASSWORD}@postgres:5432/geopoliticai
+      PHOENIX_COLLECTOR_ENDPOINT: http://phoenix:6006/v1/traces
+      PHOENIX_PROJECT_NAME: geopoliticai-expert
     depends_on:
       - postgres
+      - phoenix
 
   frontend:
     build: ./frontend
@@ -23,5 +26,13 @@ services:
       backend:
         condition: service_started
 
+  phoenix:
+    image: arizephoenix/phoenix:version-20.4.0
+    environment:
+      PHOENIX_WORKING_DIR: /mnt/data
+    volumes:
+      - phoenix_data:/mnt/data
+
 volumes:
   postgres_data:
+  phoenix_data:

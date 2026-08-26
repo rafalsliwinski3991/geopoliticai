@@ -6,10 +6,19 @@ compatibility entrypoint, Docker, and requirements-export files. CI runs
 `uv sync --locked --dev` in `app/` and does not reference root requirements.
 
 Shared modules under `app/src/` provide environment/model config, shared models
-and errors, policy-parameterized Brave/fetch/extraction, OpenAI access, and
-delivery. Agent packages under `app/src/agents/<name>/` contain graph, state,
-source policy, and node modules. Shared modules never import agents; only API
-and CLI name `agents.expert`.
+and errors, policy-parameterized Brave/fetch/extraction, OpenAI access,
+delivery, and an optional tracing boundary (`tracing.py`). Agent packages
+under `app/src/agents/<name>/` contain graph, state, source policy, and node
+modules. Shared modules never import agents; only API and CLI name
+`agents.expert`.
+
+`tracing.py`'s `init_tracing()` registers self-hosted Arize Phoenix span
+export when `PHOENIX_COLLECTOR_ENDPOINT` is set, is idempotent, and never
+raises — telemetry failures must never fail a request. It's called from the
+API lifespan, the CLI's `main()`, and `agents/expert/graph.py` module scope
+(for `langgraph dev`). Compose runs a `phoenix` service with a `phoenix_data`
+volume and no published host port outside the dev override's loopback
+mapping.
 
 The expert graph is:
 

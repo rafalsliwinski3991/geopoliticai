@@ -8,6 +8,7 @@ import sys
 
 from agents.expert import run_pipeline
 from config import init_environment, require_env
+from tracing import init_tracing
 
 
 def main() -> None:
@@ -22,6 +23,7 @@ def main() -> None:
     )
     args = parser.parse_args()
     init_environment(log_level=args.log_level)
+    init_tracing()
     require_env()
     output = asyncio.run(run_pipeline(args.query))
     data = str(output).encode("utf-8", errors="replace")

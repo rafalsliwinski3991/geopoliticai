@@ -7,8 +7,9 @@ The maintained application is under `app/`; root files are compatibility
 entrypoint, Docker, and requirements-export files. Shared modules in
 `app/src/` provide environment/model config, shared models/errors, a
 policy-parameterized Brave and trafilatura search boundary, the OpenAI boundary,
-and API/CLI/database delivery. Agent-specific code is under
-`app/src/agents/<name>/`; shared modules never import an agent.
+API/CLI/database delivery, and an optional, env-gated tracing boundary.
+Agent-specific code is under `app/src/agents/<name>/`; shared modules never
+import an agent.
 
 The expert graph is `START -> search_and_fetch -> answer -> END`. Its state has
 exactly `query`, `sources`, and `answer`, without reducers. The expert policy is
@@ -32,6 +33,16 @@ field points at `../.env`, and Compose's `env_file: .env` reads the same
 file; there is no separate `app/.env`. Compose wires `DATABASE_URL` from
 `POSTGRES_PASSWORD` automatically, so prompt-log DB writes are on by
 default whenever Postgres runs alongside the backend.
+
+Compose also runs a `phoenix` service (self-hosted Arize Phoenix) on the
+internal network with a `phoenix_data` volume; it publishes no host port
+outside `docker-compose.override.yml`'s loopback-bound dev mapping.
+`app/src/tracing.py` calls `phoenix.otel.register(...)` from the API
+lifespan, the CLI entrypoint, and `agents/expert/graph.py` module scope, and
+never raises — an unreachable collector must never fail a request.
+`PHOENIX_COLLECTOR_ENDPOINT` and `PHOENIX_PROJECT_NAME` are the only
+switches; unset means no tracing, and full prompt/response content is
+exported with no redaction by design.
 
 Keep changes local, return partial state updates, preserve import direction, add
 focused tests, avoid `.env` and secrets, and update all three guidance files for

@@ -18,6 +18,13 @@ Each agent is under `app/src/agents/<name>/` with `graph.py`, `state.py`,
 import agents; only `api.py` and `cli.py` name `agents.expert`. The old
 `nodes/`, `planning.py`, and `render.py` modules are gone.
 
+`app/src/tracing.py` is a shared, optional tracing boundary: `init_tracing()`
+registers self-hosted Arize Phoenix span export when
+`PHOENIX_COLLECTOR_ENDPOINT` is set, is idempotent, and never raises — an
+unreachable collector must never fail a request. `api.py`'s lifespan,
+`cli.py`'s `main()`, and `agents/expert/graph.py` (at module scope, for
+`langgraph dev`) each call it once.
+
 ## Architecture
 
 The expert graph is exactly:
@@ -44,9 +51,11 @@ Known failures map to 422 (no sources), 503 (search unavailable), and 502 (LLM).
 SSE events remain `progress`, `token`, `result`, and `error`. Markdown output
 is sanitized in the browser before insertion.
 
-Development ports are frontend 8082, backend 3001, and PostgreSQL 55432.
-Production compose adds health checks, restart policies, TLS mounting, and nginx
-basic authentication. `app/langgraph.json` exposes the graph as `expert`.
+Development ports are frontend 8082, backend 3001, PostgreSQL 55432, and
+Phoenix 6006 (loopback-bound, dev override only — base and prod compose
+publish no Phoenix port). Production compose adds health checks, restart
+policies, TLS mounting, and nginx basic authentication. `app/langgraph.json`
+exposes the graph as `expert`.
 
 ## Commands
 
@@ -58,7 +67,10 @@ the root requirements file; compose builds `./app` and `./frontend`.
 
 Required variables are `OPENAI_API_KEY` and `BRAVE_SEARCH_KEY`; optional
 settings include database, CORS, OpenAI timeout/token, API rate-limit, logging,
-frontend path, and LangSmith tracing variables.
+frontend path, and LangSmith tracing variables. `PHOENIX_COLLECTOR_ENDPOINT`
+and `PHOENIX_PROJECT_NAME` are the Phoenix tracing switches; unset means no
+tracing, and exported spans carry full prompt/response text with no
+redaction.
 
 There is exactly one `.env`, at the repo root. `config.py` resolves it by
 absolute path regardless of working directory, so the CLI, API, tests, and

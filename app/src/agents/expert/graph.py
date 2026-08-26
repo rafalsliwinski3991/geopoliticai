@@ -10,6 +10,7 @@ from langgraph.graph import END, START, StateGraph
 from agents.expert.nodes import answer, search_and_fetch
 from agents.expert.state import PipelineState, build_initial_pipeline_state
 from llm import LLMInvocationError
+from tracing import init_tracing
 
 NODE_LABELS: dict[str, str] = {
     "search_and_fetch": "Searching and reading sources...",
@@ -29,6 +30,7 @@ def build_graph() -> Any:
     return pipeline.compile(name="expert")
 
 
+init_tracing()
 graph = build_graph()
 
 
