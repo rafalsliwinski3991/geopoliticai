@@ -1,4 +1,4 @@
-"""Configuration helpers and constants for the GeopoliticAI pipeline."""
+"""Environment and model configuration shared by all pipelines."""
 
 from __future__ import annotations
 
@@ -12,82 +12,10 @@ from dotenv import load_dotenv
 logger = logging.getLogger(__name__)
 T = TypeVar("T")
 
-ENGLISH_INFOSPHERE_SOURCES: dict[str, list[tuple[str, str]]] = {
-    "left": [
-        ("Jacobin", "https://jacobin.com"),
-        ("Economic Policy Institute", "https://www.epi.org"),
-        ("Roosevelt Institute", "https://rooseveltinstitute.org"),
-    ],
-    "centrist": [
-        ("Brookings Institution", "https://www.brookings.edu"),
-        ("Council on Foreign Relations", "https://www.cfr.org"),
-        ("The Economist", "https://www.economist.com"),
-    ],
-    "right": [
-        ("American Enterprise Institute", "https://www.aei.org"),
-        ("Heritage Foundation", "https://www.heritage.org"),
-        ("Hoover Institution", "https://www.hoover.org"),
-    ],
-    "fact": [
-        ("Reuters Fact Check", "https://www.reuters.com/fact-check"),
-        ("AP Fact Check", "https://apnews.com/hub/ap-fact-check"),
-        ("FactCheck.org", "https://www.factcheck.org"),
-    ],
-    "people": [
-        ("Reddit", "https://www.reddit.com"),
-        ("X (formerly Twitter)", "https://x.com"),
-        ("Threads", "https://www.threads.net"),
-    ],
-}
-
-POLISH_INFOSPHERE_SOURCES: dict[str, list[tuple[str, str]]] = {
-    "left": [
-        ("Krytyka Polityczna", "https://krytykapolityczna.pl"),
-        ("OKO.press", "https://oko.press"),
-        ("Krytyka", "https://krytyka.info"),
-    ],
-    "centrist": [
-        ("Polityka", "https://www.polityka.pl"),
-        ("Rzeczpospolita", "https://www.rp.pl"),
-        ("TVN24", "https://tvn24.pl"),
-    ],
-    "right": [
-        ("Do Rzeczy", "https://dorzeczy.pl"),
-        ("wPolityce", "https://wpolityce.pl"),
-        ("Gazeta Polska", "https://www.gazetapolska.pl"),
-    ],
-    "fact": [
-        ("Demagog", "https://demagog.org.pl"),
-        ("OKO.press Fakt-checking", "https://oko.press/temat/fake-news"),
-        ("AFP Sprawdzamy", "https://sprawdzam.afp.com"),
-    ],
-    "people": [
-        ("Reddit", "https://www.reddit.com"),
-        ("X (formerly Twitter)", "https://x.com"),
-        ("Threads", "https://www.threads.net"),
-    ],
-}
-
 DEFAULT_MODEL = "gpt-4o-mini"
-DEFAULT_ANALYST_ADDITIONAL_SOURCES = 0
 DEFAULT_OPENAI_TIMEOUT_SECONDS = 60.0
 DEFAULT_OPENAI_MAX_OUTPUT_TOKENS = 16_384
 REQUIRED_ENV_VARS = ("OPENAI_API_KEY", "BRAVE_SEARCH_KEY")
-
-AGENT_MODEL_NAMES: dict[str, str] = {
-    "left_analyst": "gpt-4o-mini",
-    "center_analyst": "gpt-4o-mini",
-    "right_analyst": "gpt-4o-mini",
-    "people_analyst": "gpt-4o-mini",
-    "cross_check_facts": "gpt-4o-mini",
-    "compose_final": "gpt-4o-mini",
-    # Lane aliases used by search helpers.
-    "left": "gpt-4o-mini",
-    "centrist": "gpt-4o-mini",
-    "right": "gpt-4o-mini",
-    "people": "gpt-4o-mini",
-    "fact": "gpt-4o-mini",
-}
 
 
 def init_environment(log_level: str | None = None) -> logging.Logger:
@@ -99,11 +27,8 @@ def init_environment(log_level: str | None = None) -> logging.Logger:
     if not isinstance(numeric_level, int):
         numeric_level = logging.INFO
     logging.basicConfig(
-        level=numeric_level,
-        format="%(levelname)s %(message)s",
-        force=True,
+        level=numeric_level, format="%(levelname)s %(message)s", force=True
     )
-    # Keep third-party transport logs quiet unless explicitly requested via DEBUG.
     for noisy_logger in ("httpx", "httpcore", "openai", "urllib3"):
         logging.getLogger(noisy_logger).setLevel(logging.WARNING)
     return logging.getLogger("agent")
@@ -136,34 +61,23 @@ def _get_env_var(
         parsed = parser(raw_value.strip())
     except (TypeError, ValueError):
         logger.warning(
-            f"Invalid %s=%r; expected {expected_type}. Falling back to {default_format}.",
+            "Invalid %s=%r; expected %s. Falling back to %s.",
             var_name,
             raw_value,
-            default,
+            expected_type,
+            default_format % default,
         )
         return default
     if not validator(parsed):
         logger.warning(
-            f"Invalid %s=%r; expected {expected_value}. Falling back to {default_format}.",
+            "Invalid %s=%r; expected %s. Falling back to %s.",
             var_name,
             raw_value,
-            default,
+            expected_value,
+            default_format % default,
         )
         return default
     return parsed
-
-
-def get_analyst_additional_sources() -> int:
-    """Return how many optional extra sources each analyst may use."""
-    return _get_env_var(
-        "ANALYST_ADDITIONAL_SOURCES",
-        DEFAULT_ANALYST_ADDITIONAL_SOURCES,
-        parser=int,
-        validator=lambda value: value >= 0,
-        expected_type="an integer",
-        expected_value="a non-negative integer",
-        default_format="%d",
-    )
 
 
 def get_openai_timeout_seconds() -> float:
@@ -192,26 +106,7 @@ def get_openai_max_output_tokens() -> int:
     )
 
 
-def get_model(agent_key: str | None = None) -> str:
-    """Return the configured OpenAI model, optionally overridden per agent key."""
+def get_model() -> str:
+    """Return the configured OpenAI model."""
     base_model = os.getenv("OPENAI_MODEL")
-    fallback = (
-        base_model.strip() if base_model and base_model.strip() else DEFAULT_MODEL
-    )
-    if not agent_key:
-        return fallback
-
-    return AGENT_MODEL_NAMES.get(agent_key.strip().lower(), fallback)
-
-
-def get_infosphere_sources(infosphere: str) -> dict[str, list[tuple[str, str]]]:
-    """Return the sources list for the requested infosphere.
-
-    Polish infosphere uses only Polish-language sources.
-    English infosphere uses only English-language sources.
-    """
-    if infosphere == "english":
-        return ENGLISH_INFOSPHERE_SOURCES
-    if infosphere == "polish":
-        return POLISH_INFOSPHERE_SOURCES
-    raise ValueError(f"Unsupported infosphere: {infosphere}")
+    return base_model.strip() if base_model and base_model.strip() else DEFAULT_MODEL
