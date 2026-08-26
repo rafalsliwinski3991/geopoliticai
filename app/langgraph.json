@@ -4,6 +4,6 @@
   "graphs": {
     "expert": "./src/agents/expert/graph.py:graph"
   },
-  "env": ".env",
+  "env": "../.env",
   "image_distro": "wolfi"
 }

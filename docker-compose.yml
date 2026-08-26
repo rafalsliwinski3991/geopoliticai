@@ -13,6 +13,7 @@ services:
     env_file: .env
     environment:
       LOG_LEVEL: INFO
+      DATABASE_URL: postgresql://geopoliticai:${POSTGRES_PASSWORD}@postgres:5432/geopoliticai
     depends_on:
       - postgres
 

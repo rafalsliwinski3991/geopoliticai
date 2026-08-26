@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import os
 from collections.abc import Callable, Sequence
+from pathlib import Path
 from typing import TypeVar
 
 from dotenv import load_dotenv
@@ -17,10 +18,16 @@ DEFAULT_OPENAI_TIMEOUT_SECONDS = 60.0
 DEFAULT_OPENAI_MAX_OUTPUT_TOKENS = 16_384
 REQUIRED_ENV_VARS = ("OPENAI_API_KEY", "BRAVE_SEARCH_KEY")
 
+# app/src/config.py -> app/src -> app -> repo root. Resolved explicitly so
+# every entrypoint (CLI, API, tests, langgraph dev) reads the same
+# repo-root .env that Docker Compose's `env_file: .env` also uses,
+# regardless of the caller's current working directory.
+_REPO_ROOT_ENV = Path(__file__).resolve().parents[2] / ".env"
+
 
 def init_environment(log_level: str | None = None) -> logging.Logger:
     """Load environment variables and configure base logging."""
-    load_dotenv()
+    load_dotenv(_REPO_ROOT_ENV)
     env_log_level = os.getenv("LOG_LEVEL") or "INFO"
     configured_level = (log_level or env_log_level).upper().strip()
     numeric_level = logging.getLevelName(configured_level)

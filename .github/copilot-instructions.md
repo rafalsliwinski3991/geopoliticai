@@ -32,3 +32,10 @@ Run `uv sync --locked --dev`, `make test`, `make integration_tests`, and
 Nodes return partial state dictionaries without mutation, tests should use
 explicit module imports when package initializers re-export functions, and no
 `.env` or secrets should be changed.
+
+There is exactly one `.env`, at the repo root, read by the CLI, API, tests,
+`langgraph dev` (`app/langgraph.json`'s `env: "../.env"`), and Compose's
+`env_file: .env` alike; `config.py` resolves it by absolute path. There is
+no separate `app/.env`. Compose derives `DATABASE_URL` from
+`POSTGRES_PASSWORD` automatically, so prompt-log DB writes are on by
+default.

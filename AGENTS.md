@@ -60,6 +60,13 @@ Required variables are `OPENAI_API_KEY` and `BRAVE_SEARCH_KEY`; optional
 settings include database, CORS, OpenAI timeout/token, API rate-limit, logging,
 frontend path, and LangSmith tracing variables.
 
+There is exactly one `.env`, at the repo root. `config.py` resolves it by
+absolute path regardless of working directory, so the CLI, API, tests, and
+`langgraph dev` (via `app/langgraph.json`'s `env: "../.env"`) all read the
+same file Compose's `env_file: .env` uses; there is no separate `app/.env`.
+Compose derives `DATABASE_URL` from `POSTGRES_PASSWORD` automatically, so
+prompt-log DB writes are on by default.
+
 ## Change Guidance
 
 - Keep state flat and have nodes return partial dictionaries without mutation.

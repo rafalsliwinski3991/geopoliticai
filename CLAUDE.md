@@ -26,6 +26,13 @@ From `app/`, use `uv sync --locked --dev`, `make test`, `make integration_tests`
 `python src/cli.py "your query"`. CI uses the app lockfile and does not reference
 root requirements; compose builds `./app` and `./frontend`.
 
+There is exactly one `.env`, at the repo root. `config.py` resolves it by
+absolute path regardless of working directory, `app/langgraph.json`'s `env`
+field points at `../.env`, and Compose's `env_file: .env` reads the same
+file; there is no separate `app/.env`. Compose wires `DATABASE_URL` from
+`POSTGRES_PASSWORD` automatically, so prompt-log DB writes are on by
+default whenever Postgres runs alongside the backend.
+
 Keep changes local, return partial state updates, preserve import direction, add
 focused tests, avoid `.env` and secrets, and update all three guidance files for
 every codebase change.

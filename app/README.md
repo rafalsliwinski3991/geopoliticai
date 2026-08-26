@@ -20,21 +20,16 @@ only, and the static frontend is English-only.
 
 ```bash
 uv sync --locked --dev
-cp .env.example .env
+cp ../.env.example ../.env  # populate at the repo root, not under app/
 langgraph dev
 ```
 
-Before starting, set the required variables in `.env` (the repository example
-contains the tracing placeholder only):
-
-```text
-OPENAI_API_KEY=
-BRAVE_SEARCH_KEY=
-```
-
-Never commit the populated file. Optional settings are documented in the
-repository guidance files. Required environment variables are
-`OPENAI_API_KEY` and `BRAVE_SEARCH_KEY`.
+There is a single canonical `.env` at the repo root; `config.py` resolves it
+by absolute path regardless of working directory, `langgraph.json`'s `env`
+field points at `../.env`, and Docker Compose's `env_file: .env` reads the
+same file. There is no separate `app/.env`. Required environment variables
+are `OPENAI_API_KEY` and `BRAVE_SEARCH_KEY`; never commit the populated
+file. Optional settings are documented in the repository guidance files.
 The CLI is:
 
 ```bash
