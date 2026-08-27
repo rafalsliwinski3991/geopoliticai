@@ -1,58 +1,39 @@
-# GeopoliticAI LangGraph App
+# GeopoliticAI Expert Agent
 
-[![CI](https://github.com/langchain-ai/new-langgraph-project/actions/workflows/unit-tests.yml/badge.svg)](https://github.com/langchain-ai/new-langgraph-project/actions/workflows/unit-tests.yml)
-[![Integration Tests](https://github.com/langchain-ai/new-langgraph-project/actions/workflows/integration-tests.yml/badge.svg)](https://github.com/langchain-ai/new-langgraph-project/actions/workflows/integration-tests.yml)
-
-This app runs the GeopoliticAI multi-step workflow on top of [LangGraph](https://github.com/langchain-ai/langgraph), and is ready to run with [LangGraph Server](https://langchain-ai.github.io/langgraph/concepts/langgraph_server/#langgraph-server) and [LangGraph Studio](https://langchain-ai.github.io/langgraph/concepts/langgraph_studio/).
-
-<div align="center">
-  <img src="./static/studio_ui.png" alt="Graph view in LangGraph studio UI" width="75%" />
-</div>
-
-The core logic in `src/graph.py` contains the full GeopoliticAI pipeline (ingest, research planning, multi-lane analysis, referee, fact-checking, and final synthesis).
-
-## Getting Started
-
-1. Install dependencies, along with the [LangGraph CLI](https://langchain-ai.github.io/langgraph/concepts/langgraph_cli/), which will be used to run the server.
-
-```bash
-cd path/to/your/app
-pip install -e . "langgraph-cli[inmem]"
-```
-
-2. (Optional) Customize the code and project as needed. Create a `.env` file if you need to use secrets.
-
-```bash
-cp .env.example .env
-```
-
-If you want to enable LangSmith tracing, add your LangSmith API key to the `.env` file.
+This application is a two-node LangGraph agent for English geopolitical
+research. The graph is:
 
 ```text
-# .env
-LANGSMITH_API_KEY=lsv2...
+START -> search_and_fetch -> answer -> END
 ```
 
-3. Start the LangGraph Server.
+`search_and_fetch` runs three batched Brave queries, fetches up to ten
+allow-listed pages, and extracts article text with trafilatura. `answer` sends
+the retrieved text to one streamed OpenAI plain-text call. Search, extraction,
+and model failures are surfaced to clients; there is no degraded answer.
 
-```shell
+Agent-specific code lives under `src/agents/expert/`. Shared retrieval and LLM
+boundaries are in `src/search.py` and `src/llm.py`. The API accepts `{query}`
+only, and the static frontend is English-only.
+
+## Getting started
+
+```bash
+uv sync --locked --dev
+cp ../.env.example ../.env  # populate at the repo root, not under app/
 langgraph dev
 ```
 
-For more information on getting started with LangGraph Server, [see here](https://langchain-ai.github.io/langgraph/tutorials/langgraph-platform/local-server/).
+There is a single canonical `.env` at the repo root; `config.py` resolves it
+by absolute path regardless of working directory, `langgraph.json`'s `env`
+field points at `../.env`, and Docker Compose's `env_file: .env` reads the
+same file. There is no separate `app/.env`. Required environment variables
+are `OPENAI_API_KEY` and `BRAVE_SEARCH_KEY`; never commit the populated
+file. Optional settings are documented in the repository guidance files.
+The CLI is:
 
-## How to customize
+```bash
+python src/cli.py "What is the current state of the Ukraine ceasefire negotiations?"
+```
 
-1. **Configure defaults**: Adjust `DEFAULT_INFOSPHERE` and `DEFAULT_REPORT_MODE` in `src/graph.py` to control the default graph behavior.
-
-2. **Extend the graph**: The core logic of the application is defined in [graph.py](./src/graph.py). You can modify this file to add new nodes, edges, or change the flow of information.
-
-## Development
-
-While iterating on your graph in LangGraph Studio, you can edit past state and rerun your app from previous states to debug specific nodes. Local changes will be automatically applied via hot reload.
-
-Follow-up requests extend the same thread. You can create an entirely new thread, clearing previous history, using the `+` button in the top right.
-
-For more advanced features and examples, refer to the [LangGraph documentation](https://langchain-ai.github.io/langgraph/). These resources can help you adapt this template for your specific use case and build more sophisticated conversational agents.
-
-LangGraph Studio also integrates with [LangSmith](https://smith.langchain.com/) for more in-depth tracing and collaboration with teammates, allowing you to analyze and optimize your chatbot's performance.
+Run checks with `make lint`, `make test`, and `make integration_tests`.

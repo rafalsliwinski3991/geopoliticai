@@ -5,6 +5,29 @@ Providers are identified by their repository configuration directories:
 `.github` (GitHub Copilot), `.opencode` (OpenCode), `.claude` (Claude), and
 `.codex` (Codex).
 
+This file is the single home for detailed repository AI-tool layout facts.
+The three codebase guidance files (`AGENTS.md`, `CLAUDE.md`, and
+`.github/copilot-instructions.md`) contain only the concise Codex development
+workflow.
+
+After any addition, removal, rename, or modification of a provider's skills,
+hooks, plugins, agents, commands, or related AI-tool configuration, update
+this file to keep it accurate.
+
+## Repository Locations
+
+- `.github/skills/` - GitHub Copilot skills with bundled references and
+  scripts.
+- `.opencode/skills/` - OpenCode-compatible copy of the same skill bundle.
+- `.codex/skills/` - Codex copy of the shared skill bundle.
+- `.codex/config.toml` - project agent and thread settings.
+- `.codex/agents/` - four Codex role definitions.
+- `.claude/skills/` - Claude skills; `swarm` and `grill-me` exist only here.
+- `.claude/hooks/` and `.codex/hooks/` - contain no active hook
+  implementations; the `.claude/hooks/.klaussy-version` file is metadata.
+- `docs/brainstorming/` - durable session artifacts written by the Claude
+  `grill-me` skill, not at the repository root.
+
 ## Skills
 
 | Skill | GitHub Copilot | OpenCode | Claude | Codex |
@@ -35,6 +58,31 @@ Providers are identified by their repository configuration directories:
 
 The Claude `grill-me` skill stores its session files under
 `docs/brainstorming/`, not at the repository root.
+
+## Agents
+
+| Agent | GitHub Copilot | OpenCode | Claude | Codex |
+|---|---:|---:|---:|---:|
+| orchestrator | no | no | no | yes |
+| explorer | no | no | no | yes |
+| builder | no | no | no | yes |
+| critic | no | yes | no | yes |
+
+The configured Codex defaults are: `orchestrator` uses `gpt-5.6-sol` with
+high reasoning and a read-only sandbox; `explorer` uses `gpt-5.6-luna` with
+medium reasoning and a read-only sandbox; `builder` uses `gpt-5.6-sol` with
+high reasoning and a workspace-write sandbox; and `critic` uses `gpt-5.6-sol`
+with high reasoning and a read-only sandbox. These sandbox modes are
+configured defaults, and project configuration loads only for trusted
+repositories.
+
+The OpenCode `critic` agent (`.opencode/agents/critic.md`) is a read-only
+reviewer subagent running on `nvidia/nemotron-3-super-120b-a12b`. The root
+`opencode.json` grants the build agent subagent access to `critic` and the
+built-in `explore` agent only. The OpenCode slash commands
+`.opencode/commands/review.md` (`/review`) and
+`.opencode/commands/plan-review.md` (`/plan-review`) wrap the same critic;
+no other provider has matching commands.
 
 ## Hooks
 

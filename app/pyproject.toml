@@ -18,7 +18,10 @@ dependencies = [
     "python-dotenv>=1.0.1",
     "asyncpg>=0.29,<1.0",
     "httpx>=0.27,<1.0",
+    "trafilatura>=2.0,<3.0",
     "uvicorn[standard]>=0.29,<1.0",
+    "arize-phoenix-otel>=0.17,<1.0",
+    "openinference-instrumentation-langchain>=0.1,<1.0",
 ]
 
 
@@ -35,17 +38,16 @@ py-modules = [
     "api",
     "cli",
     "config",
-    "graph",
+    "database",
     "llm",
     "models",
-    "planning",
-    "render",
     "search",
+    "tracing",
 ]
 
 [tool.setuptools.packages.find]
 where = ["src"]
-include = ["nodes*"]
+include = ["agents*"]
 
 
 [tool.setuptools.package-data]

@@ -1,84 +1,58 @@
 # Copilot Instructions
 
-After any change in the codebase, update all three guidance files together:
-`AGENTS.md`, `CLAUDE.md`, and `.github/copilot-instructions.md`. Keep their
-repository facts and rules consistent, especially after changes to the graph,
-API, deployment, workflow, dependencies, or environment.
+After every codebase change, update `AGENTS.md`, `CLAUDE.md`, and this file
+together. The maintained application is under `app/`; root files are
+compatibility entrypoint, Docker, and requirements-export files. CI runs
+`uv sync --locked --dev` in `app/` and does not reference root requirements.
 
-## Repository Map
+Shared modules under `app/src/` provide environment/model config, shared models
+and errors, policy-parameterized Brave/fetch/extraction, OpenAI access,
+delivery, and an optional tracing boundary (`tracing.py`). Agent packages
+under `app/src/agents/<name>/` contain graph, state, an agent-level
+`config.py`, a `prompts.py` with every prompt constant for that agent, a
+`consts/` package for static data like source policy (expert's
+`consts/sources.py`), and node modules. Shared modules never import agents;
+only API and CLI name `agents.expert`.
 
-The maintained application is under `app/`. Use `app/pyproject.toml` and
-`app/uv.lock` for Python dependencies. The root `Dockerfile`, `main.py`, and
-`requirements.txt` are stale legacy files; CI still references the root
-requirements file, so do not treat it as the application source of truth.
+Config is hardcoded dataclasses, not env-parsed getters: shared `config.py`
+defines `LLMSettings` and `DEFAULT_LLM_SETTINGS`; an agent's `config.py`
+holds its own per-node overrides and pipeline sizing as plain dataclasses
+(e.g. expert's `ANSWER_LLM_SETTINGS`, `RETRIEVAL`), passed explicitly into
+calls rather than read from the environment.
 
-- `app/src/` is the Python import root and uses bare imports.
-- `app/src/nodes/` contains all LangGraph nodes.
-- `app/tests/` contains unit and integration tests.
-- `frontend/` is a static Alpine.js/`marked.js` frontend with no bundler.
-- `docs/brainstorming/` contains durable session artifacts created by Claude's
-  `grill-me` skill.
-- `ai_tools_tables.md` inventories repository skills and hooks by provider.
-- `.claude/hooks/` contains no active hook implementations; its remaining
-  `.klaussy-version` file is metadata.
-- `.github/skills/` contains Copilot skills; `.opencode/skills/` is their
-  OpenCode-compatible mirror.
-- The `swarm` skill is available only under `.claude/skills/`.
+`tracing.py`'s `init_tracing()` registers self-hosted Arize Phoenix span
+export when `PHOENIX_COLLECTOR_ENDPOINT` is set, is idempotent, and never
+raises — telemetry failures must never fail a request. It's called from the
+API lifespan, the CLI's `main()`, and `agents/expert/graph.py` module scope
+(for `langgraph dev`). Compose runs a `phoenix` service with a `phoenix_data`
+volume and no published host port outside the dev override's loopback
+mapping.
 
-## Architecture
-
-The graph in `app/src/graph.py` is:
+The expert graph is:
 
 ```text
-ingest_request -> build_research_plan
-  -> four parallel search/analyst lanes
-  -> referee
-     -> blocked: referee_blocked_summary -> supervisor -> END
-     -> continue: cross_check_facts -> compose_final -> supervisor -> END
+START -> search_and_fetch -> answer -> END
 ```
 
-`PipelineState` is defined in `app/src/models.py`. Accumulating lists use
-LangGraph reducers. `ResearchPlan` and `RefereeReport` are dataclasses stored
-in state. The graph is compiled once at import time and currently has no
-checkpointer or persistent store.
+State has exactly `query`, `sources`, and `answer`, with no reducers. The expert
+policy is English-only and search performs exactly three Brave batches followed
+by allow-listed page extraction with trafilatura. One streamed plain-text LLM
+call produces the answer. Search, source, and LLM failures are hard errors;
+there are no deterministic fallbacks. `app/langgraph.json` exposes `expert`.
 
-English and Polish are separate infospheres. Their source allow-lists live in
-`app/src/config.py`; do not mix source lists or prompt language. Request
-configuration is passed through `RunnableConfig["configurable"]` by
-`build_runtime_config()`. Preserve this pattern instead of adding partial
-wrappers.
+The API accepts only `{query}`, normalizes and caps it at 2,000 characters, and
+provides sync/SSE routes with 422/503/502 mappings for known failures. The
+frontend sanitizes Markdown before `x-html`.
 
-Search in `app/src/search.py` uses Brave Search, lane-specific `site:` filters,
-domain validation, and lane-prefixed source IDs (`L`, `C`, `R`, `P`, `F`). LLM
-calls belong in `app/src/llm.py`, using the existing structured/text wrappers
-and `LLMInvocationError` boundary. Database logging is optional and must stay
-a no-op when `DATABASE_URL` is absent.
+Run `uv sync --locked --dev`, `make test`, `make integration_tests`, and
+`make lint` from `app/`; invoke the CLI with `python src/cli.py "your query"`.
+Nodes return partial state dictionaries without mutation, tests should use
+explicit module imports when package initializers re-export functions, and no
+`.env` or secrets should be changed.
 
-## API and Runtime
-
-`app/src/api.py` provides `/api/health`, synchronous `/api/run_pipeline`, and
-SSE `/api/run_pipeline/stream`. The request fields are `query` and
-`infosphere`; queries are normalized and limited to 2,000 characters. The API
-also applies in-process IP-based rate limiting and configurable CORS.
-
-From the repository root, use `make up`, `make down`, `make logs`, and
-`make config`. Default development ports are frontend `8082`, backend `3001`,
-and PostgreSQL `55432`. From `app/`, use `uv sync --locked --dev`, `make test`,
-`make lint`, and `make format`. CI runs Python 3.11 with `uv run pytest`.
-
-Required live-service variables are `OPENAI_API_KEY` and `BRAVE_SEARCH_KEY`.
-Do not edit `.env` files or expose secrets.
-
-## Change Rules
-
-- Make the smallest change in the module that owns the behavior.
-- Nodes return partial state dictionaries and should not mutate shared state.
-- Keep routing in graph edges; update referee routing when its branches change.
-- Add focused tests under `app/tests/` for behavior changes.
-- Do not add top-level Python modules.
-- After any codebase change, update `AGENTS.md`, `CLAUDE.md`, and
-  `.github/copilot-instructions.md` together so all supported agents have
-  current instructions.
-- After any addition, removal, rename, or modification of a provider's skills,
-  hooks, plugins, agents, or related AI-tool configuration, update
-  `ai_tools_tables.md` to keep the provider tables accurate.
+There is exactly one `.env`, at the repo root, read by the CLI, API, tests,
+`langgraph dev` (`app/langgraph.json`'s `env: "../.env"`), and Compose's
+`env_file: .env` alike; `config.py` resolves it by absolute path. There is
+no separate `app/.env`. Compose derives `DATABASE_URL` from
+`POSTGRES_PASSWORD` automatically, so prompt-log DB writes are on by
+default.

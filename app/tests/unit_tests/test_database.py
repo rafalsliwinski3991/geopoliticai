@@ -68,8 +68,7 @@ async def test_log_prompt_handles_exception_gracefully() -> None:
 async def test_log_output_returns_none_when_pool_unavailable() -> None:
     """Test log_output returns None if connection pool is unavailable."""
     database._pool = None
-    result = await database.log_output(1, "test output")
-    assert result is None
+    await database.log_output(1, "test output")
 
 
 @pytest.mark.anyio

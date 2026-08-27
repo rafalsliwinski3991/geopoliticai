@@ -1,11 +1,12 @@
 <!DOCTYPE html>
-<html lang="pl">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>PoliticalAgent</title>
     <link rel="icon" type="image/png" href="assets/logo.png">
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dompurify@3.4.13/dist/purify.min.js"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
     <style>
       @import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&display=swap");
@@ -77,31 +78,6 @@
       }
       .chat-header h1 { margin: 0; font-size: 22px; letter-spacing: 0.3px; }
       .chat-header p  { margin: 6px 0 0; font-size: 14px; opacity: 0.78; }
-
-      /* ── Language picker ── */
-      .lang-picker {
-        display: flex;
-        gap: 6px;
-        flex-shrink: 0;
-        margin-top: 2px;
-      }
-      .lang-btn {
-        font-size: 22px;
-        line-height: 1;
-        background: none;
-        border: 2px solid transparent;
-        border-radius: 8px;
-        padding: 4px 6px;
-        cursor: pointer;
-        opacity: 0.35;
-        transition: opacity 0.15s, border-color 0.15s, background 0.15s;
-      }
-      .lang-btn:hover { opacity: 0.7; }
-      .lang-btn.active {
-        opacity: 1;
-        border-color: rgba(255, 255, 255, 0.35);
-        background: rgba(255, 255, 255, 0.08);
-      }
 
       /* ── Chat body ── */
       .chat-body {
@@ -330,27 +306,8 @@
             <img src="assets/logo.png" alt="PoliticalAgent" class="header-logo">
             <div class="chat-header-title">
               <h1>PoliticalAgent</h1>
-              <p x-text="infosphere === 'polish'
-                ? 'Wieloperspektywiczna analiza geopolityczna z weryfikacją faktów.'
-                : 'Multi-perspective geopolitical analysis with fact verification.'">
-              </p>
+              <p>Geopolitical analysis grounded in cross-spectrum reporting.</p>
             </div>
-          </div>
-          <div class="lang-picker">
-            <button
-              class="lang-btn"
-              :class="{ active: infosphere === 'polish' }"
-              @click="infosphere = 'polish'"
-              title="Polski"
-              :disabled="isLoading"
-            >🇵🇱</button>
-            <button
-              class="lang-btn"
-              :class="{ active: infosphere === 'english' }"
-              @click="infosphere = 'english'"
-              title="English"
-              :disabled="isLoading"
-            >🇺🇸</button>
           </div>
         </header>
 
@@ -419,66 +376,39 @@
       marked.use({ breaks: true, gfm: true });
 
       const I18N = {
-        polish: {
-          welcome: "Cześć! Jestem **PoliticalAgent**. Specjalizuję się w wieloperspektywicznej analizie geopolitycznej — przeszukuję źródła lewicowe, centrowe i prawicowe, a następnie weryfikuję fakty.\n\nW czym mogę pomóc?",
-          examples_hint: "Przykładowe pytania",
-          examples: [
-            { q: "Jakie są konsekwencje konfliktu na Ukrainie dla NATO?",  label: "Konsekwencje konfliktu na Ukrainie dla NATO" },
-            { q: "Jak zmienia się rola Chin w światowej polityce?",         label: "Rola Chin w światowej polityce" },
-            { q: "Co oznacza wzrost populizmu w Europie Zachodniej?",       label: "Wzrost populizmu w Europie Zachodniej" },
-          ],
-          placeholder:      "Napisz wiadomość... (Enter aby wysłać)",
-          send:             "Wyślij",
-          analyzing:        "Analizuję",
-          analyzing_dots:   "Analizuję...",
-          drafting:         "Szkic odpowiedzi...",
-          timeout_error:    "⏱ Backend nie odpowiedział w ciągu 10 minut.",
-          connection_error: (msg) => `Błąd połączenia: ${msg}`,
-          server_error:     (code) => `Błąd serwera (${code}).`,
-          time_locale:      "pl-PL",
-        },
-        english: {
-          welcome: "Hello! I'm **PoliticalAgent**. I specialize in multi-perspective geopolitical analysis — I search left-leaning, centrist, and right-wing sources, then verify the facts.\n\nHow can I help you?",
-          examples_hint: "Example questions",
-          examples: [
-            { q: "What are the consequences of the Ukraine conflict for NATO?", label: "Ukraine conflict consequences for NATO" },
-            { q: "How is China's role in global politics changing?",            label: "China's role in global politics" },
-            { q: "What does the rise of populism in Western Europe mean?",      label: "Rise of populism in Western Europe" },
-          ],
-          placeholder:      "Type a message... (Enter to send)",
-          send:             "Send",
-          analyzing:        "Analyzing",
-          analyzing_dots:   "Analyzing...",
-          drafting:         "Drafting answer...",
-          timeout_error:    "⏱ Backend did not respond within 10 minutes.",
-          connection_error: (msg) => `Connection error: ${msg}`,
-          server_error:     (code) => `Server error (${code}).`,
-          time_locale:      "en-US",
-        },
+        welcome: "Hello! I'm **PoliticalAgent**. I provide geopolitical analysis grounded in cross-spectrum reporting.\n\nHow can I help you?",
+        examples_hint: "Example questions",
+        examples: [
+          { q: "What are the consequences of the Ukraine conflict for NATO?", label: "Ukraine conflict consequences for NATO" },
+          { q: "How is China's role in global politics changing?", label: "China's role in global politics" },
+          { q: "What does the rise of populism in Western Europe mean?", label: "Rise of populism in Western Europe" },
+        ],
+        placeholder: "Type a message... (Enter to send)",
+        send: "Send",
+        analyzing: "Analyzing",
+        analyzing_dots: "Analyzing...",
+        drafting: "Drafting answer...",
+        timeout_error: "⏱ Backend did not respond within 10 minutes.",
+        connection_error: (msg) => `Connection error: ${msg}`,
+        server_error: (code) => `Server error (${code}).`,
+        time_locale: "en-US",
       };
 
       document.addEventListener("alpine:init", () => {
         Alpine.data("chat", () => ({
           input: "",
           isLoading: false,
-          infosphere: "polish",
           progressLog: [],
           streamingDraft: "",
           messages: [],
 
           init() {
-            this.messages = [{ role: "bot", text: I18N.polish.welcome, timestamp: new Date() }];
-            this.$watch("infosphere", (lang) => {
-              // Update welcome message only if conversation hasn't started yet
-              if (this.messages.length === 1 && this.messages[0].role === "bot") {
-                this.messages[0].text = I18N[lang].welcome;
-              }
-            });
+            this.messages = [{ role: "bot", text: I18N.welcome, timestamp: new Date() }];
             this.$nextTick(() => this.$refs.input?.focus());
           },
 
           t(key) {
-            return I18N[this.infosphere][key];
+            return I18N[key];
           },
 
           async sendMessage() {
@@ -499,7 +429,7 @@
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 signal: controller.signal,
-                body: JSON.stringify({ query: text, infosphere: this.infosphere }),
+                body: JSON.stringify({ query: text }),
               });
 
               if (!response.ok) {
@@ -581,7 +511,12 @@
           },
 
           renderContent(msg) {
-            if (msg.role === "bot") return marked.parse(msg.text ?? "");
+            if (msg.role === "bot") {
+              const html = marked.parse(msg.text ?? "");
+              return DOMPurify.sanitize(html, {
+                ALLOWED_URI_REGEXP: /^https?:\/\//i,
+              });
+            }
             const el = document.createElement("div");
             el.textContent = msg.text;
             return el.innerHTML;
