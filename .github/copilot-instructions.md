@@ -8,9 +8,17 @@ compatibility entrypoint, Docker, and requirements-export files. CI runs
 Shared modules under `app/src/` provide environment/model config, shared models
 and errors, policy-parameterized Brave/fetch/extraction, OpenAI access,
 delivery, and an optional tracing boundary (`tracing.py`). Agent packages
-under `app/src/agents/<name>/` contain graph, state, source policy, and node
-modules. Shared modules never import agents; only API and CLI name
-`agents.expert`.
+under `app/src/agents/<name>/` contain graph, state, an agent-level
+`config.py`, a `prompts.py` with every prompt constant for that agent, a
+`consts/` package for static data like source policy (expert's
+`consts/sources.py`), and node modules. Shared modules never import agents;
+only API and CLI name `agents.expert`.
+
+Config is hardcoded dataclasses, not env-parsed getters: shared `config.py`
+defines `LLMSettings` and `DEFAULT_LLM_SETTINGS`; an agent's `config.py`
+holds its own per-node overrides and pipeline sizing as plain dataclasses
+(e.g. expert's `ANSWER_LLM_SETTINGS`, `RETRIEVAL`), passed explicitly into
+calls rather than read from the environment.
 
 `tracing.py`'s `init_tracing()` registers self-hosted Arize Phoenix span
 export when `PHOENIX_COLLECTOR_ENDPOINT` is set, is idempotent, and never

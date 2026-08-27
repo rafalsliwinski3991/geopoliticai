@@ -44,4 +44,4 @@ async def test_sources_are_capped(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(node_module, "search_allowlisted", candidates)
     monkeypatch.setattr(node_module, "fetch_sources", sources)
     result = await node_module.search_and_fetch(_STATE)
-    assert len(result["sources"]) == node_module.KEEP_SOURCES
+    assert len(result["sources"]) == node_module.RETRIEVAL.keep_sources

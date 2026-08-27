@@ -4,19 +4,34 @@ from __future__ import annotations
 
 import logging
 import os
-from collections.abc import Callable, Sequence
+from collections.abc import Sequence
+from dataclasses import dataclass
 from pathlib import Path
-from typing import TypeVar
 
 from dotenv import load_dotenv
 
 logger = logging.getLogger(__name__)
-T = TypeVar("T")
 
-DEFAULT_MODEL = "gpt-4o-mini"
-DEFAULT_OPENAI_TIMEOUT_SECONDS = 60.0
-DEFAULT_OPENAI_MAX_OUTPUT_TOKENS = 16_384
 REQUIRED_ENV_VARS = ("OPENAI_API_KEY", "BRAVE_SEARCH_KEY")
+
+
+@dataclass(frozen=True)
+class LLMSettings:
+    """Hardcoded model/timeout/token knobs for one OpenAI call site.
+
+    A shared default lives here as `DEFAULT_LLM_SETTINGS`. An agent that
+    wants different values for a specific node (a different model, a longer
+    timeout) builds its own `LLMSettings(...)` in its own `config.py` and
+    passes it through instead.
+    """
+
+    model: str = "gpt-4o-mini"
+    temperature: float = 0.0
+    timeout_seconds: float = 60.0
+    max_output_tokens: int = 16_384
+
+
+DEFAULT_LLM_SETTINGS = LLMSettings()
 
 # app/src/config.py -> app/src -> app -> repo root. Resolved explicitly so
 # every entrypoint (CLI, API, tests, langgraph dev) reads the same
@@ -48,72 +63,3 @@ def require_env(keys: Sequence[str] = REQUIRED_ENV_VARS) -> None:
         raise ValueError(
             "Missing required environment variables: " + ", ".join(missing)
         )
-
-
-def _get_env_var(
-    var_name: str,
-    default: T,
-    *,
-    parser: Callable[[str], T],
-    validator: Callable[[T], bool],
-    expected_type: str,
-    expected_value: str,
-    default_format: str,
-) -> T:
-    """Read and validate an environment variable, falling back to default."""
-    raw_value = os.getenv(var_name)
-    if raw_value is None or not raw_value.strip():
-        return default
-    try:
-        parsed = parser(raw_value.strip())
-    except (TypeError, ValueError):
-        logger.warning(
-            "Invalid %s=%r; expected %s. Falling back to %s.",
-            var_name,
-            raw_value,
-            expected_type,
-            default_format % default,
-        )
-        return default
-    if not validator(parsed):
-        logger.warning(
-            "Invalid %s=%r; expected %s. Falling back to %s.",
-            var_name,
-            raw_value,
-            expected_value,
-            default_format % default,
-        )
-        return default
-    return parsed
-
-
-def get_openai_timeout_seconds() -> float:
-    """Return timeout used for OpenAI API calls."""
-    return _get_env_var(
-        "OPENAI_TIMEOUT_SECONDS",
-        DEFAULT_OPENAI_TIMEOUT_SECONDS,
-        parser=float,
-        validator=lambda value: value > 0,
-        expected_type="a float",
-        expected_value="a positive float",
-        default_format="%.2f",
-    )
-
-
-def get_openai_max_output_tokens() -> int:
-    """Return max output tokens used for OpenAI API calls."""
-    return _get_env_var(
-        "OPENAI_MAX_OUTPUT_TOKENS",
-        DEFAULT_OPENAI_MAX_OUTPUT_TOKENS,
-        parser=int,
-        validator=lambda value: value > 0,
-        expected_type="an integer",
-        expected_value="a positive integer",
-        default_format="%d",
-    )
-
-
-def get_model() -> str:
-    """Return the configured OpenAI model."""
-    base_model = os.getenv("OPENAI_MODEL")
-    return base_model.strip() if base_model and base_model.strip() else DEFAULT_MODEL

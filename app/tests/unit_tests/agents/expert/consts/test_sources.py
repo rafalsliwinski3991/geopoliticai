@@ -1,4 +1,4 @@
-from agents.expert.sources import (
+from agents.expert.consts.sources import (
     ALLOWED_DOMAINS,
     EXPERT_SOURCES,
     HARD_PAYWALLED_DOMAINS,

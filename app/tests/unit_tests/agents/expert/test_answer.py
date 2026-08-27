@@ -30,7 +30,11 @@ async def test_no_sources_raises() -> None:
 @pytest.mark.anyio
 async def test_stream_chunks_join(monkeypatch: pytest.MonkeyPatch) -> None:
     async def stream(
-        system_prompt: str, human_prompt: str, *, config: Any = None
+        system_prompt: str,
+        human_prompt: str,
+        *,
+        config: Any = None,
+        settings: Any = None,
     ) -> AsyncIterator[str]:
         yield "Hello "
         yield "world."

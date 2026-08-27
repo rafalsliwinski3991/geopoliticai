@@ -11,7 +11,9 @@ def _reset_initialized() -> None:
     tracing._initialized = False
 
 
-def _install_fake_phoenix_otel(monkeypatch: pytest.MonkeyPatch, register: object) -> None:
+def _install_fake_phoenix_otel(
+    monkeypatch: pytest.MonkeyPatch, register: object
+) -> None:
     """Stub sys.modules so tests don't require the real package installed."""
     otel_module = types.ModuleType("phoenix.otel")
     otel_module.register = register  # type: ignore[attr-defined]

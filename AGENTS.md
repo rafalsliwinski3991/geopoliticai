@@ -14,9 +14,32 @@ settings), `models.py` (Candidate, Source, SourcePolicy, PipelineError types),
 boundary), and delivery modules `api.py`, `cli.py`, and `database.py`.
 
 Each agent is under `app/src/agents/<name>/` with `graph.py`, `state.py`,
-`sources.py`, and one module per graph node in `nodes/`. Shared modules never
-import agents; only `api.py` and `cli.py` name `agents.expert`. The old
-`nodes/`, `planning.py`, and `render.py` modules are gone.
+`config.py`, `prompts.py`, a `consts/` package for static data, and one
+module per graph node in `nodes/`. Shared modules never import agents; only
+`api.py` and `cli.py` name `agents.expert`. The old `nodes/`, `planning.py`,
+and `render.py` modules are gone.
+
+Static, hardcoded agent data (currently just editorial policy) lives under
+`consts/`, one module per concern — e.g. `agents/expert/consts/sources.py`
+holds the domain allow-list. `config.py` stays for tunable settings
+(dataclasses like `LLMSettings`); `consts/` is for data that's effectively
+fixed reference material, not a knob anyone would flip per environment.
+
+`prompts.py` holds every prompt constant for that agent, one per
+node/purpose (e.g. `agents/expert/prompts.py`'s `ANSWER_SYSTEM_PROMPT`),
+imported into the node that uses it — prompt text is never inlined in a
+node module.
+
+Config is hardcoded dataclasses, not env-parsed getters. Shared `config.py`
+defines `LLMSettings` (model, temperature, timeout_seconds, max_output_tokens) and a
+`DEFAULT_LLM_SETTINGS` instance. An agent's `config.py` holds its own
+pipeline tuning as plain dataclasses/constants — e.g.
+`agents/expert/config.py`'s `ANSWER_LLM_SETTINGS` (a per-node `LLMSettings`
+override) and `RETRIEVAL` (a `RetrievalSettings` with `fetch_candidates`/
+`keep_sources`) — edited directly in code, passed explicitly into node calls
+(`llm.astream_text(..., settings=...)`), never read from the environment.
+Editorial policy (domains, batching, paywalls) stays in
+`consts/sources.py`.
 
 `app/src/tracing.py` is a shared, optional tracing boundary: `init_tracing()`
 registers self-hosted Arize Phoenix span export when
@@ -35,7 +58,8 @@ START -> search_and_fetch -> answer -> END
 
 Its `PipelineState` in `app/src/agents/expert/state.py` has exactly `query`,
 `sources`, and `answer`, with no reducers. The expert editorial policy is one
-flat English allow-list in `agents/expert/sources.py`, passed to shared search
+flat English allow-list in `agents/expert/consts/sources.py`, passed to
+shared search
 as `SourcePolicy`. Search makes exactly three concurrent Brave batches, then
 fetches and extracts allow-listed pages with `trafilatura`. Only fetched article
 text reaches the single streamed plain-text LLM call. Search outages, no usable
@@ -66,9 +90,11 @@ CI runs `uv sync --locked --dev` from `app/` on Python 3.11 and does not use
 the root requirements file; compose builds `./app` and `./frontend`.
 
 Required variables are `OPENAI_API_KEY` and `BRAVE_SEARCH_KEY`; optional
-settings include database, CORS, OpenAI timeout/token, API rate-limit, logging,
-frontend path, and LangSmith tracing variables. `PHOENIX_COLLECTOR_ENDPOINT`
-and `PHOENIX_PROJECT_NAME` are the Phoenix tracing switches; unset means no
+settings include database, CORS, API rate-limit, logging, frontend path, and
+LangSmith tracing variables. Model/timeout/token knobs are hardcoded
+`LLMSettings` dataclasses in code, not environment variables — see
+`config.py` and `agents/expert/config.py`. `PHOENIX_COLLECTOR_ENDPOINT` and
+`PHOENIX_PROJECT_NAME` are the Phoenix tracing switches; unset means no
 tracing, and exported spans carry full prompt/response text with no
 redaction.
 

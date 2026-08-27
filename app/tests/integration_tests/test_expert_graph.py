@@ -50,7 +50,7 @@ async def test_execution_emits_progress_and_tokens(
     monkeypatch.setattr(
         llm_module,
         "_build_client",
-        lambda: FakeListChatModel(responses=["Hello world."]),
+        lambda settings: FakeListChatModel(responses=["Hello world."]),
     )
     graph_module.graph = graph_module.build_graph()
     events = [event async for event in graph_module.astream_pipeline("question")]
@@ -100,7 +100,9 @@ async def test_execution_propagates_llm_failure_after_partial_tokens(
             yield ChatGenerationChunk(message=AIMessageChunk(content="partial"))
             raise RuntimeError("provider failed")
 
-    monkeypatch.setattr(llm_module, "_build_client", FailingChatModel)
+    monkeypatch.setattr(
+        llm_module, "_build_client", lambda settings: FailingChatModel()
+    )
     graph_module.graph = graph_module.build_graph()
     events: list[tuple[str, str]] = []
     with pytest.raises(LLMInvocationError):

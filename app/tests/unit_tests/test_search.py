@@ -2,7 +2,7 @@ import httpx
 import pytest
 
 import search
-from agents.expert.sources import EXPERT_SOURCES
+from agents.expert.consts.sources import EXPERT_SOURCES
 from models import Candidate, SearchUnavailableError
 
 

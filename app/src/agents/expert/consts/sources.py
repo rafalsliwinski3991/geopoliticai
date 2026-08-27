@@ -91,5 +91,3 @@ EXPERT_SOURCES = SourcePolicy(
     min_source_chars=500,
     max_source_chars=20_000,
 )
-FETCH_CANDIDATES = 10
-KEEP_SOURCES = 8
