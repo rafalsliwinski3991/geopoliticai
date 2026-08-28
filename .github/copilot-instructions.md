@@ -41,7 +41,7 @@ call produces the answer. Search, source, and LLM failures are hard errors;
 there are no deterministic fallbacks. `app/langgraph.json` exposes `expert`.
 
 The API accepts only `{query}`, normalizes and caps it at 2,000 characters, and
-provides sync/SSE routes with 422/503/502 mappings for known failures. The
+provides one SSE route; pipeline failures arrive as an SSE `error` frame. The
 frontend sanitizes Markdown before `x-html`.
 
 Run `uv sync --locked --dev`, `make test`, `make integration_tests`, and

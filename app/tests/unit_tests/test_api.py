@@ -6,8 +6,7 @@ import httpx
 import pytest
 
 import api
-from llm import LLMInvocationError
-from models import NoSourcesError, SearchUnavailableError
+from models import NoSourcesError
 
 
 @pytest.fixture
@@ -34,38 +33,24 @@ async def test_health(client: httpx.AsyncClient) -> None:
 
 @pytest.mark.anyio
 async def test_unknown_legacy_field_is_ignored(client: httpx.AsyncClient) -> None:
+    async def stream(query: str, **kwargs: object) -> AsyncIterator[tuple[str, str]]:
+        yield ("token", "answer")
+
     with (
-        patch("api.run_pipeline", new=AsyncMock(return_value="answer")),
+        patch("api.astream_pipeline", stream),
         patch("api.database.log_prompt", new=AsyncMock(return_value=None)),
     ):
         response = await client.post(
-            "/api/run_pipeline", json={"query": "x", "info" + "sphere": "legacy"}
+            "/api/run_pipeline/stream", json={"query": "x", "info" + "sphere": "legacy"}
         )
     assert response.status_code == 200
+    assert _events(response.text)[-1]["type"] == "result"
 
 
 @pytest.mark.anyio
-@pytest.mark.parametrize(
-    ("error", "status"),
-    [
-        (NoSourcesError("none"), 422),
-        (SearchUnavailableError("down"), 503),
-        (LLMInvocationError("bad"), 502),
-    ],
-)
-async def test_sync_maps_pipeline_errors(
-    client: httpx.AsyncClient, error: Exception, status: int
-) -> None:
-    async def boom(query: str, **kwargs: object) -> None:
-        raise error
-
-    with (
-        patch("api.run_pipeline", boom),
-        patch("api.database.log_prompt", new=AsyncMock(return_value=None)),
-    ):
-        response = await client.post("/api/run_pipeline", json={"query": "x"})
-    assert response.status_code == status
-    assert response.json()["detail"] == str(error)
+async def test_sync_route_is_gone(client: httpx.AsyncClient) -> None:
+    response = await client.post("/api/run_pipeline", json={"query": "x"})
+    assert response.status_code == 404
 
 
 @pytest.mark.anyio
@@ -139,41 +124,30 @@ async def test_stream_error_has_no_result(client: httpx.AsyncClient) -> None:
 
 
 @pytest.mark.anyio
-async def test_sync_logs_prompt_and_output(client: httpx.AsyncClient) -> None:
-    log_prompt = AsyncMock(return_value=99)
-    log_output = AsyncMock()
-    with (
-        patch("api.run_pipeline", new=AsyncMock(return_value="output")),
-        patch("api.database.log_prompt", log_prompt),
-        patch("api.database.log_output", log_output),
-    ):
-        response = await client.post("/api/run_pipeline", json={"query": "x"})
-    assert response.status_code == 200
-    assert response.json()["output"] == "output"
-    log_prompt.assert_awaited_once_with("x", "127.0.0.1")
-    log_output.assert_awaited_once_with(99, "output")
-
-
-@pytest.mark.anyio
 async def test_query_validation(client: httpx.AsyncClient) -> None:
     assert (
-        await client.post("/api/run_pipeline", json={"query": ""})
+        await client.post("/api/run_pipeline/stream", json={"query": ""})
     ).status_code == 422
     assert (
-        await client.post("/api/run_pipeline", json={"query": "x" * 3000})
+        await client.post("/api/run_pipeline/stream", json={"query": "x" * 3000})
     ).status_code == 422
 
 
 @pytest.mark.anyio
 async def test_rate_limiting_enforced(client: httpx.AsyncClient) -> None:
+    async def stream(query: str, **kwargs: object) -> AsyncIterator[tuple[str, str]]:
+        yield ("token", "output")
+
     with (
-        patch("api.run_pipeline", new=AsyncMock(return_value="output")),
+        patch("api.astream_pipeline", stream),
         patch("api.database.log_prompt", new=AsyncMock(return_value=None)),
     ):
         for index in range(20):
             response = await client.post(
-                "/api/run_pipeline", json={"query": f"query {index}"}
+                "/api/run_pipeline/stream", json={"query": f"query {index}"}
             )
             assert response.status_code == 200
-        response = await client.post("/api/run_pipeline", json={"query": "query 21"})
+        response = await client.post(
+            "/api/run_pipeline/stream", json={"query": "query 21"}
+        )
     assert response.status_code == 429

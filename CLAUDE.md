@@ -24,8 +24,9 @@ an English allow-list passed as `SourcePolicy`; search performs exactly three
 Brave batches and only extracted allow-listed page text reaches one streamed
 plain-text model call. Failures are hard errors with no degraded fallback.
 
-The API accepts only `{query}` (normalized, max 2,000 characters), serves sync
-and SSE endpoints, and maps no sources/search outage/LLM failures to 422/503/502.
+The API accepts only `{query}` (normalized, max 2,000 characters) and serves
+one SSE endpoint; pipeline failures are reported in an SSE `error` frame, not
+as an HTTP status.
 The English frontend sanitizes rendered Markdown. LangGraph configuration names
 the graph `expert`.
 

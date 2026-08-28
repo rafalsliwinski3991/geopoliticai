@@ -11,17 +11,17 @@ from contextlib import asynccontextmanager
 from threading import Lock
 from typing import AsyncGenerator
 
-from fastapi import APIRouter, BackgroundTasks, FastAPI, HTTPException, Request
+from fastapi import APIRouter, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, field_validator
 
 import database
-from agents.expert import NODE_LABELS, astream_pipeline, run_pipeline
+from agents.expert import NODE_LABELS, astream_pipeline
 from config import init_environment, require_env
 from llm import LLMInvocationError
-from models import NoSourcesError, PipelineError, SearchUnavailableError
+from models import PipelineError
 from tracing import init_tracing
 
 logger = logging.getLogger(__name__)
@@ -104,12 +104,6 @@ class RunPipelineRequest(BaseModel):
         return cleaned
 
 
-class RunPipelineResponse(BaseModel):
-    """Response payload containing the final answer."""
-
-    output: str
-
-
 def _sanitize_output(text: str) -> str:
     """Ensure the response contains only valid UTF-8 characters."""
     return text.encode("utf-8", errors="replace").decode("utf-8")
@@ -164,21 +158,6 @@ async def healthcheck() -> dict[str, str]:
     return {"status": "ok"}
 
 
-_ERROR_STATUS: tuple[tuple[type[Exception], int], ...] = (
-    (NoSourcesError, 422),
-    (SearchUnavailableError, 503),
-    (LLMInvocationError, 502),
-)
-
-
-def _status_for(exc: Exception) -> int:
-    """Map a known pipeline failure to its HTTP status code."""
-    for error_type, status in _ERROR_STATUS:
-        if isinstance(exc, error_type):
-            return status
-    return 500
-
-
 def _sse(payload: dict[str, str]) -> str:
     """Serialize one SSE data frame."""
     return f"data: {json.dumps(payload)}\n\n"
@@ -230,27 +209,6 @@ async def run_pipeline_stream_endpoint(
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
-
-
-@router.post("/run_pipeline", response_model=RunPipelineResponse)
-async def run_pipeline_endpoint(
-    payload: RunPipelineRequest, request: Request, background_tasks: BackgroundTasks
-) -> RunPipelineResponse:
-    """Run the pipeline and return its final output."""
-    _enforce_rate_limit(request)
-    client_id = _resolve_client_id(request)
-    log_id = await database.log_prompt(payload.query, client_id)
-    try:
-        output = await run_pipeline(payload.query)
-    except (PipelineError, LLMInvocationError) as exc:
-        logger.warning("Pipeline failed: %s", exc)
-        raise HTTPException(status_code=_status_for(exc), detail=str(exc)) from None
-    except Exception:
-        logger.exception("Pipeline failed unexpectedly.")
-        raise HTTPException(status_code=500, detail="Internal server error.") from None
-    if log_id is not None:
-        background_tasks.add_task(database.log_output, log_id, output)
-    return RunPipelineResponse(output=_sanitize_output(output))
 
 
 app.include_router(router)
