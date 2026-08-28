@@ -38,7 +38,7 @@ async def test_unknown_legacy_field_is_ignored(client: httpx.AsyncClient) -> Non
 
     with (
         patch("api.astream_pipeline", stream),
-        patch("api.database.log_prompt", new=AsyncMock(return_value=None)),
+        patch("api.database.log_run", new=AsyncMock()),
     ):
         response = await client.post(
             "/api/run_pipeline/stream", json={"query": "x", "info" + "sphere": "legacy"}
@@ -60,10 +60,10 @@ async def test_stream_progress_tokens_result(client: httpx.AsyncClient) -> None:
         yield ("token", "Hello ")
         yield ("token", "world.")
 
-    log_prompt = AsyncMock(return_value=None)
+    log_run = AsyncMock()
     with (
         patch("api.astream_pipeline", stream),
-        patch("api.database.log_prompt", log_prompt),
+        patch("api.database.log_run", log_run),
     ):
         response = await client.post("/api/run_pipeline/stream", json={"query": "x"})
     events = _events(response.text)
@@ -75,7 +75,7 @@ async def test_stream_progress_tokens_result(client: httpx.AsyncClient) -> None:
     ]
     assert events[0]["label"] == "Searching and reading sources..."
     assert events[-1]["output"] == "Hello world."
-    log_prompt.assert_awaited_once_with("x", "127.0.0.1")
+    log_run.assert_awaited_once_with("x", "127.0.0.1", "Hello world.")
 
 
 @pytest.mark.anyio
@@ -83,12 +83,12 @@ async def test_stream_logs_output_before_result(client: httpx.AsyncClient) -> No
     async def stream(query: str, **kwargs: object) -> AsyncIterator[tuple[str, str]]:
         yield ("token", "answer")
 
-    log_output = AsyncMock()
+    log_run = AsyncMock()
     order: list[str] = []
 
-    async def record_output(log_id: int, output: str) -> None:
+    async def record_run(prompt: str, ip: str, output: str) -> None:
         order.append("log")
-        await log_output(log_id, output)
+        await log_run(prompt, ip, output)
 
     async def record_stream(
         query: str, **kwargs: object
@@ -97,14 +97,13 @@ async def test_stream_logs_output_before_result(client: httpx.AsyncClient) -> No
 
     with (
         patch("api.astream_pipeline", record_stream),
-        patch("api.database.log_prompt", new=AsyncMock(return_value=42)),
-        patch("api.database.log_output", record_output),
+        patch("api.database.log_run", record_run),
     ):
         response = await client.post("/api/run_pipeline/stream", json={"query": "x"})
     events = _events(response.text)
     order.append(events[-1]["type"])
     assert order == ["log", "result"]
-    log_output.assert_awaited_once_with(42, "answer")
+    log_run.assert_awaited_once_with("x", "127.0.0.1", "answer")
 
 
 @pytest.mark.anyio
@@ -115,7 +114,7 @@ async def test_stream_error_has_no_result(client: httpx.AsyncClient) -> None:
 
     with (
         patch("api.astream_pipeline", stream),
-        patch("api.database.log_prompt", new=AsyncMock(return_value=None)),
+        patch("api.database.log_run", new=AsyncMock()),
     ):
         response = await client.post("/api/run_pipeline/stream", json={"query": "x"})
     events = _events(response.text)
@@ -140,7 +139,7 @@ async def test_rate_limiting_enforced(client: httpx.AsyncClient) -> None:
 
     with (
         patch("api.astream_pipeline", stream),
-        patch("api.database.log_prompt", new=AsyncMock(return_value=None)),
+        patch("api.database.log_run", new=AsyncMock()),
     ):
         for index in range(20):
             response = await client.post(

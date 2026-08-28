@@ -141,7 +141,6 @@ async def run_pipeline_stream_endpoint(
     """Run the pipeline and stream progress and answer tokens over SSE."""
     _enforce_rate_limit(request)
     client_id = _resolve_client_id(request)
-    log_id = await database.log_prompt(payload.query, client_id)
 
     async def _generate() -> AsyncGenerator[str, None]:
         parts: list[str] = []
@@ -160,8 +159,7 @@ async def run_pipeline_stream_endpoint(
                     {"type": "error", "message": "The model returned an empty answer."}
                 )
                 return
-            if log_id is not None:
-                await database.log_output(log_id, output)
+            await database.log_run(payload.query, client_id, output)
             yield _sse({"type": "result", "output": output})
         except (PipelineError, LLMInvocationError) as exc:
             logger.warning("Streaming pipeline failed: %s", exc)

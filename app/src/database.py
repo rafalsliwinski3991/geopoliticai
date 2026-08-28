@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, cast
+from typing import Any
 
 import asyncpg  # type: ignore[import-untyped]
 
@@ -41,36 +41,20 @@ async def close_pool() -> None:
         _pool = None
 
 
-async def log_prompt(prompt: str, ip: str) -> int | None:
-    """Insert a prompt log row and return its ID; returns None if DB unavailable."""
-    if _pool is None:
-        return None
-    try:
-        async with _pool.acquire() as conn:
-            row_id = await conn.fetchval(
-                """
-                INSERT INTO prompt_logs (prompt, ip)
-                VALUES ($1, $2)
-                RETURNING id
-                """,
-                prompt,
-                ip,
-            )
-            return cast(int, row_id)
-    except Exception:
-        return None
-
-
-async def log_output(log_id: int, output: str) -> None:
-    """Update a prompt log row with the pipeline output."""
+async def log_run(prompt: str, ip: str, output: str) -> None:
+    """Record one completed run; silent when the database is unavailable."""
     if _pool is None:
         return
     try:
         async with _pool.acquire() as conn:
             await conn.execute(
-                "UPDATE prompt_logs SET output = $1 WHERE id = $2",
+                """
+                INSERT INTO prompt_logs (prompt, ip, output)
+                VALUES ($1, $2, $3)
+                """,
+                prompt,
+                ip,
                 output,
-                log_id,
             )
     except Exception:
         pass

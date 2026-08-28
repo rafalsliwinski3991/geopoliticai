@@ -59,4 +59,5 @@ There is exactly one `.env`, at the repo root, read by the API, tests,
 no separate `app/.env`. Compose derives `DATABASE_URL` from
 `POSTGRES_PASSWORD` automatically, so prompt-log DB writes are on by
 default. `prompt_logs` has no geolocation column; `init_pool` drops a legacy
-`location` column on every start, irreversibly.
+`location` column on every start, irreversibly. `log_run` is the only writer:
+one insert per successful run, silent on failure.

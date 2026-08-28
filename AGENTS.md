@@ -113,7 +113,9 @@ absolute path regardless of working directory, so the API, tests, and
 same file Compose's `env_file: .env` uses; there is no separate `app/.env`.
 Compose derives `DATABASE_URL` from `POSTGRES_PASSWORD` automatically, so
 prompt-log DB writes are on by default. `prompt_logs` holds `id`, `datetime`,
-`prompt`, `ip`, and `output` — no geolocation. `init_pool` runs
+`prompt`, `ip`, and `output` — no geolocation. `database.log_run` writes one
+row after a successful run and is silent on failure, so a failed or abandoned
+run leaves no row at all and any query counting rows counts successes. `init_pool` runs
 `DROP COLUMN IF EXISTS location` on every backend start, which is destructive
 and irreversible for existing rows; reverting this code does not restore the
 column, and the reverted insert would then fail silently inside
