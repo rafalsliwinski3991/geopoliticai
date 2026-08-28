@@ -20,20 +20,19 @@ async def test_log_prompt_returns_none_when_pool_unavailable() -> None:
 @pytest.mark.anyio
 async def test_log_prompt_returns_row_id_on_success() -> None:
     """Test log_prompt returns the inserted row ID."""
-    with patch("database._resolve_location", return_value="Test, City"):
-        mock_conn = MagicMock()
-        mock_conn.fetchval = AsyncMock(return_value=42)
+    mock_conn = MagicMock()
+    mock_conn.fetchval = AsyncMock(return_value=42)
 
-        mock_pool = MagicMock()
-        mock_pool.acquire = MagicMock(
-            return_value=AsyncMock(
-                __aenter__=AsyncMock(return_value=mock_conn),
-                __aexit__=AsyncMock(return_value=None),
-            )
+    mock_pool = MagicMock()
+    mock_pool.acquire = MagicMock(
+        return_value=AsyncMock(
+            __aenter__=AsyncMock(return_value=mock_conn),
+            __aexit__=AsyncMock(return_value=None),
         )
+    )
 
-        with patch("database._pool", mock_pool):
-            result = await database.log_prompt("test query", "192.168.1.1")
+    with patch("database._pool", mock_pool):
+        result = await database.log_prompt("test query", "192.168.1.1")
 
     assert result == 42
     mock_conn.fetchval.assert_called_once()
@@ -46,20 +45,19 @@ async def test_log_prompt_returns_row_id_on_success() -> None:
 @pytest.mark.anyio
 async def test_log_prompt_handles_exception_gracefully() -> None:
     """Test log_prompt returns None if database operation fails."""
-    with patch("database._resolve_location", return_value="Test, City"):
-        mock_conn = MagicMock()
-        mock_conn.fetchval = AsyncMock(side_effect=Exception("DB error"))
+    mock_conn = MagicMock()
+    mock_conn.fetchval = AsyncMock(side_effect=Exception("DB error"))
 
-        mock_pool = MagicMock()
-        mock_pool.acquire = MagicMock(
-            return_value=AsyncMock(
-                __aenter__=AsyncMock(return_value=mock_conn),
-                __aexit__=AsyncMock(return_value=None),
-            )
+    mock_pool = MagicMock()
+    mock_pool.acquire = MagicMock(
+        return_value=AsyncMock(
+            __aenter__=AsyncMock(return_value=mock_conn),
+            __aexit__=AsyncMock(return_value=None),
         )
+    )
 
-        with patch("database._pool", mock_pool):
-            result = await database.log_prompt("test query", "192.168.1.1")
+    with patch("database._pool", mock_pool):
+        result = await database.log_prompt("test query", "192.168.1.1")
 
     assert result is None
 
@@ -118,30 +116,30 @@ async def test_log_output_handles_exception_gracefully() -> None:
 
 
 @pytest.mark.anyio
-async def test_log_prompt_resolves_location() -> None:
-    """Test log_prompt resolves geolocation for IP."""
-    with patch(
-        "database._resolve_location",
-        new_callable=AsyncMock,
-        return_value="New York, United States",
-    ) as mock_location:
-        mock_conn = MagicMock()
-        mock_conn.fetchval = AsyncMock(return_value=1)
+async def test_init_pool_drops_location_column() -> None:
+    """Test init_pool drops the retired location column on existing tables."""
+    mock_conn = MagicMock()
+    mock_conn.execute = AsyncMock()
 
-        mock_pool = MagicMock()
-        mock_pool.acquire = MagicMock(
-            return_value=AsyncMock(
-                __aenter__=AsyncMock(return_value=mock_conn),
-                __aexit__=AsyncMock(return_value=None),
-            )
+    mock_pool = MagicMock()
+    mock_pool.acquire = MagicMock(
+        return_value=AsyncMock(
+            __aenter__=AsyncMock(return_value=mock_conn),
+            __aexit__=AsyncMock(return_value=None),
         )
+    )
 
-        with patch("database._pool", mock_pool):
-            await database.log_prompt("test query", "8.8.8.8")
-
-            # Verify location resolution was called
-            mock_location.assert_called_once_with("8.8.8.8")
-
-            # Verify location was passed to insert
-            call_args = mock_conn.fetchval.call_args
-            assert "New York, United States" in call_args[0]
+    try:
+        with patch(
+            "database.asyncpg.create_pool", new=AsyncMock(return_value=mock_pool)
+        ):
+            await database.init_pool("postgresql://example")
+        statements = [call[0][0] for call in mock_conn.execute.call_args_list]
+        assert any(
+            "DROP COLUMN IF EXISTS location" in statement for statement in statements
+        )
+        assert all("location  VARCHAR" not in statement for statement in statements)
+    finally:
+        # `init_pool` writes the module global; leaving a MagicMock there would
+        # be seen by every later test that does not set `_pool` explicitly.
+        database._pool = None

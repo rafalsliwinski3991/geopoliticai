@@ -5,7 +5,6 @@ from __future__ import annotations
 from typing import Any, cast
 
 import asyncpg  # type: ignore[import-untyped]
-import httpx
 
 _pool: Any | None = None
 
@@ -22,18 +21,16 @@ async def init_pool(dsn: str) -> None:
                 datetime  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                 prompt    TEXT        NOT NULL,
                 ip        VARCHAR(45),
-                location  VARCHAR(255),
                 output    TEXT
             )
             """
         )
-        # Add output column to existing tables
+        # Existing deployments predate the output column and carry a location
+        # column the app no longer writes.
         await conn.execute(
-            """
-            ALTER TABLE prompt_logs
-            ADD COLUMN IF NOT EXISTS output TEXT
-            """
+            "ALTER TABLE prompt_logs ADD COLUMN IF NOT EXISTS output TEXT"
         )
+        await conn.execute("ALTER TABLE prompt_logs DROP COLUMN IF EXISTS location")
 
 
 async def close_pool() -> None:
@@ -44,38 +41,20 @@ async def close_pool() -> None:
         _pool = None
 
 
-async def _resolve_location(ip: str) -> str:
-    if ip in ("unknown", "127.0.0.1", "::1"):
-        return "local"
-    try:
-        async with httpx.AsyncClient(timeout=3.0) as client:
-            resp = await client.get(
-                f"http://ip-api.com/json/{ip}",
-                params={"fields": "city,country"},
-            )
-            data = resp.json()
-        parts = [data.get("city", ""), data.get("country", "")]
-        return ", ".join(p for p in parts if p) or "unknown"
-    except Exception:
-        return "unknown"
-
-
 async def log_prompt(prompt: str, ip: str) -> int | None:
     """Insert a prompt log row and return its ID; returns None if DB unavailable."""
     if _pool is None:
         return None
-    location = await _resolve_location(ip)
     try:
         async with _pool.acquire() as conn:
             row_id = await conn.fetchval(
                 """
-                INSERT INTO prompt_logs (prompt, ip, location)
-                VALUES ($1, $2, $3)
+                INSERT INTO prompt_logs (prompt, ip)
+                VALUES ($1, $2)
                 RETURNING id
                 """,
                 prompt,
                 ip,
-                location,
             )
             return cast(int, row_id)
     except Exception:

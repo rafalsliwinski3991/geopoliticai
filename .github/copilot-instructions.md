@@ -58,4 +58,5 @@ There is exactly one `.env`, at the repo root, read by the API, tests,
 `env_file: .env` alike; `config.py` resolves it by absolute path. There is
 no separate `app/.env`. Compose derives `DATABASE_URL` from
 `POSTGRES_PASSWORD` automatically, so prompt-log DB writes are on by
-default.
+default. `prompt_logs` has no geolocation column; `init_pool` drops a legacy
+`location` column on every start, irreversibly.

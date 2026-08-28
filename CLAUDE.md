@@ -46,7 +46,9 @@ absolute path regardless of working directory, `app/langgraph.json`'s `env`
 field points at `../.env`, and Compose's `env_file: .env` reads the same
 file; there is no separate `app/.env`. Compose wires `DATABASE_URL` from
 `POSTGRES_PASSWORD` automatically, so prompt-log DB writes are on by
-default whenever Postgres runs alongside the backend.
+default whenever Postgres runs alongside the backend. `prompt_logs` carries
+no geolocation: `init_pool` drops a legacy `location` column on every start,
+irreversibly, and `database.py` makes no outbound HTTP call.
 
 Compose also runs a `phoenix` service (self-hosted Arize Phoenix) on the
 internal network with a `phoenix_data` volume; it publishes no host port
