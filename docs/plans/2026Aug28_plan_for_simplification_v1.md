@@ -540,7 +540,9 @@ from models import LLMInvocationError
 DEFAULT_MAX_RETRIES = 2
 ```
 
-`astream_text`'s `raise LLMInvocationError("Model call failed.") from exc` at `llm.py:47` is unchanged, so the name is used and ruff's F401 does not fire. `from llm import LLMInvocationError` keeps resolving, which is what `test_api.py:9` and `answer.py:11` rely on today.
+`astream_text`'s `raise LLMInvocationError("Model call failed.") from exc` (at `llm.py:44`) is unchanged, so the name is used and ruff's F401 does not fire.
+
+**Correction, made during implementation.** This section originally claimed `from llm import LLMInvocationError` keeps resolving for its importers. That is true at runtime but false under `mypy --strict`, which implies `--no-implicit-reexport`: a plain `from models import X` in `llm.py` does not re-export `X`, and every importer gets `error: Module "llm" does not explicitly export attribute "LLMInvocationError"  [attr-defined]`. Commit 5's "Safe here because" in §2 rested on the same false premise. The three importers — `api.py`, `agents/expert/graph.py`, and `tests/integration_tests/test_expert_graph.py` — import it from `models` directly instead. (`api.py` no longer imports from `llm` at all, which is what lets §3.10's `except PipelineError` narrowing work.)
 
 ### 3.6 `app/src/agents/expert/nodes/answer.py` (commit 5)
 

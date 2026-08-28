@@ -12,7 +12,9 @@ import root. Shared infrastructure contains `config.py` (environment/model
 settings), `models.py` (Candidate, Source, SourcePolicy, and the single
 `PipelineError` hierarchy — `SearchUnavailableError`, `NoSourcesError`, and
 `LLMInvocationError`, each carrying its own `status` ClassVar of 503, 422, and
-502; `llm.py` re-raises the last but no longer defines it),
+502, with `PipelineError` itself defaulting to 500; a new error type that omits
+`status` silently inherits that 500, so give every new subclass its own;
+`llm.py` re-raises the last but no longer defines it),
 `search.py` (policy-parameterized Brave/fetch boundary), `llm.py` (OpenAI
 boundary), and delivery modules `api.py` and `database.py`.
 
