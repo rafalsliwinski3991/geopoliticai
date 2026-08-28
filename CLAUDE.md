@@ -7,7 +7,7 @@ The maintained application is under `app/`; root files are compatibility
 entrypoint, Docker, and requirements-export files. Shared modules in
 `app/src/` provide environment/model config, shared models/errors, a
 policy-parameterized Brave and trafilatura search boundary, the OpenAI boundary,
-API/CLI/database delivery, and an optional, env-gated tracing boundary.
+API/database delivery, and an optional, env-gated tracing boundary.
 Agent-specific code is under `app/src/agents/<name>/`; shared modules never
 import an agent. All of an agent's prompt text lives in its own
 `prompts.py`, one constant per node/purpose, imported by that node — not
@@ -30,8 +30,8 @@ The English frontend sanitizes rendered Markdown. LangGraph configuration names
 the graph `expert`.
 
 From `app/`, use `uv sync --locked --dev`, `make test`, `make integration_tests`,
-`make lint`, `make format`, and `langgraph dev`; the CLI is
-`python src/cli.py "your query"`. CI uses the app lockfile and does not reference
+`make lint`, `make format`, and `langgraph dev`. CI uses the app lockfile and
+does not reference
 root requirements; compose builds `./app` and `./frontend`.
 
 There is exactly one `.env`, at the repo root. `config.py` resolves it by
@@ -45,7 +45,7 @@ Compose also runs a `phoenix` service (self-hosted Arize Phoenix) on the
 internal network with a `phoenix_data` volume; it publishes no host port
 outside `docker-compose.override.yml`'s loopback-bound dev mapping.
 `app/src/tracing.py` calls `phoenix.otel.register(...)` from the API
-lifespan, the CLI entrypoint, and `agents/expert/graph.py` module scope, and
+lifespan and `agents/expert/graph.py` module scope, and
 never raises — an unreachable collector must never fail a request.
 `PHOENIX_COLLECTOR_ENDPOINT` and `PHOENIX_PROJECT_NAME` are the only
 switches; unset means no tracing, and full prompt/response content is

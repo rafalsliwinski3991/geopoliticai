@@ -12,7 +12,7 @@ under `app/src/agents/<name>/` contain graph, state, an agent-level
 `config.py`, a `prompts.py` with every prompt constant for that agent, a
 `consts/` package for static data like source policy (expert's
 `consts/sources.py`), and node modules. Shared modules never import agents;
-only API and CLI name `agents.expert`.
+only the API names `agents.expert`.
 
 Config is hardcoded dataclasses, not env-parsed getters: shared `config.py`
 defines `LLMSettings` and `DEFAULT_LLM_SETTINGS`; an agent's `config.py`
@@ -23,7 +23,7 @@ calls rather than read from the environment.
 `tracing.py`'s `init_tracing()` registers self-hosted Arize Phoenix span
 export when `PHOENIX_COLLECTOR_ENDPOINT` is set, is idempotent, and never
 raises — telemetry failures must never fail a request. It's called from the
-API lifespan, the CLI's `main()`, and `agents/expert/graph.py` module scope
+API lifespan and `agents/expert/graph.py` module scope
 (for `langgraph dev`). Compose runs a `phoenix` service with a `phoenix_data`
 volume and no published host port outside the dev override's loopback
 mapping.
@@ -45,12 +45,12 @@ provides sync/SSE routes with 422/503/502 mappings for known failures. The
 frontend sanitizes Markdown before `x-html`.
 
 Run `uv sync --locked --dev`, `make test`, `make integration_tests`, and
-`make lint` from `app/`; invoke the CLI with `python src/cli.py "your query"`.
+`make lint` from `app/`; drive the graph in Studio with `langgraph dev`.
 Nodes return partial state dictionaries without mutation, tests should use
 explicit module imports when package initializers re-export functions, and no
 `.env` or secrets should be changed.
 
-There is exactly one `.env`, at the repo root, read by the CLI, API, tests,
+There is exactly one `.env`, at the repo root, read by the API, tests,
 `langgraph dev` (`app/langgraph.json`'s `env: "../.env"`), and Compose's
 `env_file: .env` alike; `config.py` resolves it by absolute path. There is
 no separate `app/.env`. Compose derives `DATABASE_URL` from

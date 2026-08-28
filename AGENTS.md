@@ -11,12 +11,12 @@ and requirements export are compatibility files. `app/src/` is the Python
 import root. Shared infrastructure contains `config.py` (environment/model
 settings), `models.py` (Candidate, Source, SourcePolicy, PipelineError types),
 `search.py` (policy-parameterized Brave/fetch boundary), `llm.py` (OpenAI
-boundary), and delivery modules `api.py`, `cli.py`, and `database.py`.
+boundary), and delivery modules `api.py` and `database.py`.
 
 Each agent is under `app/src/agents/<name>/` with `graph.py`, `state.py`,
 `config.py`, `prompts.py`, a `consts/` package for static data, and one
 module per graph node in `nodes/`. Shared modules never import agents; only
-`api.py` and `cli.py` name `agents.expert`. The old `nodes/`, `planning.py`,
+`api.py` names `agents.expert`. The old `nodes/`, `planning.py`,
 and `render.py` modules are gone.
 
 Static, hardcoded agent data (currently just editorial policy) lives under
@@ -44,9 +44,9 @@ Editorial policy (domains, batching, paywalls) stays in
 `app/src/tracing.py` is a shared, optional tracing boundary: `init_tracing()`
 registers self-hosted Arize Phoenix span export when
 `PHOENIX_COLLECTOR_ENDPOINT` is set, is idempotent, and never raises — an
-unreachable collector must never fail a request. `api.py`'s lifespan,
-`cli.py`'s `main()`, and `agents/expert/graph.py` (at module scope, for
-`langgraph dev`) each call it once.
+unreachable collector must never fail a request. `api.py`'s lifespan and
+`agents/expert/graph.py` (at module scope, for `langgraph dev`) each call it
+once.
 
 ## Architecture
 
@@ -85,7 +85,7 @@ exposes the graph as `expert`.
 
 Run Python commands from `app/`: `uv sync --locked --dev`, `make test`,
 `make integration_tests`, `make lint`, and `make format`. Use `langgraph dev`
-from `app/` and run the CLI with `python src/cli.py "your query"`.
+from `app/` to drive the graph in Studio.
 CI runs `uv sync --locked --dev` from `app/` on Python 3.11 and does not use
 the root requirements file; compose builds `./app` and `./frontend`.
 
@@ -99,7 +99,7 @@ tracing, and exported spans carry full prompt/response text with no
 redaction.
 
 There is exactly one `.env`, at the repo root. `config.py` resolves it by
-absolute path regardless of working directory, so the CLI, API, tests, and
+absolute path regardless of working directory, so the API, tests, and
 `langgraph dev` (via `app/langgraph.json`'s `env: "../.env"`) all read the
 same file Compose's `env_file: .env` uses; there is no separate `app/.env`.
 Compose derives `DATABASE_URL` from `POSTGRES_PASSWORD` automatically, so
