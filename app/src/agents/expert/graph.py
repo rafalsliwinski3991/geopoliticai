@@ -9,7 +9,7 @@ from langgraph.graph import END, START, StateGraph
 
 from agents.expert.nodes import answer, search_and_fetch
 from agents.expert.state import PipelineState, build_initial_pipeline_state
-from llm import LLMInvocationError
+from models import LLMInvocationError
 from tracing import init_tracing
 
 NODE_LABELS: dict[str, str] = {

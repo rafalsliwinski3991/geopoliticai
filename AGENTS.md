@@ -9,7 +9,10 @@ together and keep their facts consistent.
 The maintained application lives under `app/`; the root entrypoint, Dockerfile,
 and requirements export are compatibility files. `app/src/` is the Python
 import root. Shared infrastructure contains `config.py` (environment/model
-settings), `models.py` (Candidate, Source, SourcePolicy, PipelineError types),
+settings), `models.py` (Candidate, Source, SourcePolicy, and the single
+`PipelineError` hierarchy — `SearchUnavailableError`, `NoSourcesError`, and
+`LLMInvocationError`, each carrying its own `status` ClassVar of 503, 422, and
+502; `llm.py` re-raises the last but no longer defines it),
 `search.py` (policy-parameterized Brave/fetch boundary), `llm.py` (OpenAI
 boundary), and delivery modules `api.py` and `database.py`.
 

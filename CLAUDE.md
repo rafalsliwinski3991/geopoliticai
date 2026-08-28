@@ -26,7 +26,10 @@ plain-text model call. Failures are hard errors with no degraded fallback.
 
 The API accepts only `{query}` (normalized, max 2,000 characters) and serves
 one SSE endpoint; pipeline failures are reported in an SSE `error` frame, not
-as an HTTP status. Its CORS origins and rate limit follow the same hardcoding
+as an HTTP status. Every pipeline failure is one `PipelineError` subclass
+defined in `models.py`, `LLMInvocationError` included, and each class carries
+the HTTP `status` a delivery layer reports for it — there is no lookup table.
+Its CORS origins and rate limit follow the same hardcoding
 rule as `LLMSettings`: `ALLOWED_ORIGINS`, `RATE_LIMIT_REQUESTS`, and
 `RATE_LIMIT_WINDOW_SECONDS` are constants in `api.py` and read no environment
 variable.

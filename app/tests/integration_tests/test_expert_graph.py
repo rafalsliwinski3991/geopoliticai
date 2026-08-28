@@ -3,8 +3,7 @@ from typing import Any, AsyncIterator
 
 import pytest
 
-from llm import LLMInvocationError
-from models import Candidate, Source
+from models import Candidate, LLMInvocationError, Source
 
 expert = importlib.import_module("agents.expert")
 graph_module: Any = importlib.import_module("agents.expert.graph")

@@ -20,8 +20,7 @@ from pydantic import BaseModel, Field, field_validator
 import database
 from agents.expert import NODE_LABELS, astream_pipeline
 from config import init_environment, require_env
-from llm import LLMInvocationError
-from models import PipelineError
+from models import LLMInvocationError, PipelineError
 from tracing import init_tracing
 
 logger = logging.getLogger(__name__)
