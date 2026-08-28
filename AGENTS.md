@@ -72,9 +72,9 @@ degraded fallbacks. Runtime configuration carries only optional `thread_id`.
 ## API and Frontend
 
 `app/src/api.py` exposes `GET /api/health` and `POST /api/run_pipeline/stream`,
-plus `/` for the static English frontend. SSE is the only way to run the
-pipeline; there is no synchronous route. Requests contain only `query`,
-normalized and limited to 2,000 characters. A pipeline failure cannot change
+plus `/` for the static English frontend. There is no synchronous HTTP
+route; `langgraph dev` still drives the graph in Studio. Requests contain
+only `query`, normalized and limited to 2,000 characters. A pipeline failure cannot change
 the HTTP status, which is already committed at 200, so it is reported inside an
 SSE `error` frame. SSE events remain `progress`, `token`, `result`, and
 `error`. Markdown output
