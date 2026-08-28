@@ -67,20 +67,32 @@ flat English allow-list in `agents/expert/consts/sources.py`, passed to
 shared search
 as `SourcePolicy`. Search makes exactly three concurrent Brave batches, then
 fetches and extracts allow-listed pages with `trafilatura`. Only fetched article
-text reaches the single streamed plain-text LLM call. Search outages, no usable
+text reaches the single streamed plain-text LLM call. `graph.py` is construction
+only — `build_graph`, `build_runtime_config`, the module-scope `init_tracing()`,
+and `graph`; it runs nothing. The run loop lives in `api.py`'s
+`_astream_answer`, which drives `graph.astream(..., stream_mode="messages")`,
+keeps only chunks whose `metadata["langgraph_node"] == "answer"`, narrows with
+`isinstance(message, AIMessage)`, and flattens content blocks with
+`BaseMessage.text()`. That node filter is what stops a future second
+LLM-calling node from streaming its working notes into the user's answer.
+Progress frames are inferred, not read off graph events: the search label is
+emitted before the graph starts, the answer label on the first token. Search
+outages, no usable
 sources, and model failures are hard errors; there are no deterministic or
 degraded fallbacks. Runtime configuration carries only optional `thread_id`.
 
 ## API and Frontend
 
 `app/src/api.py` exposes `GET /api/health` and `POST /api/run_pipeline/stream`,
-plus `/` for the static English frontend. There is no synchronous HTTP
-route; `langgraph dev` still drives the graph in Studio. Requests contain
-only `query`, normalized and limited to 2,000 characters. A pipeline failure cannot change
-the HTTP status, which is already committed at 200, so it is reported inside an
-SSE `error` frame. SSE events remain `progress`, `token`, `result`, and
-`error`. Markdown output
-is sanitized in the browser before insertion.
+plus `/` for the static English frontend. There is no synchronous HTTP route;
+`langgraph dev` still drives the graph in Studio. Requests contain only `query`,
+normalized and limited to 2,000 characters. A pipeline failure cannot change the
+HTTP status, which is already committed at 200, so it is reported inside an SSE
+`error` frame, which carries the raising class's own `status` (422/503/502, 500
+otherwise) alongside `message`. SSE events remain `progress`, `token`, `result`,
+and `error`. A failing run emits `progress` then `error`, because the search
+progress frame precedes the graph. Markdown output is sanitized in the browser
+before insertion.
 
 Development ports are frontend 8082, backend 3001, PostgreSQL 55432, and
 Phoenix 6006 (loopback-bound, dev override only — base and prod compose

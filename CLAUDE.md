@@ -23,6 +23,11 @@ exactly `query`, `sources`, and `answer`, without reducers. The expert policy is
 an English allow-list passed as `SourcePolicy`; search performs exactly three
 Brave batches and only extracted allow-listed page text reaches one streamed
 plain-text model call. Failures are hard errors with no degraded fallback.
+`graph.py` constructs and never runs: `api.py`'s `_astream_answer` owns the run
+loop, over `graph.astream(..., stream_mode="messages")` filtered on
+`metadata["langgraph_node"] == "answer"` and `isinstance(message, AIMessage)`,
+with `BaseMessage.text()` flattening content blocks. Progress frames are
+inferred by the API rather than read off graph events.
 
 The API accepts only `{query}` (normalized, max 2,000 characters) and serves
 one SSE endpoint; pipeline failures are reported in an SSE `error` frame, not

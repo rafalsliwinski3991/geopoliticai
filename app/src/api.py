@@ -9,18 +9,19 @@ import time
 from collections import defaultdict, deque
 from contextlib import asynccontextmanager
 from threading import Lock
-from typing import AsyncGenerator
+from typing import Any, AsyncGenerator
 
 from fastapi import APIRouter, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
+from langchain_core.messages import AIMessage
 from pydantic import BaseModel, Field, field_validator
 
 import database
-from agents.expert import NODE_LABELS, astream_pipeline
+from agents.expert import build_initial_pipeline_state, build_runtime_config, graph
 from config import init_environment, require_env
-from models import LLMInvocationError, PipelineError
+from models import PipelineError
 from tracing import init_tracing
 
 logger = logging.getLogger(__name__)
@@ -35,6 +36,12 @@ ALLOWED_ORIGINS = [
 MAX_QUERY_LENGTH = 2_000
 RATE_LIMIT_REQUESTS = 20
 RATE_LIMIT_WINDOW_SECONDS = 60
+
+SEARCH_PROGRESS = {
+    "node": "search_and_fetch",
+    "label": "Searching and reading sources...",
+}
+ANSWER_PROGRESS = {"node": "answer", "label": "Writing the answer..."}
 
 _rate_limit_store: dict[str, deque[float]] = defaultdict(deque)
 _rate_limit_lock = Lock()
@@ -129,9 +136,31 @@ async def healthcheck() -> dict[str, str]:
     return {"status": "ok"}
 
 
-def _sse(payload: dict[str, str]) -> str:
+def _sse(payload: dict[str, Any]) -> str:
     """Serialize one SSE data frame."""
     return f"data: {json.dumps(payload)}\n\n"
+
+
+async def _astream_answer(query: str) -> AsyncGenerator[str, None]:
+    """Run the expert graph, yielding answer text as the model produces it."""
+    state = build_initial_pipeline_state(query)
+    config = build_runtime_config()
+    # `stream_mode="messages"` yields (message, metadata) two-tuples. Do not
+    # switch this to the list form (["updates", "messages"]) without changing
+    # the unpacking: that form yields (mode, payload) instead, which unpacks
+    # without error and then silently matches nothing.
+    async for message, metadata in graph.astream(
+        state, config=config, stream_mode="messages"
+    ):
+        # Every LLM call in every node streams through here. Only the answer
+        # node's tokens are the user's answer.
+        if metadata.get("langgraph_node") != "answer":
+            continue
+        if not isinstance(message, AIMessage):
+            continue
+        text = message.text()
+        if text:
+            yield text
 
 
 @router.post("/run_pipeline/stream")
@@ -145,30 +174,33 @@ async def run_pipeline_stream_endpoint(
     async def _generate() -> AsyncGenerator[str, None]:
         parts: list[str] = []
         try:
-            async for kind, value in astream_pipeline(payload.query):
-                if kind == "progress":
-                    yield _sse(
-                        {"type": "progress", "node": value, "label": NODE_LABELS[value]}
-                    )
-                else:
-                    parts.append(value)
-                    yield _sse({"type": "token", "content": value})
+            yield _sse({"type": "progress", **SEARCH_PROGRESS})
+            async for text in _astream_answer(payload.query):
+                if not parts:
+                    yield _sse({"type": "progress", **ANSWER_PROGRESS})
+                parts.append(text)
+                yield _sse({"type": "token", "content": text})
             output = "".join(parts).strip()
             if not output:
                 yield _sse(
-                    {"type": "error", "message": "The model returned an empty answer."}
+                    {
+                        "type": "error",
+                        "status": 502,
+                        "message": "The model returned an empty answer.",
+                    }
                 )
                 return
             await database.log_run(payload.query, client_id, output)
             yield _sse({"type": "result", "output": output})
-        except (PipelineError, LLMInvocationError) as exc:
+        except PipelineError as exc:
             logger.warning("Streaming pipeline failed: %s", exc)
-            yield _sse({"type": "error", "message": str(exc)})
+            yield _sse({"type": "error", "status": exc.status, "message": str(exc)})
         except Exception:
             logger.exception("Streaming pipeline failed unexpectedly.")
             yield _sse(
                 {
                     "type": "error",
+                    "status": 500,
                     "message": "An unexpected error occurred. Please try again.",
                 }
             )

@@ -40,6 +40,9 @@ policy is English-only and search performs exactly three Brave batches followed
 by allow-listed page extraction with trafilatura. One streamed plain-text LLM
 call produces the answer. Search, source, and LLM failures are hard errors;
 there are no deterministic fallbacks. `app/langgraph.json` exposes `expert`.
+`graph.py` only constructs the graph; `api.py`'s `_astream_answer` runs it with
+`stream_mode="messages"`, filtered on `langgraph_node == "answer"` and
+`isinstance(message, AIMessage)`, using `BaseMessage.text()`.
 
 The API accepts only `{query}`, normalizes and caps it at 2,000 characters, and
 provides one SSE route; pipeline failures arrive as an SSE `error` frame. All
