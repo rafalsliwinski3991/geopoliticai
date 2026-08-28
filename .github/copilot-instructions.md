@@ -18,7 +18,8 @@ Config is hardcoded dataclasses, not env-parsed getters: shared `config.py`
 defines `LLMSettings` and `DEFAULT_LLM_SETTINGS`; an agent's `config.py`
 holds its own per-node overrides and pipeline sizing as plain dataclasses
 (e.g. expert's `ANSWER_LLM_SETTINGS`, `RETRIEVAL`), passed explicitly into
-calls rather than read from the environment.
+calls rather than read from the environment. `api.py` follows the same rule for
+`ALLOWED_ORIGINS`, `RATE_LIMIT_REQUESTS`, and `RATE_LIMIT_WINDOW_SECONDS`.
 
 `tracing.py`'s `init_tracing()` registers self-hosted Arize Phoenix span
 export when `PHOENIX_COLLECTOR_ENDPOINT` is set, is idempotent, and never

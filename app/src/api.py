@@ -25,43 +25,20 @@ from models import PipelineError
 from tracing import init_tracing
 
 logger = logging.getLogger(__name__)
-DEFAULT_ALLOWED_ORIGINS = (
+
+# Hardcoded the way `LLMSettings` is hardcoded: edited here, never read from
+# the environment.
+ALLOWED_ORIGINS = [
     "http://localhost",
     "http://127.0.0.1",
     "http://localhost:5173",
-)
+]
 MAX_QUERY_LENGTH = 2_000
-DEFAULT_RATE_LIMIT_REQUESTS = 20
-DEFAULT_RATE_LIMIT_WINDOW_SECONDS = 60
+RATE_LIMIT_REQUESTS = 20
+RATE_LIMIT_WINDOW_SECONDS = 60
+
 _rate_limit_store: dict[str, deque[float]] = defaultdict(deque)
 _rate_limit_lock = Lock()
-
-
-def _parse_allowed_origins() -> list[str]:
-    """Parse CORS origins from the environment."""
-    raw = os.getenv("CORS_ALLOW_ORIGINS", "")
-    origins = [item.strip() for item in raw.split(",") if item.strip()]
-    return origins or list(DEFAULT_ALLOWED_ORIGINS)
-
-
-def _read_positive_int_env(var_name: str, default: int) -> int:
-    """Read a positive integer setting, falling back for malformed values."""
-    raw = os.getenv(var_name)
-    if raw is None or not raw.strip():
-        return default
-    try:
-        value = int(raw)
-    except ValueError:
-        return default
-    return value if value > 0 else default
-
-
-RATE_LIMIT_REQUESTS = _read_positive_int_env(
-    "API_RATE_LIMIT_REQUESTS", DEFAULT_RATE_LIMIT_REQUESTS
-)
-RATE_LIMIT_WINDOW_SECONDS = _read_positive_int_env(
-    "API_RATE_LIMIT_WINDOW_SECONDS", DEFAULT_RATE_LIMIT_WINDOW_SECONDS
-)
 
 
 @asynccontextmanager
@@ -81,7 +58,7 @@ app = FastAPI(title="GeopoliticAI API", version="1.0.0", lifespan=lifespan)
 router = APIRouter(prefix="/api")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=_parse_allowed_origins(),
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=False,
     allow_methods=["GET", "POST"],
     allow_headers=["*"],

@@ -92,10 +92,14 @@ CI runs `uv sync --locked --dev` from `app/` on Python 3.11 and does not use
 the root requirements file; compose builds `./app` and `./frontend`.
 
 Required variables are `OPENAI_API_KEY` and `BRAVE_SEARCH_KEY`; optional
-settings include database, CORS, API rate-limit, logging, frontend path, and
-LangSmith tracing variables. Model/timeout/token knobs are hardcoded
-`LLMSettings` dataclasses in code, not environment variables — see
-`config.py` and `agents/expert/config.py`. `PHOENIX_COLLECTOR_ENDPOINT` and
+settings include database, logging, frontend path, and LangSmith tracing
+variables. CORS origins and the API rate limit are not among them: they are
+module constants in `api.py` (`ALLOWED_ORIGINS`, `RATE_LIMIT_REQUESTS`,
+`RATE_LIMIT_WINDOW_SECONDS`), changed by editing the file, and
+`CORS_ALLOW_ORIGINS`, `API_RATE_LIMIT_REQUESTS`, and
+`API_RATE_LIMIT_WINDOW_SECONDS` are no longer read anywhere. Model/timeout/token
+knobs are likewise hardcoded `LLMSettings` dataclasses in code, not environment
+variables — see `config.py` and `agents/expert/config.py`. `PHOENIX_COLLECTOR_ENDPOINT` and
 `PHOENIX_PROJECT_NAME` are the Phoenix tracing switches; unset means no
 tracing, and exported spans carry full prompt/response text with no
 redaction.
