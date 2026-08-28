@@ -1056,6 +1056,29 @@ Three reviewers read the source rather than this plan. Findings are labelled C (
 | D-cheap-1 | Drop commit 1; rewrite `cli.py` as five lines calling `graph.ainvoke` and printing `result["answer"]`. Keeps the only non-SSE entrypoint and keeps `state["answer"]` honest. | Round 5 settled deletion, and this exact counter-proposal was put to the user and not taken. Recorded, not reopened. |
 | D-cheap-2 | Halve commit 4: hardcode the rate-limit numbers, leave `CORS_ALLOW_ORIGINS` env-readable, since it is the one knob that changes when the app gets a real domain and hardcoding it forces a rebuild. | Round 7 settled option 2, and `CLAUDE.md`'s config rule is hardcoded dataclasses rather than env-parsed getters. Keeping one env parser to save one rebuild reintroduces the pattern the rule exists to prevent. |
 
+### Checked against the external reference the user supplied
+
+The user asked for the plan to be verified against `atalupadhyay.wordpress.com/2026/01/02/fastapi-langgraph-building-production-ready-ai-apis`. It was fetched and read in full. It is an introductory tutorial, and it does not reach the parts of this plan that carry risk.
+
+**Silent on everything commit 8 turns on.** The article never streams. Its only pipeline call is `result = graph.invoke(graph_input)`, a synchronous call, and it contains no `stream_mode`, no `astream`, no `astream_events`, no Server-Sent Events, no token extraction, no content-block handling, and no node-boundary or progress events. It therefore verifies nothing about `stream_mode="messages"`, the `langgraph_node` filter, `BaseMessage.text()`, or the inferred progress frames. Those remain verified only by the runtime checks recorded in §1.
+
+One thing in it is worth not copying: that `graph.invoke` sits inside an `async def` endpoint, where a blocking call stalls the event loop for the whole process. This repo is already correct on that point and stays correct.
+
+**Corroborates two plan decisions.**
+
+- *Graph construction separated from the delivery layer.* The article builds the graph in its own module, compiles it at module scope, and has the FastAPI module import the compiled object. That is the shape of commit 8 exactly: `graph.py` constructs, `api.py` imports `graph`.
+- *CORS origins hardcoded in application code.* Its CORS block writes the allowed origin as a literal, with no environment read. That is commit 4, and it undercuts the reviewer objection that `CORS_ALLOW_ORIGINS` should stay env-readable.
+
+**Leans against three plan choices, none strongly enough to change them.**
+
+- *It keeps a plain synchronous JSON endpoint as the primary route.* Commit 2 deletes this repo's equivalent. The article gives no argument for the route beyond it being the only one it implements, and it has no streaming route to weigh against. Restates finding D-cheap-1 without adding evidence; decision unchanged.
+- *It recommends `slowapi` with a `@limiter.limit("10/minute")` decorator* rather than a hand-rolled store. Round 7 settled on keeping the existing limiter. Worth noting that `slowapi`'s default in-memory backend is also per-process, so adopting it would not fix the flagged multi-worker gap either.
+- *It logs failures and re-raises*, and recommends INFO-level logging of request processing. This plan's `database.py` keeps a bare `except: pass` with no logger, and records no failed runs anywhere. That is an external voice on the same side as finding D6 and the brainstorm's own flag. The decision was settled twice and is held, but the count of independent objections to it is now three.
+
+**One flag strengthened.** The article recommends running multiple worker processes in production. Neither `app/Dockerfile`, the root `Dockerfile`, nor either compose file passes `--workers` today, so the app runs one worker and the in-process rate limiter is sound. If anyone follows that advice, the effective rate limit silently multiplies by the worker count and each worker keeps its own unbounded client dictionary. The brainstorm carried this as a flag; it should be re-read before any worker count above one.
+
+**Net effect on the plan: none.** No commit, code block, test, or rollout note changed as a result of this source.
+
 ### Still open
 
 1. **The `location` column drop.** The rollback trap above is new information that postdates the round-16 decision. Worth one word from the user before commit 6.
