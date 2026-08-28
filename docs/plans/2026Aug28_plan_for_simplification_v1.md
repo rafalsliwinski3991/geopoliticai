@@ -178,6 +178,8 @@ Delete the `# type: ignore[import-not-found]` comment on `tracing.py:32`. `arize
 
 **Tests touched:** `test_database.py` collapses to its final four tests; `test_stream_logs_output_before_result` and `test_stream_progress_tokens_result` in `test_api.py` swap `log_prompt`/`log_output` for `log_run` while still patching `api.astream_pipeline`.
 
+**Correction, made during implementation.** That list undercounts `test_api.py` by three. `test_unknown_legacy_field_is_ignored`, `test_stream_error_has_no_result`, and `test_rate_limiting_enforced` also patch `api.database.log_prompt`, and `unittest.mock.patch` raises `AttributeError` on a missing target — the same trap §2 commit 6 warns about, not carried forward here. All five sites must move in this commit. Unlike §3.5's defect this one is gate-visible: leaving any site behind makes `make test` red rather than passing wrongly.
+
 **Test:** `cd app && make test`
 
 ### Commit 8 — Move the run loop into `api.py`
