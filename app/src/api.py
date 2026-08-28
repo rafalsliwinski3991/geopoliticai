@@ -104,11 +104,6 @@ class RunPipelineRequest(BaseModel):
         return cleaned
 
 
-def _sanitize_output(text: str) -> str:
-    """Ensure the response contains only valid UTF-8 characters."""
-    return text.encode("utf-8", errors="replace").decode("utf-8")
-
-
 def _resolve_client_id(request: Request) -> str:
     """Resolve a client address, honoring the first forwarded address."""
     forwarded = request.headers.get("x-forwarded-for", "")
@@ -191,7 +186,7 @@ async def run_pipeline_stream_endpoint(
                 return
             if log_id is not None:
                 await database.log_output(log_id, output)
-            yield _sse({"type": "result", "output": _sanitize_output(output)})
+            yield _sse({"type": "result", "output": output})
         except (PipelineError, LLMInvocationError) as exc:
             logger.warning("Streaming pipeline failed: %s", exc)
             yield _sse({"type": "error", "message": str(exc)})
