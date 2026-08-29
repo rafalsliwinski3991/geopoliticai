@@ -6,7 +6,7 @@ import json
 import logging
 import os
 import time
-from collections import defaultdict, deque
+from collections import deque
 from contextlib import asynccontextmanager
 from threading import Lock
 from typing import Any, AsyncGenerator
@@ -31,11 +31,14 @@ logger = logging.getLogger(__name__)
 ALLOWED_ORIGINS = [
     "http://localhost",
     "http://127.0.0.1",
-    "http://localhost:5173",
+    "http://localhost:8082",
+    "http://localhost:3001",
 ]
 MAX_QUERY_LENGTH = 2_000
+MAX_ANSWER_CHARS = 50_000
 RATE_LIMIT_REQUESTS = 20
 RATE_LIMIT_WINDOW_SECONDS = 60
+MAX_TRACKED_CLIENTS = 10_000
 
 SEARCH_PROGRESS = {
     "node": "search_and_fetch",
@@ -43,7 +46,7 @@ SEARCH_PROGRESS = {
 }
 ANSWER_PROGRESS = {"node": "answer", "label": "Writing the answer..."}
 
-_rate_limit_store: dict[str, deque[float]] = defaultdict(deque)
+_rate_limit_store: dict[str, deque[float]] = {}
 _rate_limit_lock = Lock()
 
 
@@ -88,13 +91,33 @@ class RunPipelineRequest(BaseModel):
 
 
 def _resolve_client_id(request: Request) -> str:
-    """Resolve a client address, honoring the first forwarded address."""
+    """Resolve a client address, honoring the address appended by nginx.
+
+    nginx appends the connecting peer as the last `X-Forwarded-For` entry, so
+    the right-most value is the address this request actually came from. Taking
+    the first entry instead would let a caller spoof the id and rotate it to
+    dodge the rate limit.
+    """
     forwarded = request.headers.get("x-forwarded-for", "")
     if forwarded.strip():
-        return forwarded.split(",")[0].strip()
+        return forwarded.split(",")[-1].strip()
     if request.client and request.client.host:
         return request.client.host
     return "unknown"
+
+
+def _flush_stale_clients(now: float) -> None:
+    """Drop clients whose request windows have fully drained.
+
+    Keeps the in-process rate-limit store from growing without bound as new
+    client ids arrive.
+    """
+    cutoff = now - RATE_LIMIT_WINDOW_SECONDS
+    for client_id, timestamps in list(_rate_limit_store.items()):
+        while timestamps and timestamps[0] < cutoff:
+            timestamps.popleft()
+        if not timestamps:
+            del _rate_limit_store[client_id]
 
 
 def _enforce_rate_limit(request: Request) -> None:
@@ -102,7 +125,14 @@ def _enforce_rate_limit(request: Request) -> None:
     now = time.monotonic()
     client_id = _resolve_client_id(request)
     with _rate_limit_lock:
-        timestamps = _rate_limit_store[client_id]
+        timestamps = _rate_limit_store.get(client_id)
+        if timestamps is None:
+            if len(_rate_limit_store) >= MAX_TRACKED_CLIENTS:
+                _flush_stale_clients(now)
+                if len(_rate_limit_store) >= MAX_TRACKED_CLIENTS:
+                    # Hard bound: evict the least recently seen client.
+                    del _rate_limit_store[next(iter(_rate_limit_store))]
+            timestamps = deque()
         cutoff = now - RATE_LIMIT_WINDOW_SECONDS
         while timestamps and timestamps[0] < cutoff:
             timestamps.popleft()
@@ -112,6 +142,7 @@ def _enforce_rate_limit(request: Request) -> None:
                 detail=f"Rate limit exceeded: max {RATE_LIMIT_REQUESTS} requests per {RATE_LIMIT_WINDOW_SECONDS} seconds.",
             )
         timestamps.append(now)
+        _rate_limit_store[client_id] = timestamps
 
 
 _FRONTEND_HTML = os.getenv("FRONTEND_HTML_PATH", "/app/frontend/index.html")
@@ -122,11 +153,23 @@ if os.path.isdir(_FRONTEND_ASSETS):
     )
 
 
+def _frontend_html_path() -> str:
+    """Resolve the frontend shell at request time.
+
+    The repo-root `.env`, which ``lifespan`` loads via ``init_environment()``,
+    becomes available only after this module is imported, so the path must not be
+    read at import time. The ``/assets`` mount above stays on the import-time
+    default because a static mount cannot be re-resolved per request.
+    """
+    return os.getenv("FRONTEND_HTML_PATH", "/app/frontend/index.html")
+
+
 @app.get("/")
 async def serve_frontend() -> FileResponse:
     """Serve the static frontend shell when available."""
-    if os.path.exists(_FRONTEND_HTML):
-        return FileResponse(_FRONTEND_HTML)
+    html = _frontend_html_path()
+    if os.path.exists(html):
+        return FileResponse(html)
     raise HTTPException(status_code=404, detail="Frontend not available")
 
 
@@ -173,13 +216,19 @@ async def run_pipeline_stream_endpoint(
 
     async def _generate() -> AsyncGenerator[str, None]:
         parts: list[str] = []
+        consumed = 0
         try:
             yield _sse({"type": "progress", **SEARCH_PROGRESS})
             async for text in _astream_answer(payload.query):
                 if not parts:
                     yield _sse({"type": "progress", **ANSWER_PROGRESS})
-                parts.append(text)
-                yield _sse({"type": "token", "content": text})
+                remaining = MAX_ANSWER_CHARS - consumed
+                if remaining <= 0:
+                    break
+                chunk = text[:remaining]
+                parts.append(chunk)
+                consumed += len(chunk)
+                yield _sse({"type": "token", "content": chunk})
             output = "".join(parts).strip()
             if not output:
                 yield _sse(

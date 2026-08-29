@@ -3,8 +3,9 @@
 Guidance for Claude Code working in this repository. After any codebase change,
 update `AGENTS.md`, `CLAUDE.md`, and `.github/copilot-instructions.md` together.
 
-The maintained application is under `app/`; root files are compatibility
-entrypoint, Docker, and requirements-export files. Shared modules in
+The maintained application is under `app/`; the root Dockerfile and
+requirements-export file are compatibility files (the old root `main.py` CLI
+shim is gone). Shared modules in
 `app/src/` provide environment/model config, shared models/errors, a
 policy-parameterized Brave and trafilatura search boundary, the OpenAI boundary,
 API/database delivery, and an optional, env-gated tracing boundary.
@@ -52,8 +53,8 @@ field points at `../.env`, and Compose's `env_file: .env` reads the same
 file; there is no separate `app/.env`. Compose wires `DATABASE_URL` from
 `POSTGRES_PASSWORD` automatically, so prompt-log DB writes are on by
 default whenever Postgres runs alongside the backend. `prompt_logs` carries
-no geolocation: `init_pool` drops a legacy `location` column on every start,
-irreversibly, and `database.py` makes no outbound HTTP call. `log_run` is the
+no geolocation: `init_pool` creates the table and adds the `output` column,
+and `database.py` makes no outbound HTTP call. `log_run` is the
 only writer — one insert after a successful run, silent on failure, so failed
 runs are not recorded anywhere.
 

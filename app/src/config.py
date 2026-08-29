@@ -34,7 +34,7 @@ class LLMSettings:
 DEFAULT_LLM_SETTINGS = LLMSettings()
 
 # app/src/config.py -> app/src -> app -> repo root. Resolved explicitly so
-# every entrypoint (CLI, API, tests, langgraph dev) reads the same
+# every entrypoint (API, tests, langgraph dev) reads the same
 # repo-root .env that Docker Compose's `env_file: .env` also uses,
 # regardless of the caller's current working directory.
 _REPO_ROOT_ENV = Path(__file__).resolve().parents[2] / ".env"

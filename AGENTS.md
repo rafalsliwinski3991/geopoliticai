@@ -6,8 +6,9 @@ together and keep their facts consistent.
 
 ## Repository Layout
 
-The maintained application lives under `app/`; the root entrypoint, Dockerfile,
-and requirements export are compatibility files. `app/src/` is the Python
+The maintained application lives under `app/`; the root Dockerfile and
+requirements export are compatibility files (the old root `main.py` CLI shim is
+gone). `app/src/` is the Python
 import root. Shared infrastructure contains `config.py` (environment/model
 settings), `models.py` (Candidate, Source, SourcePolicy, and the single
 `PipelineError` hierarchy — `SearchUnavailableError`, `NoSourcesError`, and
@@ -109,8 +110,8 @@ CI runs `uv sync --locked --dev` from `app/` on Python 3.11 and does not use
 the root requirements file; compose builds `./app` and `./frontend`.
 
 Required variables are `OPENAI_API_KEY` and `BRAVE_SEARCH_KEY`; optional
-settings include database, logging, frontend path, and LangSmith tracing
-variables. CORS origins and the API rate limit are not among them: they are
+settings include database, logging, and frontend path. CORS origins and the API
+rate limit are not among them: they are
 module constants in `api.py` (`ALLOWED_ORIGINS`, `RATE_LIMIT_REQUESTS`,
 `RATE_LIMIT_WINDOW_SECONDS`), changed by editing the file, and
 `CORS_ALLOW_ORIGINS`, `API_RATE_LIMIT_REQUESTS`, and
@@ -129,11 +130,10 @@ Compose derives `DATABASE_URL` from `POSTGRES_PASSWORD` automatically, so
 prompt-log DB writes are on by default. `prompt_logs` holds `id`, `datetime`,
 `prompt`, `ip`, and `output` — no geolocation. `database.log_run` writes one
 row after a successful run and is silent on failure, so a failed or abandoned
-run leaves no row at all and any query counting rows counts successes. `init_pool` runs
-`DROP COLUMN IF EXISTS location` on every backend start, which is destructive
-and irreversible for existing rows; reverting this code does not restore the
-column, and the reverted insert would then fail silently inside
-`database.py`'s bare `except`.
+run leaves no row at all and any query counting rows counts successes. `init_pool`
+creates the table and adds the `output` column when missing; it no longer drops
+the legacy `location` column, which is harmless because the INSERT names only
+the columns it writes.
 
 ## Change Guidance
 

@@ -2,10 +2,9 @@
 description: Independent review of current changes
 ---
 
-Use the `critic` subagent to perform an independent review of the current
-working-tree changes.
+Perform an independent review of the current working-tree changes.
 
-Have the critic inspect:
+Inspect:
 
 - git diff
 - modified files
@@ -26,4 +25,4 @@ Focus on:
 
 Return BLOCKING findings first.
 
-Do not modify files until the critic has completed the review.
+Do not modify files until the review is complete.

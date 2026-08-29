@@ -1,3 +1,5 @@
+import asyncio
+
 import httpx
 import pytest
 
@@ -98,4 +100,52 @@ async def test_all_search_batches_failing_raises(
 
     monkeypatch.setattr(httpx.AsyncClient, "get", fake_get)
     with pytest.raises(SearchUnavailableError):
+        await search.search_allowlisted("question", EXPERT_SOURCES)
+
+
+@pytest.mark.anyio
+async def test_malformed_brave_items_are_skipped(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """One malformed Brave result must not abort a batch or reach the prompt."""
+
+    async def fake_get(
+        self: httpx.AsyncClient,
+        url: str,
+        *,
+        params: dict[str, object] | None = None,
+        timeout: object | None = None,
+    ) -> httpx.Response:
+        return _response(
+            [
+                {"title": "keep", "url": "https://reuters.com/article"},
+                {"title": "bad url", "url": {"not": "a string"}},
+                {"title": ["not", "a", "string"], "url": "https://apnews.com/1"},
+                {"url": "https://ft.com/1"},
+                "not-a-dict",
+            ]
+        )
+
+    monkeypatch.setattr(httpx.AsyncClient, "get", fake_get)
+    candidates = await search.search_allowlisted("question", EXPERT_SOURCES)
+    assert [candidate.url for candidate in candidates] == [
+        "https://reuters.com/article",
+        "https://apnews.com/1",
+        "https://ft.com/1",
+    ]
+    # The array-typed title falls back to "Untitled" rather than crashing.
+    assert candidates[1].title == "Untitled"
+
+
+@pytest.mark.anyio
+async def test_search_preserves_cancellation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A cancelled search batch must propagate, not be reported as a failure."""
+
+    async def cancelled_batch(*args: object, **kwargs: object) -> list[Candidate]:
+        raise asyncio.CancelledError()
+
+    monkeypatch.setattr(search, "_brave_batch", cancelled_batch)
+    with pytest.raises(asyncio.CancelledError):
         await search.search_allowlisted("question", EXPERT_SOURCES)

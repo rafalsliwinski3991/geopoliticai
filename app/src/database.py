@@ -25,20 +25,12 @@ async def init_pool(dsn: str) -> None:
             )
             """
         )
-        # Existing deployments predate the output column and carry a location
-        # column the app no longer writes.
+        # Existing deployments predate the output column; add it if missing. The
+        # legacy `location` column (when present) is left alone: it is harmless
+        # because the INSERT below names only the columns it writes.
         await conn.execute(
             "ALTER TABLE prompt_logs ADD COLUMN IF NOT EXISTS output TEXT"
         )
-        # Destructive and irreversible, and it runs on every backend start, not
-        # just the first. Reverting to a build that still writes `location` will
-        # NOT bring the column back: `CREATE TABLE IF NOT EXISTS` finds the table
-        # already present, the old insert then names a column that no longer
-        # exists, and the bare `except` below swallows the error -- that
-        # deployment serves answers correctly and logs nothing, silently and
-        # permanently. To recover:
-        #     ALTER TABLE prompt_logs ADD COLUMN IF NOT EXISTS location VARCHAR(255);
-        await conn.execute("ALTER TABLE prompt_logs DROP COLUMN IF EXISTS location")
 
 
 async def close_pool() -> None:

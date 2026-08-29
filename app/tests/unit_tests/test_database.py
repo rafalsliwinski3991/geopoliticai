@@ -56,8 +56,8 @@ async def test_log_run_handles_exception_gracefully() -> None:
 
 
 @pytest.mark.anyio
-async def test_init_pool_drops_location_column() -> None:
-    """Test init_pool drops the retired location column on existing tables."""
+async def test_init_pool_never_issues_destructive_location_ddl() -> None:
+    """Test init_pool no longer drops the retired location column."""
     mock_conn = MagicMock()
     mock_conn.execute = AsyncMock()
     mock_pool = _mock_pool(mock_conn)
@@ -68,10 +68,11 @@ async def test_init_pool_drops_location_column() -> None:
         ):
             await database.init_pool("postgresql://example")
         statements = [call[0][0] for call in mock_conn.execute.call_args_list]
-        assert any(
-            "DROP COLUMN IF EXISTS location" in statement for statement in statements
+        assert all(
+            "DROP COLUMN IF EXISTS location" not in statement
+            for statement in statements
         )
-        assert all("location  VARCHAR" not in statement for statement in statements)
+        assert all("location" not in statement.lower() for statement in statements)
     finally:
         # `init_pool` writes the module global; leaving a MagicMock there would
         # be seen by every later test that does not set `_pool` explicitly.

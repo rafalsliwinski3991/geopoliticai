@@ -1,8 +1,9 @@
 # Copilot Instructions
 
 After every codebase change, update `AGENTS.md`, `CLAUDE.md`, and this file
-together. The maintained application is under `app/`; root files are
-compatibility entrypoint, Docker, and requirements-export files. CI runs
+together. The maintained application is under `app/`; the root Dockerfile and
+requirements-export file are compatibility files (the old root `main.py` CLI
+shim is gone). CI runs
 `uv sync --locked --dev` in `app/` and does not reference root requirements.
 
 Shared modules under `app/src/` provide environment/model config, shared models
@@ -61,6 +62,6 @@ There is exactly one `.env`, at the repo root, read by the API, tests,
 `env_file: .env` alike; `config.py` resolves it by absolute path. There is
 no separate `app/.env`. Compose derives `DATABASE_URL` from
 `POSTGRES_PASSWORD` automatically, so prompt-log DB writes are on by
-default. `prompt_logs` has no geolocation column; `init_pool` drops a legacy
-`location` column on every start, irreversibly. `log_run` is the only writer:
+default. `prompt_logs` has no geolocation column; `init_pool` creates the table
+and adds the `output` column. `log_run` is the only writer:
 one insert per successful run, silent on failure.

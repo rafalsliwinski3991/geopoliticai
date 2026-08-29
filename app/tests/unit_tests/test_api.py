@@ -111,6 +111,43 @@ async def test_stream_logs_output_before_result(client: httpx.AsyncClient) -> No
 
 
 @pytest.mark.anyio
+async def test_stream_caps_answer_size(client: httpx.AsyncClient) -> None:
+    async def stream(query: str) -> AsyncIterator[str]:
+        yield "x" * (api.MAX_ANSWER_CHARS + 1000)
+
+    log_run = AsyncMock()
+    with (
+        patch("api._astream_answer", stream),
+        patch("api.database.log_run", log_run),
+    ):
+        response = await client.post("/api/run_pipeline/stream", json={"query": "x"})
+    events = _events(response.text)
+    assert events[-1]["type"] == "result"
+    assert len(events[-1]["output"]) == api.MAX_ANSWER_CHARS
+
+
+@pytest.mark.anyio
+async def test_resolve_client_id_uses_rightmost_forwarded(
+    client: httpx.AsyncClient,
+) -> None:
+    async def stream(query: str) -> AsyncIterator[str]:
+        yield "answer"
+
+    log_run = AsyncMock()
+    with (
+        patch("api._astream_answer", stream),
+        patch("api.database.log_run", log_run),
+    ):
+        response = await client.post(
+            "/api/run_pipeline/stream",
+            json={"query": "x"},
+            headers={"x-forwarded-for": "spoofed, 203.0.113.5"},
+        )
+    assert response.status_code == 200
+    log_run.assert_awaited_once_with("x", "203.0.113.5", "answer")
+
+
+@pytest.mark.anyio
 async def test_stream_error_has_no_result(client: httpx.AsyncClient) -> None:
     async def stream(query: str) -> AsyncIterator[str]:
         raise NoSourcesError("nothing usable")

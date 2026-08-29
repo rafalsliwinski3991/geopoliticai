@@ -21,14 +21,14 @@ async def search_and_fetch(state: PipelineState) -> dict[str, Any]:
     ]
     if not candidates:
         raise NoSourcesError(
-            "No allow-listed sources were found for this query. Try rephrasing it."
+            "No approved sources were found for this query. Try rephrasing it."
         )
     sources = (await fetch_sources(candidates, EXPERT_SOURCES))[
         : RETRIEVAL.keep_sources
     ]
     if not sources:
         raise NoSourcesError(
-            "Every allow-listed page for this query failed to fetch or extract."
+            "None of the approved sources for this query could be fetched or extracted."
         )
     logger.info(
         "search_and_fetch: %d candidates -> %d sources", len(candidates), len(sources)
