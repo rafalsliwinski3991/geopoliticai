@@ -33,15 +33,36 @@
         "mcps": []
       },
       "fixer": {
-        "model": "opencode-go/deepseek-v4-flash-vision-exp",
+        "model": "opencode-go/gpt-5.6-luna",
         "variant": "high",
         "skills": [],
         "mcps": []
       },
       "observer": {
-        "model": "opencode-go/glm-5.3-flash",
+        "model": "opencode-go/gpt-5.6-luna",
+        "variant": "high",
         "skills": [],
         "mcps": []
+      },
+      "council": {
+        "model": "opencode-go/gpt-5.6-luna",
+        "variant": "high"
+      }
+    }
+  },
+  "council": {
+    "default_preset": "default",
+    "presets": {
+      "default": {
+        "alpha": {
+          "model": "opencode-go/gpt-5.6-luna"
+        },
+        "beta": {
+          "model": "opencode-go/glm-5.3-flash"
+        },
+        "gamma": {
+          "model": "opencode-go/deepseek-v4-flash-vision-exp"
+        }
       }
     }
   },
