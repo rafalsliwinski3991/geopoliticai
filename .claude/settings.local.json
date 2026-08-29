@@ -1,4 +1,7 @@
 {
+  "enabledMcpjsonServers": [
+    "context7"
+  ],
   "skillOverrides": {
     "deep-agents-core": "off",
     "deep-agents-memory": "off",
@@ -6,5 +9,6 @@
     "deepagents-python-quickstart": "off",
     "deepagents-typescript-quickstart": "off",
     "managed-deep-agents": "off"
-  }
+  },
+  "enableAllProjectMcpServers": true
 }
