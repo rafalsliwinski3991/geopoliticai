@@ -9,12 +9,9 @@ from langchain_core.runnables import RunnableConfig
 from langchain_openai import ChatOpenAI
 
 from config import DEFAULT_LLM_SETTINGS, LLMSettings
+from models import LLMInvocationError
 
 DEFAULT_MAX_RETRIES = 2
-
-
-class LLMInvocationError(RuntimeError):
-    """Raised when the model call fails or returns nothing usable."""
 
 
 def _build_client(settings: LLMSettings) -> ChatOpenAI:

@@ -24,6 +24,7 @@ BRAVE_RESULTS_PER_QUERY = 10
 BRAVE_MAX_QUERY_CHARS = 400
 BRAVE_MAX_QUERY_WORDS = 50
 FETCH_TIMEOUT_SECONDS = 5.0
+FETCH_CONCURRENCY = 8
 QUERY_TRIM_CHARS = 140
 QUERY_TRIM_WORDS = 20
 MAX_REDIRECTS = 3
@@ -102,16 +103,22 @@ async def _brave_batch(
     for item in results if isinstance(results, list) else []:
         if not isinstance(item, dict):
             continue
-        url = (item.get("url") or "").strip()
+        raw_url = item.get("url")
+        url = raw_url.strip() if isinstance(raw_url, str) else ""
+        if not url:
+            logger.debug("Skipped Brave result with no usable url: %r", item)
+            continue
         domain = allowed_domain(url, policy)
         if domain is None:
             logger.debug("Dropped out-of-allowlist URL: %s", url)
             continue
-        candidates.append(
-            Candidate(
-                title=(item.get("title") or "Untitled").strip(), url=url, domain=domain
-            )
+        raw_title = item.get("title")
+        title = (
+            raw_title.strip()
+            if isinstance(raw_title, str) and raw_title.strip()
+            else "Untitled"
         )
+        candidates.append(Candidate(title=title, url=url, domain=domain))
     return candidates
 
 
@@ -217,6 +224,10 @@ async def search_allowlisted(query: str, policy: SourcePolicy) -> list[Candidate
         )
     batches: list[list[Candidate]] = []
     for result in results:
+        if isinstance(result, asyncio.CancelledError):
+            # Preserve cancellation: the request was aborted mid-search, and a
+            # cancelled batch must not be swallowed as a mere "batch failed".
+            raise result
         if isinstance(result, BaseException):
             logger.warning("Brave batch failed: %s", result)
         else:
@@ -229,9 +240,15 @@ async def search_allowlisted(query: str, policy: SourcePolicy) -> list[Candidate
 async def fetch_sources(
     candidates: Sequence[Candidate], policy: SourcePolicy
 ) -> list[Source]:
-    """Fetch and extract candidates concurrently, dropping individual failures."""
+    """Fetch and extract candidates concurrently, bounding parallel fetches."""
     async with httpx.AsyncClient(headers=FETCH_HEADERS) as client:
+        semaphore = asyncio.Semaphore(FETCH_CONCURRENCY)
+
+        async def bounded(candidate: Candidate) -> Source | None:
+            async with semaphore:
+                return await _fetch_and_extract(client, candidate, policy)
+
         fetched = await asyncio.gather(
-            *(_fetch_and_extract(client, candidate, policy) for candidate in candidates)
+            *(bounded(candidate) for candidate in candidates)
         )
     return [source for source in fetched if source is not None]

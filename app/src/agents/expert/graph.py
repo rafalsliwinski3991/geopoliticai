@@ -1,22 +1,14 @@
-"""Graph construction and execution for the expert agent."""
+"""Graph construction for the expert agent."""
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
-from typing import Any, Literal
+from typing import Any
 
 from langgraph.graph import END, START, StateGraph
 
 from agents.expert.nodes import answer, search_and_fetch
-from agents.expert.state import PipelineState, build_initial_pipeline_state
-from llm import LLMInvocationError
+from agents.expert.state import PipelineState
 from tracing import init_tracing
-
-NODE_LABELS: dict[str, str] = {
-    "search_and_fetch": "Searching and reading sources...",
-    "answer": "Writing the answer...",
-}
-PipelineEvent = tuple[Literal["progress", "token"], str]
 
 
 def build_graph() -> Any:
@@ -30,10 +22,6 @@ def build_graph() -> Any:
     return pipeline.compile(name="expert")
 
 
-init_tracing()
-graph = build_graph()
-
-
 def build_runtime_config(*, thread_id: str | None = None) -> dict[str, dict[str, Any]]:
     """Build runtime configuration shared by entrypoints."""
     configurable: dict[str, Any] = {}
@@ -44,55 +32,8 @@ def build_runtime_config(*, thread_id: str | None = None) -> dict[str, dict[str,
     return {"configurable": configurable}
 
 
-def _chunk_text(chunk: object) -> str:
-    """Extract text from a streamed LangChain content chunk."""
-    content = getattr(chunk, "content", chunk)
-    if isinstance(content, str):
-        return content
-    if not isinstance(content, list):
-        return ""
-    parts: list[str] = []
-    for block in content:
-        if (
-            isinstance(block, dict)
-            and block.get("type") == "text"
-            and isinstance(block.get("text"), str)
-        ):
-            parts.append(block["text"])
-    return "".join(parts)
-
-
-async def astream_pipeline(
-    query: str, *, thread_id: str | None = None
-) -> AsyncIterator[PipelineEvent]:
-    """Run one request, yielding progress and answer-token events."""
-    state = build_initial_pipeline_state(query)
-    config = build_runtime_config(thread_id=thread_id)
-    seen_nodes: set[str] = set()
-    async for event in graph.astream_events(state, config=config, version="v2"):
-        event_type = event.get("event", "")
-        metadata = event.get("metadata", {})
-        node = metadata.get("langgraph_node", "") if isinstance(metadata, dict) else ""
-        if (
-            event_type == "on_chain_start"
-            and node in NODE_LABELS
-            and node not in seen_nodes
-        ):
-            seen_nodes.add(node)
-            yield ("progress", node)
-        elif event_type == "on_chat_model_stream" and node == "answer":
-            text = _chunk_text(event.get("data", {}).get("chunk"))
-            if text:
-                yield ("token", text)
-
-
-async def run_pipeline(query: str, *, thread_id: str | None = None) -> str:
-    """Run the streaming path and return the complete answer."""
-    parts: list[str] = []
-    async for kind, text in astream_pipeline(query, thread_id=thread_id):
-        if kind == "token":
-            parts.append(text)
-    result = "".join(parts).strip()
-    if not result:
-        raise LLMInvocationError("Pipeline produced no answer text.")
-    return result
+# `langgraph dev` imports this module and nothing else, so module scope is
+# Studio's only hook for Phoenix tracing. `init_tracing()` is idempotent and
+# never raises, so this is not orchestration leaking back into construction.
+init_tracing()
+graph = build_graph()

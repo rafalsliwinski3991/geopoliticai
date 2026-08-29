@@ -6,17 +6,23 @@ together and keep their facts consistent.
 
 ## Repository Layout
 
-The maintained application lives under `app/`; the root entrypoint, Dockerfile,
-and requirements export are compatibility files. `app/src/` is the Python
+The maintained application lives under `app/`; the root Dockerfile and
+requirements export are compatibility files (the old root `main.py` CLI shim is
+gone). `app/src/` is the Python
 import root. Shared infrastructure contains `config.py` (environment/model
-settings), `models.py` (Candidate, Source, SourcePolicy, PipelineError types),
+settings), `models.py` (Candidate, Source, SourcePolicy, and the single
+`PipelineError` hierarchy — `SearchUnavailableError`, `NoSourcesError`, and
+`LLMInvocationError`, each carrying its own `status` ClassVar of 503, 422, and
+502, with `PipelineError` itself defaulting to 500; a new error type that omits
+`status` silently inherits that 500, so give every new subclass its own;
+`llm.py` re-raises the last but no longer defines it),
 `search.py` (policy-parameterized Brave/fetch boundary), `llm.py` (OpenAI
-boundary), and delivery modules `api.py`, `cli.py`, and `database.py`.
+boundary), and delivery modules `api.py` and `database.py`.
 
 Each agent is under `app/src/agents/<name>/` with `graph.py`, `state.py`,
 `config.py`, `prompts.py`, a `consts/` package for static data, and one
 module per graph node in `nodes/`. Shared modules never import agents; only
-`api.py` and `cli.py` name `agents.expert`. The old `nodes/`, `planning.py`,
+`api.py` names `agents.expert`. The old `nodes/`, `planning.py`,
 and `render.py` modules are gone.
 
 Static, hardcoded agent data (currently just editorial policy) lives under
@@ -44,9 +50,9 @@ Editorial policy (domains, batching, paywalls) stays in
 `app/src/tracing.py` is a shared, optional tracing boundary: `init_tracing()`
 registers self-hosted Arize Phoenix span export when
 `PHOENIX_COLLECTOR_ENDPOINT` is set, is idempotent, and never raises — an
-unreachable collector must never fail a request. `api.py`'s lifespan,
-`cli.py`'s `main()`, and `agents/expert/graph.py` (at module scope, for
-`langgraph dev`) each call it once.
+unreachable collector must never fail a request. `api.py`'s lifespan and
+`agents/expert/graph.py` (at module scope, for `langgraph dev`) each call it
+once.
 
 ## Architecture
 
@@ -62,18 +68,32 @@ flat English allow-list in `agents/expert/consts/sources.py`, passed to
 shared search
 as `SourcePolicy`. Search makes exactly three concurrent Brave batches, then
 fetches and extracts allow-listed pages with `trafilatura`. Only fetched article
-text reaches the single streamed plain-text LLM call. Search outages, no usable
+text reaches the single streamed plain-text LLM call. `graph.py` is construction
+only — `build_graph`, `build_runtime_config`, the module-scope `init_tracing()`,
+and `graph`; it runs nothing. The run loop lives in `api.py`'s
+`_astream_answer`, which drives `graph.astream(..., stream_mode="messages")`,
+keeps only chunks whose `metadata["langgraph_node"] == "answer"`, narrows with
+`isinstance(message, AIMessage)`, and flattens content blocks with
+`BaseMessage.text()`. That node filter is what stops a future second
+LLM-calling node from streaming its working notes into the user's answer.
+Progress frames are inferred, not read off graph events: the search label is
+emitted before the graph starts, the answer label on the first token. Search
+outages, no usable
 sources, and model failures are hard errors; there are no deterministic or
 degraded fallbacks. Runtime configuration carries only optional `thread_id`.
 
 ## API and Frontend
 
-`app/src/api.py` exposes `GET /api/health`, `POST /api/run_pipeline`, and
-`POST /api/run_pipeline/stream`, plus `/` for the static English frontend.
-Requests contain only `query`, normalized and limited to 2,000 characters.
-Known failures map to 422 (no sources), 503 (search unavailable), and 502 (LLM).
-SSE events remain `progress`, `token`, `result`, and `error`. Markdown output
-is sanitized in the browser before insertion.
+`app/src/api.py` exposes `GET /api/health` and `POST /api/run_pipeline/stream`,
+plus `/` for the static English frontend. There is no synchronous HTTP route;
+`langgraph dev` still drives the graph in Studio. Requests contain only `query`,
+normalized and limited to 2,000 characters. A pipeline failure cannot change the
+HTTP status, which is already committed at 200, so it is reported inside an SSE
+`error` frame, which carries the raising class's own `status` (422/503/502, 500
+otherwise) alongside `message`. SSE events remain `progress`, `token`, `result`,
+and `error`. A failing run emits `progress` then `error`, because the search
+progress frame precedes the graph. Markdown output is sanitized in the browser
+before insertion.
 
 Development ports are frontend 8082, backend 3001, PostgreSQL 55432, and
 Phoenix 6006 (loopback-bound, dev override only — base and prod compose
@@ -85,25 +105,35 @@ exposes the graph as `expert`.
 
 Run Python commands from `app/`: `uv sync --locked --dev`, `make test`,
 `make integration_tests`, `make lint`, and `make format`. Use `langgraph dev`
-from `app/` and run the CLI with `python src/cli.py "your query"`.
+from `app/` to drive the graph in Studio.
 CI runs `uv sync --locked --dev` from `app/` on Python 3.11 and does not use
 the root requirements file; compose builds `./app` and `./frontend`.
 
 Required variables are `OPENAI_API_KEY` and `BRAVE_SEARCH_KEY`; optional
-settings include database, CORS, API rate-limit, logging, frontend path, and
-LangSmith tracing variables. Model/timeout/token knobs are hardcoded
-`LLMSettings` dataclasses in code, not environment variables — see
-`config.py` and `agents/expert/config.py`. `PHOENIX_COLLECTOR_ENDPOINT` and
+settings include database, logging, and frontend path. CORS origins and the API
+rate limit are not among them: they are
+module constants in `api.py` (`ALLOWED_ORIGINS`, `RATE_LIMIT_REQUESTS`,
+`RATE_LIMIT_WINDOW_SECONDS`), changed by editing the file, and
+`CORS_ALLOW_ORIGINS`, `API_RATE_LIMIT_REQUESTS`, and
+`API_RATE_LIMIT_WINDOW_SECONDS` are no longer read anywhere. Model/timeout/token
+knobs are likewise hardcoded `LLMSettings` dataclasses in code, not environment
+variables — see `config.py` and `agents/expert/config.py`. `PHOENIX_COLLECTOR_ENDPOINT` and
 `PHOENIX_PROJECT_NAME` are the Phoenix tracing switches; unset means no
 tracing, and exported spans carry full prompt/response text with no
 redaction.
 
 There is exactly one `.env`, at the repo root. `config.py` resolves it by
-absolute path regardless of working directory, so the CLI, API, tests, and
+absolute path regardless of working directory, so the API, tests, and
 `langgraph dev` (via `app/langgraph.json`'s `env: "../.env"`) all read the
 same file Compose's `env_file: .env` uses; there is no separate `app/.env`.
 Compose derives `DATABASE_URL` from `POSTGRES_PASSWORD` automatically, so
-prompt-log DB writes are on by default.
+prompt-log DB writes are on by default. `prompt_logs` holds `id`, `datetime`,
+`prompt`, `ip`, and `output` — no geolocation. `database.log_run` writes one
+row after a successful run and is silent on failure, so a failed or abandoned
+run leaves no row at all and any query counting rows counts successes. `init_pool`
+creates the table and adds the `output` column when missing; it no longer drops
+the legacy `location` column, which is harmless because the INSERT names only
+the columns it writes.
 
 ## Change Guidance
 

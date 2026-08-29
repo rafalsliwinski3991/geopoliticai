@@ -11,13 +11,17 @@ This is not requirements gathering. A requirements interview asks, records, and 
 
 Work the tree in **rounds**. The **frontier** is every decision whose prerequisites are already settled: the questions you can ask _now_ without guessing at answers you haven't heard yet.
 
-Ask the whole frontier in one round, then wait for the user's answers before the next. Each round they answer reshapes the tree: settled decisions push the frontier outward and unblock questions that depended on them. Recompute the frontier and ask the next round.
+**Ask exactly one question per round.** Compute the whole frontier, then pose only the highest-leverage question on it and wait for the answer. A wall of simultaneous questions gets skimmed and answered shallowly, and shallow answers cannot be grilled. One question at a time is what makes the pushback step land.
 
-**The frontier should be wide.** A tree where every decision has exactly one child is a queue, not a tree, and it means you are inventing dependencies that aren't there. Before deferring a question to a later round, apply the dependency test: *would a different answer to the open question actually change this question's wording or its options?* If not, it belongs in **this** round as a sibling. Deferring on vague thematic relatedness is the most common way this skill degrades.
+Each answer reshapes the tree: settled decisions push the frontier outward and unblock questions that depended on them. Recompute the frontier and ask the next single question.
 
-### Batch mode and single mode
+**The frontier still has to be wide, even though you ask one at a time.** A tree where every decision has exactly one child is a queue, not a tree, and it means you are inventing dependencies that aren't there. Before treating a question as blocked, apply the dependency test: *would a different answer to the open question actually change this question's wording or its options?* If not, it is a sibling on the current frontier, not a downstream question — it just hasn't been picked yet. Keep the full frontier in the artifact so the unasked siblings are visible and nothing silently drops.
 
-Default to batch: the whole frontier per round. If the user asks for one question at a time — some people think better that way — switch to **single mode**: still compute the full frontier, still keep it in the file under Current frontier, but pose only the highest-leverage one per round. Record the mode in the artifact so a resumed session doesn't flip cadence mid-stream. You may offer to switch modes if the frontier gets unwieldy (roughly 6+ open questions), but the user's stated preference wins.
+**Picking the one to ask.** Highest leverage means the question whose answer prunes or reshapes the most of the remaining tree: one-way doors before two-way doors, foundations before decoration, and anything that could invalidate a settled decision before anything that merely adds detail.
+
+### Batch mode
+
+Single is the default. If the user explicitly asks for all the questions at once — some people would rather see the whole shape up front — switch to **batch mode** and pose the entire frontier per round. Record the mode in the artifact so a resumed session doesn't flip cadence mid-stream. You may offer batch mode if the frontier stays wide and shallow for several rounds, but the user's stated preference wins.
 
 ## What to grill on
 
@@ -34,15 +38,13 @@ Frontier questions come from the tree's structure. The *pressure* comes from the
 ## Round format
 
 ```
-❓ **Q1** - **<question title>**: <question body, possibly multiple paragraphs, including any multiple-choice options>
+❓ **Q<n>** - **<question title>**: <question body, possibly multiple paragraphs, including any multiple-choice options>
 
 ➡️ **Lean:** <your recommended answer> _(<confidence: strong / weak / coin-flip>)_
 ⚔️ **Against it:** <the strongest case against your own lean>
-
----
-
-❓ **Q2** - ...
 ```
+
+Number questions continuously across the session — Q1, Q2, Q3 — so the round log and the artifact refer to the same question by the same name. In batch mode, separate the questions in a round with `---`.
 
 Always give both lines. A recommendation offered alone anchors the user onto it, and a skill that anchors and never challenges is a confirmation machine. Stating your own lean's weakest point is what keeps the question honest. When your lean is weak or a coin-flip, say so plainly rather than manufacturing confidence.
 
@@ -62,7 +64,7 @@ Push back once per answer, not indefinitely. You are stress-testing a decision, 
 
 Finding *facts* is never the user's job. When a frontier question needs a fact from the environment — filesystem, git history, dependency versions, an API's actual limits — go find it yourself. Read the code, run the command, search the web. If the search is broad enough to be worth parallelizing and sub-agents are available in this session, dispatch one; otherwise just do it inline.
 
-Don't block on it. A running lookup is an unsettled prerequisite, so only the questions downstream of it wait; ask the rest of the frontier now. Record what you verified in the artifact's **Context verified** section — the facts you established are half the value of the session, and they are what makes the settled decisions auditable later.
+Don't block on it. A running lookup is an unsettled prerequisite, so only the questions downstream of it wait; ask a frontier question that doesn't depend on it in the meantime. Record what you verified in the artifact's **Context verified** section — the facts you established are half the value of the session, and they are what makes the settled decisions auditable later.
 
 The *decisions* are the user's. Put each to them and wait.
 
@@ -105,7 +107,7 @@ Rewrite the sections above the round log in place; **append** to the round log r
 
 **Started:** <date>
 **Status:** In progress | Complete | Closed early (<n> questions left open)
-**Mode:** batch | one question at a time
+**Mode:** single (one question per round, default) | batch
 
 ## Target design
 
@@ -130,8 +132,9 @@ opened, marked SETTLED / OPEN / PRUNED.>
 
 ## Current frontier (open questions)
 
-- **Q<n> — <title>**: <body>
+- **Q<n> — <title>** _(next up)_: <body>
   - Lean: <recommendation> (<confidence>) — Against: <counter-case>
+- **Q<n+1> — <title>**: <sibling on the frontier, not yet asked>
 
 ## Carried as flags, not decisions
 
@@ -141,8 +144,8 @@ they are decisions to decide later, and they must survive into whatever plan fol
 
 ## Round log
 
-### Round 1
-**Q1 — <title>.** <what you asked and the case you made>
+### Round 1 — Q1: <title>
+<what you asked and the case you made>
 Lean was <X>. **User answered:** <Y>. **Pushed back on** <objection> → <held / revised to Z>.
 ```
 

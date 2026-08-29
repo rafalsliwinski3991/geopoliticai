@@ -359,6 +359,7 @@
             x-ref="input"
             x-model.trim="input"
             type="text"
+            maxlength="2000"
             :placeholder="t('placeholder')"
             :aria-label="t('placeholder')"
             :disabled="isLoading"
@@ -391,8 +392,24 @@
         timeout_error: "⏱ Backend did not respond within 10 minutes.",
         connection_error: (msg) => `Connection error: ${msg}`,
         server_error: (code) => `Server error (${code}).`,
+        error_422: "I couldn't find enough usable sources for that question. Try rephrasing it.",
+        error_503: "The news search is temporarily unavailable. Please try again in a few minutes.",
+        error_502: "Something went wrong while writing the answer. Please try again.",
+        error_generic: "Something went wrong. Please try again.",
         time_locale: "en-US",
       };
+
+      // Server error frames carry a `status` classifying the failure. Known
+      // statuses get friendlier, action-oriented copy than the raw server
+      // message; anything else falls back to that message, then to a generic.
+      function friendlySseError(data) {
+        const friendly = {
+          422: I18N.error_422,
+          503: I18N.error_503,
+          502: I18N.error_502,
+        };
+        return friendly[data?.status] || data?.message || I18N.error_generic;
+      }
 
       document.addEventListener("alpine:init", () => {
         Alpine.data("chat", () => ({
@@ -466,7 +483,7 @@
                     } else if (data.type === "error") {
                       this.progressLog = [];
                       this.streamingDraft = "";
-                      this.messages.push({ role: "error", text: data.message, timestamp: new Date() });
+                      this.messages.push({ role: "error", text: friendlySseError(data), timestamp: new Date() });
                       this.scrollToBottom();
                     }
                   } catch {

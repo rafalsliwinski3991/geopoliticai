@@ -30,10 +30,4 @@ field points at `../.env`, and Docker Compose's `env_file: .env` reads the
 same file. There is no separate `app/.env`. Required environment variables
 are `OPENAI_API_KEY` and `BRAVE_SEARCH_KEY`; never commit the populated
 file. Optional settings are documented in the repository guidance files.
-The CLI is:
-
-```bash
-python src/cli.py "What is the current state of the Ukraine ceasefire negotiations?"
-```
-
 Run checks with `make lint`, `make test`, and `make integration_tests`.

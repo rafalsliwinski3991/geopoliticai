@@ -3,8 +3,8 @@ from typing import Any, AsyncIterator
 
 import pytest
 
-from llm import LLMInvocationError
-from models import Candidate, Source
+from agents.expert.state import build_initial_pipeline_state
+from models import Candidate, LLMInvocationError, Source
 
 expert = importlib.import_module("agents.expert")
 graph_module: Any = importlib.import_module("agents.expert.graph")
@@ -19,7 +19,6 @@ def test_graph_has_exactly_two_nodes() -> None:
         "search_and_fetch",
         "answer",
     }
-    assert set(expert.NODE_LABELS) == {"search_and_fetch", "answer"}
 
 
 def test_graph_is_linear() -> None:
@@ -34,7 +33,7 @@ def test_graph_is_linear() -> None:
 
 
 @pytest.mark.anyio
-async def test_execution_emits_progress_and_tokens(
+async def test_execution_streams_answer_tokens(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     async def candidates(query: str, policy: Any) -> list[Candidate]:
@@ -52,10 +51,17 @@ async def test_execution_emits_progress_and_tokens(
         "_build_client",
         lambda settings: FakeListChatModel(responses=["Hello world."]),
     )
-    graph_module.graph = graph_module.build_graph()
-    events = [event async for event in graph_module.astream_pipeline("question")]
-    assert [kind for kind, _ in events][:2] == ["progress", "progress"]
-    assert "".join(text for kind, text in events if kind == "token") == "Hello world."
+    compiled = graph_module.build_graph()
+    state = build_initial_pipeline_state("question")
+    config = graph_module.build_runtime_config()
+    chunks = [
+        message
+        async for message, metadata in compiled.astream(
+            state, config=config, stream_mode="messages"
+        )
+        if metadata.get("langgraph_node") == "answer"
+    ]
+    assert "".join(chunk.text() for chunk in chunks) == "Hello world."
 
 
 @pytest.mark.anyio
@@ -103,9 +109,16 @@ async def test_execution_propagates_llm_failure_after_partial_tokens(
     monkeypatch.setattr(
         llm_module, "_build_client", lambda settings: FailingChatModel()
     )
-    graph_module.graph = graph_module.build_graph()
-    events: list[tuple[str, str]] = []
+    compiled = graph_module.build_graph()
+    state = build_initial_pipeline_state("question")
+    config = graph_module.build_runtime_config()
+    texts: list[str] = []
     with pytest.raises(LLMInvocationError):
-        async for event in graph_module.astream_pipeline("question"):
-            events.append(event)
-    assert ("token", "partial") in events
+        async for message, metadata in compiled.astream(
+            state, config=config, stream_mode="messages"
+        ):
+            if metadata.get("langgraph_node") == "answer":
+                texts.append(message.text())
+    # Already-produced chunks are yielded before the exception surfaces, so no
+    # partial output is lost.
+    assert "partial" in texts

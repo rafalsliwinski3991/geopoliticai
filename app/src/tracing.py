@@ -29,7 +29,7 @@ def init_tracing() -> bool:
         logger.debug("PHOENIX_COLLECTOR_ENDPOINT unset; tracing disabled.")
         return False
     try:
-        from phoenix.otel import register  # type: ignore[import-not-found]
+        from phoenix.otel import register
 
         register(
             endpoint=endpoint,

@@ -6,62 +6,48 @@ import json
 import logging
 import os
 import time
-from collections import defaultdict, deque
+from collections import deque
 from contextlib import asynccontextmanager
 from threading import Lock
-from typing import AsyncGenerator
+from typing import Any, AsyncGenerator
 
-from fastapi import APIRouter, BackgroundTasks, FastAPI, HTTPException, Request
+from fastapi import APIRouter, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
+from langchain_core.messages import AIMessage
 from pydantic import BaseModel, Field, field_validator
 
 import database
-from agents.expert import NODE_LABELS, astream_pipeline, run_pipeline
+from agents.expert import build_initial_pipeline_state, build_runtime_config, graph
 from config import init_environment, require_env
-from llm import LLMInvocationError
-from models import NoSourcesError, PipelineError, SearchUnavailableError
+from models import PipelineError
 from tracing import init_tracing
 
 logger = logging.getLogger(__name__)
-DEFAULT_ALLOWED_ORIGINS = (
+
+# Hardcoded the way `LLMSettings` is hardcoded: edited here, never read from
+# the environment.
+ALLOWED_ORIGINS = [
     "http://localhost",
     "http://127.0.0.1",
-    "http://localhost:5173",
-)
+    "http://localhost:8082",
+    "http://localhost:3001",
+]
 MAX_QUERY_LENGTH = 2_000
-DEFAULT_RATE_LIMIT_REQUESTS = 20
-DEFAULT_RATE_LIMIT_WINDOW_SECONDS = 60
-_rate_limit_store: dict[str, deque[float]] = defaultdict(deque)
+MAX_ANSWER_CHARS = 50_000
+RATE_LIMIT_REQUESTS = 20
+RATE_LIMIT_WINDOW_SECONDS = 60
+MAX_TRACKED_CLIENTS = 10_000
+
+SEARCH_PROGRESS = {
+    "node": "search_and_fetch",
+    "label": "Searching and reading sources...",
+}
+ANSWER_PROGRESS = {"node": "answer", "label": "Writing the answer..."}
+
+_rate_limit_store: dict[str, deque[float]] = {}
 _rate_limit_lock = Lock()
-
-
-def _parse_allowed_origins() -> list[str]:
-    """Parse CORS origins from the environment."""
-    raw = os.getenv("CORS_ALLOW_ORIGINS", "")
-    origins = [item.strip() for item in raw.split(",") if item.strip()]
-    return origins or list(DEFAULT_ALLOWED_ORIGINS)
-
-
-def _read_positive_int_env(var_name: str, default: int) -> int:
-    """Read a positive integer setting, falling back for malformed values."""
-    raw = os.getenv(var_name)
-    if raw is None or not raw.strip():
-        return default
-    try:
-        value = int(raw)
-    except ValueError:
-        return default
-    return value if value > 0 else default
-
-
-RATE_LIMIT_REQUESTS = _read_positive_int_env(
-    "API_RATE_LIMIT_REQUESTS", DEFAULT_RATE_LIMIT_REQUESTS
-)
-RATE_LIMIT_WINDOW_SECONDS = _read_positive_int_env(
-    "API_RATE_LIMIT_WINDOW_SECONDS", DEFAULT_RATE_LIMIT_WINDOW_SECONDS
-)
 
 
 @asynccontextmanager
@@ -81,7 +67,7 @@ app = FastAPI(title="GeopoliticAI API", version="1.0.0", lifespan=lifespan)
 router = APIRouter(prefix="/api")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=_parse_allowed_origins(),
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=False,
     allow_methods=["GET", "POST"],
     allow_headers=["*"],
@@ -104,25 +90,34 @@ class RunPipelineRequest(BaseModel):
         return cleaned
 
 
-class RunPipelineResponse(BaseModel):
-    """Response payload containing the final answer."""
-
-    output: str
-
-
-def _sanitize_output(text: str) -> str:
-    """Ensure the response contains only valid UTF-8 characters."""
-    return text.encode("utf-8", errors="replace").decode("utf-8")
-
-
 def _resolve_client_id(request: Request) -> str:
-    """Resolve a client address, honoring the first forwarded address."""
+    """Resolve a client address, honoring the address appended by nginx.
+
+    nginx appends the connecting peer as the last `X-Forwarded-For` entry, so
+    the right-most value is the address this request actually came from. Taking
+    the first entry instead would let a caller spoof the id and rotate it to
+    dodge the rate limit.
+    """
     forwarded = request.headers.get("x-forwarded-for", "")
     if forwarded.strip():
-        return forwarded.split(",")[0].strip()
+        return forwarded.split(",")[-1].strip()
     if request.client and request.client.host:
         return request.client.host
     return "unknown"
+
+
+def _flush_stale_clients(now: float) -> None:
+    """Drop clients whose request windows have fully drained.
+
+    Keeps the in-process rate-limit store from growing without bound as new
+    client ids arrive.
+    """
+    cutoff = now - RATE_LIMIT_WINDOW_SECONDS
+    for client_id, timestamps in list(_rate_limit_store.items()):
+        while timestamps and timestamps[0] < cutoff:
+            timestamps.popleft()
+        if not timestamps:
+            del _rate_limit_store[client_id]
 
 
 def _enforce_rate_limit(request: Request) -> None:
@@ -130,7 +125,14 @@ def _enforce_rate_limit(request: Request) -> None:
     now = time.monotonic()
     client_id = _resolve_client_id(request)
     with _rate_limit_lock:
-        timestamps = _rate_limit_store[client_id]
+        timestamps = _rate_limit_store.get(client_id)
+        if timestamps is None:
+            if len(_rate_limit_store) >= MAX_TRACKED_CLIENTS:
+                _flush_stale_clients(now)
+                if len(_rate_limit_store) >= MAX_TRACKED_CLIENTS:
+                    # Hard bound: evict the least recently seen client.
+                    del _rate_limit_store[next(iter(_rate_limit_store))]
+            timestamps = deque()
         cutoff = now - RATE_LIMIT_WINDOW_SECONDS
         while timestamps and timestamps[0] < cutoff:
             timestamps.popleft()
@@ -140,6 +142,7 @@ def _enforce_rate_limit(request: Request) -> None:
                 detail=f"Rate limit exceeded: max {RATE_LIMIT_REQUESTS} requests per {RATE_LIMIT_WINDOW_SECONDS} seconds.",
             )
         timestamps.append(now)
+        _rate_limit_store[client_id] = timestamps
 
 
 _FRONTEND_HTML = os.getenv("FRONTEND_HTML_PATH", "/app/frontend/index.html")
@@ -150,11 +153,23 @@ if os.path.isdir(_FRONTEND_ASSETS):
     )
 
 
+def _frontend_html_path() -> str:
+    """Resolve the frontend shell at request time.
+
+    The repo-root `.env`, which ``lifespan`` loads via ``init_environment()``,
+    becomes available only after this module is imported, so the path must not be
+    read at import time. The ``/assets`` mount above stays on the import-time
+    default because a static mount cannot be re-resolved per request.
+    """
+    return os.getenv("FRONTEND_HTML_PATH", "/app/frontend/index.html")
+
+
 @app.get("/")
 async def serve_frontend() -> FileResponse:
     """Serve the static frontend shell when available."""
-    if os.path.exists(_FRONTEND_HTML):
-        return FileResponse(_FRONTEND_HTML)
+    html = _frontend_html_path()
+    if os.path.exists(html):
+        return FileResponse(html)
     raise HTTPException(status_code=404, detail="Frontend not available")
 
 
@@ -164,24 +179,31 @@ async def healthcheck() -> dict[str, str]:
     return {"status": "ok"}
 
 
-_ERROR_STATUS: tuple[tuple[type[Exception], int], ...] = (
-    (NoSourcesError, 422),
-    (SearchUnavailableError, 503),
-    (LLMInvocationError, 502),
-)
-
-
-def _status_for(exc: Exception) -> int:
-    """Map a known pipeline failure to its HTTP status code."""
-    for error_type, status in _ERROR_STATUS:
-        if isinstance(exc, error_type):
-            return status
-    return 500
-
-
-def _sse(payload: dict[str, str]) -> str:
+def _sse(payload: dict[str, Any]) -> str:
     """Serialize one SSE data frame."""
     return f"data: {json.dumps(payload)}\n\n"
+
+
+async def _astream_answer(query: str) -> AsyncGenerator[str, None]:
+    """Run the expert graph, yielding answer text as the model produces it."""
+    state = build_initial_pipeline_state(query)
+    config = build_runtime_config()
+    # `stream_mode="messages"` yields (message, metadata) two-tuples. Do not
+    # switch this to the list form (["updates", "messages"]) without changing
+    # the unpacking: that form yields (mode, payload) instead, which unpacks
+    # without error and then silently matches nothing.
+    async for message, metadata in graph.astream(
+        state, config=config, stream_mode="messages"
+    ):
+        # Every LLM call in every node streams through here. Only the answer
+        # node's tokens are the user's answer.
+        if metadata.get("langgraph_node") != "answer":
+            continue
+        if not isinstance(message, AIMessage):
+            continue
+        text = message.text()
+        if text:
+            yield text
 
 
 @router.post("/run_pipeline/stream")
@@ -191,36 +213,43 @@ async def run_pipeline_stream_endpoint(
     """Run the pipeline and stream progress and answer tokens over SSE."""
     _enforce_rate_limit(request)
     client_id = _resolve_client_id(request)
-    log_id = await database.log_prompt(payload.query, client_id)
 
     async def _generate() -> AsyncGenerator[str, None]:
         parts: list[str] = []
+        consumed = 0
         try:
-            async for kind, value in astream_pipeline(payload.query):
-                if kind == "progress":
-                    yield _sse(
-                        {"type": "progress", "node": value, "label": NODE_LABELS[value]}
-                    )
-                else:
-                    parts.append(value)
-                    yield _sse({"type": "token", "content": value})
+            yield _sse({"type": "progress", **SEARCH_PROGRESS})
+            async for text in _astream_answer(payload.query):
+                if not parts:
+                    yield _sse({"type": "progress", **ANSWER_PROGRESS})
+                remaining = MAX_ANSWER_CHARS - consumed
+                if remaining <= 0:
+                    break
+                chunk = text[:remaining]
+                parts.append(chunk)
+                consumed += len(chunk)
+                yield _sse({"type": "token", "content": chunk})
             output = "".join(parts).strip()
             if not output:
                 yield _sse(
-                    {"type": "error", "message": "The model returned an empty answer."}
+                    {
+                        "type": "error",
+                        "status": 502,
+                        "message": "The model returned an empty answer.",
+                    }
                 )
                 return
-            if log_id is not None:
-                await database.log_output(log_id, output)
-            yield _sse({"type": "result", "output": _sanitize_output(output)})
-        except (PipelineError, LLMInvocationError) as exc:
+            await database.log_run(payload.query, client_id, output)
+            yield _sse({"type": "result", "output": output})
+        except PipelineError as exc:
             logger.warning("Streaming pipeline failed: %s", exc)
-            yield _sse({"type": "error", "message": str(exc)})
+            yield _sse({"type": "error", "status": exc.status, "message": str(exc)})
         except Exception:
             logger.exception("Streaming pipeline failed unexpectedly.")
             yield _sse(
                 {
                     "type": "error",
+                    "status": 500,
                     "message": "An unexpected error occurred. Please try again.",
                 }
             )
@@ -230,27 +259,6 @@ async def run_pipeline_stream_endpoint(
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
-
-
-@router.post("/run_pipeline", response_model=RunPipelineResponse)
-async def run_pipeline_endpoint(
-    payload: RunPipelineRequest, request: Request, background_tasks: BackgroundTasks
-) -> RunPipelineResponse:
-    """Run the pipeline and return its final output."""
-    _enforce_rate_limit(request)
-    client_id = _resolve_client_id(request)
-    log_id = await database.log_prompt(payload.query, client_id)
-    try:
-        output = await run_pipeline(payload.query)
-    except (PipelineError, LLMInvocationError) as exc:
-        logger.warning("Pipeline failed: %s", exc)
-        raise HTTPException(status_code=_status_for(exc), detail=str(exc)) from None
-    except Exception:
-        logger.exception("Pipeline failed unexpectedly.")
-        raise HTTPException(status_code=500, detail="Internal server error.") from None
-    if log_id is not None:
-        background_tasks.add_task(database.log_output, log_id, output)
-    return RunPipelineResponse(output=_sanitize_output(output))
 
 
 app.include_router(router)

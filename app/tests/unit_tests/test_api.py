@@ -6,8 +6,12 @@ import httpx
 import pytest
 
 import api
-from llm import LLMInvocationError
-from models import NoSourcesError, SearchUnavailableError
+from models import (
+    LLMInvocationError,
+    NoSourcesError,
+    PipelineError,
+    SearchUnavailableError,
+)
 
 
 @pytest.fixture
@@ -34,14 +38,161 @@ async def test_health(client: httpx.AsyncClient) -> None:
 
 @pytest.mark.anyio
 async def test_unknown_legacy_field_is_ignored(client: httpx.AsyncClient) -> None:
+    async def stream(query: str) -> AsyncIterator[str]:
+        yield "answer"
+
     with (
-        patch("api.run_pipeline", new=AsyncMock(return_value="answer")),
-        patch("api.database.log_prompt", new=AsyncMock(return_value=None)),
+        patch("api._astream_answer", stream),
+        patch("api.database.log_run", new=AsyncMock()),
     ):
         response = await client.post(
-            "/api/run_pipeline", json={"query": "x", "info" + "sphere": "legacy"}
+            "/api/run_pipeline/stream", json={"query": "x", "info" + "sphere": "legacy"}
         )
     assert response.status_code == 200
+    assert _events(response.text)[-1]["type"] == "result"
+
+
+@pytest.mark.anyio
+async def test_sync_route_is_gone(client: httpx.AsyncClient) -> None:
+    response = await client.post("/api/run_pipeline", json={"query": "x"})
+    assert response.status_code == 404
+
+
+@pytest.mark.anyio
+async def test_stream_progress_tokens_result(client: httpx.AsyncClient) -> None:
+    async def stream(query: str) -> AsyncIterator[str]:
+        yield "Hello "
+        yield "world."
+
+    log_run = AsyncMock()
+    with (
+        patch("api._astream_answer", stream),
+        patch("api.database.log_run", log_run),
+    ):
+        response = await client.post("/api/run_pipeline/stream", json={"query": "x"})
+    events = _events(response.text)
+    assert [event["type"] for event in events] == [
+        "progress",
+        "progress",
+        "token",
+        "token",
+        "result",
+    ]
+    assert events[0]["label"] == "Searching and reading sources..."
+    assert events[1]["label"] == "Writing the answer..."
+    assert events[-1]["output"] == "Hello world."
+    log_run.assert_awaited_once_with("x", "127.0.0.1", "Hello world.")
+
+
+@pytest.mark.anyio
+async def test_stream_logs_output_before_result(client: httpx.AsyncClient) -> None:
+    async def stream(query: str, **kwargs: object) -> AsyncIterator[tuple[str, str]]:
+        yield ("token", "answer")
+
+    log_run = AsyncMock()
+    order: list[str] = []
+
+    async def record_run(prompt: str, ip: str, output: str) -> None:
+        order.append("log")
+        await log_run(prompt, ip, output)
+
+    async def record_stream(query: str) -> AsyncIterator[str]:
+        yield "answer"
+
+    with (
+        patch("api._astream_answer", record_stream),
+        patch("api.database.log_run", record_run),
+    ):
+        response = await client.post("/api/run_pipeline/stream", json={"query": "x"})
+    events = _events(response.text)
+    order.append(events[-1]["type"])
+    assert order == ["log", "result"]
+    log_run.assert_awaited_once_with("x", "127.0.0.1", "answer")
+
+
+@pytest.mark.anyio
+async def test_stream_caps_answer_size(client: httpx.AsyncClient) -> None:
+    async def stream(query: str) -> AsyncIterator[str]:
+        yield "x" * (api.MAX_ANSWER_CHARS + 1000)
+
+    log_run = AsyncMock()
+    with (
+        patch("api._astream_answer", stream),
+        patch("api.database.log_run", log_run),
+    ):
+        response = await client.post("/api/run_pipeline/stream", json={"query": "x"})
+    events = _events(response.text)
+    assert events[-1]["type"] == "result"
+    assert len(events[-1]["output"]) == api.MAX_ANSWER_CHARS
+
+
+@pytest.mark.anyio
+async def test_resolve_client_id_uses_rightmost_forwarded(
+    client: httpx.AsyncClient,
+) -> None:
+    async def stream(query: str) -> AsyncIterator[str]:
+        yield "answer"
+
+    log_run = AsyncMock()
+    with (
+        patch("api._astream_answer", stream),
+        patch("api.database.log_run", log_run),
+    ):
+        response = await client.post(
+            "/api/run_pipeline/stream",
+            json={"query": "x"},
+            headers={"x-forwarded-for": "spoofed, 203.0.113.5"},
+        )
+    assert response.status_code == 200
+    log_run.assert_awaited_once_with("x", "203.0.113.5", "answer")
+
+
+@pytest.mark.anyio
+async def test_stream_error_has_no_result(client: httpx.AsyncClient) -> None:
+    async def stream(query: str) -> AsyncIterator[str]:
+        raise NoSourcesError("nothing usable")
+        yield "never"
+
+    with (
+        patch("api._astream_answer", stream),
+        patch("api.database.log_run", new=AsyncMock()),
+    ):
+        response = await client.post("/api/run_pipeline/stream", json={"query": "x"})
+    events = _events(response.text)
+    # The search progress frame precedes the graph, so it survives a failure
+    # during search.
+    assert [event["type"] for event in events] == ["progress", "error"]
+    assert events[-1]["message"] == "nothing usable"
+
+
+@pytest.mark.anyio
+async def test_query_validation(client: httpx.AsyncClient) -> None:
+    assert (
+        await client.post("/api/run_pipeline/stream", json={"query": ""})
+    ).status_code == 422
+    assert (
+        await client.post("/api/run_pipeline/stream", json={"query": "x" * 3000})
+    ).status_code == 422
+
+
+@pytest.mark.anyio
+async def test_rate_limiting_enforced(client: httpx.AsyncClient) -> None:
+    async def stream(query: str) -> AsyncIterator[str]:
+        yield "output"
+
+    with (
+        patch("api._astream_answer", stream),
+        patch("api.database.log_run", new=AsyncMock()),
+    ):
+        for index in range(20):
+            response = await client.post(
+                "/api/run_pipeline/stream", json={"query": f"query {index}"}
+            )
+            assert response.status_code == 200
+        response = await client.post(
+            "/api/run_pipeline/stream", json={"query": "query 21"}
+        )
+    assert response.status_code == 429
 
 
 @pytest.mark.anyio
@@ -53,127 +204,57 @@ async def test_unknown_legacy_field_is_ignored(client: httpx.AsyncClient) -> Non
         (LLMInvocationError("bad"), 502),
     ],
 )
-async def test_sync_maps_pipeline_errors(
-    client: httpx.AsyncClient, error: Exception, status: int
+async def test_stream_reports_error_status_per_type(
+    client: httpx.AsyncClient, error: PipelineError, status: int
 ) -> None:
-    async def boom(query: str, **kwargs: object) -> None:
+    async def stream(query: str) -> AsyncIterator[str]:
         raise error
+        yield "never"
 
     with (
-        patch("api.run_pipeline", boom),
-        patch("api.database.log_prompt", new=AsyncMock(return_value=None)),
-    ):
-        response = await client.post("/api/run_pipeline", json={"query": "x"})
-    assert response.status_code == status
-    assert response.json()["detail"] == str(error)
-
-
-@pytest.mark.anyio
-async def test_stream_progress_tokens_result(client: httpx.AsyncClient) -> None:
-    async def stream(query: str, **kwargs: object) -> AsyncIterator[tuple[str, str]]:
-        yield ("progress", "search_and_fetch")
-        yield ("token", "Hello ")
-        yield ("token", "world.")
-
-    log_prompt = AsyncMock(return_value=None)
-    with (
-        patch("api.astream_pipeline", stream),
-        patch("api.database.log_prompt", log_prompt),
+        patch("api._astream_answer", stream),
+        patch("api.database.log_run", new=AsyncMock()),
     ):
         response = await client.post("/api/run_pipeline/stream", json={"query": "x"})
     events = _events(response.text)
-    assert [event["type"] for event in events] == [
-        "progress",
-        "token",
-        "token",
-        "result",
-    ]
-    assert events[0]["label"] == "Searching and reading sources..."
-    assert events[-1]["output"] == "Hello world."
-    log_prompt.assert_awaited_once_with("x", "127.0.0.1")
+    assert [event["type"] for event in events] == ["progress", "error"]
+    assert events[-1]["status"] == status
+    assert events[-1]["message"] == str(error)
 
 
 @pytest.mark.anyio
-async def test_stream_logs_output_before_result(client: httpx.AsyncClient) -> None:
-    async def stream(query: str, **kwargs: object) -> AsyncIterator[tuple[str, str]]:
-        yield ("token", "answer")
+async def test_astream_answer_yields_only_answer_node_text(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The one test that actually executes `_astream_answer`.
 
-    log_output = AsyncMock()
-    order: list[str] = []
+    Covers the `langgraph_node` filter, the `AIMessage` narrowing, and
+    `message.text()` together; every other test here patches it out.
+    """
+    import importlib
 
-    async def record_output(log_id: int, output: str) -> None:
-        order.append("log")
-        await log_output(log_id, output)
+    from langchain_core.language_models.fake_chat_models import FakeListChatModel
 
-    async def record_stream(
-        query: str, **kwargs: object
-    ) -> AsyncIterator[tuple[str, str]]:
-        yield ("token", "answer")
+    from models import Candidate, Source
 
-    with (
-        patch("api.astream_pipeline", record_stream),
-        patch("api.database.log_prompt", new=AsyncMock(return_value=42)),
-        patch("api.database.log_output", record_output),
-    ):
-        response = await client.post("/api/run_pipeline/stream", json={"query": "x"})
-    events = _events(response.text)
-    order.append(events[-1]["type"])
-    assert order == ["log", "result"]
-    log_output.assert_awaited_once_with(42, "answer")
+    search_module = importlib.import_module("agents.expert.nodes.search_and_fetch")
+    llm_module = importlib.import_module("llm")
+    graph_module = importlib.import_module("agents.expert.graph")
 
+    async def candidates(query: str, policy: Any) -> list[Candidate]:
+        return [Candidate("title", "https://reuters.com/x", "reuters.com")]
 
-@pytest.mark.anyio
-async def test_stream_error_has_no_result(client: httpx.AsyncClient) -> None:
-    async def stream(query: str, **kwargs: object) -> AsyncIterator[tuple[str, str]]:
-        raise NoSourcesError("nothing usable")
-        yield ("token", "never")
+    async def sources(items: list[Candidate], policy: Any) -> list[Source]:
+        return [Source("title", "https://reuters.com/x", "body")]
 
-    with (
-        patch("api.astream_pipeline", stream),
-        patch("api.database.log_prompt", new=AsyncMock(return_value=None)),
-    ):
-        response = await client.post("/api/run_pipeline/stream", json={"query": "x"})
-    events = _events(response.text)
-    assert [event["type"] for event in events] == ["error"]
-    assert events[0]["message"] == "nothing usable"
+    monkeypatch.setattr(search_module, "search_allowlisted", candidates)
+    monkeypatch.setattr(search_module, "fetch_sources", sources)
+    monkeypatch.setattr(
+        llm_module,
+        "_build_client",
+        lambda settings: FakeListChatModel(responses=["Hello world."]),
+    )
+    monkeypatch.setattr(api, "graph", graph_module.build_graph())
 
-
-@pytest.mark.anyio
-async def test_sync_logs_prompt_and_output(client: httpx.AsyncClient) -> None:
-    log_prompt = AsyncMock(return_value=99)
-    log_output = AsyncMock()
-    with (
-        patch("api.run_pipeline", new=AsyncMock(return_value="output")),
-        patch("api.database.log_prompt", log_prompt),
-        patch("api.database.log_output", log_output),
-    ):
-        response = await client.post("/api/run_pipeline", json={"query": "x"})
-    assert response.status_code == 200
-    assert response.json()["output"] == "output"
-    log_prompt.assert_awaited_once_with("x", "127.0.0.1")
-    log_output.assert_awaited_once_with(99, "output")
-
-
-@pytest.mark.anyio
-async def test_query_validation(client: httpx.AsyncClient) -> None:
-    assert (
-        await client.post("/api/run_pipeline", json={"query": ""})
-    ).status_code == 422
-    assert (
-        await client.post("/api/run_pipeline", json={"query": "x" * 3000})
-    ).status_code == 422
-
-
-@pytest.mark.anyio
-async def test_rate_limiting_enforced(client: httpx.AsyncClient) -> None:
-    with (
-        patch("api.run_pipeline", new=AsyncMock(return_value="output")),
-        patch("api.database.log_prompt", new=AsyncMock(return_value=None)),
-    ):
-        for index in range(20):
-            response = await client.post(
-                "/api/run_pipeline", json={"query": f"query {index}"}
-            )
-            assert response.status_code == 200
-        response = await client.post("/api/run_pipeline", json={"query": "query 21"})
-    assert response.status_code == 429
+    chunks = [text async for text in api._astream_answer("question")]
+    assert "".join(chunks) == "Hello world."

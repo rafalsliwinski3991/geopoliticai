@@ -36,7 +36,6 @@ build-backend = "setuptools.build_meta"
 package-dir = {"" = "src"}
 py-modules = [
     "api",
-    "cli",
     "config",
     "database",
     "llm",

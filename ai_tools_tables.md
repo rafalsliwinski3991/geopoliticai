@@ -66,7 +66,7 @@ The Claude `grill-me` skill stores its session files under
 | orchestrator | no | no | no | yes |
 | explorer | no | no | no | yes |
 | builder | no | no | no | yes |
-| critic | no | yes | no | yes |
+| critic | no | no | no | yes |
 
 The configured Codex defaults are: `orchestrator` uses `gpt-5.6-sol` with
 high reasoning and a read-only sandbox; `explorer` uses `gpt-5.6-luna` with
@@ -76,13 +76,11 @@ with high reasoning and a read-only sandbox. These sandbox modes are
 configured defaults, and project configuration loads only for trusted
 repositories.
 
-The OpenCode `critic` agent (`.opencode/agents/critic.md`) is a read-only
-reviewer subagent running on `nvidia/nemotron-3-super-120b-a12b`. The root
-`opencode.json` grants the build agent subagent access to `critic` and the
-built-in `explore` agent only. The OpenCode slash commands
-`.opencode/commands/review.md` (`/review`) and
-`.opencode/commands/plan-review.md` (`/plan-review`) wrap the same critic;
-no other provider has matching commands.
+The OpenCode slash commands `.opencode/commands/review.md` (`/review`) and
+`.opencode/commands/plan-review.md` (`/plan-review`) instruct the current agent
+to perform an independent review directly; OpenCode has no dedicated `critic`
+subagent. The Codex `critic` agent (`.codex/agents/critic.toml`) is the only
+read-only reviewer subagent, and no other provider ships matching commands.
 
 ## Hooks
 

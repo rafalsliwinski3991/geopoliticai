@@ -2,10 +2,8 @@
 description: Critically review the current implementation plan
 ---
 
-Use the `critic` subagent to review the proposed implementation plan before any
-code is changed.
-
-Ask it to challenge:
+Review the proposed implementation plan before any code is changed and
+challenge it on:
 
 - assumptions
 - architecture
@@ -19,5 +17,5 @@ Ask it to challenge:
 
 Return BLOCKING, IMPORTANT, and SUGGESTION findings.
 
-After receiving the critique, summarize which recommendations should actually
-be incorporated and why.
+After the review, summarize which recommendations should actually be
+incorporated and why.
