@@ -5,7 +5,7 @@ allowed-tools: Read, Write, Edit, Glob, Grep, Bash, Agent
 ---
 
 Brainstorm doc: $1
-Output plan path: $2 (if empty, use `docs/plans/<same-date-and-version-as-the-brainstorm>_plan_v1.md`; if the brainstorm filename carries no date, use today's date in the repo's existing `docs/plans/` naming style)
+Output plan path: $2 (if empty, use `docs/plans/<brainstorm-date>_plan_<brainstorm-topic-slug>_v1.md`, carrying through the date and the topic slug the brainstorm filename already holds — e.g. `2026Aug29_brainstorm_v1_orchestrator-agent.md` becomes `2026Aug29_plan_orchestrator-agent_v1.md`; if the brainstorm filename carries no date or no slug, use today's date and the repo's existing `docs/plans/` naming style)
 
 ## Step 1 — Read
 
