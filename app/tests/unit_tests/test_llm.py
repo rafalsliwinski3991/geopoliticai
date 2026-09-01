@@ -2,9 +2,10 @@ from collections.abc import Sequence
 from typing import Any, cast
 
 import pytest
+from langchain_core.language_models.fake_chat_models import FakeListChatModel
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
 from langchain_core.runnables import RunnableLambda
-from langgraph.constants import END, START
+from langgraph.constants import END, START, TAG_NOSTREAM
 from langgraph.graph import StateGraph
 from pydantic import BaseModel
 from typing_extensions import TypedDict
@@ -98,11 +99,23 @@ async def test_ainvoke_structured_wraps_provider_failure(
 async def test_ainvoke_structured_is_tagged_nostream(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    configured_tags: list[list[str]] = []
+
+    class FakeStructuredChain:
+        def with_config(self, *, tags: list[str]) -> "FakeStructuredChain":
+            configured_tags.append(tags)
+            return self
+
+        async def ainvoke(
+            self, _messages: Sequence[BaseMessage], config: Any = None
+        ) -> _Result:
+            return _Result(value="classified")
+
     class FakeClient:
         def with_structured_output(
             self, schema: type[_Result], *, method: str, strict: bool
-        ) -> RunnableLambda[Any, Any]:
-            return RunnableLambda(lambda _messages: _Result(value="classified"))
+        ) -> FakeStructuredChain:
+            return FakeStructuredChain()
 
     monkeypatch.setattr(llm, "_build_structured_client", lambda settings: FakeClient())
 
@@ -123,4 +136,25 @@ async def test_ainvoke_structured_is_tagged_nostream(
         )
     ]
 
+    assert configured_tags == [[TAG_NOSTREAM]]
     assert frames == []
+
+    control_model = FakeListChatModel(responses=["visible"])
+
+    async def untagged(_state: _State) -> _State:
+        response = await control_model.ainvoke([HumanMessage("control")])
+        return {"value": str(response.content)}
+
+    control_builder = StateGraph(_State, input_schema=_State, output_schema=_State)
+    control_builder.add_node("untagged", cast(Any, untagged), input_schema=_State)
+    control_builder.add_edge(START, "untagged")
+    control_builder.add_edge("untagged", END)
+    control_graph = control_builder.compile()
+    control_frames = [
+        frame
+        async for frame in control_graph.astream(
+            cast(_State, {"value": ""}), stream_mode="messages"
+        )
+    ]
+
+    assert control_frames
