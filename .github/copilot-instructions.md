@@ -16,6 +16,10 @@ installation is required. Agent packages under
 `consts/`, and node modules. Shared modules never import agents; the API names
 `agents.orchestrator`, whose expert node invokes `agents.expert`.
 
+Repository-local Codex skills live under `.codex/skills/`; `.codex/skills/grill-me`
+provides a one-question-at-a-time adversarial design-review workflow and
+persists its session artifact under `docs/brainstorming/`.
+
 Config is hardcoded dataclasses, not env-parsed getters. Shared `config.py`
 defines `LLMSettings` and `DEFAULT_LLM_SETTINGS`; agent config holds per-node
 overrides and pipeline sizing, passed explicitly into calls. Prompts belong in

@@ -13,6 +13,10 @@ Postgres is used only by the LangGraph checkpointer. The app declares the
 `psycopg[binary]` dependency directly, so it does not require a system
 `libpq` installation.
 
+Repository-local Codex skills live under `.codex/skills/`; `.codex/skills/grill-me`
+provides a one-question-at-a-time adversarial design-review workflow and
+persists its session artifact under `docs/brainstorming/`.
+
 Agent-specific code is under `app/src/agents/<name>/`. Each agent keeps its
 prompts in `prompts.py`, one constant per node or purpose, and its static data
 in `consts/`. Config is hardcoded dataclasses, not env-parsed getters; per-node

@@ -15,6 +15,10 @@ only by the LangGraph checkpointer constructed by the API lifespan. The app
 declares `psycopg[binary]` directly, so no system `libpq` installation is
 required.
 
+Repository-local Codex skills live under `.codex/skills/`; `.codex/skills/grill-me`
+provides a one-question-at-a-time adversarial design-review workflow and
+persists its session artifact under `docs/brainstorming/`.
+
 Each agent is under `app/src/agents/<name>/` with `graph.py`, `state.py`,
 `config.py`, `prompts.py`, a `consts/` package for static data, and one module
 per graph node in `nodes/`. Shared modules never import agents. The API names
