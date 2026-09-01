@@ -4,8 +4,8 @@
   "presets": {
     "opencode-go": {
       "orchestrator": {
-        "model": "opencode-go/grok-4.6",
-        "variant": "thinking",
+        "model": "opencode-go/gpt-5.6-luna",
+        "variant": "max",
         "skills": ["*"],
         "mcps": ["*", "!context7"]
       },
