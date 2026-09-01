@@ -13,6 +13,10 @@ dependencies = [
     "langchain-core>=0.3,<1.0",
     "langchain-openai>=0.3,<1.0",
     "langgraph>=1.0.0",
+    # Pinned below 3.1: 3.1.x requires langgraph-checkpoint>=4.1.0, and
+    # langgraph 1.0.1 requires langgraph-checkpoint<4.0.0. Brings psycopg 3
+    # and psycopg-pool, the only Postgres driver in this app.
+    "langgraph-checkpoint-postgres>=3.0.3,<3.1",
     "openai>=1.40,<2.0",
     "pydantic>=2.0,<3.0",
     "python-dotenv>=1.0.1",

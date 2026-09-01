@@ -91,7 +91,10 @@ langgraph==1.0.1
 langgraph-checkpoint==3.0.1
     # via
     #   langgraph
+    #   langgraph-checkpoint-postgres
     #   langgraph-prebuilt
+langgraph-checkpoint-postgres==3.0.5
+    # via agent
 langgraph-prebuilt==1.0.1
     # via langgraph
 langgraph-sdk==0.2.15
@@ -162,6 +165,7 @@ opentelemetry-semantic-conventions==0.65b0
     #   opentelemetry-sdk
 orjson==3.11.7
     # via
+    #   langgraph-checkpoint-postgres
     #   langgraph-sdk
     #   langsmith
 ormsgpack==1.12.2
@@ -175,6 +179,10 @@ protobuf==6.33.5
     # via
     #   googleapis-common-protos
     #   opentelemetry-proto
+psycopg==3.3.5
+    # via langgraph-checkpoint-postgres
+psycopg-pool==3.3.1
+    # via langgraph-checkpoint-postgres
 pydantic==2.12.5
     # via
     #   agent
@@ -241,6 +249,8 @@ typing-extensions==4.15.0
     #   opentelemetry-exporter-otlp-proto-http
     #   opentelemetry-sdk
     #   opentelemetry-semantic-conventions
+    #   psycopg
+    #   psycopg-pool
     #   pydantic
     #   pydantic-core
     #   starlette
@@ -251,7 +261,9 @@ typing-inspection==0.4.2
     #   fastapi
     #   pydantic
 tzdata==2026.3 ; sys_platform == 'win32'
-    # via tzlocal
+    # via
+    #   psycopg
+    #   tzlocal
 tzlocal==5.4.4
     # via dateparser
 urllib3==2.6.3
