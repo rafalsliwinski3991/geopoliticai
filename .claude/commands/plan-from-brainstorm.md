@@ -5,7 +5,14 @@ allowed-tools: Read, Write, Edit, Glob, Grep, Bash, Agent
 ---
 
 Brainstorm doc: $1
-Output plan path: $2 (if empty, use `docs/plans/<brainstorm-date>_plan_<brainstorm-topic-slug>_v1.md`, carrying through the date and the topic slug the brainstorm filename already holds — e.g. `2026Aug29_brainstorm_v1_orchestrator-agent.md` becomes `2026Aug29_plan_orchestrator-agent_v1.md`; if the brainstorm filename carries no date or no slug, use today's date and the repo's existing `docs/plans/` naming style)
+Output plan path: $2 (if empty, use `docs/plans/<date>_plan_<topic-slug>_v1.md`). `<date>` is
+today's date unless the brainstorm filename carries one, in which case reuse that date.
+`<topic-slug>` is **1 to 3 kebab-case words naming what the plan is about**, so the filename is
+identifiable in a directory listing without opening it — e.g. `orchestrator-agent`,
+`postgres-checkpointer`, `remove-prompt-logs`. Derive it from what the plan actually implements
+(the brainstorm's settled decisions), not by copying the brainstorm's own topic slug verbatim —
+a brainstorm can cover more ground than one plan does. If a plan for the same date and slug
+already exists, increment `<N>` instead of overwriting it.
 
 ## Step 1 — Read
 
@@ -36,9 +43,10 @@ Write the plan to the output path with these sections:
 
 ## Step 3 — Review by subagents
 
-Once the plan file exists, spawn three subagents in parallel. Give each one the
-brainstorm path and the plan path, and instruct each to read the actual source files
-rather than trusting the plan's claims about them.
+Once the plan file exists, spawn three subagents in parallel. Do not pass a `model`
+override to any of them — each must run on the parent session's model, not a
+different default. Give each one the brainstorm path and the plan path, and instruct
+each to read the actual source files rather than trusting the plan's claims about them.
 
 - **Correctness reviewer.** Does each commit leave the repo importable, runnable, and
   its tests passing? Hunt for deletions whose callers survive, survivors whose
