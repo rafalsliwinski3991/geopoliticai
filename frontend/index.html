@@ -78,6 +78,24 @@
       }
       .chat-header h1 { margin: 0; font-size: 22px; letter-spacing: 0.3px; }
       .chat-header p  { margin: 6px 0 0; font-size: 14px; opacity: 0.78; }
+      .new-chat {
+        border: 1px solid rgba(248, 250, 252, 0.35);
+        background: transparent;
+        color: #f8fafc;
+        padding: 8px 14px;
+        border-radius: 999px;
+        font-size: 13px;
+        font-family: inherit;
+        font-weight: 600;
+        cursor: pointer;
+        white-space: nowrap;
+        transition: background 0.15s, border-color 0.15s;
+      }
+      .new-chat:hover:not(:disabled) {
+        background: rgba(248, 250, 252, 0.12);
+        border-color: rgba(248, 250, 252, 0.6);
+      }
+      .new-chat:disabled { opacity: 0.45; cursor: not-allowed; }
 
       /* ── Chat body ── */
       .chat-body {
@@ -309,6 +327,13 @@
               <p>Geopolitical analysis grounded in cross-spectrum reporting.</p>
             </div>
           </div>
+          <button
+            type="button"
+            class="new-chat"
+            @click="newChat()"
+            :disabled="isLoading"
+            x-text="t('new_chat')"
+          ></button>
         </header>
 
         <main class="chat-body" x-ref="chatBody">
@@ -376,6 +401,13 @@
     <script>
       marked.use({ breaks: true, gfm: true });
 
+      // The conversation key the backend checkpoints under. Sticky across
+      // reloads, so a refresh continues the same thread; "New chat" mints a
+      // fresh one. No login exists, so this is the only identity available —
+      // and it is therefore a bearer token: whoever holds it reads that
+      // conversation.
+      const THREAD_STORAGE_KEY = "politicalagent.thread_id";
+
       const I18N = {
         welcome: "Hello! I'm **PoliticalAgent**. I provide geopolitical analysis grounded in cross-spectrum reporting.\n\nHow can I help you?",
         examples_hint: "Example questions",
@@ -386,6 +418,7 @@
         ],
         placeholder: "Type a message... (Enter to send)",
         send: "Send",
+        new_chat: "New chat",
         analyzing: "Analyzing",
         analyzing_dots: "Analyzing...",
         drafting: "Drafting answer...",
@@ -418,8 +451,50 @@
           progressLog: [],
           streamingDraft: "",
           messages: [],
+          threadId: "",
 
           init() {
+            this.threadId = this.loadThreadId();
+            this.messages = [{ role: "bot", text: I18N.welcome, timestamp: new Date() }];
+            this.$nextTick(() => this.$refs.input?.focus());
+          },
+
+          mintThreadId() {
+            // `crypto.randomUUID` needs a secure context. Production is HTTPS
+            // and local dev is localhost, both of which qualify; the fallback
+            // covers reaching a dev box over plain HTTP on a LAN address.
+            // This value is a conversation key, never a credential.
+            if (window.crypto?.randomUUID) return crypto.randomUUID();
+            return `t-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+          },
+
+          storeThreadId(id) {
+            try {
+              localStorage.setItem(THREAD_STORAGE_KEY, id);
+            } catch {
+              // Storage blocked (private mode, disabled cookies). The id still
+              // works for this page load; it just will not survive a reload.
+            }
+          },
+
+          loadThreadId() {
+            try {
+              const stored = localStorage.getItem(THREAD_STORAGE_KEY);
+              if (stored) return stored;
+            } catch {
+              // Fall through and mint a per-load id.
+            }
+            const minted = this.mintThreadId();
+            this.storeThreadId(minted);
+            return minted;
+          },
+
+          newChat() {
+            if (this.isLoading) return;
+            this.threadId = this.mintThreadId();
+            this.storeThreadId(this.threadId);
+            this.progressLog = [];
+            this.streamingDraft = "";
             this.messages = [{ role: "bot", text: I18N.welcome, timestamp: new Date() }];
             this.$nextTick(() => this.$refs.input?.focus());
           },
@@ -446,7 +521,7 @@
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 signal: controller.signal,
-                body: JSON.stringify({ query: text }),
+                body: JSON.stringify({ query: text, thread_id: this.threadId }),
               });
 
               if (!response.ok) {
