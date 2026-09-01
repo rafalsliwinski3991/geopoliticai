@@ -43,23 +43,22 @@ Write the plan to the output path with these sections:
 
 ## Step 3 — Review by subagents
 
-Once the plan file exists, spawn three subagents in parallel. Do not pass a `model`
-override to any of them — each must run on the parent session's model, not a
-different default. Give each one the brainstorm path and the plan path, and instruct
-each to read the actual source files rather than trusting the plan's claims about them.
+Once the plan file exists, spawn three subagents in parallel. Give each one the
+brainstorm path and the plan path, and instruct each to read the actual source files
+rather than trusting the plan's claims about them.
 
-- **Correctness reviewer.** Does each commit leave the repo importable, runnable, and
-  its tests passing? Hunt for deletions whose callers survive, survivors whose
-  dependencies are deleted, behaviour that silently changes, and error or state paths
-  that quietly differ from today.
-- **Domain and framework reviewer.** For the frameworks, libraries, and versions this
-  repo actually has installed, is the proposed approach the current correct idiom? Check
-  the API surfaces the plan calls, the version constraints, and any pattern the plan
-  copies from a reference or template.
-- **Devil's advocate.** Argue the plan is wrong. Attack the premises the brainstorm
-  settled on, especially any decision justified by future work that is not yet
-  scheduled. Attack every deletion by naming what breaks if the future never arrives.
-  Name the cheaper plan that gets most of the benefit.
+- **Correctness reviewer.** Run on Sonnet 5, medium effort. Does each commit leave the
+  repo importable, runnable, and its tests passing? Hunt for deletions whose callers
+  survive, survivors whose dependencies are deleted, behaviour that silently changes,
+  and error or state paths that quietly differ from today.
+- **Domain and framework reviewer.** Run on Sonnet 5, medium effort. For the frameworks,
+  libraries, and versions this repo actually has installed, is the proposed approach the
+  current correct idiom? Check the API surfaces the plan calls, the version constraints,
+  and any pattern the plan copies from a reference or template.
+- **Devil's advocate.** Run on Opus 5, high effort. Argue the plan is wrong. Attack the
+  premises the brainstorm settled on, especially any decision justified by future work
+  that is not yet scheduled. Attack every deletion by naming what breaks if the future
+  never arrives. Name the cheaper plan that gets most of the benefit.
 
 Each reviewer returns findings ranked by severity, each with a file path, a line, and a
 concrete failure scenario. No style notes, no praise.
