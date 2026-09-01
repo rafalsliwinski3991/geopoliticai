@@ -7,3 +7,4 @@ __pycache__/
 *.egg-info/
 tmp
 docs/cc_logs/
+docs/opencode_logs/
