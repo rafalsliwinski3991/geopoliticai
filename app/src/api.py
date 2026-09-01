@@ -18,7 +18,6 @@ from fastapi.staticfiles import StaticFiles
 from langchain_core.messages import AIMessage
 from pydantic import BaseModel, Field, field_validator
 
-import database
 from agents.expert import build_initial_pipeline_state, build_runtime_config, graph
 from config import init_environment, require_env
 from models import PipelineError
@@ -52,15 +51,11 @@ _rate_limit_lock = Lock()
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncGenerator[None, None]:
-    """Initialize and close optional application resources."""
+    """Initialize application resources."""
     init_environment()
     init_tracing()
     require_env()
-    db_url = os.getenv("DATABASE_URL")
-    if db_url:
-        await database.init_pool(db_url)
     yield
-    await database.close_pool()
 
 
 app = FastAPI(title="GeopoliticAI API", version="1.0.0", lifespan=lifespan)
@@ -212,7 +207,6 @@ async def run_pipeline_stream_endpoint(
 ) -> StreamingResponse:
     """Run the pipeline and stream progress and answer tokens over SSE."""
     _enforce_rate_limit(request)
-    client_id = _resolve_client_id(request)
 
     async def _generate() -> AsyncGenerator[str, None]:
         parts: list[str] = []
@@ -239,7 +233,6 @@ async def run_pipeline_stream_endpoint(
                     }
                 )
                 return
-            await database.log_run(payload.query, client_id, output)
             yield _sse({"type": "result", "output": output})
         except PipelineError as exc:
             logger.warning("Streaming pipeline failed: %s", exc)

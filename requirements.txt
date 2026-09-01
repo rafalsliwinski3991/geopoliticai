@@ -10,9 +10,7 @@ anyio==4.12.1
     #   openai
     #   starlette
     #   watchfiles
-async-timeout==5.0.1 ; python_full_version < '3.11'
-    # via asyncpg
-asyncpg==0.31.0
+arize-phoenix-otel==0.17.1
     # via agent
 babel==2.18.0
     # via courlan
@@ -44,6 +42,12 @@ exceptiongroup==1.3.1 ; python_full_version < '3.11'
     # via anyio
 fastapi==0.135.1
     # via agent
+googleapis-common-protos==1.72.0
+    # via
+    #   opentelemetry-exporter-otlp-proto-grpc
+    #   opentelemetry-exporter-otlp-proto-http
+grpcio==1.78.0
+    # via opentelemetry-exporter-otlp-proto-grpc
 h11==0.16.0
     # via
     #   httpcore
@@ -106,6 +110,56 @@ openai==1.109.1
     # via
     #   agent
     #   langchain-openai
+openinference-instrumentation==0.1.59
+    # via
+    #   arize-phoenix-otel
+    #   openinference-instrumentation-langchain
+openinference-instrumentation-langchain==0.1.72
+    # via agent
+openinference-semantic-conventions==0.1.33
+    # via
+    #   arize-phoenix-otel
+    #   openinference-instrumentation
+    #   openinference-instrumentation-langchain
+opentelemetry-api==1.44.0
+    # via
+    #   openinference-instrumentation
+    #   openinference-instrumentation-langchain
+    #   opentelemetry-exporter-otlp-proto-grpc
+    #   opentelemetry-exporter-otlp-proto-http
+    #   opentelemetry-instrumentation
+    #   opentelemetry-sdk
+    #   opentelemetry-semantic-conventions
+opentelemetry-exporter-otlp==1.44.0
+    # via arize-phoenix-otel
+opentelemetry-exporter-otlp-proto-common==1.44.0
+    # via
+    #   opentelemetry-exporter-otlp-proto-grpc
+    #   opentelemetry-exporter-otlp-proto-http
+opentelemetry-exporter-otlp-proto-grpc==1.44.0
+    # via opentelemetry-exporter-otlp
+opentelemetry-exporter-otlp-proto-http==1.44.0
+    # via opentelemetry-exporter-otlp
+opentelemetry-instrumentation==0.65b0
+    # via openinference-instrumentation-langchain
+opentelemetry-proto==1.44.0
+    # via
+    #   arize-phoenix-otel
+    #   opentelemetry-exporter-otlp-proto-common
+    #   opentelemetry-exporter-otlp-proto-grpc
+    #   opentelemetry-exporter-otlp-proto-http
+opentelemetry-sdk==1.44.0
+    # via
+    #   arize-phoenix-otel
+    #   openinference-instrumentation
+    #   opentelemetry-exporter-otlp-proto-grpc
+    #   opentelemetry-exporter-otlp-proto-http
+opentelemetry-semantic-conventions==0.65b0
+    # via
+    #   arize-phoenix-otel
+    #   openinference-instrumentation-langchain
+    #   opentelemetry-instrumentation
+    #   opentelemetry-sdk
 orjson==3.11.7
     # via
     #   langgraph-sdk
@@ -116,6 +170,11 @@ packaging==25.0
     # via
     #   langchain-core
     #   langsmith
+    #   opentelemetry-instrumentation
+protobuf==6.33.5
+    # via
+    #   googleapis-common-protos
+    #   opentelemetry-proto
 pydantic==2.12.5
     # via
     #   agent
@@ -147,6 +206,7 @@ regex==2026.4.4
 requests==2.32.5
     # via
     #   langsmith
+    #   opentelemetry-exporter-otlp-proto-http
     #   requests-toolbelt
     #   tiktoken
 requests-toolbelt==1.0.0
@@ -170,10 +230,17 @@ trafilatura==2.2.0
 typing-extensions==4.15.0
     # via
     #   anyio
+    #   arize-phoenix-otel
     #   exceptiongroup
     #   fastapi
+    #   grpcio
     #   langchain-core
     #   openai
+    #   opentelemetry-api
+    #   opentelemetry-exporter-otlp-proto-grpc
+    #   opentelemetry-exporter-otlp-proto-http
+    #   opentelemetry-sdk
+    #   opentelemetry-semantic-conventions
     #   pydantic
     #   pydantic-core
     #   starlette
@@ -205,6 +272,12 @@ watchfiles==1.1.1
     # via uvicorn
 websockets==16.0
     # via uvicorn
+wrapt==2.3.0
+    # via
+    #   arize-phoenix-otel
+    #   openinference-instrumentation
+    #   openinference-instrumentation-langchain
+    #   opentelemetry-instrumentation
 xxhash==3.6.0
     # via
     #   langgraph
