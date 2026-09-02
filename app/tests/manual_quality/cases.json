@@ -1,0 +1,45 @@
+{
+  "expert": {
+    "id": "expert-finland-nato-v1",
+    "input": {
+      "query": "Why did Finland abandon military non-alignment after Russia's full-scale invasion of Ukraine, and why did it become a NATO member in April 2023?"
+    },
+    "output": {
+      "must_address": [
+        "How Russia's full-scale invasion changed Finland's security policy",
+        "Why Finland's NATO accession completed in April 2023"
+      ]
+    },
+    "metadata": {
+      "case": "finland-nato",
+      "version": 1
+    }
+  },
+  "orchestrator": {
+    "id": "orchestrator-sweden-follow-up-v1",
+    "input": {
+      "messages": [
+        {
+          "role": "user",
+          "content": "Why did Finland become a NATO member in 2023?"
+        },
+        {
+          "role": "assistant",
+          "content": "Finland joined NATO in April 2023 after Russia's full-scale invasion changed its security calculus and all allies ratified its accession."
+        },
+        {
+          "role": "user",
+          "content": "What about Sweden?"
+        }
+      ]
+    },
+    "output": {
+      "destination": "geopolitical",
+      "standalone_query_intent": "Why Sweden pursued NATO membership after Russia's full-scale invasion and what happened with its accession"
+    },
+    "metadata": {
+      "case": "sweden-follow-up",
+      "version": 1
+    }
+  }
+}

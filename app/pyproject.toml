@@ -76,6 +76,7 @@ lint.ignore = [
 ]
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["D", "UP"]
+"tests/manual_quality/*" = ["D", "T201", "UP"]
 [tool.ruff.lint.pydocstyle]
 convention = "google"
 
@@ -86,29 +87,9 @@ dev = [
     "mypy>=1.13.0",
     "pytest>=8.3.5",
     "ruff>=0.8.2",
-    # Offline evaluation pilot (evals/). These live in `dev`, not in a group of
-    # their own: `app/Dockerfile` runs `uv sync --frozen --no-dev`, so `dev` is
-    # the one group guaranteed to stay out of the runtime image, while CI's
-    # `uv sync --locked --dev` still installs what the standalone evaluator
-    # component tests import. Versions track the Phoenix server Compose runs
-    # (arizephoenix/phoenix:version-20.4.0, whose own requires_dist is exactly
-    # arize-phoenix-client>=3.2.0 and arize-phoenix-evals>=3.5.1).
-    #
-    # Note: `arize-phoenix-evals` declares `openai` only under its extras, not
-    # as an unconditional runtime dependency. `LLM(provider="openai", ...)`
-    # works here solely because this project already requires
-    # `openai>=1.40,<2.0` in `[project].dependencies` above. If that main
-    # dependency is ever dropped, the judge breaks at runtime with no signal
-    # from this group.
+    # Manual live quality runner (`tests/manual_quality/`). These stay in `dev`:
+    # Docker installs with `--no-dev` and copies only `src/`, while the runner
+    # needs Phoenix client/evals only when invoked explicitly by a reviewer.
     "arize-phoenix-client>=3.3,<4.0",
     "arize-phoenix-evals>=3.5.1,<4.0",
 ]
-
-[tool.pytest.ini_options]
-# `app/tests/` has no __init__.py (though its subdirectories do), so pytest
-# inserts `app/tests` on sys.path, not `app/`. The application modules are
-# importable because `uv sync` installs the project (an editable .pth pointing
-# at app/src); `evals/` is not installed on purpose — it must never reach the
-# runtime image — so it needs this line. Resolved relative to rootdir, which
-# pytest already sets to `app/` from this configfile.
-pythonpath = ["."]
