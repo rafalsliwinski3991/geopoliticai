@@ -13,9 +13,15 @@ Postgres is used only by the LangGraph checkpointer. The app declares the
 `psycopg[binary]` dependency directly, so it does not require a system
 `libpq` installation.
 
-Repository-local Codex skills live under `.codex/skills/`; `.codex/skills/grill-me`
-provides a one-question-at-a-time adversarial design-review workflow and
-persists its session artifact under `docs/brainstorming/`.
+Repository-local Codex skills live under `.codex/skills/`. Explicit
+`$plan-from-brainstorm`, `$improve-plan`, and `$implement-plan` skills are the
+Codex equivalents of the three Claude planning commands; they use this
+repository's `explorer`, `critic`, and `builder` roles rather than
+Claude-specific agent types. `.codex/skills/grill-me` provides a
+one-question-at-a-time adversarial design-review workflow and persists its
+session artifact under `docs/brainstorming/`.
+The repository-local Codex `critic` agent is read-only and uses
+`gpt-5.6-terra` with high reasoning effort.
 The Codex catalog contains the full 16-skill `python-*` suite from
 `.claude/skills/`, in addition to the Python quickstarts already shared by the
 framework skill sets. Its `phoenix-cli`, `phoenix-evals`, and `phoenix-tracing`
