@@ -6,7 +6,8 @@ from typing import Any
 
 import pytest
 
-from evals.corpus import CORPUS_LOCK_NAME, Case, combined_context, load_case
+from agents.expert.consts.sources import ALLOWED_DOMAINS
+from evals.corpus import CASES_ROOT, CORPUS_LOCK_NAME, Case, combined_context, load_case
 from evals.errors import InvalidRunError
 from models import Source
 
@@ -114,3 +115,13 @@ def test_as_source_produces_models_source(tmp_path: Path) -> None:
     assert source.title == case.excerpts[0].title
     assert source.url == case.excerpts[0].url
     assert source.text == case.excerpts[0].text
+
+
+def test_real_finland_case_uses_allowlisted_domains() -> None:
+    case = load_case("finland_nato")
+    lock_path = CASES_ROOT / "finland_nato" / CORPUS_LOCK_NAME
+    lock_payload: dict[str, Any] = json.loads(lock_path.read_text(encoding="utf-8"))
+
+    assert case.corpus_digest == str(lock_payload["corpus_digest"])
+    assert len(case.excerpts) == 12
+    assert all(excerpt.domain in ALLOWED_DOMAINS for excerpt in case.excerpts)

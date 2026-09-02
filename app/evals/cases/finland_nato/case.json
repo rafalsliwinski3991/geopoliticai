@@ -1,0 +1,8 @@
+{
+  "case_id": "finland_nato",
+  "question": "Why did Finland abandon military non-alignment after Russia's 2022 invasion, and why was its NATO accession completed only in April 2023?",
+  "expected_destination": "geopolitical",
+  "rubric_version": "finland-nato-usefulness-v1",
+  "evidence_cutoff": "2023-04-30",
+  "notes": "Two-part question by design (brainstorm Q15): a strategic cause plus a cutoff-specific accession-timing component, so use of the frozen corpus is observable rather than answerable from model memory."
+}
