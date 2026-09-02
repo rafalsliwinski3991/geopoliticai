@@ -19,6 +19,9 @@ installation is required. Agent packages under
 Repository-local Codex skills live under `.codex/skills/`; `.codex/skills/grill-me`
 provides a one-question-at-a-time adversarial design-review workflow and
 persists its session artifact under `docs/brainstorming/`.
+The project-local `docs-manage`, `docs-search`, and `fetch-url` skills manage
+and query the Grounded Docs index or fetch a single page; they require Node.js
+22 or newer and `npx`.
 OpenCode also loads the Phoenix skills under `.agents/skills/` through the
 `skills.paths` entry in `opencode.jsonc`: `phoenix-cli`, `phoenix-evals`, and
 `phoenix-tracing`.
