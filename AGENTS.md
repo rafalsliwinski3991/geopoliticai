@@ -18,6 +18,9 @@ required.
 Repository-local Codex skills live under `.codex/skills/`; `.codex/skills/grill-me`
 provides a one-question-at-a-time adversarial design-review workflow and
 persists its session artifact under `docs/brainstorming/`.
+OpenCode also loads the Phoenix skills under `.agents/skills/` through the
+`skills.paths` entry in `opencode.jsonc`: `phoenix-cli`, `phoenix-evals`, and
+`phoenix-tracing`.
 
 Each agent is under `app/src/agents/<name>/` with `graph.py`, `state.py`,
 `config.py`, `prompts.py`, a `consts/` package for static data, and one module

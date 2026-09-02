@@ -19,6 +19,9 @@ installation is required. Agent packages under
 Repository-local Codex skills live under `.codex/skills/`; `.codex/skills/grill-me`
 provides a one-question-at-a-time adversarial design-review workflow and
 persists its session artifact under `docs/brainstorming/`.
+OpenCode also loads the Phoenix skills under `.agents/skills/` through the
+`skills.paths` entry in `opencode.jsonc`: `phoenix-cli`, `phoenix-evals`, and
+`phoenix-tracing`.
 
 Config is hardcoded dataclasses, not env-parsed getters. Shared `config.py`
 defines `LLMSettings` and `DEFAULT_LLM_SETTINGS`; agent config holds per-node

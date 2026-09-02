@@ -16,6 +16,9 @@ Postgres is used only by the LangGraph checkpointer. The app declares the
 Repository-local Codex skills live under `.codex/skills/`; `.codex/skills/grill-me`
 provides a one-question-at-a-time adversarial design-review workflow and
 persists its session artifact under `docs/brainstorming/`.
+OpenCode also loads the Phoenix skills under `.agents/skills/` through the
+`skills.paths` entry in `opencode.jsonc`: `phoenix-cli`, `phoenix-evals`, and
+`phoenix-tracing`.
 
 Agent-specific code is under `app/src/agents/<name>/`. Each agent keeps its
 prompts in `prompts.py`, one constant per node or purpose, and its static data
