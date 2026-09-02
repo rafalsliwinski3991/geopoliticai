@@ -218,6 +218,7 @@ def build_expert_evaluators(judge: LLM) -> list[Any]:
         prompt_template=GROUNDEDNESS_PROMPT,
         choices=SCORE_CHOICES,
         include_explanation=True,
+        temperature=0,
     )
     usefulness = ClassificationEvaluator(
         name="usefulness",
@@ -225,6 +226,7 @@ def build_expert_evaluators(judge: LLM) -> list[Any]:
         prompt_template=USEFULNESS_PROMPT,
         choices=SCORE_CHOICES,
         include_explanation=True,
+        temperature=0,
     )
     return [
         bind_evaluator(
@@ -264,6 +266,7 @@ def build_orchestrator_evaluators(judge: LLM) -> list[Any]:
         prompt_template=REWRITE_QUALITY_PROMPT,
         choices=SCORE_CHOICES,
         include_explanation=True,
+        temperature=0,
     )
     return [
         route_correct,
@@ -333,6 +336,7 @@ async def run_experiment_case(
         name=dataset_name,
         examples=[example],
         dataset_description="Manual advisory quality smoke case",
+        timeout=PHOENIX_TIMEOUT_SECONDS,
     )
     task_result = await client.experiments.run_experiment(
         dataset=dataset,
@@ -378,7 +382,7 @@ async def main() -> None:
         raise RuntimeError("Phoenix tracing could not be initialized")
 
     client = AsyncClient(base_url=phoenix_base_url())
-    judge = LLM(provider="openai", model=JUDGE_MODEL, temperature=0)
+    judge = LLM(provider="openai", model=JUDGE_MODEL)
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
 
     expert_result = await run_experiment_case(
