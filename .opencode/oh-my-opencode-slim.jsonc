@@ -4,13 +4,13 @@
   "presets": {
     "opencode-go": {
       "orchestrator": {
-        "model": "opencode-go/deepseek-v4-flash-vision-exp",
+        "model": "opencode-go/gpt-5.6-luna",
         "variant": "max",
         "skills": ["*"],
-        "mcps": ["*", "!context7"]
+        "mcps": ["*"]
       },
       "oracle": {
-        "model": "opencode-go/deepseek-v4-flash-vision-exp",
+        "model": "opencode-go/gpt-5.6-luna",
         "variant": "max",
         "skills": ["simplify"],
         "mcps": []
@@ -19,7 +19,7 @@
         "model": "opencode-go/deepseek-v4-flash-vision-exp",
         "variant": "high",
         "skills": [],
-        "mcps": ["context7", "gh_grep"]
+        "mcps": ["gh_grep"]
       },
       "explorer": {
         "model": "opencode-go/gpt-5.6-luna",

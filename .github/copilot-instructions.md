@@ -22,6 +22,7 @@ persists its session artifact under `docs/brainstorming/`.
 OpenCode also loads the Phoenix skills under `.agents/skills/` through the
 `skills.paths` entry in `opencode.jsonc`: `phoenix-cli`, `phoenix-evals`, and
 `phoenix-tracing`.
+No external documentation MCP server is configured in the repository.
 
 Config is hardcoded dataclasses, not env-parsed getters. Shared `config.py`
 defines `LLMSettings` and `DEFAULT_LLM_SETTINGS`; agent config holds per-node

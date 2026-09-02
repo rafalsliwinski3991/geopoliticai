@@ -19,6 +19,7 @@ persists its session artifact under `docs/brainstorming/`.
 OpenCode also loads the Phoenix skills under `.agents/skills/` through the
 `skills.paths` entry in `opencode.jsonc`: `phoenix-cli`, `phoenix-evals`, and
 `phoenix-tracing`.
+No external documentation MCP server is configured in the repository.
 
 Agent-specific code is under `app/src/agents/<name>/`. Each agent keeps its
 prompts in `prompts.py`, one constant per node or purpose, and its static data

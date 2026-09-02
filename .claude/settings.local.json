@@ -1,7 +1,5 @@
 {
-  "enabledMcpjsonServers": [
-    "context7"
-  ],
+  "enabledMcpjsonServers": [],
   "skillOverrides": {
     "deep-agents-core": "off",
     "deep-agents-memory": "off",

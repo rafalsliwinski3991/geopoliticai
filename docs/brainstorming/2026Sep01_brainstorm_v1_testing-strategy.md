@@ -24,7 +24,7 @@ Build one deeply audited, local-only Phoenix offline evaluation around a control
 - Phoenix's official custom-evaluator guidance recommends a labeled ground-truth set and measuring precision, recall, and F1 when calibrating an LLM evaluator. This conflicts with the settled choice to use judge self-agreement without human-reviewed verdicts.
 - Phoenix documents experiment-level pairwise evaluation as an A/B workflow that compares two outputs side by side and retains preference plus qualitative feedback; the documented Python example uses a third-party pairwise evaluator, so this project would need a custom Phoenix classification evaluator for candidate/baseline/tie labels.
 - Phoenix's prebuilt `FaithfulnessEvaluator` classifies whether an output is supported by and non-contradictory to supplied context, returning `faithful`/`unfaithful`, a binary score, an explanation, and model metadata. Phoenix recommends adapting its prompt for project-specific needs.
-- Context7 is not exposed by this workspace and the available plugin-management tools cannot search for or connect it; official Phoenix Markdown documentation was used instead.
+- No external documentation MCP server was exposed by this workspace; official Phoenix Markdown documentation was used instead.
 - Official OpenAI documentation lists `gpt-4o-mini-2024-07-18` as the default and only named GPT-4o Mini snapshot, with structured-output support. This permits a pinned same-family judge while production answer generation continues using the moving `gpt-4o-mini` alias.
 - The repository currently depends on `arize-phoenix-otel` for tracing but does not declare the Phoenix Evals SDK/client dependency needed for datasets and experiments. Compose already runs `arizephoenix/phoenix:version-20.4.0` and exposes it on loopback in development.
 - The default branch is `main`, but the current feature branch adds the entire orchestrator. Therefore `main` cannot serve as a full-orchestrator baseline for the first Task without backporting the new harness architecture.
@@ -206,7 +206,7 @@ None. The brainstorming design is closed. The next artifact is the reviewed Finl
 ## Carried as flags, not decisions
 
 - The local hang may depend on Python or dependency-version differences from CI; diagnose it after the testing objective is settled.
-- Context7 or authoritative framework documentation may be needed for decisions involving current pytest, LangGraph streaming/checkpoint testing, or LangSmith evaluation features.
+- Authoritative framework documentation may be needed for decisions involving current pytest, LangGraph streaming/checkpoint testing, or LangSmith evaluation features.
 
 ## Round log
 

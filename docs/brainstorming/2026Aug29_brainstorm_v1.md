@@ -97,8 +97,9 @@ orchestrator graph:
   queries (prompt, ip, output, datetime) from that deployment. Nobody has read it. It is the
   fact that would settle whether small-talk/off-topic traffic is a real problem or a guess.
 - **The repo speaks `asyncpg`, the checkpointer speaks `psycopg`.** `app/pyproject.toml:19`
-  pins `asyncpg>=0.29,<1.0` and `database.py` builds an asyncpg pool. Context7 on
-  `langgraph-checkpoint-postgres`: *"The library defaults to installing Psycopg 3."*
+  pins `asyncpg>=0.29,<1.0` and `database.py` builds an asyncpg pool. The official
+  `langgraph-checkpoint-postgres` documentation states that the library defaults to
+  installing Psycopg 3.
   `AsyncPostgresSaver.from_conn_string(...)` + a mandatory `.setup()` to create its tables.
   So a Postgres checkpointer means **two drivers and two pools against the same database**.
 - **The backend is single-process.** `app/Dockerfile:20` is
@@ -468,7 +469,8 @@ Recorded: `README.md` rewrite becomes a release deliverable; no refusal boundary
 
 ### Round 5 — Q2: How does the orchestrator decide?
 Offered Shape 1 (classifier + conditional edge) vs Shape 2 (`create_react_agent` with `expert`
-as a tool), then expanded both on request with Context7 + installed-source verification.
+as a tool), then expanded both on request with official documentation and installed-source
+verification.
 Surfaced three facts that changed the question: nested-subgraph tokens are dropped unless
 `subgraphs=True` (which breaks the current unpacking), `TAG_NOSTREAM` cleanly hides a
 classifier call from the stream, and `create_react_agent`'s nodes are `agent`/`tools` so the
@@ -558,4 +560,3 @@ rewritten query, making the Q10 rewrite visible). Lean was **C**. **User answere
 ### Round 16 — Q8: what is explicitly not in this release?
 Presented the non-goals and accepted risks accumulated across the session as one list.
 **User confirmed the list unchanged.** Frontier empty; session closed.
-
