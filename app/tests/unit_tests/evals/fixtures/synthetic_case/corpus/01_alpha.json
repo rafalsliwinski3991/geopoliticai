@@ -1,0 +1,11 @@
+{
+  "excerpt_id": "01_synthetic_alpha",
+  "title": "Synthetic Alpha Evidence",
+  "url": "https://synthetic.example/alpha",
+  "domain": "synthetic.example",
+  "publisher": "Synthetic Publisher",
+  "published_at": "2026-01-01",
+  "retrieved_at": "2026-09-01",
+  "truncation_note": "Synthetic fixture excerpt; not a real article.",
+  "text": "Synthetic alpha evidence is included only to exercise the offline corpus loader."
+}

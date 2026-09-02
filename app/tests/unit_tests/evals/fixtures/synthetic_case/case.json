@@ -1,0 +1,6 @@
+{
+  "case_id": "synthetic_case",
+  "question": "What does this synthetic evidence demonstrate?",
+  "expected_destination": "geopolitical",
+  "rubric_version": "synthetic-v1"
+}
