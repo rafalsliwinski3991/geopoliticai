@@ -99,6 +99,26 @@ From `app/`, use `uv sync --locked --dev`, `make test`,
 CI uses the app lockfile and does not reference root requirements; Compose
 builds `./app` and `./frontend`.
 
+The old `app/evals/` pilot is gone. Manual quality evaluation consists of
+`app/tests/manual_quality/basic_agent_evaluation.py` and `cases.json`. The
+script records one live expert experiment and one overlapping
+full-orchestrator experiment in Phoenix, including each LLM judge's
+classification and explanation. It is not collected by pytest, run in CI, or
+copied into runtime images. Live dependency or judge failures are invalid and
+unscored; results are advisory. Phoenix retains unredacted prompts, fetched
+article text, answers, and judge data. Run it with:
+
+```bash
+docker compose up -d phoenix
+cd app
+PHOENIX_COLLECTOR_ENDPOINT=http://127.0.0.1:6006/v1/traces \
+  uv run python tests/manual_quality/basic_agent_evaluation.py
+```
+
+The root `.env` supplies `OPENAI_API_KEY` and `BRAVE_SEARCH_KEY` for this run;
+`DATABASE_URL` is not required because the manual orchestrator graph has no
+checkpointer.
+
 There is exactly one `.env` at the repo root. `config.py` resolves it by
 absolute path, `app/langgraph.json` points to `../.env`, and Compose's
 `env_file: .env` reads it. There is no separate `app/.env`.
