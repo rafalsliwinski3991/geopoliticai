@@ -18,12 +18,17 @@ required.
 Repository-local Codex skills live under `.codex/skills/`; `.codex/skills/grill-me`
 provides a one-question-at-a-time adversarial design-review workflow and
 persists its session artifact under `docs/brainstorming/`.
+The Codex catalog contains the full 16-skill `python-*` suite from
+`.claude/skills/`, in addition to the Python quickstarts already shared by the
+framework skill sets. Its `phoenix-cli`, `phoenix-evals`, and `phoenix-tracing`
+packages are concrete project-local copies converted to Codex-valid
+frontmatter, not symlinks.
 The project-local `docs-manage`, `docs-search`, and `fetch-url` skills manage
 and query the Grounded Docs index or fetch a single page; they require Node.js
 22 or newer and `npx`.
-OpenCode also loads the Phoenix skills under `.agents/skills/` through the
-`skills.paths` entry in `opencode.jsonc`: `phoenix-cli`, `phoenix-evals`, and
-`phoenix-tracing`.
+The canonical Phoenix sources remain under `.agents/skills/`; OpenCode loads
+them through the `skills.paths` entry in `opencode.jsonc`, while Claude exposes
+them through symlinks in `.claude/skills/`.
 No external documentation MCP server is configured in the repository.
 
 Each agent is under `app/src/agents/<name>/` with `graph.py`, `state.py`,
