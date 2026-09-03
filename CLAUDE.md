@@ -1,10 +1,17 @@
 # CLAUDE.md
 
-Guidance for Claude Code working in this repository. After any codebase change,
-update `AGENTS.md`, `CLAUDE.md`, and `.github/copilot-instructions.md` together.
+Any change anywhere in the repository must update `AGENTS.md`, `CLAUDE.md`, and
+`.github/copilot-instructions.md` together. This repository uses OpenCode,
+GitHub Copilot and the GitHub CLI (`gh`), Claude Code, and Codex. If a plugin,
+skill, or other tool is added, removed, renamed, or changed, update the
+Commands, Plugins, and other provider-column inventory tables in
+`ai_tools_tables.md` in the same change. Inventory tables use one item-name
+column followed by one `yes`/`no` column per provider.
 
-The maintained application is under `app/`; the root Dockerfile and
-requirements-export file are compatibility files (the old root `main.py` CLI
+@@
+The Codex catalog includes the shared framework skill sets. Its `phoenix-cli`,
+`phoenix-evals`, and `phoenix-tracing` packages are concrete project-local
+copies converted to Codex-valid frontmatter, not symlinks.
 shim is gone). Shared modules in `app/src/` provide environment/model config,
 shared models/errors, policy-parameterized Brave and trafilatura search, the
 OpenAI boundary, API delivery, and optional tracing. Shared modules never
@@ -22,11 +29,10 @@ one-question-at-a-time adversarial design-review workflow and persists its
 session artifact under `docs/brainstorming/`.
 The repository-local Codex `critic` agent is read-only and uses
 `gpt-5.6-terra` with high reasoning effort.
-The Codex catalog contains the full 16-skill `python-*` suite from
-`.claude/skills/`, in addition to the Python quickstarts already shared by the
-framework skill sets. Its `phoenix-cli`, `phoenix-evals`, and `phoenix-tracing`
-packages are concrete project-local copies converted to Codex-valid
-frontmatter, not symlinks.
+The Codex catalog includes the shared framework skill sets and project-local
+documentation, Phoenix, and planning skills. Its Phoenix packages are
+concrete project-local copies converted to Codex-valid frontmatter, not
+symlinks.
 The project-local `docs-manage`, `docs-search`, and `fetch-url` skills manage
 and query the Grounded Docs index or fetch a single page; they require Node.js
 22 or newer and `npx`.

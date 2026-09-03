@@ -5,7 +5,6 @@
     "deep-agents-core": "off",
     "deep-agents-memory": "off",
     "deep-agents-orchestration": "off",
-    "deepagents-python-quickstart": "off",
     "deepagents-typescript-quickstart": "off",
     "managed-deep-agents": "off"
   },
