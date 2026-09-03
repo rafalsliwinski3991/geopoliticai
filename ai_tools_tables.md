@@ -25,13 +25,14 @@ related AI-tool configuration, update this file in the same change.
 
 - `.github/skills/` - GitHub Copilot skills with bundled references and
   scripts.
-- `.opencode/skills/` - OpenCode-local skill catalog; `opencode.jsonc` currently
-  points at the missing `.agents/skills` path instead.
+- `.opencode/skills/` - OpenCode-local skill catalog; no repository-local skill
+  path is currently configured in `opencode.jsonc`.
 - `.codex/skills/` - Codex skill catalog containing shared and project-local
   skills.
 - `.codex/config.toml` - project agent and thread settings.
 - `.codex/agents/` - four Codex role definitions.
-- `.claude/skills/` - Claude skills; `swarm` exists only here.
+- `.claude/skills/` - Claude skills; `swarm` exists only here. The removed Phoenix
+  symlinks are no longer consumers of the deleted `.agents/skills/` catalog.
 - `.opencode/oh-my-opencode-slim.jsonc` - OpenCode plugin presets and agent
   roles; the active plugin is `oh-my-opencode-slim@latest`.
 - `.opencode/commands/` - OpenCode commands: `review`, `plan-review`, and
@@ -93,6 +94,9 @@ Plugin configuration details:
   `opencode-go` presets are defined in `.opencode/oh-my-opencode-slim.jsonc`.
 - `context7@claude-plugins-official` and `codex@openai-codex` are enabled in
   `.claude/settings.local.json`.
+- Context7 provides `resolve-library-id` and `query-docs` MCP tools for
+  version-specific external library documentation; Claude workflows use them when
+  current external APIs affect a decision.
 - No repository-local plugin configuration is present for GitHub Copilot or
   Codex.
 

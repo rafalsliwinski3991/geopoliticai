@@ -36,6 +36,12 @@ change, a standard plan is coherent multi-file work within one subsystem, and a 
 plan covers major, risky, cross-component, interface, migration, or order-dependent
 work. Record any escalation and its evidence in the changelog.
 
+When auditing a plan's use of an external framework or library, verify current
+APIs and version-specific behavior through Context7: resolve the exact library
+and version with `resolve-library-id`, then use `query-docs`. Treat installed
+versions and checked-out repository code as the local constraints; do not use
+Context7 for facts those sources already establish.
+
 ## Step 2 — Pre-flight scout
 
 For a **lightweight plan**, inspect the named files and focused validation yourself.
@@ -95,7 +101,8 @@ against the live repository, as if deciding whether to approve them before a sin
   versions actually installed in this repo right now, is the plan's approach still the current
   correct idiom? Check every API surface the plan's code blocks call, every version constraint the
   plan assumes, and whether a newer or older installed version has moved the ground since the plan
-  was written.
+  was written. Use Context7's `resolve-library-id` and `query-docs` when authoritative current
+  library documentation is needed.
 - **`guidance-compliance-lens`** (agent type `guidance-compliance-lens`). Brief: Read `AGENTS.md`,
   `CLAUDE.md`, and `.github/copilot-instructions.md` as they exist right now. Does the plan's
   migration/rollout section correctly identify every one this repo's own rules require updating, and
@@ -133,10 +140,11 @@ Do not start implementing. Do not spawn a fourth agent.
 
 ## Step 5 — Report
 
-Report to the user: the previous plan path, the new plan path, the version bump, the scout's
-top-line status (how many tasks or commits are already applied / partially applied / not started),
-the plan tier, how many findings each applicable lens raised and how many you accepted, and the run
-log path.
+Report to the user: the previous plan path, the new plan path, the version bump, the plan tier,
+and the applicable review summary. For a standard or full plan, include the scout's top-line status
+(how many tasks or commits are already applied / partially applied / not started); for a lightweight
+plan, include the direct pre-flight and self-review result instead. Also report how many findings
+each applicable lens raised and how many you accepted, plus the run-log path.
 
 ---
 

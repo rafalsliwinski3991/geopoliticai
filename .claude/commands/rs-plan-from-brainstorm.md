@@ -23,6 +23,12 @@ code. Where the two disagree, the code wins and the disagreement goes in the pla
 The brainstorm records settled decisions. Treat them as decided, not as options to
 reopen. Your job is to turn them into ordered, reviewable work.
 
+When a proposed change depends on a current external framework or library API,
+resolve its exact library and version through Context7's `resolve-library-id`,
+then verify the relevant behavior with `query-docs`. Plan against the verified
+documentation and the installed version, not memory. Do not query Context7 for
+repository-local behavior that the checked-out code or guidance already answers.
+
 Before drafting, choose the smallest planning depth that makes implementation safe:
 
 - **Lightweight plan** -- use for a minor, contained change to one existing flow:
@@ -116,7 +122,8 @@ rather than trusting the plan's claims about them.
 - **Domain and framework reviewer.** Run on Sonnet 5, medium effort. For the frameworks,
   libraries, and versions this repo actually has installed, is the proposed approach the
   current correct idiom? Check the API surfaces the plan calls, the version constraints,
-  and any pattern the plan copies from a reference or template.
+   and any pattern the plan copies from a reference or template. Use Context7's
+   `resolve-library-id` and `query-docs` when current library documentation is needed.
 - **Devil's advocate.** Run on Opus 5, high effort. Argue the plan is wrong. Attack the
   premises the brainstorm settled on, especially any decision justified by future work
   that is not yet scheduled. Attack every deletion by naming what breaks if the future
@@ -135,7 +142,7 @@ standard plan, correct supported reviewer findings inline and record only genuin
 unresolved questions or rejected objections.
 
 Do not start implementing. Ask the user to review and explicitly approve the written
-plan before handing it to `$implement-plan`.
+plan before handing it to `$rs-implement-plan`.
 
 Report back: the plan path, whether it was lightweight, standard, or full, the task
 or commit count where applicable, and the findings you accepted.

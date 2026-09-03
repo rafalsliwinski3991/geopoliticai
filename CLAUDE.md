@@ -8,11 +8,13 @@ Commands, Plugins, and other provider-column inventory tables in
 `ai_tools_tables.md` in the same change. Inventory tables use one item-name
 column followed by one `yes`/`no` column per provider.
 
-@@
 The Codex catalog includes the shared framework skill sets. Its `phoenix-cli`,
 `phoenix-evals`, and `phoenix-tracing` packages are concrete project-local
 copies converted to Codex-valid frontmatter, not symlinks.
-shim is gone). Shared modules in `app/src/` provide environment/model config,
+
+The maintained application is under `app/`; the root Dockerfile and requirements
+export are compatibility files (the old root `main.py` CLI shim is gone). Shared
+modules in `app/src/` provide environment/model config,
 shared models/errors, policy-parameterized Brave and trafilatura search, the
 OpenAI boundary, API delivery, and optional tracing. Shared modules never
 import an agent. There is no `prompt_logs` persistence path or `database.py`;
@@ -53,9 +55,13 @@ symlinks.
 The project-local `docs-manage`, `docs-search`, and `fetch-url` skills manage
 and query the Grounded Docs index or fetch a single page; they require Node.js
 22 or newer and `npx`.
-The canonical Phoenix sources remain under `.agents/skills/`; OpenCode loads
-them through the `skills.paths` entry in `opencode.jsonc`, while Claude exposes
-them through symlinks in `.claude/skills/`.
+The enabled Context7 plugin provides `resolve-library-id` followed by `query-docs`
+for version-specific external library documentation. Use it when a planning,
+implementation, or review decision depends on current external APIs; local code,
+lockfiles, and guidance remain authoritative for repository behavior.
+The removed Phoenix skill catalog has no OpenCode `skills.paths` entry or Claude
+symlink consumers. The maintained Phoenix skills are the concrete project-local
+Codex packages under `.codex/skills/`.
 No external documentation MCP server is configured in the repository.
 
 Agent-specific code is under `app/src/agents/<name>/`. Each agent keeps its

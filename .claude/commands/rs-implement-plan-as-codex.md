@@ -25,6 +25,13 @@ must use TDD where required below, and must commit only after its validation is
 green. If the plugin, model, or high-effort setting is unavailable, stop and report
 the blocker; never fall back to a Claude agent or another model.
 
+When a decision depends on current external framework or library behavior, the
+coordinator must use Context7 before dispatching: call `resolve-library-id` for
+the exact library and installed version, then call `query-docs` with that
+identifier. Include material verified findings in the Codex brief and run log.
+Codex workers remain constrained to the Codex dispatch contract; do not replace
+that contract with a native Claude agent or an unverified documentation claim.
+
 Run log: `docs/cc_logs/<plan-filename-stem>_codex_run.md` (create `docs/cc_logs/`
 if missing; it is gitignored). If that file already exists, append a new dated
 section rather than overwriting it.
@@ -121,7 +128,9 @@ to the plan tier:
 Each Codex reviewer must use the dispatch contract and return only severity-ranked
 findings grounded in the real source and diff. The guidance reviewer must check
 whether `AGENTS.md`, `CLAUDE.md`, and `.github/copilot-instructions.md` were
-updated when required.
+updated when required. For a framework/version finding, the coordinator must
+first verify the relevant current documentation through Context7 and include the
+result in the review brief.
 
 Fix substantive findings before completion. Dispatch a fresh Codex implementer for
 each fix batch, require focused validation and the relevant gate, then dispatch the

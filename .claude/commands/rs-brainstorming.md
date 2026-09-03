@@ -8,13 +8,23 @@ Help the user reach an approved design at the level of process the request needs
 
 - **Spike** -- a feasibility question whose outcome is a recommendation, not retained code. State the question and a 2-3 sentence probe plan, get approval, investigate as cheaply as correctness permits, then report the findings. Do not create a brainstorming artifact.
 - **Bounded** -- a small change to an existing, readable code path. Ask only the clarifying questions that matter, present a short in-chat design covering the approach, files, and testing, then stop for explicit approval before implementation. Do not create a brainstorming artifact or implementation plan.
-- **Architectural** -- a new subsystem, a change to component boundaries, or an interface change with dependent consumers. Follow the full design-tree workflow below, then hand off the completed artifact to `$plan-from-brainstorm` after the user approves it.
+- **Architectural** -- a new subsystem, a change to component boundaries, or an interface change with dependent consumers. Follow the full design-tree workflow below, then hand off the completed artifact to `$rs-plan-from-brainstorm` after the user approves it.
 
 When uncertain, choose the heavier path. If new information reveals hidden complexity, stop, announce the upgrade, and reclassify; never downgrade a path mid-session. If the request contains independent subsystems, decompose it into ordered subprojects before exploring the first one.
 
 <HARD-GATE>
 Do not write code, invoke an implementation workflow, or take implementation action until the user has approved the stated design. The design may be brief for bounded work, but approval is required for every path.
 </HARD-GATE>
+
+## Current external documentation
+
+When a question depends on the current behavior, API, version, or recommended
+pattern of an external framework or library, use Context7 before asking the user
+to decide. First use `resolve-library-id` for the exact library and version, then
+use `query-docs` with that returned identifier. Record the verified result in
+**Context verified** and distinguish it from repository-local facts. Do not use
+Context7 for facts the checked-out code, lockfile, or local guidance already
+settles.
 
 For an architectural request, interrogate the user until you reach a shared understanding they have *defended*, not merely stated. Map the space as a **design tree**: every decision branches into the decisions that hang off it.
 
@@ -212,4 +222,4 @@ Lean was <X>. **User answered:** <Y>. **Pushed back on** <objection> → <held /
 
 When the session closes, do a final pass: move the last frontier into **Settled decisions** (or into **Carried as flags** if the user closed early), empty **Current frontier**, set **Status**, and make sure **Target design** states the whole outcome standalone — someone should be able to act on the artifact without reading the round log. Scan for placeholders, contradictions, ambiguous requirements, and scope too large for one plan; correct issues inline or decompose the work.
 
-Ask the user to review and explicitly approve the completed artifact. Only after that approval, hand off to `$plan-from-brainstorm`: the artifact is the input to a plan, not the plan itself. Do not start implementing during this command.
+Ask the user to review and explicitly approve the completed artifact. Only after that approval, hand off to `$rs-plan-from-brainstorm`: the artifact is the input to a plan, not the plan itself. Do not start implementing during this command.

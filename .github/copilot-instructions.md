@@ -8,7 +8,6 @@ Commands, Plugins, and other provider-column inventory tables in
 `ai_tools_tables.md` in the same change. Inventory tables use one item-name
 column followed by one `yes`/`no` column per provider.
 
-@@
 The Codex catalog includes the shared framework skill sets. Its `phoenix-cli`,
 `phoenix-evals`, and `phoenix-tracing` packages are concrete project-local
 copies converted to Codex-valid frontmatter, not symlinks.
@@ -56,9 +55,13 @@ symlinks.
 The project-local `docs-manage`, `docs-search`, and `fetch-url` skills manage
 and query the Grounded Docs index or fetch a single page; they require Node.js
 22 or newer and `npx`.
-The canonical Phoenix sources remain under `.agents/skills/`; OpenCode loads
-them through the `skills.paths` entry in `opencode.jsonc`, while Claude exposes
-them through symlinks in `.claude/skills/`.
+The enabled Context7 plugin provides `resolve-library-id` followed by `query-docs`
+for version-specific external library documentation. Use it when a planning,
+implementation, or review decision depends on current external APIs; local code,
+lockfiles, and guidance remain authoritative for repository behavior.
+The removed Phoenix skill catalog has no OpenCode `skills.paths` entry or Claude
+symlink consumers. The maintained Phoenix skills are the concrete project-local
+Codex packages under `.codex/skills/`.
 No external documentation MCP server is configured in the repository.
 
 Config is hardcoded dataclasses, not env-parsed getters. Shared `config.py`

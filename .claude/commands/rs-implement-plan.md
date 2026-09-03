@@ -27,6 +27,12 @@ For a **lightweight plan**, verify the named files, current behavior, and focuse
 yourself, then write a short status and staleness note to the run log. Do not spawn a scout for one
 contained change.
 
+When implementation or review depends on current external framework or library
+behavior, use Context7 before changing code: call `resolve-library-id` for the
+exact library and installed version, then call `query-docs` with that identifier.
+Record any material documentation result in the run log. The checked-out code,
+lockfile, and repository guidance remain authoritative for local behavior.
+
 For a **standard or full plan**, spawn a single teammate named `scout` using the `preflight-scout` agent
 type, and give it the plan path and this brief:
 
@@ -53,9 +59,10 @@ Write the scout's table and blockers into the run log verbatim.
 
 **Stop here.** This is the only scheduled stop in the run.
 
-Show the user the scout's table and blockers, and ask which commit the run should start from and
-whether to proceed. Do not begin implementing until the user answers. If the user does not respond,
-the run does not start.
+For a **lightweight plan**, show the direct pre-flight note and ask whether to proceed. For a
+**standard or full plan**, show the scout's table and blockers, then ask which task or commit the
+run should start from and whether to proceed. Do not begin implementing until the user answers. If
+the user does not respond, the run does not start.
 
 ## Step 3 — Implementation
 
@@ -139,6 +146,8 @@ After the last plan unit, review the result against the branch diff
   changed, error and state paths that differ from before.
 - `framework-lens` — is this the current correct idiom for the versions **actually installed** in
   this repo? Check the API surfaces the diff calls and the version constraints it assumes.
+  Use Context7's `resolve-library-id` and `query-docs` when current external
+  documentation is needed.
 - `guidance-compliance-lens` — did this change require updating `CLAUDE.md`, `AGENTS.md`, and
   `.github/copilot-instructions.md` per this repo's own rule, and do those files still describe the
   code truthfully?
