@@ -1,0 +1,6 @@
+interface:
+  display_name: "Implement Plan"
+  short_description: "Implement an approved plan with review and checks"
+  default_prompt: "Use $implement-plan to carry out an approved implementation plan."
+policy:
+  allow_implicit_invocation: false

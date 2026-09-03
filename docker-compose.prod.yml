@@ -24,8 +24,9 @@ services:
     volumes:
       - /etc/letsencrypt:/etc/letsencrypt:ro
     environment:
-      AUTH_USER: ${AUTH_USER}
-      AUTH_PASSWORD: ${AUTH_PASSWORD}
+      AUTH_REQUIRED: "true"
+      AUTH_USER: ${AUTH_USER:?AUTH_USER must be set in production}
+      AUTH_PASSWORD: ${AUTH_PASSWORD:?AUTH_PASSWORD must be set in production}
     depends_on:
       backend:
         condition: service_healthy

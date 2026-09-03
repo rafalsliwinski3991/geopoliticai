@@ -1,4 +1,4 @@
-"""FastAPI application for the GeopoliticAI expert agent."""
+"""FastAPI application for the GeopoliticAI orchestrator agent."""
 
 from __future__ import annotations
 
@@ -16,10 +16,18 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from langchain_core.messages import AIMessage
+from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+from psycopg import AsyncConnection
+from psycopg.rows import DictRow, dict_row
+from psycopg_pool import AsyncConnectionPool
 from pydantic import BaseModel, Field, field_validator
 
-import database
-from agents.expert import build_initial_pipeline_state, build_runtime_config, graph
+from agents.orchestrator import (
+    build_graph,
+    build_initial_orchestrator_state,
+    build_runtime_config,
+)
+from agents.orchestrator import graph as _default_graph
 from config import init_environment, require_env
 from models import PipelineError
 from tracing import init_tracing
@@ -35,16 +43,29 @@ ALLOWED_ORIGINS = [
     "http://localhost:3001",
 ]
 MAX_QUERY_LENGTH = 2_000
+MAX_THREAD_ID_LENGTH = 100
 MAX_ANSWER_CHARS = 50_000
 RATE_LIMIT_REQUESTS = 20
 RATE_LIMIT_WINDOW_SECONDS = 60
 MAX_TRACKED_CLIENTS = 10_000
 
+THINKING_PROGRESS = {"node": "classify", "label": "Thinking..."}
 SEARCH_PROGRESS = {
     "node": "search_and_fetch",
     "label": "Searching and reading sources...",
 }
 ANSWER_PROGRESS = {"node": "answer", "label": "Writing the answer..."}
+ANSWER_NODES = frozenset({"answer", "chat"})
+
+POSTGRES_CONNECTION_KWARGS: dict[str, Any] = {
+    "autocommit": True,
+    "prepare_threshold": 0,
+    "row_factory": dict_row,
+}
+POSTGRES_POOL_MIN_SIZE = 1
+POSTGRES_POOL_MAX_SIZE = 10
+
+graph: Any = _default_graph
 
 _rate_limit_store: dict[str, deque[float]] = {}
 _rate_limit_lock = Lock()
@@ -52,15 +73,32 @@ _rate_limit_lock = Lock()
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncGenerator[None, None]:
-    """Initialize and close optional application resources."""
+    """Initialize application resources; require a database for threads."""
+    global graph
     init_environment()
     init_tracing()
     require_env()
-    db_url = os.getenv("DATABASE_URL")
-    if db_url:
-        await database.init_pool(db_url)
-    yield
-    await database.close_pool()
+    db_url = os.getenv("DATABASE_URL", "").strip()
+    if not db_url:
+        raise ValueError(
+            "DATABASE_URL is required: conversation threads are stored in Postgres."
+        )
+    pool: AsyncConnectionPool[AsyncConnection[DictRow]] = AsyncConnectionPool(
+        conninfo=db_url,
+        min_size=POSTGRES_POOL_MIN_SIZE,
+        max_size=POSTGRES_POOL_MAX_SIZE,
+        kwargs=POSTGRES_CONNECTION_KWARGS,
+        open=False,
+    )
+    await pool.open()
+    try:
+        checkpointer = AsyncPostgresSaver(pool)
+        await checkpointer.setup()
+        graph = build_graph(checkpointer=checkpointer)
+        yield
+    finally:
+        graph = _default_graph
+        await pool.close()
 
 
 app = FastAPI(title="GeopoliticAI API", version="1.0.0", lifespan=lifespan)
@@ -75,10 +113,17 @@ app.add_middleware(
 
 
 class RunPipelineRequest(BaseModel):
-    """Request payload for running the analysis pipeline."""
+    """Request payload for one conversation turn."""
 
     query: str = Field(
         ..., min_length=1, max_length=MAX_QUERY_LENGTH, description="Query to analyze"
+    )
+    thread_id: str = Field(
+        ...,
+        min_length=1,
+        max_length=MAX_THREAD_ID_LENGTH,
+        pattern=r"^[A-Za-z0-9_-]+$",
+        description="Conversation thread this turn belongs to",
     )
 
     @field_validator("query")
@@ -184,26 +229,39 @@ def _sse(payload: dict[str, Any]) -> str:
     return f"data: {json.dumps(payload)}\n\n"
 
 
-async def _astream_answer(query: str) -> AsyncGenerator[str, None]:
-    """Run the expert graph, yielding answer text as the model produces it."""
-    state = build_initial_pipeline_state(query)
-    config = build_runtime_config()
-    # `stream_mode="messages"` yields (message, metadata) two-tuples. Do not
-    # switch this to the list form (["updates", "messages"]) without changing
-    # the unpacking: that form yields (mode, payload) instead, which unpacks
-    # without error and then silently matches nothing.
-    async for message, metadata in graph.astream(
-        state, config=config, stream_mode="messages"
+async def _astream_answer(
+    query: str, thread_id: str
+) -> AsyncGenerator[tuple[str, str], None]:
+    """Run the orchestrator graph, yielding route and answer events."""
+    state = build_initial_orchestrator_state(query)
+    config = build_runtime_config(thread_id=thread_id)
+    streamed_nodes: set[str] = set()
+    async for namespace, mode, data in graph.astream(
+        state, config=config, stream_mode=["updates", "messages"], subgraphs=True
     ):
-        # Every LLM call in every node streams through here. Only the answer
-        # node's tokens are the user's answer.
-        if metadata.get("langgraph_node") != "answer":
+        if mode == "updates":
+            if namespace or not isinstance(data, dict):
+                continue
+            update = data.get("classify")
+            if isinstance(update, dict) and isinstance(update.get("destination"), str):
+                yield ("route", update["destination"])
+            continue
+        message, metadata = data
+        node = metadata.get("langgraph_node")
+        if node not in ANSWER_NODES:
             continue
         if not isinstance(message, AIMessage):
             continue
+        # Chat nodes emit provider chunks and then the completed message they
+        # return. Once chunks have been forwarded, the completed message would
+        # duplicate the answer; expert's nested completed message is tagged
+        # with the parent node and is filtered above.
+        if message.__class__ is AIMessage and node in streamed_nodes:
+            continue
         text = message.text()
         if text:
-            yield text
+            streamed_nodes.add(node)
+            yield ("token", text)
 
 
 @router.post("/run_pipeline/stream")
@@ -212,20 +270,25 @@ async def run_pipeline_stream_endpoint(
 ) -> StreamingResponse:
     """Run the pipeline and stream progress and answer tokens over SSE."""
     _enforce_rate_limit(request)
-    client_id = _resolve_client_id(request)
 
     async def _generate() -> AsyncGenerator[str, None]:
         parts: list[str] = []
         consumed = 0
         try:
-            yield _sse({"type": "progress", **SEARCH_PROGRESS})
-            async for text in _astream_answer(payload.query):
+            yield _sse({"type": "progress", **THINKING_PROGRESS})
+            async for kind, chunk_or_route in _astream_answer(
+                payload.query, payload.thread_id
+            ):
+                if kind == "route":
+                    if chunk_or_route == "geopolitical":
+                        yield _sse({"type": "progress", **SEARCH_PROGRESS})
+                    continue
                 if not parts:
                     yield _sse({"type": "progress", **ANSWER_PROGRESS})
                 remaining = MAX_ANSWER_CHARS - consumed
                 if remaining <= 0:
-                    break
-                chunk = text[:remaining]
+                    continue
+                chunk = chunk_or_route[:remaining]
                 parts.append(chunk)
                 consumed += len(chunk)
                 yield _sse({"type": "token", "content": chunk})
@@ -239,7 +302,6 @@ async def run_pipeline_stream_endpoint(
                     }
                 )
                 return
-            await database.log_run(payload.query, client_id, output)
             yield _sse({"type": "result", "output": output})
         except PipelineError as exc:
             logger.warning("Streaming pipeline failed: %s", exc)

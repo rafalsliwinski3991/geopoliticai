@@ -8,7 +8,7 @@ from agents.expert.consts.sources import EXPERT_SOURCES
 from models import Candidate, SearchUnavailableError
 
 
-def _response(results: list[dict[str, object]]) -> httpx.Response:
+def _response(results: list[object]) -> httpx.Response:
     return httpx.Response(
         200,
         json={"web": {"results": results}},

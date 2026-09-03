@@ -35,3 +35,20 @@ def test_friendly_error_copy_is_action_oriented_and_jargon_free() -> None:
     assert "please try again" in html.lower()
     assert "allow-listed" not in html
     assert "brave" not in html.lower()
+
+
+def test_frontend_sends_a_sticky_thread_id() -> None:
+    """The frontend persists a conversation id and sends it to the API."""
+    html = FRONTEND_HTML.read_text()
+    assert "THREAD_STORAGE_KEY" in html
+    assert "localStorage.getItem" in html
+    assert "crypto.randomUUID" in html
+    assert "thread_id: this.threadId" in html
+
+
+def test_frontend_offers_a_new_chat_button() -> None:
+    """The UI can reset the conversation to a freshly minted thread."""
+    html = FRONTEND_HTML.read_text()
+    assert "newChat()" in html
+    assert 'new_chat: "New chat"' in html
+    assert 'class="new-chat"' in html

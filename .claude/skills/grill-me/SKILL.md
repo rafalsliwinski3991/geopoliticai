@@ -35,10 +35,35 @@ Frontier questions come from the tree's structure. The *pressure* comes from the
 - **Falsification** — what would have to be true for you to change your mind? An answer with no such condition is a preference, so mark it as one.
 - **Scope** — what is deliberately *not* being solved here, and is that stated anywhere?
 
+## Ask it the way a person would ask it
+
+The user is making a decision, not reviewing your architecture notes. A question they have to decode is a question they answer badly — or answer by picking whichever option sounded most confident. **Every question you pose must be answerable by someone who has never opened this codebase.**
+
+- **Lead with what the user would see.** A chat transcript, a terminal session, a before/after. The mechanism comes after the example, if at all. "You type X, the app does Y" beats any description of how Y is implemented.
+- **Every question carries a worked example.** Real strings, real numbers, real filenames — not "a query" and "some sources" but the actual thing the user would type and the actual thing that comes back.
+- **Name options by their consequence, never by their mechanism.** "Answers from memory when it isn't sure" — not "neutral classifier bias." "Tests need a database running" — not "import-time checkpointer construction." The mechanism can follow in a sub-line; it must never be the load-bearing words of the choice.
+- **Spend jargon only after you have shown it.** A term from the codebase (`InMemorySaver`, `subgraphs=True`, `thread_id`) is fair game *once* a line of code or output has made it concrete. Introducing it cold, and building the question on top of it, guarantees a shallow answer.
+- **Short sentences. One idea per line.** Prefer a table or a list of three to a paragraph of three clauses. A wall of prose gets skimmed, and a skimmed question gets a coin-flip answer.
+- **Ask one thing.** If a round needs two answers, either split it into two rounds or number them `1.` and `2.` and hold each to three lines. Never bury a second question inside the prose of the first.
+- **Never make the user hold state in their head.** If the question depends on something settled four rounds ago, restate it in one line. They are not re-reading the artifact between rounds.
+
+This applies to what you *ask*. The artifact is a durable engineering record and stays precise and technical — do not simplify the file to match the questions.
+
 ## Round format
 
 ```
-❓ **Q<n>** - **<question title>**: <question body, possibly multiple paragraphs, including any multiple-choice options>
+❓ **Q<n>** — **<short question title>**
+
+<One or two plain sentences: what is being decided, and why it is being decided now.>
+
+<A worked example — a transcript, a command and its output, a before/after —
+showing what the user actually sees. This is not optional.>
+
+**Option A — <named by what happens>**
+<what the user gets, and what it costs>
+
+**Option B — <named by what happens>**
+<what the user gets, and what it costs>
 
 ➡️ **Lean:** <your recommended answer> _(<confidence: strong / weak / coin-flip>)_
 ⚔️ **Against it:** <the strongest case against your own lean>
@@ -46,7 +71,22 @@ Frontier questions come from the tree's structure. The *pressure* comes from the
 
 Number questions continuously across the session — Q1, Q2, Q3 — so the round log and the artifact refer to the same question by the same name. In batch mode, separate the questions in a round with `---`.
 
-Always give both lines. A recommendation offered alone anchors the user onto it, and a skill that anchors and never challenges is a confirmation machine. Stating your own lean's weakest point is what keeps the question honest. When your lean is weak or a coin-flip, say so plainly rather than manufacturing confidence.
+Always give both the lean and the case against it. A recommendation offered alone anchors the user onto it, and a skill that anchors and never challenges is a confirmation machine. Stating your own lean's weakest point is what keeps the question honest. When your lean is weak or a coin-flip, say so plainly rather than manufacturing confidence.
+
+**Before you send a round, read it back once.** If someone who has never seen this repo could not say what actually changes between the options, rewrite it. That check is cheap; a misunderstood question costs two rounds and can settle a decision the user never really made.
+
+### When the user says they don't understand
+
+That is your failure, not theirs. Do not treat it as a reason to move on to an easier question.
+
+1. **Re-pose the same question.** Same decision, same options. Dropping an option to make it simpler silently narrows their choice.
+2. **Rebuild it as a worked example**, in their domain — a transcript of what happens under each answer. Do not merely shorten what you already wrote; shortening an abstract question leaves it abstract.
+3. **Strip every term that is not plain English**, including ones you introduced earlier in the session.
+4. **If they misunderstand a second time, the question is two questions welded together.** Split it and ask the smaller half first.
+
+### When an answer is ambiguous
+
+A bare "B" to a two-part question, or an answer that addresses something adjacent to what you asked, is **not** an answer. Do not guess and record. Say in one line what each reading would commit them to, and ask which they meant. Recording a decision the user did not make is the most expensive failure in this skill — it propagates into the plan and the code.
 
 ## The challenge step
 
@@ -88,11 +128,13 @@ The design tree is a durable artifact, not just conversation scrollback — pers
 **Resolve the save path once, at the start of the session** (a fact to find, not to ask about): run `git rev-parse --show-toplevel` for the repo root; if that fails, fall back to the current working directory. The target file is:
 
 ```
-<repo_root>/docs/brainstorming/<YYYYMonDD>_brainstorm_v<N>.md
+<repo_root>/docs/brainstorming/<YYYYMonDD>_brainstorm_v<N>_<topic-slug>.md
 ```
 
 - Date format matches `2026Aug24` (4-digit year, 3-letter capitalized month abbreviation, 2-digit day) — today's date.
-- `<N>` picks out *this* session's file: list `<repo_root>/docs/brainstorming/` for files already matching today's date prefix and use one past the highest number found (start at `v1` if none exist today). Do this exactly once, at session start, so this session claims its own number even if others ran earlier the same day.
+- `<N>` picks out *this* session's file: list `<repo_root>/docs/brainstorming/` for files already matching today's date prefix — whatever suffix they carry — and use one past the highest number found (start at `v1` if none exist today). Do this exactly once, at session start, so this session claims its own number even if others ran earlier the same day.
+- `<topic-slug>` is two to five kebab-case words naming **what is being grilled**, so the file is identifiable in a directory listing a month later: `orchestrator-agent`, `plan-to-team-command`, `postgres-migration`. Derive it from the user's opening ask, not from the eventual conclusion. Files named only by date are indistinguishable from each other and force a reader to open all of them.
+- The slug is claimed once, with the number, and **never changes mid-session** — not even if the topic drifts, since renaming would orphan any path already handed to the user. If the session ends up somewhere very different, say so in the title line inside the file instead.
 - Create the `docs/brainstorming/` directory if it doesn't exist.
 - For the rest of *this* session keep writing to that claimed file, never advancing to `v<N+1>` mid-session.
 

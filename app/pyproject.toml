@@ -13,10 +13,14 @@ dependencies = [
     "langchain-core>=0.3,<1.0",
     "langchain-openai>=0.3,<1.0",
     "langgraph>=1.0.0",
+    # Pinned below 3.1: 3.1.x requires langgraph-checkpoint>=4.1.0, and
+    # langgraph 1.0.1 requires langgraph-checkpoint<4.0.0. Brings psycopg 3
+    # and psycopg-pool, the only Postgres driver in this app.
+    "langgraph-checkpoint-postgres>=3.0.3,<3.1",
+    "psycopg[binary]>=3.2,<4.0",
     "openai>=1.40,<2.0",
     "pydantic>=2.0,<3.0",
     "python-dotenv>=1.0.1",
-    "asyncpg>=0.29,<1.0",
     "httpx>=0.27,<1.0",
     "trafilatura>=2.0,<3.0",
     "uvicorn[standard]>=0.29,<1.0",
@@ -37,7 +41,6 @@ package-dir = {"" = "src"}
 py-modules = [
     "api",
     "config",
-    "database",
     "llm",
     "models",
     "search",
@@ -73,6 +76,7 @@ lint.ignore = [
 ]
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["D", "UP"]
+"tests/manual_quality/*" = ["D", "T201", "UP"]
 [tool.ruff.lint.pydocstyle]
 convention = "google"
 
@@ -83,4 +87,9 @@ dev = [
     "mypy>=1.13.0",
     "pytest>=8.3.5",
     "ruff>=0.8.2",
+    # Manual live quality runner (`tests/manual_quality/`). These stay in `dev`:
+    # Docker installs with `--no-dev` and copies only `src/`, while the runner
+    # needs Phoenix client/evals only when invoked explicitly by a reviewer.
+    "arize-phoenix-client>=3.3,<4.0",
+    "arize-phoenix-evals>=3.5.1,<4.0",
 ]

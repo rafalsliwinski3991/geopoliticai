@@ -57,7 +57,12 @@ this file to keep it accurate.
 | swarm | no | no | yes | no |
 
 The Claude `grill-me` skill stores its session files under
-`docs/brainstorming/`, not at the repository root.
+`docs/brainstorming/`, not at the repository root, named
+`<YYYYMonDD>_brainstorm_v<N>_<topic-slug>.md`. The Claude
+`plan-from-brainstorm` command writes to `docs/plans/` as
+`<date>_plan_<topic-slug>_v<N>.md`, reusing the brainstorm's date but
+deriving its own 1-3-word topic slug from what the plan implements rather
+than copying the brainstorm's slug verbatim.
 
 ## Agents
 

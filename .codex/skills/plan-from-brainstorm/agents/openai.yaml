@@ -1,0 +1,6 @@
+interface:
+  display_name: "Plan from Brainstorm"
+  short_description: "Create a reviewed plan from settled design notes"
+  default_prompt: "Use $plan-from-brainstorm to turn a brainstorm document into a reviewed implementation plan."
+policy:
+  allow_implicit_invocation: false

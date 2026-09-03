@@ -1,7 +1,6 @@
 {
-  "enabledMcpjsonServers": [
-    "context7"
-  ],
+  "enableAllProjectMcpServers": true,
+  "enabledMcpjsonServers": [],
   "skillOverrides": {
     "deep-agents-core": "off",
     "deep-agents-memory": "off",
@@ -10,5 +9,8 @@
     "deepagents-typescript-quickstart": "off",
     "managed-deep-agents": "off"
   },
-  "enableAllProjectMcpServers": true
+  "enabledPlugins": {
+    "context7@claude-plugins-official": true,
+    "codex@openai-codex": true
+  }
 }
