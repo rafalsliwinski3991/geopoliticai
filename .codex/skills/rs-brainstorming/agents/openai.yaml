@@ -1,0 +1,7 @@
+interface:
+  display_name: "RS Brainstorming"
+  short_description: "Stress-test plans one question at a time"
+  default_prompt: "Use $rs-brainstorming to stress-test my plan before I commit to it."
+
+policy:
+  allow_implicit_invocation: true

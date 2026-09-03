@@ -1,10 +1,16 @@
 # Copilot Instructions
 
-After every codebase change, update `AGENTS.md`, `CLAUDE.md`, and this file
-together. The maintained application is under `app/`; the root Dockerfile and
-requirements-export file are compatibility files (the old root `main.py` CLI
-shim is gone). CI runs `uv sync --locked --dev` in `app/` and does not
-reference root requirements.
+Any change anywhere in the repository must update `AGENTS.md`, `CLAUDE.md`, and
+`.github/copilot-instructions.md` together. This repository uses OpenCode,
+GitHub Copilot and the GitHub CLI (`gh`), Claude Code, and Codex. If a plugin,
+skill, or other tool is added, removed, renamed, or changed, update the
+Commands, Plugins, and other provider-column inventory tables in
+`ai_tools_tables.md` in the same change. Inventory tables use one item-name
+column followed by one `yes`/`no` column per provider.
+
+The Codex catalog includes the shared framework skill sets. Its `phoenix-cli`,
+`phoenix-evals`, and `phoenix-tracing` packages are concrete project-local
+copies converted to Codex-valid frontmatter, not symlinks.
 
 Shared modules under `app/src/` provide environment/model config, shared models
 and errors, policy-parameterized Brave/fetch/extraction, OpenAI access, API
@@ -16,26 +22,46 @@ installation is required. Agent packages under
 `consts/`, and node modules. Shared modules never import agents; the API names
 `agents.orchestrator`, whose expert node invokes `agents.expert`.
 
-Repository-local Codex skills live under `.codex/skills/`. Explicit
+Repository-local Codex skills live under `.codex/skills/`. Claude's
+`rs-brainstorming` workflow is a custom command under `.claude/commands/`.
+Explicit
 `$plan-from-brainstorm`, `$improve-plan`, and `$implement-plan` skills are the
-Codex equivalents of the three Claude planning commands; they use this
+Codex equivalents of the three Claude `rs-` planning commands; they use this
 repository's `explorer`, `critic`, and `builder` roles rather than
-Claude-specific agent types. `.codex/skills/grill-me` provides a
-one-question-at-a-time adversarial design-review workflow and persists its
-session artifact under `docs/brainstorming/`.
+Claude-specific agent types. Claude's `rs-brainstorming` classifies work as
+spike, bounded, or architectural. Its architectural path uses a
+similarity-grouped batch adversarial design-review workflow by default, persists
+an artifact under `docs/brainstorming/`, and requires user approval before
+`$plan-from-brainstorm`.
+Claude's `rs-plan-from-brainstorm` right-sizes plans: minor, contained changes
+receive lightweight scope, change, and validation steps with self-review;
+coherent multi-file subsystem work receives a standard file-level task plan and
+one correctness review; major or risky work receives ordered commits and three
+subagent reviews before approval and `$implement-plan` handoff.
+Claude's `rs-improve-plan` and `rs-implement-plan` preserve or infer that plan
+tier. `rs-implement-plan` uses TDD for every behavior change: lightweight work
+is direct implementation with self-review, standard work adds one correctness
+review, and full work adds task audits and broad three-lens review; only
+genuinely independent full-plan tasks may be delegated.
+Claude's `rs-implement-plan-as-codex` is the Codex-plugin variant: all delegated
+implementation and review work uses `/codex:rescue` with `gpt-5.6-terra` and high
+effort, and it fails closed rather than falling back to a Claude agent or model.
 The repository-local Codex `critic` agent is read-only and uses
 `gpt-5.6-terra` with high reasoning effort.
-The Codex catalog contains the full 16-skill `python-*` suite from
-`.claude/skills/`, in addition to the Python quickstarts already shared by the
-framework skill sets. Its `phoenix-cli`, `phoenix-evals`, and `phoenix-tracing`
-packages are concrete project-local copies converted to Codex-valid
-frontmatter, not symlinks.
+The Codex catalog includes the shared framework skill sets and project-local
+documentation, Phoenix, and planning skills. Its Phoenix packages are
+concrete project-local copies converted to Codex-valid frontmatter, not
+symlinks.
 The project-local `docs-manage`, `docs-search`, and `fetch-url` skills manage
 and query the Grounded Docs index or fetch a single page; they require Node.js
 22 or newer and `npx`.
-The canonical Phoenix sources remain under `.agents/skills/`; OpenCode loads
-them through the `skills.paths` entry in `opencode.jsonc`, while Claude exposes
-them through symlinks in `.claude/skills/`.
+The enabled Context7 plugin provides `resolve-library-id` followed by `query-docs`
+for version-specific external library documentation. Use it when a planning,
+implementation, or review decision depends on current external APIs; local code,
+lockfiles, and guidance remain authoritative for repository behavior.
+The removed Phoenix skill catalog has no OpenCode `skills.paths` entry or Claude
+symlink consumers. The maintained Phoenix skills are the concrete project-local
+Codex packages under `.codex/skills/`.
 No external documentation MCP server is configured in the repository.
 
 Config is hardcoded dataclasses, not env-parsed getters. Shared `config.py`
