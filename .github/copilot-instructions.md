@@ -95,6 +95,9 @@ published by the loopback-bound development override.
 
 Run `uv sync --locked --dev`, `make test`, `make integration_tests`, and
 `make lint` from `app/`; use `langgraph dev` to drive either graph in Studio.
+From the repository root, the generic `make logs-SERVICE` target follows any
+Compose service, such as `frontend`, `backend`, `postgres`, or `phoenix`, and
+`make services` lists all services in the effective Compose configuration.
 Nodes return partial state dictionaries without mutation, tests should use
 explicit module imports when package initializers re-export functions, and no
 `.env` or secrets should be changed.
@@ -107,6 +110,11 @@ classification and explanation. It is not collected by pytest, run in CI, or
 copied into runtime images. Live dependency or judge failures are invalid and
 unscored; results are advisory. Phoenix retains unredacted prompts, fetched
 article text, answers, and judge data. Run it with:
+
+A follow-up implementation plan to move reviewer-facing result presentation
+from the script's custom console summary to Phoenix's native experiment
+Evaluations view is in
+`docs/superpowers/plans/2026-09-02-phoenix-native-evals-ui.md`.
 
 ```bash
 docker compose up -d phoenix

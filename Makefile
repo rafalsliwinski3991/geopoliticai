@@ -1,4 +1,4 @@
-.PHONY: up down restart logs ps config help
+.PHONY: up down restart logs services ps config help
 
 COMPOSE ?= docker compose
 FRONTEND_PORT ?= 8082
@@ -18,6 +18,12 @@ restart: down up
 logs:
 	$(COMPOSE) logs -f
 
+logs-%:
+	$(COMPOSE) logs -f $*
+
+services:
+	$(COMPOSE) config --services
+
 ps:
 	$(COMPOSE) ps
 
@@ -30,6 +36,8 @@ help:
 		'down      Stop and remove the application containers' \
 		'restart   Restart the application containers' \
 		'logs      Follow application logs' \
+		'logs-SERVICE Follow logs for one service (frontend, backend, postgres, phoenix)' \
+		'services  List all Compose services' \
 		'ps        Show container status' \
 		'config    Render the effective Compose configuration' \
 		'' \

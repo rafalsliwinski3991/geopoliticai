@@ -98,6 +98,9 @@ From `app/`, use `uv sync --locked --dev`, `make test`,
 `make integration_tests`, `make lint`, `make format`, and `langgraph dev`.
 CI uses the app lockfile and does not reference root requirements; Compose
 builds `./app` and `./frontend`.
+From the repository root, the generic `make logs-SERVICE` target follows any
+Compose service, such as `frontend`, `backend`, `postgres`, or `phoenix`, while
+`make services` lists all services in the effective Compose configuration.
 
 The old `app/evals/` pilot is gone. Manual quality evaluation consists of
 `app/tests/manual_quality/basic_agent_evaluation.py` and `cases.json`. The
@@ -107,6 +110,11 @@ classification and explanation. It is not collected by pytest, run in CI, or
 copied into runtime images. Live dependency or judge failures are invalid and
 unscored; results are advisory. Phoenix retains unredacted prompts, fetched
 article text, answers, and judge data. Run it with:
+
+A follow-up implementation plan to move reviewer-facing result presentation
+from the script's custom console summary to Phoenix's native experiment
+Evaluations view is in
+`docs/superpowers/plans/2026-09-02-phoenix-native-evals-ui.md`.
 
 ```bash
 docker compose up -d phoenix

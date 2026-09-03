@@ -142,6 +142,10 @@ Run Python commands from `app/`: `uv sync --locked --dev`, `make test`,
 from `app/` to drive either the `expert` or `orchestrator` graph in Studio.
 CI runs `uv sync --locked --dev` from `app/` on Python 3.11 and does not use
 the root requirements file; Compose builds `./app` and `./frontend`.
+From the repository root, use the generic `make logs-SERVICE` target to follow
+any Compose service, such as `frontend`, `backend`, `postgres`, or `phoenix`,
+and use `make services` to list all services in the effective Compose
+configuration.
 
 The old `app/evals/` pilot is gone. Manual quality evaluation consists of
 `app/tests/manual_quality/basic_agent_evaluation.py` and `cases.json`. The
@@ -151,6 +155,11 @@ classification and explanation. It is not collected by pytest, run in CI, or
 copied into runtime images. Live dependency or judge failures are invalid and
 unscored; results are advisory. Phoenix retains unredacted prompts, fetched
 article text, answers, and judge data. Run it with:
+
+A follow-up implementation plan to move reviewer-facing result presentation
+from the script's custom console summary to Phoenix's native experiment
+Evaluations view is in
+`docs/superpowers/plans/2026-09-02-phoenix-native-evals-ui.md`.
 
 ```bash
 docker compose up -d phoenix
