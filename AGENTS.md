@@ -150,16 +150,14 @@ configuration.
 The old `app/evals/` pilot is gone. Manual quality evaluation consists of
 `app/tests/manual_quality/basic_agent_evaluation.py` and `cases.json`. The
 script records one live expert experiment and one overlapping
-full-orchestrator experiment in Phoenix, including each LLM judge's
-classification and explanation. It is not collected by pytest, run in CI, or
-copied into runtime images. Live dependency or judge failures are invalid and
-unscored; results are advisory. Phoenix retains unredacted prompts, fetched
-article text, answers, and judge data. Run it with:
-
-A follow-up implementation plan to move reviewer-facing result presentation
-from the script's custom console summary to Phoenix's native experiment
-Evaluations view is in
-`docs/superpowers/plans/2026-09-02-phoenix-native-evals-ui.md`.
+full-orchestrator experiment in Phoenix. It does not render scores or judge
+explanations itself: follow the Phoenix client experiment links and review
+each experiment's native Evaluations view, which contains the score, label,
+explanation, task output, and linked traces. The terminal retains only
+Phoenix SDK progress/summary output and CLI diagnostics. It is not collected by
+pytest, run in CI, or copied into runtime images. Live dependency or judge
+failures are invalid and unscored; results are advisory. Phoenix retains
+unredacted prompts, fetched article text, answers, and judge data. Run it with:
 
 ```bash
 docker compose up -d phoenix

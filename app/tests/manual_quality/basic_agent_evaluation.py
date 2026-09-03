@@ -281,14 +281,13 @@ def build_orchestrator_evaluators(judge: LLM) -> list[Any]:
     ]
 
 
-def validate_and_print_evaluations(
+def validate_evaluations(
     result: RanExperiment,
     *,
-    experiment_name: str,
     expected_names: set[str],
     explanation_names: set[str],
 ) -> None:
-    """Reject incomplete judge output and print a compact reviewer summary."""
+    """Reject incomplete evaluations without duplicating Phoenix UI output."""
     matching = [run for run in result["evaluation_runs"] if run.name in expected_names]
     actual_names = {run.name for run in matching}
     if actual_names != expected_names or len(matching) != len(expected_names):
@@ -296,8 +295,7 @@ def validate_and_print_evaluations(
             f"Expected evaluations {sorted(expected_names)}, got {sorted(actual_names)}"
         )
 
-    print(experiment_name)
-    for run in sorted(matching, key=lambda item: item.name):
+    for run in matching:
         if run.error:
             raise RuntimeError(f"{run.name} failed: {run.error}")
         evaluation = run.result
@@ -315,10 +313,6 @@ def validate_and_print_evaluations(
         ):
             raise RuntimeError(f"{run.name} returned no explanation")
 
-        print(f"  {run.name}: score={score} label={label}")
-        if isinstance(explanation, str) and explanation.strip():
-            print(f"  explanation: {explanation.strip()}")
-
 
 async def run_experiment_case(
     *,
@@ -330,8 +324,8 @@ async def run_experiment_case(
     expected_names: set[str],
     explanation_names: set[str],
     experiment_name: str,
-) -> RanExperiment:
-    """Record one graph run first, then judge it only if the task succeeded."""
+) -> None:
+    """Record one valid graph run and its evaluations for review in Phoenix."""
     dataset = await client.datasets.create_dataset(
         name=dataset_name,
         examples=[example],
@@ -359,18 +353,16 @@ async def run_experiment_case(
     result = await client.experiments.evaluate_experiment(
         experiment=task_result,
         evaluators=evaluators,
-        print_summary=False,
+        print_summary=True,
         concurrency=1,
         timeout=PHOENIX_TIMEOUT_SECONDS,
         retries=0,
     )
-    validate_and_print_evaluations(
+    validate_evaluations(
         result,
-        experiment_name=experiment_name,
         expected_names=expected_names,
         explanation_names=explanation_names,
     )
-    return result
 
 
 async def main() -> None:
@@ -385,7 +377,7 @@ async def main() -> None:
     judge = LLM(provider="openai", model=JUDGE_MODEL)
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
 
-    expert_result = await run_experiment_case(
+    await run_experiment_case(
         client=client,
         dataset_name="geopoliticai-expert-smoke-v1",
         example=cases["expert"],
@@ -395,7 +387,7 @@ async def main() -> None:
         explanation_names={"groundedness", "usefulness"},
         experiment_name=f"expert-quality-{timestamp}",
     )
-    orchestrator_result = await run_experiment_case(
+    await run_experiment_case(
         client=client,
         dataset_name="geopoliticai-orchestrator-smoke-v1",
         example=cases["orchestrator"],
@@ -404,12 +396,6 @@ async def main() -> None:
         expected_names={"route_correct", "rewrite_quality"},
         explanation_names={"rewrite_quality"},
         experiment_name=f"orchestrator-quality-{timestamp}",
-    )
-
-    print(f"expert experiment: {expert_result['experiment_id']}")
-    print(f"orchestrator experiment: {orchestrator_result['experiment_id']}")
-    print(
-        "Advisory reviewer evidence only; not a gate, trend, comparison, or release claim."
     )
 
 

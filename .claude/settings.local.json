@@ -10,6 +10,7 @@
     "managed-deep-agents": "off"
   },
   "enabledPlugins": {
-    "context7@claude-plugins-official": true
+    "context7@claude-plugins-official": true,
+    "codex@openai-codex": true
   }
 }
