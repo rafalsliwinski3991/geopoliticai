@@ -1,5 +1,5 @@
 ---
-description: Audit a written plan against the current repo and rewrite it as a new, fully self-contained version with a changelog
+description: Audit a written plan against the current repo and rewrite it as a new, self-contained, right-sized version with a changelog
 argument-hint: <plan-path>
 allowed-tools: Read, Write, Edit, Glob, Grep, Bash, Agent
 ---
@@ -28,14 +28,26 @@ Read the plan in full. Then read every file, module, config, and test it names. 
 the plan's description of the code — audit against the code. Where they disagree, the code wins, and
 every disagreement becomes a changelog entry in the new version, not a silent fix.
 
+Identify the plan's stated tier: **lightweight**, **standard**, or **full**. If it
+does not name one, infer the smallest safe tier from its scope. Preserve that tier
+unless the live code reveals a concrete risk that requires escalation; do not enlarge
+the plan merely because it is being reviewed. A lightweight plan is a minor contained
+change, a standard plan is coherent multi-file work within one subsystem, and a full
+plan covers major, risky, cross-component, interface, migration, or order-dependent
+work. Record any escalation and its evidence in the changelog.
+
 ## Step 2 — Pre-flight scout
 
-Spawn a single teammate named `scout` using the `preflight-scout` agent type, and give it the plan
+For a **lightweight plan**, inspect the named files and focused validation yourself.
+Write a short status and staleness note into the run log; do not spawn a scout just to
+produce one row for one contained change.
+
+For a **standard or full plan**, spawn a single teammate named `scout` using the `preflight-scout` agent type, and give it the plan
 path and this brief:
 
 > Compare the plan at `<path>` against this repository as it is right now. Read the actual files the
 > plan names — never trust the plan's description of the code. Produce **one markdown table, one row
-> per plan commit**, with exactly these columns:
+> per plan task or commit**, with exactly these columns:
 >
 > - **Commit** — the plan's own identifier or heading for it.
 > - **Status** — `not started` / `partially applied` / `already applied`, decided by reading the
@@ -53,13 +65,21 @@ path and this brief:
 
 Write the scout's table and blockers into the run log verbatim.
 
-If every commit comes back `already applied` with no blockers, stop here: report to the user that
+If every task or commit comes back `already applied` with no blockers, stop here: report to the user that
 the plan appears fully implemented and ask whether they still want a new version (for example, to
 record that fact) before spawning anything else in Step 3.
 
 ## Step 3 — Parallel critical review
 
-Spawn three teammates in parallel. Give each the brainstorm or context doc this plan was built from
+For a **lightweight plan**, self-review the proposed change against the live code.
+Check its exact behavior, focused validation, and applicable guidance. Do not dispatch review
+agents unless a concrete discovery raises the plan's tier.
+
+For a **standard plan**, spawn only `correctness-lens`. Give it the brainstorm or context doc this
+plan was built from (if named), the plan path, and the scout's table. It must read actual source
+files and return only severity-ranked correctness, regression, error-path, or test-gap findings.
+
+For a **full plan**, spawn three teammates in parallel. Give each the brainstorm or context doc this plan was built from
 (if the plan names one), the plan path, and the scout's table, and instruct each to read the actual
 source files rather than trusting the plan's or the scout's claims about them. Unlike a post-run
 review, there is no diff yet — these agents review the plan's **proposed** commits and code blocks
@@ -95,16 +115,18 @@ this file, never opening the previous version, must get the full picture — do 
 the rest" or omit a commit because it didn't change. Carry forward everything from the previous
 version that the scout and the lenses did not invalidate, and rewrite everything they did.
 
-The new version keeps the previous version's section structure (scope summary, ordered commits with
-before/after code, test plan, migration and rollout notes, open questions) and adds one more, placed
-immediately after the title:
+The new version keeps the previous version's tier and appropriate section structure: lightweight
+plans keep scope, change steps, validation, and applicable follow-up; standard plans keep scope,
+file responsibilities, ordered tasks, and test/follow-up notes; full plans keep scope summary,
+file responsibilities, ordered commits with before/after code, test plan, migration and rollout
+notes, and open questions. Add one more section immediately after the title:
 
 **Changelog (v`<N>` → v`<N+1>`)** — one entry per substantive change from this round, each stating
 what changed, which finding drove it (scout staleness, or a named lens finding), and why. Include
 entries for commits marked `already applied` or `partially applied` by the scout and how the new
 version accounts for that (mark them done and adjust the remaining ordering, rather than re-proposing
 finished work). If a finding was surfaced but you rejected it, say so here with the reason, the same
-way `plan-from-brainstorm`'s "Open questions and rejected objections" section works — do not silently
+way `rs-plan-from-brainstorm`'s "Open questions and rejected objections" section works — do not silently
 drop a reviewer's finding.
 
 Do not start implementing. Do not spawn a fourth agent.
@@ -112,8 +134,9 @@ Do not start implementing. Do not spawn a fourth agent.
 ## Step 5 — Report
 
 Report to the user: the previous plan path, the new plan path, the version bump, the scout's
-top-line status (how many commits already applied / partially applied / not started), how many
-findings each lens raised and how many you accepted, and the run log path.
+top-line status (how many tasks or commits are already applied / partially applied / not started),
+the plan tier, how many findings each applicable lens raised and how many you accepted, and the run
+log path.
 
 ---
 

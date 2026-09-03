@@ -1,11 +1,11 @@
 ---
-name: grill-me
+name: rs-brainstorming
 description: Grill the user relentlessly about a plan, decision, or idea by stress-testing their reasoning one question at a time. Use when the user says "grill me", "grill this", "poke holes in", "stress-test", "challenge this plan", "interrogate this idea", or otherwise asks for adversarial review before committing.
 metadata:
   short-description: Stress-test plans one question at a time
 ---
 
-# Grill Me
+# RS Brainstorming
 
 Interrogate the user's thinking until they have defended the important
 decisions, not merely stated them. This is adversarial design review, not

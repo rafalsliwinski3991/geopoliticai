@@ -20,13 +20,30 @@ Postgres is used only by the LangGraph checkpointer. The app declares the
 `psycopg[binary]` dependency directly, so it does not require a system
 `libpq` installation.
 
-Repository-local Codex skills live under `.codex/skills/`. Explicit
+Repository-local Codex skills live under `.codex/skills/`. Claude's
+`rs-brainstorming` workflow is a custom command under `.claude/commands/`.
+Explicit
 `$plan-from-brainstorm`, `$improve-plan`, and `$implement-plan` skills are the
-Codex equivalents of the three Claude planning commands; they use this
+Codex equivalents of the three Claude `rs-` planning commands; they use this
 repository's `explorer`, `critic`, and `builder` roles rather than
-Claude-specific agent types. `.codex/skills/grill-me` provides a
-one-question-at-a-time adversarial design-review workflow and persists its
-session artifact under `docs/brainstorming/`.
+Claude-specific agent types. Claude's `rs-brainstorming` classifies work as
+spike, bounded, or architectural. Its architectural path uses a
+similarity-grouped batch adversarial design-review workflow by default, persists
+an artifact under `docs/brainstorming/`, and requires user approval before
+`$plan-from-brainstorm`.
+Claude's `rs-plan-from-brainstorm` right-sizes plans: minor, contained changes
+receive lightweight scope, change, and validation steps with self-review;
+coherent multi-file subsystem work receives a standard file-level task plan and
+one correctness review; major or risky work receives ordered commits and three
+subagent reviews before approval and `$implement-plan` handoff.
+Claude's `rs-improve-plan` and `rs-implement-plan` preserve or infer that plan
+tier. `rs-implement-plan` uses TDD for every behavior change: lightweight work
+is direct implementation with self-review, standard work adds one correctness
+review, and full work adds task audits and broad three-lens review; only
+genuinely independent full-plan tasks may be delegated.
+Claude's `rs-implement-plan-as-codex` is the Codex-plugin variant: all delegated
+implementation and review work uses `/codex:rescue` with `gpt-5.6-terra` and high
+effort, and it fails closed rather than falling back to a Claude agent or model.
 The repository-local Codex `critic` agent is read-only and uses
 `gpt-5.6-terra` with high reasoning effort.
 The Codex catalog includes the shared framework skill sets and project-local

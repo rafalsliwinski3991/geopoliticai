@@ -1,9 +1,22 @@
 ---
-name: grill-me
-description: Grill the user relentlessly about a plan, decision, or idea - stress-test the thinking, not just collect requirements. Use when the user says "grill me", "grill this", "poke holes in", "stress-test", "challenge this plan", "interrogate this idea", or otherwise asks to have their reasoning attacked before they commit to it.
+description: Grill the user relentlessly about a plan, decision, or idea - stress-test the thinking, not just collect requirements
+argument-hint: <plan-or-idea>
+allowed-tools: Read, Write, Edit, Glob, Grep, Bash, Agent
 ---
 
-Interrogate the user until you reach a shared understanding they have *defended*, not merely stated. Map the space as a **design tree**: every decision branches into the decisions that hang off it.
+Help the user reach an approved design at the level of process the request needs. Before asking a detailed question, classify the request and say the classification aloud so the user can correct it:
+
+- **Spike** -- a feasibility question whose outcome is a recommendation, not retained code. State the question and a 2-3 sentence probe plan, get approval, investigate as cheaply as correctness permits, then report the findings. Do not create a brainstorming artifact.
+- **Bounded** -- a small change to an existing, readable code path. Ask only the clarifying questions that matter, present a short in-chat design covering the approach, files, and testing, then stop for explicit approval before implementation. Do not create a brainstorming artifact or implementation plan.
+- **Architectural** -- a new subsystem, a change to component boundaries, or an interface change with dependent consumers. Follow the full design-tree workflow below, then hand off the completed artifact to `$plan-from-brainstorm` after the user approves it.
+
+When uncertain, choose the heavier path. If new information reveals hidden complexity, stop, announce the upgrade, and reclassify; never downgrade a path mid-session. If the request contains independent subsystems, decompose it into ordered subprojects before exploring the first one.
+
+<HARD-GATE>
+Do not write code, invoke an implementation workflow, or take implementation action until the user has approved the stated design. The design may be brief for bounded work, but approval is required for every path.
+</HARD-GATE>
+
+For an architectural request, interrogate the user until you reach a shared understanding they have *defended*, not merely stated. Map the space as a **design tree**: every decision branches into the decisions that hang off it.
 
 This is not requirements gathering. A requirements interview asks, records, and moves on. You ask, **push back**, and only then record. An answer the user gave without resistance is not a settled decision — it is an untested one.
 
@@ -11,17 +24,17 @@ This is not requirements gathering. A requirements interview asks, records, and 
 
 Work the tree in **rounds**. The **frontier** is every decision whose prerequisites are already settled: the questions you can ask _now_ without guessing at answers you haven't heard yet.
 
-**Ask exactly one question per round.** Compute the whole frontier, then pose only the highest-leverage question on it and wait for the answer. A wall of simultaneous questions gets skimmed and answered shallowly, and shallow answers cannot be grilled. One question at a time is what makes the pushback step land.
+**Ask the frontier in batches grouped by similarity.** Compute the whole frontier, then group independent questions that share a decision area, context, or trade-off. Pose the highest-leverage group in each round and wait for the answer. A batch must be small enough to answer thoughtfully; do not turn the whole frontier into a questionnaire.
 
-Each answer reshapes the tree: settled decisions push the frontier outward and unblock questions that depended on them. Recompute the frontier and ask the next single question.
+Each answer reshapes the tree: settled decisions push the frontier outward and unblock questions that depended on them. Recompute and regroup the frontier before asking the next batch.
 
 **The frontier still has to be wide, even though you ask one at a time.** A tree where every decision has exactly one child is a queue, not a tree, and it means you are inventing dependencies that aren't there. Before treating a question as blocked, apply the dependency test: *would a different answer to the open question actually change this question's wording or its options?* If not, it is a sibling on the current frontier, not a downstream question — it just hasn't been picked yet. Keep the full frontier in the artifact so the unasked siblings are visible and nothing silently drops.
 
 **Picking the one to ask.** Highest leverage means the question whose answer prunes or reshapes the most of the remaining tree: one-way doors before two-way doors, foundations before decoration, and anything that could invalidate a settled decision before anything that merely adds detail.
 
-### Batch mode
+### Single-question mode
 
-Single is the default. If the user explicitly asks for all the questions at once — some people would rather see the whole shape up front — switch to **batch mode** and pose the entire frontier per round. Record the mode in the artifact so a resumed session doesn't flip cadence mid-stream. You may offer batch mode if the frontier stays wide and shallow for several rounds, but the user's stated preference wins.
+Batch is the default. If the user explicitly asks to proceed one question at a time, or a decision needs focused challenge before its sibling questions can be answered well, switch to **single-question mode**. Record the mode in the artifact so a resumed session does not flip cadence mid-stream. The user's stated preference wins.
 
 ## What to grill on
 
@@ -69,7 +82,7 @@ showing what the user actually sees. This is not optional.>
 ⚔️ **Against it:** <the strongest case against your own lean>
 ```
 
-Number questions continuously across the session — Q1, Q2, Q3 — so the round log and the artifact refer to the same question by the same name. In batch mode, separate the questions in a round with `---`.
+Number questions continuously across the session — Q1, Q2, Q3 — so the round log and the artifact refer to the same question by the same name. In batch mode, group related questions beneath a shared topic and separate unrelated groups with `---`.
 
 Always give both the lean and the case against it. A recommendation offered alone anchors the user onto it, and a skill that anchors and never challenges is a confirmation machine. Stating your own lean's weakest point is what keeps the question honest. When your lean is weak or a coin-flip, say so plainly rather than manufacturing confidence.
 
@@ -119,6 +132,12 @@ A design tree spawns questions indefinitely, so an "empty frontier" needs discip
 
 The session is done when the frontier is empty or the user closes it: every live branch visited, nothing silently assumed. Do not act on the outcome until the user confirms you have reached a shared understanding.
 
+## Compare approaches
+
+Before presenting a final architectural design, propose 2-3 viable approaches. State the trade-offs, lead with a recommendation and its reasoning, and remove features that do not serve the stated goal. A design tree tests individual decisions; this comparison ensures the overall shape was chosen deliberately rather than inherited from the first plausible option.
+
+Present the final design in sections proportionate to their complexity. Cover architecture, components, data flow, error handling, and testing. Ask the user to approve each substantive section, revisiting the tree when their feedback reopens a decision.
+
 ## Saving progress
 
 The design tree is a durable artifact, not just conversation scrollback — persist it as you go so an interrupted session isn't lost.
@@ -149,7 +168,7 @@ Rewrite the sections above the round log in place; **append** to the round log r
 
 **Started:** <date>
 **Status:** In progress | Complete | Closed early (<n> questions left open)
-**Mode:** single (one question per round, default) | batch
+**Mode:** batch (similar questions per round, default) | single
 
 ## Target design
 
@@ -191,6 +210,6 @@ they are decisions to decide later, and they must survive into whatever plan fol
 Lean was <X>. **User answered:** <Y>. **Pushed back on** <objection> → <held / revised to Z>.
 ```
 
-When the session closes, do a final pass: move the last frontier into **Settled decisions** (or into **Carried as flags** if the user closed early), empty **Current frontier**, set **Status**, and make sure **Target design** states the whole outcome standalone — someone should be able to act on the artifact without reading the round log.
+When the session closes, do a final pass: move the last frontier into **Settled decisions** (or into **Carried as flags** if the user closed early), empty **Current frontier**, set **Status**, and make sure **Target design** states the whole outcome standalone — someone should be able to act on the artifact without reading the round log. Scan for placeholders, contradictions, ambiguous requirements, and scope too large for one plan; correct issues inline or decompose the work.
 
-Then hand off: the artifact is the input to a plan, not the plan itself. Offer to write one, and don't start implementing until the user confirms.
+Ask the user to review and explicitly approve the completed artifact. Only after that approval, hand off to `$plan-from-brainstorm`: the artifact is the input to a plan, not the plan itself. Do not start implementing during this command.

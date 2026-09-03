@@ -31,37 +31,46 @@ related AI-tool configuration, update this file in the same change.
   skills.
 - `.codex/config.toml` - project agent and thread settings.
 - `.codex/agents/` - four Codex role definitions.
-- `.claude/skills/` - Claude skills; `swarm` and `grill-me` exist only here.
+- `.claude/skills/` - Claude skills; `swarm` exists only here.
 - `.opencode/oh-my-opencode-slim.jsonc` - OpenCode plugin presets and agent
   roles; the active plugin is `oh-my-opencode-slim@latest`.
 - `.opencode/commands/` - OpenCode commands: `review`, `plan-review`, and
   `implement-plan`.
-- `.claude/commands/` - Claude Code commands: `plan-from-brainstorm`,
-  `improve-plan`, and `implement-plan`.
+- `.claude/commands/` - Claude Code commands: `rs-plan-from-brainstorm`,
+  `rs-improve-plan`, `rs-implement-plan`, and `rs-implement-plan-as-codex`.
 - `.github/workflows/` - GitHub Actions workflows, including unit tests; the
   repository also uses the GitHub CLI (`gh`) for permitted repository tasks.
 - `.claude/hooks/` and `.codex/hooks/` - contain no active hook
   implementations; the `.claude/hooks/.klaussy-version` file is metadata.
 - `docs/brainstorming/` - durable session artifacts written by the Claude
-  `grill-me` skill, not at the repository root.
+  `rs-brainstorming` skill, not at the repository root.
 
 ## Commands
 
 | Command or workflow | GitHub Copilot | OpenCode | Claude | Codex |
 |---|---:|---:|---:|---:|
-| implement-plan | no | yes | yes | yes |
-| improve-plan | no | no | yes | yes |
-| plan-from-brainstorm | no | no | yes | yes |
+| implement-plan | no | yes | no | yes |
+| improve-plan | no | no | no | yes |
+| plan-from-brainstorm | no | no | no | yes |
 | plan-review | no | yes | no | no |
 | review | no | yes | no | no |
+| rs-implement-plan | no | no | yes | no |
+| rs-implement-plan-as-codex | no | no | yes | no |
+| rs-improve-plan | no | no | yes | no |
+| rs-plan-from-brainstorm | no | no | yes | no |
+| rs-brainstorming | no | no | yes | no |
 
 Command locations and implementation details:
 
 - OpenCode commands: `.opencode/commands/implement-plan.md`,
   `.opencode/commands/plan-review.md`, and `.opencode/commands/review.md`.
-- Claude Code commands: `.claude/commands/implement-plan.md`,
-  `.claude/commands/improve-plan.md`, and
-  `.claude/commands/plan-from-brainstorm.md`.
+- Claude Code commands: `.claude/commands/rs-implement-plan.md`,
+  `.claude/commands/rs-implement-plan-as-codex.md`,
+  `.claude/commands/rs-improve-plan.md`, and
+  `.claude/commands/rs-plan-from-brainstorm.md`, plus
+  `.claude/commands/rs-brainstorming.md`. The Codex variant delegates all worker
+  calls through `codex@openai-codex` as `/codex:rescue --wait --fresh --model
+  gpt-5.6-terra --effort high`.
 - Codex workflows are skills under `.codex/skills/`; there is no
   `.codex/commands/` directory.
 
@@ -98,7 +107,7 @@ Plugin configuration details:
 | deepagents-typescript-quickstart | yes | yes | yes | yes |
 | ecosystem-primer | yes | yes | yes | yes |
 | eval-engineering | yes | yes | yes | yes |
-| grill-me | no | no | yes | no |
+| rs-brainstorming | no | no | no | yes |
 | langchain-dependencies | yes | yes | yes | yes |
 | langchain-fundamentals | yes | yes | yes | yes |
 | langchain-middleware | yes | yes | yes | yes |
@@ -115,10 +124,10 @@ Plugin configuration details:
 | managed-deep-agents | yes | yes | yes | yes |
 | swarm | no | no | yes | no |
 
-The Claude `grill-me` skill stores its session files under
+The Claude `rs-brainstorming` command stores its session files under
 `docs/brainstorming/`, not at the repository root, named
 `<YYYYMonDD>_brainstorm_v<N>_<topic-slug>.md`. The Claude
-`plan-from-brainstorm` command writes to `docs/plans/` as
+`rs-plan-from-brainstorm` command writes to `docs/plans/` as
 `<date>_plan_<topic-slug>_v<N>.md`, reusing the brainstorm's date but
 deriving its own 1-3-word topic slug from what the plan implements rather
 than copying the brainstorm's slug verbatim.
