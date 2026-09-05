@@ -1,3 +1,10 @@
 [agents]
 enabled = true
 max_concurrent_threads_per_session = 6
+
+[marketplaces.ponytail]
+source_type = "git"
+source = "https://github.com/DietrichGebert/ponytail.git"
+
+[plugins."ponytail@ponytail"]
+enabled = true

@@ -1,169 +1,77 @@
 # CLAUDE.md
 
-Any change anywhere in the repository must update `AGENTS.md`, `CLAUDE.md`, and
-`.github/copilot-instructions.md` together. This repository uses OpenCode,
-GitHub Copilot and the GitHub CLI (`gh`), Claude Code, and Codex. If a plugin,
-skill, or other tool is added, removed, renamed, or changed, update the
-Commands, Plugins, and other provider-column inventory tables in
-`ai_tools_tables.md` in the same change. Inventory tables use one item-name
-column followed by one `yes`/`no` column per provider.
+Update this file only for changes to the application codebase. Changes to
+AI-harness tooling (Claude commands, skills, agents, plugins, and similar
+configuration) do not require updating it.
 
-The Codex catalog includes the shared framework skill sets. Its `phoenix-cli`,
-`phoenix-evals`, and `phoenix-tracing` packages are concrete project-local
-copies converted to Codex-valid frontmatter, not symlinks.
+## Application
 
-The maintained application is under `app/`; the root Dockerfile and requirements
-export are compatibility files (the old root `main.py` CLI shim is gone). Shared
-modules in `app/src/` provide environment/model config,
-shared models/errors, policy-parameterized Brave and trafilatura search, the
-OpenAI boundary, API delivery, and optional tracing. Shared modules never
-import an agent. There is no `prompt_logs` persistence path or `database.py`;
-Postgres is used only by the LangGraph checkpointer. The app declares the
-`psycopg[binary]` dependency directly, so it does not require a system
-`libpq` installation.
+`app/` is the maintained application; root Docker and requirements files are
+compatibility files. `app/src/` is the Python import root. Shared modules are
+`config.py`, `models.py`, `search.py`, `llm.py`, `tracing.py`, and `api.py`;
+they never import agents. There is no `database.py` or `prompt_logs` path;
+Postgres is only the LangGraph checkpointer and uses `psycopg[binary]`.
 
-Repository-local Codex skills live under `.codex/skills/`. Claude's
-`rs-brainstorming` workflow is a custom command under `.claude/commands/`.
-Explicit
-`$plan-from-brainstorm`, `$improve-plan`, and `$implement-plan` skills are the
-Codex equivalents of the three Claude `rs-` planning commands; they use this
-repository's `explorer`, `critic`, and `builder` roles rather than
-Claude-specific agent types. Claude's `rs-brainstorming` classifies work as
-spike, bounded, or architectural. Its architectural path uses a
-similarity-grouped batch adversarial design-review workflow by default, persists
-an artifact under `docs/brainstorming/`, and requires user approval before
-`$plan-from-brainstorm`.
-Claude's `rs-plan-from-brainstorm` right-sizes plans: minor, contained changes
-receive lightweight scope, change, and validation steps with self-review;
-coherent multi-file subsystem work receives a standard file-level task plan and
-one correctness review; major or risky work receives ordered commits and three
-subagent reviews before approval and `$implement-plan` handoff.
-Claude's `rs-improve-plan` and `rs-implement-plan` preserve or infer that plan
-tier. `rs-implement-plan` uses TDD for every behavior change: lightweight work
-is direct implementation with self-review, standard work adds one correctness
-review, and full work adds task audits and broad three-lens review; only
-genuinely independent full-plan tasks may be delegated.
-Claude's `rs-implement-plan-as-codex` is the Codex-plugin variant: all delegated
-implementation and review work uses `/codex:rescue` with `gpt-5.6-terra` and high
-effort, and it fails closed rather than falling back to a Claude agent or model.
-The repository-local Codex `critic` agent is read-only and uses
-`gpt-5.6-terra` with high reasoning effort.
-The Codex catalog includes the shared framework skill sets and project-local
-documentation, Phoenix, and planning skills. Its Phoenix packages are
-concrete project-local copies converted to Codex-valid frontmatter, not
-symlinks.
-The project-local `docs-manage`, `docs-search`, and `fetch-url` skills manage
-and query the Grounded Docs index or fetch a single page; they require Node.js
-22 or newer and `npx`.
-The enabled Context7 plugin provides `resolve-library-id` followed by `query-docs`
-for version-specific external library documentation. Use it when a planning,
-implementation, or review decision depends on current external APIs; local code,
-lockfiles, and guidance remain authoritative for repository behavior.
-The removed Phoenix skill catalog has no OpenCode `skills.paths` entry or Claude
-symlink consumers. The maintained Phoenix skills are the concrete project-local
-Codex packages under `.codex/skills/`.
-No external documentation MCP server is configured in the repository.
-
-Agent-specific code is under `app/src/agents/<name>/`. Each agent keeps its
-prompts in `prompts.py`, one constant per node or purpose, and its static data
-in `consts/`. Config is hardcoded dataclasses, not env-parsed getters; per-node
-settings are passed explicitly into calls.
-
-The API runs this orchestrator:
+Agents live in `app/src/agents/<name>/` with graph, state, config, prompts,
+`consts/`, and node modules. Put fixed editorial data in `consts/`, prompts in
+the agent's `prompts.py`, and hardcoded tuning in dataclass config. Nodes return
+partial state dictionaries without mutation. Preserve shared-to-agent imports.
 
 ```text
 START -> classify -> expert -> END
                   \-> chat   -> END
-```
 
-Geopolitical turns invoke the compiled expert inside the `expert` node; other
-turns use the orchestrator's own uncited chat branch. Do not pass the expert
-compiled graph directly to `add_node`: its `{query, sources, answer}` state
-shares no key with the orchestrator, and LangGraph can silently discard the
-child result. The expert remains separately available in Studio and is:
-
-```text
 START -> search_and_fetch -> answer -> END
 ```
 
-The expert performs three Brave batches, extracts allow-listed pages with
-trafilatura, and sends only fetched article text to one streamed plain-text
-model call. Its search, source, and model failures are hard errors with no
-degraded fallback.
+The orchestrator invokes the expert from its own `expert` node, not with
+`add_node`, because their state schemas share no key. The expert makes exactly
+three Brave batches, extracts allow-listed pages with trafilatura, and makes one
+streamed plain-text model call. Expert search, source, and model failures are
+hard errors; do not add degraded fallbacks.
 
-The API accepts exactly `{query, thread_id}`. The query is normalized and capped
-at 2,000 characters; `thread_id` is required, shape-validated, and identifies
-the persistent conversation. API startup requires `DATABASE_URL`, opens a
-Postgres connection pool, runs `AsyncPostgresSaver.setup()`, and compiles the
-orchestrator with that checkpointer. `build_graph()` itself remains usable
-without a checkpointer for tests and `langgraph dev`.
+The API accepts only `{query, thread_id}`. It normalizes/caps query at 2,000
+characters, validates a required thread id of at most 100 characters, and uses
+an `AsyncPostgresSaver` initialized at startup. `build_graph()` remains usable
+without a checkpointer for tests and Studio. Stream with `updates` and
+`messages` plus `subgraphs=True`; emit answer-node AI text only. SSE events are
+`progress`, `token`, `result`, and `error`; known pipeline statuses are 422,
+503, and 502. The UI sanitizes Markdown and persists the thread id in
+`localStorage`. `_generate` emits at most 50,000 characters but drains upstream
+output so checkpoint writes finish.
 
-`api.py` drives the graph with
-`stream_mode=["updates", "messages"]` and `subgraphs=True`, handling
-`(namespace, mode, data)` events. It forwards route updates and only answer
-messages from nodes `answer` and `chat`, narrowed to `AIMessage` and flattened
-with `BaseMessage.text()`. Progress is Thinking, branch-specific Searching,
-then Writing. Pipeline failures arrive inside SSE `error` frames rather than
-changing the committed HTTP status; known pipeline failure statuses are 422,
-503, and 502, with 500 as the generic fallback. The frontend sanitizes rendered
-Markdown,
-keeps its thread id in `localStorage`, sends it on every request, and offers a
-**New chat** button that creates a fresh id.
+## Operations and validation
 
-`_generate` caps emitted output at 50,000 characters but drains an over-limit
-upstream stream before emitting the capped result so checkpoint writes can
-complete.
+There is one root `.env`; never modify it or commit secrets. It supplies API,
+tests, Studio, and Compose. API startup requires `OPENAI_API_KEY`,
+`BRAVE_SEARCH_KEY`, and `DATABASE_URL`; tracing is optional, idempotent, and
+unredacted when enabled. Compose has Postgres, backend, frontend, and Phoenix;
+development ports are 8082, 3001, 55432, and loopback 6006. Production uses TLS
+and fail-closed Basic Auth for `/` and `/api/`.
 
-The base Compose file has a Postgres `pg_isready` healthcheck. The backend
-depends on Postgres being healthy and Phoenix being started. Development ports
-are frontend 8082, backend 3001, PostgreSQL 55432, and Phoenix 6006 via the
-loopback-bound dev override; the base service keeps Phoenix internal and its
-data in a `phoenix_data` volume. Production adds health checks, restart
-policies, TLS mounting, and nginx Basic Auth covering both `/` and `/api/`.
-With `AUTH_REQUIRED=true`, missing credentials fail closed; local development
-remains unauthenticated.
-
-From `app/`, use `uv sync --locked --dev`, `make test`,
+Run application commands from `app/`: `uv sync --locked --dev`, `make test`,
 `make integration_tests`, `make lint`, `make format`, and `langgraph dev`.
-CI uses the app lockfile and does not reference root requirements; Compose
-builds `./app` and `./frontend`.
-From the repository root, the generic `make logs-SERVICE` target follows any
-Compose service, such as `frontend`, `backend`, `postgres`, or `phoenix`, while
-`make services` lists all services in the effective Compose configuration.
+From the root, use `make logs-SERVICE` and `make services`. Manual quality work
+is `app/tests/manual_quality/basic_agent_evaluation.py`; it is advisory and not
+part of pytest or CI.
 
-The old `app/evals/` pilot is gone. Manual quality evaluation consists of
-`app/tests/manual_quality/basic_agent_evaluation.py` and `cases.json`. The
-script records one live expert experiment and one overlapping
-full-orchestrator experiment in Phoenix. It does not render scores or judge
-explanations itself: follow the Phoenix client experiment links and review
-each experiment's native Evaluations view, which contains the score, label,
-explanation, task output, and linked traces. The terminal retains only
-Phoenix SDK progress/summary output and CLI diagnostics. It is not collected by
-pytest, run in CI, or copied into runtime images. Live dependency or judge
-failures are invalid and unscored; results are advisory. Phoenix retains
-unredacted prompts, fetched article text, answers, and judge data. Run it with:
+## Working principles
 
-```bash
-docker compose up -d phoenix
-cd app
-PHOENIX_COLLECTOR_ENDPOINT=http://127.0.0.1:6006/v1/traces \
-  uv run python tests/manual_quality/basic_agent_evaluation.py
-```
+1. **Think before coding.** State assumptions, surface ambiguity and tradeoffs,
+   ask when the intended behavior is unclear, and trace the actual flow before
+   choosing an implementation.
+2. **Reuse before writing.** First determine whether the behavior is needed;
+   then prefer an existing local pattern, the standard library, a platform
+   feature, or an installed dependency. Otherwise write the minimum code.
+3. **Fix root causes with the smallest correct change.** Check related callers
+   and fix shared behavior once when appropriate. Match local style, avoid
+   unrelated cleanup, and remove only code made unused by your own change.
+4. **Do not optimize away essential rigor.** Validate inputs at trust boundaries
+   and preserve error handling that prevents data loss. Keep security,
+   accessibility, and explicitly requested behavior intact.
+5. **Define and verify the goal.** Non-trivial behavior changes need a focused,
+   runnable test or check that fails when the logic regresses. Run the narrowest
+   useful validation until it passes, and use a brief step-and-check plan for
+   multi-step work.
 
-The root `.env` supplies `OPENAI_API_KEY` and `BRAVE_SEARCH_KEY` for this run;
-`DATABASE_URL` is not required because the manual orchestrator graph has no
-checkpointer.
-
-There is exactly one `.env` at the repo root. `config.py` resolves it by
-absolute path, `app/langgraph.json` points to `../.env`, and Compose's
-`env_file: .env` reads it. There is no separate `app/.env`.
-`OPENAI_API_KEY`, `BRAVE_SEARCH_KEY`, and `DATABASE_URL` are required by the
-API; Compose derives the database URL from `POSTGRES_PASSWORD`. Phoenix
-tracing is optional and controlled by `PHOENIX_COLLECTOR_ENDPOINT` and
-`PHOENIX_PROJECT_NAME`; tracing never raises and exported spans contain full
-prompt/response text without redaction. CORS origins and rate limits are
-hardcoded in `api.py`, not read from the environment.
-
-Keep changes local, return partial state updates, preserve import direction,
-add focused tests, avoid `.env` and secrets, and update all three guidance
-files for every codebase change.
+These principles favor caution over speed; keep trivial changes proportionate.

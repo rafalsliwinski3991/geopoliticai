@@ -5,6 +5,8 @@ __pycache__/
 .mypy_cache/
 .pytest_cache/
 *.egg-info/
+.codex/.tmp/
+.codex/plugins/
 tmp
 docs/cc_logs/
 docs/opencode_logs/
