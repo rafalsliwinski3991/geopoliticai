@@ -186,6 +186,9 @@ you accepted, plus the run-log path.
 
 - You are the only writer. If you catch yourself asking a review agent to change something, stop —
   they have no write tools and the request will fail.
+- Every Claude subagent in this run — the Step 2 scout and every Step 3 lens — is spawned with
+  `model: "sonnet"` (Sonnet 5). No exceptions. The Step 5 Codex critic is not a Claude subagent and
+  keeps `gpt-5.6-terra`.
 - Reviewers must be told to message their findings. An idle notification tells you a teammate
   stopped; it does not carry its output.
 - The Step 5 Codex critique is mandatory at every tier, and it is the last thing that happens before

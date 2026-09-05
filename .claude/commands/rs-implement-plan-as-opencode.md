@@ -1,5 +1,5 @@
 ---
-description: "Implement a written plan through the OpenCode plugin with GPT-5.6 Luna, using TDD and tiered review"
+description: "Implement a written plan through the OpenCode plugin with GLM 5.3 Flash, using TDD and tiered review"
 argument-hint: <plan-path>
 allowed-tools: Read, Write, Edit, Glob, Grep, Bash, Skill
 ---
@@ -15,7 +15,7 @@ plugin. Do not use Claude Code's native Agent tool or any named Claude subagent.
 Every delegated task must use this exact command shape:
 
 ```text
-/opencode:rescue --wait --fresh --model gpt-5.6-luna --agent build <task brief>
+/opencode:rescue --wait --fresh --model glm-5.3-flash --agent build <task brief>
 ```
 
 Use `--agent build` for an implementer and `--agent plan` for a read-only scout,
@@ -154,7 +154,7 @@ Do not push or open a pull request.
 
 ## Standing rules
 
-- Every dispatched worker uses `gpt-5.6-luna` through `/opencode:rescue`; no
+- Every dispatched worker uses `glm-5.3-flash` through `/opencode:rescue`; no
   exceptions and no fallback model.
 - Never run a native Claude Code subagent for this command.
 - Never mark a behavior change complete without a recorded failing focused test,
