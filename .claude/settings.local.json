@@ -10,6 +10,8 @@
   },
   "enabledPlugins": {
     "context7@claude-plugins-official": true,
-    "codex@openai-codex": true
+    "codex@openai-codex": true,
+    "ponytail@ponytail": true,
+    "opencode@tasict-opencode-plugin-cc": true
   }
 }

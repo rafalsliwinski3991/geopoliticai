@@ -29,16 +29,17 @@ related AI-tool configuration, update this file in the same change.
   path is currently configured in `opencode.jsonc`.
 - `.codex/skills/` - Codex skill catalog containing shared and project-local
   skills.
-- `.codex/config.toml` - project agent and thread settings.
+- `.codex/config.toml` - project agent, thread, marketplace, and plugin
+  settings.
+- `.codex/plugins/` and `.codex/.tmp/` - ignored, repository-scoped Codex
+  plugin and marketplace caches when Codex runs with `CODEX_HOME=.codex`.
 - `.codex/agents/` - four Codex role definitions.
 - `.claude/skills/` - Claude skills; `swarm` exists only here. The removed Phoenix
   symlinks are no longer consumers of the deleted `.agents/skills/` catalog.
-- `.opencode/oh-my-opencode-slim.jsonc` - OpenCode plugin presets and agent
-  roles; the active plugin is `oh-my-opencode-slim@latest`.
-- `.opencode/commands/` - OpenCode commands: `review`, `plan-review`, and
-  `implement-plan`.
+- `.opencode/commands/` - OpenCode commands: `review` and `plan-review`.
 - `.claude/commands/` - Claude Code commands: `rs-plan-from-brainstorm`,
-  `rs-improve-plan`, `rs-implement-plan`, and `rs-implement-plan-as-codex`.
+  `rs-improve-plan`, `rs-implement-plan`, `rs-implement-plan-as-codex`, and
+  `rs-implement-plan-as-opencode`.
 - `.github/workflows/` - GitHub Actions workflows, including unit tests; the
   repository also uses the GitHub CLI (`gh`) for permitted repository tasks.
 - `.claude/hooks/` and `.codex/hooks/` - contain no active hook
@@ -50,28 +51,33 @@ related AI-tool configuration, update this file in the same change.
 
 | Command or workflow | GitHub Copilot | OpenCode | Claude | Codex |
 |---|---:|---:|---:|---:|
-| implement-plan | no | yes | no | yes |
+| implement-plan | no | no | no | yes |
 | improve-plan | no | no | no | yes |
 | plan-from-brainstorm | no | no | no | yes |
 | plan-review | no | yes | no | no |
 | review | no | yes | no | no |
 | rs-implement-plan | no | no | yes | no |
 | rs-implement-plan-as-codex | no | no | yes | no |
+| rs-implement-plan-as-opencode | no | no | yes | no |
 | rs-improve-plan | no | no | yes | no |
 | rs-plan-from-brainstorm | no | no | yes | no |
 | rs-brainstorming | no | no | yes | no |
 
 Command locations and implementation details:
 
-- OpenCode commands: `.opencode/commands/implement-plan.md`,
-  `.opencode/commands/plan-review.md`, and `.opencode/commands/review.md`.
+- OpenCode commands: `.opencode/commands/plan-review.md` and
+  `.opencode/commands/review.md`.
 - Claude Code commands: `.claude/commands/rs-implement-plan.md`,
   `.claude/commands/rs-implement-plan-as-codex.md`,
+  `.claude/commands/rs-implement-plan-as-opencode.md`,
   `.claude/commands/rs-improve-plan.md`, and
   `.claude/commands/rs-plan-from-brainstorm.md`, plus
   `.claude/commands/rs-brainstorming.md`. The Codex variant delegates all worker
   calls through `codex@openai-codex` as `/codex:rescue --wait --fresh --model
-  gpt-5.6-terra --effort high`.
+  gpt-5.6-terra --effort high`. The OpenCode variant delegates all worker calls
+  through `opencode@tasict-opencode-plugin-cc` as `/opencode:rescue --wait
+  --fresh --model gpt-5.6-luna`, with `--agent build` for implementers and
+  `--agent plan` for read-only scouts/auditors/reviewers.
 - Codex workflows are skills under `.codex/skills/`; there is no
   `.codex/commands/` directory.
 
@@ -84,21 +90,25 @@ commands and has no repository-local command definition.
 
 | Plugin | GitHub Copilot | OpenCode | Claude | Codex |
 |---|---:|---:|---:|---:|
-| oh-my-opencode-slim@latest | no | yes | no | no |
 | context7@claude-plugins-official | no | no | yes | no |
 | codex@openai-codex | no | no | yes | no |
+| opencode@tasict-opencode-plugin-cc | no | no | yes | no |
+| ponytail@ponytail | no | no | no | yes |
 
 Plugin configuration details:
 
-- `oh-my-opencode-slim@latest` is configured in `opencode.jsonc`; its
-  `opencode-go` presets are defined in `.opencode/oh-my-opencode-slim.jsonc`.
-- `context7@claude-plugins-official` and `codex@openai-codex` are enabled in
+- `context7@claude-plugins-official`, `codex@openai-codex`, and
+  `opencode@tasict-opencode-plugin-cc` are enabled in
   `.claude/settings.local.json`.
+- `ponytail@ponytail` version 4.9.0 is enabled only for this repository in
+  `.codex/config.toml`. Launch it with `CODEX_HOME="$PWD/.codex" codex` so
+  Codex uses the repository-local marketplace and plugin cache; do not add it
+  to `~/.codex`. In a new Codex thread, use `/hooks` to review and explicitly
+  trust Ponytail's two lifecycle hooks.
 - Context7 provides `resolve-library-id` and `query-docs` MCP tools for
   version-specific external library documentation; Claude workflows use them when
   current external APIs affect a decision.
-- No repository-local plugin configuration is present for GitHub Copilot or
-  Codex.
+- No repository-local plugin configuration is present for GitHub Copilot.
 
 ## Skills
 

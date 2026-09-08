@@ -1,7 +1,7 @@
 ---
 description: Audit a written plan against the current repo and rewrite it as a new, self-contained, right-sized version with a changelog
 argument-hint: <plan-path>
-allowed-tools: Read, Write, Edit, Glob, Grep, Bash, Agent
+allowed-tools: Read, Write, Edit, Glob, Grep, Bash, Agent, Skill
 ---
 
 Plan: $1
@@ -136,15 +136,49 @@ finished work). If a finding was surfaced but you rejected it, say so here with 
 way `rs-plan-from-brainstorm`'s "Open questions and rejected objections" section works — do not silently
 drop a reviewer's finding.
 
-Do not start implementing. Do not spawn a fourth agent.
+Do not start implementing. Beyond the scout and the tier's lenses, the only remaining agent is the
+Step 5 Codex critic.
 
-## Step 5 — Report
+## Step 5 — Codex critique of the new version
+
+Runs for **every tier** — lightweight, standard, and full — once the new version exists on disk.
+
+Dispatch exactly one read-only Codex critic:
+
+```text
+/codex:rescue --wait --fresh --model gpt-5.6-terra --effort high <task brief>
+```
+
+Brief it as a **read-only reviewer**: it must not modify files, create commits, or run destructive
+commands. Give it the new plan path, the previous version's path, and the plan tier, and tell it to
+read the actual repository files rather than trusting either plan's description of the code. Ask for
+severity-ranked findings only — each with a file path, a line in the plan or the source, and a
+concrete failure scenario — covering: proposed steps that would not apply cleanly to the current
+code, missing or wrong ordering, unstated assumptions, validation the plan claims but does not
+specify, and scope the plan enlarged beyond its tier. No praise, no summary, no style notes.
+
+Tell the critic to verify any external framework or library claim through Context7 rather than from
+memory: resolve the exact library and installed version with `resolve-library-id`, then use
+`query-docs`. Installed versions and checked-out repository code remain the local constraints — it
+must not use Context7 for facts those sources already establish. If Context7 is unavailable to the
+critic, it must say so and mark such findings as unverified instead of asserting them.
+
+If the plugin, model, or high-effort setting is unavailable, stop and report the blocker; never fall
+back to a Claude agent or another model.
+
+Write the critic's findings into the run log verbatim. Then fix the new version in place: apply
+every finding you accept, and add a changelog entry for each — accepted or rejected, with the reason
+— to the same **Changelog (v`<N>` → v`<N+1>`)** section. Do not create a further version file for
+this round, and do not dispatch a second critic.
+
+## Step 6 — Report
 
 Report to the user: the previous plan path, the new plan path, the version bump, the plan tier,
 and the applicable review summary. For a standard or full plan, include the scout's top-line status
 (how many tasks or commits are already applied / partially applied / not started); for a lightweight
 plan, include the direct pre-flight and self-review result instead. Also report how many findings
-each applicable lens raised and how many you accepted, plus the run-log path.
+each applicable lens raised and how many you accepted, how many the Codex critic raised and how many
+you accepted, plus the run-log path.
 
 ---
 
@@ -152,8 +186,13 @@ each applicable lens raised and how many you accepted, plus the run-log path.
 
 - You are the only writer. If you catch yourself asking a review agent to change something, stop —
   they have no write tools and the request will fail.
+- Every Claude subagent in this run — the Step 2 scout and every Step 3 lens — is spawned with
+  `model: "sonnet"` (Sonnet 5). No exceptions. The Step 5 Codex critic is not a Claude subagent and
+  keeps `gpt-5.6-terra`.
 - Reviewers must be told to message their findings. An idle notification tells you a teammate
   stopped; it does not carry its output.
+- The Step 5 Codex critique is mandatory at every tier, and it is the last thing that happens before
+  the report.
 - Where the plan and the code disagree, the code wins, and the disagreement goes in the changelog.
 - The new version is a complete replacement, never a diff or a pointer back to the old one.
 - Never claim a finding was addressed unless the new version's text actually reflects it.

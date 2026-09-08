@@ -1,5 +1,5 @@
 ---
-description: "Implement a written plan through the Codex plugin with GPT-5.6 Terra at high effort, using TDD and tiered review"
+description: "Implement a written plan through the Codex plugin with GPT-5.6 Luna at high effort, using TDD and tiered review"
 argument-hint: <plan-path>
 allowed-tools: Read, Write, Edit, Glob, Grep, Bash, Skill
 ---
@@ -15,7 +15,7 @@ use Claude Code's native Agent tool or any named Claude subagent.
 Every delegated task must use this exact command shape:
 
 ```text
-/codex:rescue --wait --fresh --model gpt-5.6-terra --effort high <task brief>
+/codex:rescue --wait --fresh --model gpt-5.6-luna --effort high <task brief>
 ```
 
 State in every task brief whether the Codex worker is an implementer or a read-only
@@ -148,7 +148,7 @@ Do not push or open a pull request.
 
 ## Standing rules
 
-- Every dispatched worker uses `gpt-5.6-terra` with `--effort high` through
+- Every dispatched worker uses `gpt-5.6-luna` with `--effort max` through
   `/codex:rescue`; no exceptions and no fallback model.
 - Never run a native Claude Code subagent for this command.
 - Never mark a behavior change complete without a recorded failing focused test,

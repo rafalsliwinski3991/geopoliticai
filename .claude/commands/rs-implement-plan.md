@@ -178,6 +178,8 @@ Do not push. Do not open a pull request.
 
 ## Standing rules
 
+- Every spawned subagent (`scout`, `auditor`, implementer, and all three lenses) runs on Sonnet 5 at
+  high effort; no other model or effort level.
 - You are the only writer. If you catch yourself asking a review agent to change something, stop —
   they have no write tools and the request will fail.
 - Reviewers must be told to message their findings. An idle notification tells you a teammate
