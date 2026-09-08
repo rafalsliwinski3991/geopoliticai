@@ -1,4 +1,5 @@
 ---
+name: rs-implement-plan-as-codex
 description: "Implement a written plan through the Codex plugin with GPT-5.6 Luna at high effort, using TDD and tiered review"
 argument-hint: <plan-path>
 allowed-tools: Read, Write, Edit, Glob, Grep, Bash, Skill
