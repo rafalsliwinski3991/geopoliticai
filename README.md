@@ -4,16 +4,19 @@ An English-language geopolitical research assistant built on LangGraph.
 
 ## What it is
 
-The API runs an orchestrator that routes each turn to one of two branches:
+The API runs an orchestrator that routes each turn to one of three branches:
 
 ```text
 START -> classify -> expert -> END
                   \-> chat   -> END
+                  \-> reporter -> END
 ```
 
 Geopolitical turns are delegated to the nested expert. Other turns are answered
 by the orchestrator's own general-assistant branch, without source citations.
-The static frontend does not distinguish the two answer paths.
+Report requests pause at an outline the user approves, revises, or cancels by
+typing a reply; the static frontend distinguishes the finished report, giving
+it Download .md and Copy actions.
 
 The expert remains separately available in LangGraph Studio and is a two-node
 graph:
@@ -29,7 +32,9 @@ call. Search, extraction, and model failures are surfaced to the client; the
 expert has no degraded or fabricated fallback.
 
 Conversation threads are persisted by a required Postgres LangGraph
-checkpointer. The API request body is `{query, thread_id}`. The frontend keeps
+checkpointer. The API request body is exactly one of `{query, thread_id}` or
+`{resume, thread_id}`, where the resume carries the reply to a paused outline;
+both fields are normalized and capped at 2,000 characters. The frontend keeps
 the thread id in `localStorage` across reloads and its **New chat** control
 mints a new thread.
 
@@ -50,5 +55,7 @@ The maintained application lives under `app/`. `app/README.md` documents setup,
 the API contract, and the static English frontend; `app/src/` is the Python
 import root. The FastAPI app exposes `GET /api/health`,
 `POST /api/run_pipeline/stream`, and `/` for the frontend, with no synchronous
-pipeline route. The streaming endpoint emits SSE `progress`, `token`, `result`,
-and `error` events.
+pipeline route. The streaming endpoint emits SSE `progress`, `token`, `pause`,
+`result`, and `error` events, with `result` carrying `kind` and `truncated`;
+a paused turn ends with `pause` and no `result` until the user's reply
+resumes it.

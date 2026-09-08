@@ -93,6 +93,7 @@ def test_paused_resets_in_new_chat_on_result_and_on_error() -> None:
     assert new_chat < send_message
     assert "this.paused = false" in html[new_chat:send_message]
     assert html[result_branch:catch_block].count("this.paused = false") == 2
+    assert "this.paused = false" in _between(html, "} catch (error) {", "} finally {")
 
 
 def test_409_error_status_has_friendly_copy() -> None:

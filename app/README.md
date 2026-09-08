@@ -1,12 +1,14 @@
 # GeopoliticAI
 
 This application puts an orchestrator in front of the two-node expert agent.
-The orchestrator routes geopolitical turns to a nested expert and other turns
-to its own conversational branch:
+The orchestrator routes geopolitical turns to a nested expert, report requests
+to a reporter that pauses at an outline the user approves, revises, or cancels
+by typing a reply, and other turns to its own conversational branch:
 
 ```text
 START -> classify -> expert -> END
                   \-> chat   -> END
+                  \-> reporter -> END
 ```
 
 The expert remains independently available in LangGraph Studio. Its graph is:
@@ -21,9 +23,10 @@ the retrieved text to one streamed OpenAI plain-text call. Search, extraction,
 and model failures are surfaced to clients; the expert has no degraded answer.
 
 Agent-specific code lives under `src/agents/`; shared retrieval and LLM
-boundaries are in `src/search.py` and `src/llm.py`. The API accepts
-`{query, thread_id}` and persists conversation state in a required Postgres
-checkpointer. The static frontend is English-only, keeps its thread id in
+boundaries are in `src/search.py` and `src/llm.py`. The API accepts exactly
+one of `{query, thread_id}` or `{resume, thread_id}`, the resume carrying the
+reply to a paused outline, and persists conversation state in a required
+Postgres checkpointer. The static frontend is English-only, keeps its thread id in
 `localStorage`, and provides a **New chat** button.
 
 With Compose, Postgres has a `pg_isready` healthcheck and the backend waits for
@@ -33,11 +36,13 @@ The checkpointer uses the direct `psycopg[binary]` dependency, which does not
 require a system `libpq` installation. There is no `prompt_logs` persistence
 path or `src/database.py`; Postgres is used only for LangGraph checkpoints.
 
-The streaming endpoint caps emitted answers at 50,000 characters while
-`_generate` drains the upstream stream after reaching the cap, before emitting
-the result, so checkpoint writes can complete. Production nginx applies Basic
-Auth to both `/` and `/api/`; `AUTH_REQUIRED=true` fails closed without
-credentials, while local development remains unauthenticated.
+The streaming endpoint caps emitted answers at 50,000 characters, stamped with
+a `truncated` flag on the `result`, while `_generate` drains the upstream
+stream after reaching the cap, before emitting the result, so checkpoint
+writes can complete; the reporter's separate `MAX_REPORT_CHARS = 50_000`
+bounds what is stored in the thread, not what is delivered. Production nginx
+applies Basic Auth to both `/` and `/api/`; `AUTH_REQUIRED=true` fails closed
+without credentials, while local development remains unauthenticated.
 
 ## Getting started
 
