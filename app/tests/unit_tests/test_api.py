@@ -8,12 +8,16 @@ from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.types import Command
 
 import api
-from agents.orchestrator import build_initial_orchestrator_state
+from agents.orchestrator import build_graph, build_initial_orchestrator_state
 from agents.orchestrator.consts.progress import SEARCH_PROGRESS
 from agents.reporter import ResumeIntent
 from agents.reporter.config import MAX_REPORT_CHARS
-from agents.reporter.consts.messages import CANCELLED_NOTICE, REVISION_CAP_NOTICE
-from agents.reporter.consts.progress import REPORT_PROGRESS
+from agents.reporter.consts.messages import (
+    CANCELLED_NOTICE,
+    NO_MATERIAL_NOTICE,
+    REVISION_CAP_NOTICE,
+)
+from agents.reporter.consts.progress import OUTLINE_PROGRESS, REPORT_PROGRESS
 from models import (
     LLMInvocationError,
     NoSourcesError,
@@ -181,7 +185,9 @@ async def test_a_notice_is_the_answer_and_emits_no_answer_progress(
 
 
 @pytest.mark.anyio
-@pytest.mark.parametrize("notice", [CANCELLED_NOTICE, REVISION_CAP_NOTICE])
+@pytest.mark.parametrize(
+    "notice", [NO_MATERIAL_NOTICE, CANCELLED_NOTICE, REVISION_CAP_NOTICE]
+)
 async def test_cancel_and_revision_cap_resumes_end_as_answers(
     client: httpx.AsyncClient, notice: str
 ) -> None:
@@ -295,6 +301,23 @@ async def test_resume_with_no_pending_pause_is_a_409_error_frame(
     assert [event["type"] for event in events] == ["progress", "error"]
     assert events[-1]["status"] == 409
     assert not called
+
+
+@pytest.mark.anyio
+async def test_pending_pause_returns_none_without_a_checkpointer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The real `_pending_pause` answers None for a checkpointer-less graph.
+
+    A graph with no checkpointer — `build_graph()` under `make test` and
+    `langgraph dev` — cannot hold a pause at all, so None is the true answer,
+    not a fallback. If the `checkpointer` guard ever regressed, `aget_state`
+    would raise `ValueError("No checkpointer set")` and a stale resume would
+    surface as a 500 instead of the intended 409.
+    """
+
+    monkeypatch.setattr(api, "graph", build_graph())
+    assert await api._pending_pause("t-1") is None
 
 
 @pytest.mark.anyio
@@ -659,7 +682,10 @@ async def test_astream_answer_streams_the_answer_of_either_branch(
     here patches it out. The geopolitical case is the regression guard for
     nested-subgraph streaming: without `subgraphs=True` it yields nothing at
     all. The report case drives the real graph with a checkpointer and
-    asserts the pause event that `updates` mode carries.
+    asserts the pause event that `updates` mode carries — and, because the
+    namespace guards in `test_orchestrator_graph.py` never call
+    `_astream_answer`, its report case is also the only API-level guard for
+    §4.18's namespace rule on either branch.
     """
     import importlib
 
@@ -718,6 +744,16 @@ async def test_astream_answer_streams_the_answer_of_either_branch(
     if destination == "other":
         assert [kind for kind, _ in events if kind == "progress"] == []
     if destination == "report":
+        # API-level guard for §4.18's namespace rule: the raw-graph tests in
+        # test_orchestrator_graph.py never call `_astream_answer`, so without
+        # these two assertions a regression here would reach the browser
+        # untested. Exactly one pause — the `__interrupt__` is emitted twice,
+        # and only the empty-namespace copy may pass the `updates` filter —
+        # and OUTLINE_PROGRESS must survive the `custom` branch, which must
+        # NOT apply that filter: the frame arrives under the non-empty child
+        # namespace `('reporter:<uuid>',)` and a namespace filter here drops
+        # every reporter progress frame silently, with no error at all.
         pauses = [value for kind, value in events if kind == "pause"]
-        assert pauses
+        assert len(pauses) == 1
         assert pauses[0]["outline"] == ["Section one"]
+        assert ("progress", OUTLINE_PROGRESS) in events
