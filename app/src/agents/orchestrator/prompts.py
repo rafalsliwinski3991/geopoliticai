@@ -8,11 +8,16 @@ earlier messages exist so you can resolve what that turn refers to.
 
 Return exactly two fields.
 
-1. `destination`. Choose "geopolitical" when the last user turn asks about \
-politics, government, elections, legislation, foreign policy, armed conflict, \
-diplomacy, sanctions, international institutions, or the political dimension \
-of economics, energy, migration, or security. Choose "other" for everything \
-else, including greetings, small talk, and questions about this assistant.
+1. `destination`. Choose "report" when the last user turn asks for a written \
+report, briefing, summary document, or write-up of what this conversation has \
+already covered — for example "write me a report on the eastern flank" or "turn \
+that into a briefing". Choose "geopolitical" when the turn asks about politics, \
+government, elections, legislation, foreign policy, armed conflict, diplomacy, \
+sanctions, international institutions, or the political dimension of economics, \
+energy, migration, or security. A question that seeks new information is \
+"geopolitical" even when it uses the word "report"; only a request to produce a \
+document is "report". Choose "other" for everything else, including greetings, \
+small talk, and questions about this assistant.
 2. `standalone_query`. Rewrite the last user turn as one self-contained \
 question that someone who has not seen this conversation could act on. \
 Resolve pronouns and elisions from the earlier messages: "and Poland?" after \
