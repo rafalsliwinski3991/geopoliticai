@@ -611,7 +611,11 @@
                     } else if (data.type === "error") {
                       this.progressLog = [];
                       this.streamingDraft = "";
-                      this.paused = false;
+                      // Only a 409 proves the server holds no pause; any
+                      // other error may be transient and leave the thread
+                      // resumable. A wrongly-kept `paused` self-corrects:
+                      // a stale {resume} draws a 409, which clears it here.
+                      if (data.status === 409) this.paused = false;
                       this.messages.push({ role: "error", text: friendlySseError(data), timestamp: new Date() });
                       this.scrollToBottom();
                     }
@@ -623,7 +627,9 @@
             } catch (error) {
               this.progressLog = [];
               this.streamingDraft = "";
-              this.paused = false;
+              // Keep `paused`: a dropped connection or timeout says nothing
+              // about server state — the server never heard it. Clearing it
+              // would turn the retry into a {query} and kill the report.
               const isTimeout = error?.name === "AbortError";
               this.messages.push({
                 role: "error",

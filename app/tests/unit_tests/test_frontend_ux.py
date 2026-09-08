@@ -80,20 +80,32 @@ def test_input_posts_resume_body_while_paused_and_query_body_otherwise() -> None
     assert "{ query: text, thread_id: this.threadId }" in html
 
 
-def test_paused_resets_in_new_chat_on_result_and_on_error() -> None:
-    """A stale `paused` would post `resume` into a thread that has already
-    moved on, so every exit path clears it: `newChat()`, the `result`
-    branch, the `error` branch, and the network `catch`."""
+def test_paused_is_cleared_only_where_the_pause_is_really_gone() -> None:
+    """`paused` decides whether the next input posts `{resume}` or
+    `{query}`, and a `{query}` destroys the pending report. So it is
+    cleared only where the pause is provably gone: `newChat()`, a
+    delivered `result`, and an SSE error with status 409. Any other
+    error may be transient and leave the thread resumable, and a
+    wrongly-kept `paused` self-corrects in one round trip: the stale
+    `{resume}` draws a 409, which is the case that clears it. The
+    network `catch` clears nothing — a dropped connection or timeout
+    says nothing about server state."""
     html = FRONTEND_HTML.read_text()
     new_chat = html.find("newChat() {")
     send_message = html.find("async sendMessage()")
-    result_branch = html.find('data.type === "result"')
-    catch_block = html.find("} catch (error) {")
-    assert -1 not in (new_chat, send_message, result_branch, catch_block)
+    assert -1 not in (new_chat, send_message)
     assert new_chat < send_message
     assert "this.paused = false" in html[new_chat:send_message]
-    assert html[result_branch:catch_block].count("this.paused = false") == 2
-    assert "this.paused = false" in _between(html, "} catch (error) {", "} finally {")
+    assert "this.paused = false" in _between(
+        html, 'data.type === "result"', 'data.type === "error"'
+    )
+
+    error_branch = _between(html, 'data.type === "error"', "} finally {")
+    assert error_branch.count("this.paused = false") == 1
+    assert "if (data.status === 409) this.paused = false;" in error_branch
+
+    network_catch = _between(html, "} catch (error) {", "} finally {")
+    assert "this.paused = false" not in network_catch
 
 
 def test_409_error_status_has_friendly_copy() -> None:
