@@ -9,7 +9,9 @@ configuration) do not require updating it.
 `app/` is the maintained application; root Docker and requirements files are
 compatibility files. `app/src/` is the Python import root. Shared modules are
 `config.py`, `models.py`, `search.py`, `llm.py`, `tracing.py`, and `api.py`;
-they never import agents. There is no `database.py` or `prompt_logs` path;
+they never import agents except `api.py`, the delivery layer, which imports
+the compiled orchestrator graph and the reporter's resume classifier. There is
+no `database.py` or `prompt_logs` path;
 Postgres is only the LangGraph checkpointer and uses `psycopg[binary]`.
 
 Agents live in `app/src/agents/<name>/` with graph, state, config, prompts,
@@ -20,25 +22,37 @@ partial state dictionaries without mutation. Preserve shared-to-agent imports.
 ```text
 START -> classify -> expert -> END
                   \-> chat   -> END
+                  \-> reporter -> END
 
 START -> search_and_fetch -> answer -> END
 ```
 
-The orchestrator invokes the expert from its own `expert` node, not with
-`add_node`, because their state schemas share no key. The expert makes exactly
+The orchestrator invokes the expert and the reporter from their own nodes, not
+with `add_node`, because neither child's state schema shares a key with the
+orchestrator's. The expert makes exactly
 three Brave batches, extracts allow-listed pages with trafilatura, and makes one
 streamed plain-text model call. Expert search, source, and model failures are
 hard errors; do not add degraded fallbacks.
 
-The API accepts only `{query, thread_id}`. It normalizes/caps query at 2,000
-characters, validates a required thread id of at most 100 characters, and uses
+The API accepts exactly one of `{query, thread_id}` or `{resume, thread_id}`.
+It normalizes/caps both `query` and `resume` at 2,000 characters, validates a
+required thread id of at most 100 characters, and uses
 an `AsyncPostgresSaver` initialized at startup. `build_graph()` remains usable
-without a checkpointer for tests and Studio. Stream with `updates` and
-`messages` plus `subgraphs=True`; emit answer-node AI text only. SSE events are
-`progress`, `token`, `result`, and `error`; known pipeline statuses are 422,
-503, and 502. The UI sanitizes Markdown and persists the thread id in
-`localStorage`. `_generate` emits at most 50,000 characters but drains upstream
-output so checkpoint writes finish.
+without a checkpointer for tests and Studio. Stream with `custom`, `updates`,
+and `messages` plus `subgraphs=True`; nodes emit their own progress through a
+`StreamWriter`, and the delivery layer forwards custom payloads without
+filtering them by namespace, because a subgraph's custom events arrive under
+the child namespace while `updates` are filtered to the empty one. Emit
+answer-node AI text, except that the `reporter` node's refusal, cancel, and
+revision-cap paths make no model call: that node emits its own `notice` custom
+event and the delivery layer turns it into answer text. SSE events are
+`progress`, `token`, `pause`, `result`, and `error`, with `result` carrying
+`kind` and `truncated`; known pipeline statuses are 422, 503, 502, and 409.
+The UI sanitizes Markdown and persists the thread id in
+`localStorage`. `_generate` emits at most 50,000 characters, marked with the
+`truncated` flag, but drains upstream output so checkpoint writes finish; the
+reporter's separate `MAX_REPORT_CHARS = 50_000` bounds what is stored in the
+thread.
 
 ## Operations and validation
 

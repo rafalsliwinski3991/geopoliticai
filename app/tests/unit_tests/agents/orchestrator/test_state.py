@@ -27,3 +27,9 @@ def test_route_decision_rejects_unknown_destination() -> None:
         RouteDecision.model_validate(
             {"destination": "unknown", "standalone_query": "question"}
         )
+    assert (
+        RouteDecision.model_validate(
+            {"destination": "report", "standalone_query": "question"}
+        ).destination
+        == "report"
+    )

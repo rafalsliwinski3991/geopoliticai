@@ -3,7 +3,8 @@
   "dependencies": ["."],
   "graphs": {
     "expert": "./src/agents/expert/graph.py:graph",
-    "orchestrator": "./src/agents/orchestrator/graph.py:graph"
+    "orchestrator": "./src/agents/orchestrator/graph.py:graph",
+    "reporter": "./src/agents/reporter/graph.py:graph"
   },
   "env": "../.env",
   "image_distro": "wolfi"

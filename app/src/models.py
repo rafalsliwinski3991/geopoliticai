@@ -35,6 +35,17 @@ class LLMInvocationError(PipelineError):
     status: ClassVar[int] = 502
 
 
+class ReportNotPendingError(PipelineError):
+    """A resume arrived for a thread with no report awaiting a decision.
+
+    Probe finding: `Command(resume=...)` on an un-paused thread emits nothing at
+    all, which the empty-output branch would report as `502 "The model returned
+    an empty answer."` — a model failure blamed for a routing problem.
+    """
+
+    status: ClassVar[int] = 409
+
+
 @dataclass(frozen=True)
 class Candidate:
     """An allow-listed search result, before its page is fetched."""

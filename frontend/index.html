@@ -340,7 +340,27 @@
 
           <template x-for="(msg, i) in messages" :key="i">
             <div class="message-wrap" :class="msg.role">
-              <div class="message" :class="msg.role" x-html="renderContent(msg)"></div>
+              <div class="message outline" x-show="msg.role === 'outline'">
+                <div class="outline-caption" x-text="t('outline_caption')"></div>
+                <ol>
+                  <template x-for="(section, s) in (msg.outline || [])" :key="s">
+                    <li x-text="section"></li>
+                  </template>
+                </ol>
+                <p class="outline-notice" x-show="msg.notice" x-text="msg.notice"></p>
+                <p class="outline-hint" x-text="t('outline_hint')"></p>
+              </div>
+              <div
+                class="message"
+                :class="msg.role"
+                x-show="msg.role !== 'outline'"
+                x-html="msg.role === 'outline' ? '' : renderContent(msg)"
+              ></div>
+              <p class="truncated-notice" x-show="msg.report && msg.truncated" x-text="t('truncated_notice')"></p>
+              <div class="report-actions" x-show="msg.report">
+                <button type="button" @click="downloadReport(msg)" x-text="t('download_md')"></button>
+                <button type="button" @click="copyReport(msg, $event)" x-text="t('copy')"></button>
+              </div>
               <div class="message-time" x-text="formatTime(msg.timestamp)"></div>
             </div>
           </template>
@@ -385,7 +405,7 @@
             x-model.trim="input"
             type="text"
             maxlength="2000"
-            :placeholder="t('placeholder')"
+            :placeholder="paused ? t('paused_placeholder') : t('placeholder')"
             :aria-label="t('placeholder')"
             :disabled="isLoading"
           />
@@ -422,6 +442,14 @@
         analyzing: "Analyzing",
         analyzing_dots: "Analyzing...",
         drafting: "Drafting answer...",
+        outline_caption: "Proposed report outline",
+        outline_hint: "Reply to approve, change, or cancel — or just ask something else.",
+        paused_placeholder: "Approve, ask for a change, or cancel...",
+        download_md: "Download .md",
+        truncated_notice: "This report was too long to display in full — the download contains what was received, not the whole report.",
+        copy: "Copy",
+        copied: "Copied",
+        error_409: "That report is no longer waiting for a decision. Ask again to start a new one.",
         timeout_error: "⏱ Backend did not respond within 10 minutes.",
         connection_error: (msg) => `Connection error: ${msg}`,
         server_error: (code) => `Server error (${code}).`,
@@ -437,6 +465,7 @@
       // message; anything else falls back to that message, then to a generic.
       function friendlySseError(data) {
         const friendly = {
+          409: I18N.error_409,
           422: I18N.error_422,
           503: I18N.error_503,
           502: I18N.error_502,
@@ -450,6 +479,7 @@
           isLoading: false,
           progressLog: [],
           streamingDraft: "",
+          paused: false,
           messages: [],
           threadId: "",
 
@@ -495,6 +525,7 @@
             this.storeThreadId(this.threadId);
             this.progressLog = [];
             this.streamingDraft = "";
+            this.paused = false;
             this.messages = [{ role: "bot", text: I18N.welcome, timestamp: new Date() }];
             this.$nextTick(() => this.$refs.input?.focus());
           },
@@ -521,7 +552,11 @@
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 signal: controller.signal,
-                body: JSON.stringify({ query: text, thread_id: this.threadId }),
+                body: JSON.stringify(
+                  this.paused
+                    ? { resume: text, thread_id: this.threadId }
+                    : { query: text, thread_id: this.threadId }
+                ),
               });
 
               if (!response.ok) {
@@ -550,14 +585,37 @@
                     } else if (data.type === "token") {
                       this.streamingDraft += data.content;
                       this.scrollToBottom();
+                    } else if (data.type === "pause") {
+                      this.progressLog = [];
+                      this.streamingDraft = "";
+                      this.paused = true;
+                      this.messages.push({
+                        role: "outline",
+                        outline: data.outline || [],
+                        notice: data.notice || "",
+                        timestamp: new Date(),
+                      });
+                      this.scrollToBottom();
                     } else if (data.type === "result") {
                       this.progressLog = [];
                       this.streamingDraft = "";
-                      this.messages.push({ role: "bot", text: data.output, timestamp: new Date() });
+                      this.paused = false;
+                      this.messages.push({
+                        role: "bot",
+                        text: data.output,
+                        report: data.kind === "report",
+                        truncated: data.truncated === true,
+                        timestamp: new Date(),
+                      });
                       this.scrollToBottom();
                     } else if (data.type === "error") {
                       this.progressLog = [];
                       this.streamingDraft = "";
+                      // Only a 409 proves the server holds no pause; any
+                      // other error may be transient and leave the thread
+                      // resumable. A wrongly-kept `paused` self-corrects:
+                      // a stale {resume} draws a 409, which clears it here.
+                      if (data.status === 409) this.paused = false;
                       this.messages.push({ role: "error", text: friendlySseError(data), timestamp: new Date() });
                       this.scrollToBottom();
                     }
@@ -569,6 +627,9 @@
             } catch (error) {
               this.progressLog = [];
               this.streamingDraft = "";
+              // Keep `paused`: a dropped connection or timeout says nothing
+              // about server state — the server never heard it. Clearing it
+              // would turn the retry into a {query} and kill the report.
               const isTimeout = error?.name === "AbortError";
               this.messages.push({
                 role: "error",
@@ -600,6 +661,45 @@
           fillExample(text) {
             this.input = text;
             this.$nextTick(() => this.$refs.input?.focus());
+          },
+
+          downloadReport(msg) {
+            // The notice in the UI is not enough: the file leaves the browser
+            // and is read later, on its own, by someone who never saw the page.
+            const body = msg.truncated
+              ? `${msg.text ?? ""}\n\n> [This report was truncated at 50,000 characters.]\n`
+              : (msg.text ?? "");
+            const blob = new Blob([body], { type: "text/markdown;charset=utf-8" });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement("a");
+            link.href = url;
+            const stamp = new Date().toISOString().slice(0, 10);
+            // A clipped report must not land on disk under a name that implies
+            // it is whole.
+            link.download = msg.truncated
+              ? `report-${stamp}-partial.md`
+              : `report-${stamp}.md`;
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            URL.revokeObjectURL(url);
+          },
+
+          async copyReport(msg, event) {
+            // `currentTarget` is only set while the event is being dispatched;
+            // reading it after the `await` below yields null and the button
+            // never says "Copied". Capture it first.
+            const button = event?.currentTarget;
+            try {
+              await navigator.clipboard.writeText(msg.text ?? "");
+              if (button) {
+                button.textContent = this.t("copied");
+                setTimeout(() => (button.textContent = this.t("copy")), 1500);
+              }
+            } catch {
+              // Clipboard blocked (insecure context, denied permission). The
+              // download button still works, so this needs no error bubble.
+            }
           },
 
           renderContent(msg) {
