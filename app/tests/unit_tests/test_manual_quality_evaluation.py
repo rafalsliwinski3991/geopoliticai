@@ -5,6 +5,7 @@ from __future__ import annotations
 import ast
 import importlib.util
 import json
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -17,6 +18,9 @@ def _load_runner() -> Any:
     spec = importlib.util.spec_from_file_location("basic_agent_evaluation", RUNNER_PATH)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
+    # Registered before exec so dataclasses and other runtime machinery can
+    # resolve the module by name.
+    sys.modules["basic_agent_evaluation"] = module
     spec.loader.exec_module(module)
     return module
 
