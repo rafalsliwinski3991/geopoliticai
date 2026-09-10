@@ -24,7 +24,17 @@ from tracing import init_tracing
 CASES_PATH = Path(__file__).with_name("cases.json")
 CASE_NAMES = {"expert", "orchestrator"}
 CASE_FIELDS = {"id", "input", "output", "metadata"}
-JUDGE_MODEL = "gpt-4o-mini-2024-07-18"
+# Pinned, not `openrouter/free`. Phoenix's OpenAI adapter sends the model name
+# it was configured with and never reads the resolved model back off the
+# response (`phoenix/evals/llm/adapters/openai/adapter.py`), so a router id
+# would leave every recorded score attributed to the router and make scores
+# uncomparable across runs. On retirement, swap for another free model that
+# supports EITHER structured outputs or tool calling: the adapter tries a
+# strict `json_schema` first and falls back to tool calling on a
+# `BadRequestError` (`phoenix/evals/llm/adapters/openai/adapter.py:149-186`),
+# so the viable pool is wider than a `structured_outputs` filter suggests.
+JUDGE_MODEL = "nvidia/nemotron-3-super-120b-a12b:free"
+OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 PHOENIX_TIMEOUT_SECONDS = 180
 # Annotated to Phoenix's declared `dict[str, float | int]` choices type:
 # an inferred `dict[str, int]` is rejected under `--strict` because `dict`
@@ -369,12 +379,21 @@ async def main() -> None:
     """Run the expert and orchestrator checks against live dependencies."""
     cases = load_cases()
     init_environment()
-    require_env((*REQUIRED_ENV_VARS, "PHOENIX_COLLECTOR_ENDPOINT"))
+    require_env(
+        (*REQUIRED_ENV_VARS, "PHOENIX_COLLECTOR_ENDPOINT", "OPENROUTER_API_KEY")
+    )
     if not init_tracing():
         raise RuntimeError("Phoenix tracing could not be initialized")
 
     client = AsyncClient(base_url=phoenix_base_url())
-    judge = LLM(provider="openai", model=JUDGE_MODEL)
+    # `require_env` above has already rejected an unset or empty value, so the
+    # direct read is safe and needs no wrapper of its own.
+    judge = LLM(
+        provider="openai",
+        model=JUDGE_MODEL,
+        api_key=os.environ["OPENROUTER_API_KEY"],
+        base_url=OPENROUTER_BASE_URL,
+    )
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
 
     await run_experiment_case(
