@@ -43,5 +43,99 @@
       "version": 1
     },
     "agent": "orchestrator"
+  },
+  {
+    "agent": "expert",
+    "id": "expert-niger-coup-v1",
+    "input": {
+      "query": "What has been the regional impact of the 2023 Niger coup on West African security cooperation, and how did ECOWAS's response unfold?"
+    },
+    "output": {
+      "must_address": [
+        "How the coup collapsed ECOWAS-led security cooperation with Niger",
+        "What sanctions and diplomatic pressure ECOWAS adopted and how they ended"
+      ]
+    },
+    "metadata": {
+      "case": "niger-coup",
+      "version": 1
+    }
+  },
+  {
+    "agent": "expert",
+    "id": "expert-taiwan-strait-v1",
+    "input": {
+      "query": "How did China's military posture around the Taiwan Strait change after Pelosi's 2022 visit, and what did the PLA's follow-up drills establish?"
+    },
+    "output": {
+      "must_address": [
+        "The large-scale drills China launched in response to the 2022 visit",
+        "The post-2022 normalization of routine PLA military pressure around the strait"
+      ]
+    },
+    "metadata": {
+      "case": "taiwan-strait",
+      "version": 1
+    }
+  },
+  {
+    "agent": "orchestrator",
+    "id": "orchestrator-eu-sanctions-follow-up-v1",
+    "input": {
+      "messages": [
+        {
+          "role": "user",
+          "content": "What sanctions did the EU impose on Russia after the 2022 invasion?"
+        },
+        {
+          "role": "assistant",
+          "content": "The EU adopted successive sanctions packages covering energy imports, SWIFT access for major banks, asset freezes, and export controls."
+        },
+        {
+          "role": "user",
+          "content": "Have any of them been lifted?"
+        }
+      ]
+    },
+    "output": {
+      "destination": "geopolitical",
+      "standalone_query_intent": "Which of the EU sanctions imposed on Russia after the 2022 invasion have been lifted or eased, and when"
+    },
+    "metadata": {
+      "case": "eu-sanctions-follow-up",
+      "version": 1
+    }
+  },
+  {
+    "agent": "reporter",
+    "id": "reporter-vilnius-summit-v1",
+    "input": {
+      "messages": [
+        {
+          "role": "user",
+          "content": "What did NATO's 2023 Vilnius summit decide about Ukraine's membership path?"
+        },
+        {
+          "role": "assistant",
+          "content": "The 2023 Vilnius communiqu\u00e9 dropped the MAP requirement and extended an invitation to Ukraine 'when allies agree and conditions are met' \u2014 see [BBC](https://www.bbc.com/news/world-europe-66139629) and [Reuters](https://www.reuters.com/world/europe/nato-leaders-summit-2023-07-12/). The allies also removed the requirement for a Membership Action Plan from Ukraine's path."
+        },
+        {
+          "role": "user",
+          "content": "Write me a report on what the Vilnius summit decided about Ukraine's membership and what the allies' conditions were."
+        }
+      ],
+      "resume_actions": [
+        {
+          "action": "approve"
+        }
+      ]
+    },
+    "output": {
+      "outline_intent": "What the 2023 Vilnius summit decided about Ukraine's membership path and which conditions the allies attached, drawn only from the conversation's researched material"
+    },
+    "metadata": {
+      "case": "vilnius-summit-report",
+      "version": 1
+    }
   }
 ]

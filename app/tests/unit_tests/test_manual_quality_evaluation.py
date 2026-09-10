@@ -178,9 +178,17 @@ def test_load_cases_accepts_the_real_shipped_cases_json() -> None:
     assert isinstance(cases, list)
     assert {case["id"] for case in cases} == {
         "expert-finland-nato-v1",
+        "expert-niger-coup-v1",
+        "expert-taiwan-strait-v1",
         "orchestrator-sweden-follow-up-v1",
+        "orchestrator-eu-sanctions-follow-up-v1",
+        "reporter-vilnius-summit-v1",
     }
-    assert {case["agent"] for case in cases} == {"expert", "orchestrator"}
+    assert {case["agent"] for case in cases} == {
+        "expert",
+        "orchestrator",
+        "reporter",
+    }
 
 
 def test_route_correct_accepts_a_case_expecting_other() -> None:
