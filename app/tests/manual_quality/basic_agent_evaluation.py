@@ -385,7 +385,13 @@ async def main() -> None:
     if not init_tracing():
         raise RuntimeError("Phoenix tracing could not be initialized")
 
-    client = AsyncClient(base_url=phoenix_base_url())
+    # `PHOENIX_API_KEY` is unset locally, where the Compose Phoenix is open, and
+    # set from a repository secret in the workflow, where Phoenix Cloud requires
+    # it. One client either way: Cloud speaks the same API as the container.
+    client = AsyncClient(
+        base_url=phoenix_base_url(),
+        api_key=os.getenv("PHOENIX_API_KEY") or None,
+    )
     # `require_env` above has already rejected an unset or empty value, so the
     # direct read is safe and needs no wrapper of its own.
     judge = LLM(
