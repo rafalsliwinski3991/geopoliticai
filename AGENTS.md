@@ -66,8 +66,11 @@ and fail-closed Basic Auth for `/` and `/api/`.
 Run application commands from `app/`: `uv sync --locked --dev`, `make test`,
 `make integration_tests`, `make lint`, `make format`, and `langgraph dev`.
 From the root, use `make logs-SERVICE` and `make services`. Manual quality work
-is `app/tests/manual_quality/basic_agent_evaluation.py`; it is advisory and not
-part of pytest or CI.
+is `app/tests/manual_quality/basic_agent_evaluation.py`; it is advisory, outside
+pytest, and reachable in CI only through the dispatch-only `evals.yml` workflow,
+which gates no merge. The eval script additionally requires `OPENROUTER_API_KEY`
+and records its scores to local Phoenix or Phoenix Cloud depending on
+`PHOENIX_COLLECTOR_ENDPOINT` and `PHOENIX_API_KEY`.
 
 ## Working principles
 
