@@ -10,6 +10,7 @@ RUNNER_PATH = Path(__file__).parents[1] / "manual_quality" / "basic_agent_evalua
 
 def test_live_results_use_phoenix_native_output() -> None:
     """Keep result presentation in Phoenix instead of custom terminal rendering."""
+    # Arrange
     tree = ast.parse(RUNNER_PATH.read_text(encoding="utf-8"))
     function_names = {
         node.name for node in ast.walk(tree) if isinstance(node, ast.FunctionDef)
@@ -31,6 +32,7 @@ def test_live_results_use_phoenix_native_output() -> None:
         and node.func.attr == "evaluate_experiment"
     ]
 
+    # Assert
     assert "validate_and_print_evaluations" not in function_names
     assert "expert experiment:" not in printed_output
     assert "orchestrator experiment:" not in printed_output

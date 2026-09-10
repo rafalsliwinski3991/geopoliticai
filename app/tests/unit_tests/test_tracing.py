@@ -24,23 +24,28 @@ def _install_fake_phoenix_otel(
 
 
 def test_init_tracing_noop_when_endpoint_unset(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Arrange
     monkeypatch.delenv("PHOENIX_COLLECTOR_ENDPOINT", raising=False)
+    # Act + Assert
     assert tracing.init_tracing() is False
     assert tracing._initialized is False
 
 
 def test_init_tracing_swallows_register_errors(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Arrange
     monkeypatch.setenv("PHOENIX_COLLECTOR_ENDPOINT", "http://unroutable.invalid:6006")
 
     def _boom(**_kwargs: object) -> None:
         raise RuntimeError("collector unreachable")
 
     _install_fake_phoenix_otel(monkeypatch, _boom)
+    # Act + Assert
     assert tracing.init_tracing() is False
     assert tracing._initialized is False
 
 
 def test_init_tracing_registers_once(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Arrange
     monkeypatch.setenv("PHOENIX_COLLECTOR_ENDPOINT", "http://phoenix:6006")
     monkeypatch.setenv("PHOENIX_PROJECT_NAME", "test-project")
     calls: list[dict[str, object]] = []
@@ -50,6 +55,7 @@ def test_init_tracing_registers_once(monkeypatch: pytest.MonkeyPatch) -> None:
 
     _install_fake_phoenix_otel(monkeypatch, _spy)
 
+    # Act + Assert
     assert tracing.init_tracing() is True
     assert len(calls) == 1
     assert calls[0]["endpoint"] == "http://phoenix:6006"

@@ -11,6 +11,7 @@ node_module = importlib.import_module("agents.orchestrator.nodes.expert")
 async def test_expert_invokes_child_with_only_rewritten_pipeline_state(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # Arrange
     received: list[dict[str, Any]] = []
 
     class FakeExpertGraph:
@@ -19,6 +20,7 @@ async def test_expert_invokes_child_with_only_rewritten_pipeline_state(
             return {"answer": "grounded answer"}
 
     monkeypatch.setattr(node_module, "expert_graph", FakeExpertGraph())
+    # Act
     result = await node_module.expert(
         {
             "messages": [HumanMessage("raw user turn")],
@@ -27,5 +29,6 @@ async def test_expert_invokes_child_with_only_rewritten_pipeline_state(
         }
     )
 
+    # Assert
     assert received == [{"query": "rewritten user turn", "sources": [], "answer": ""}]
     assert result == {"messages": [AIMessage("grounded answer")]}

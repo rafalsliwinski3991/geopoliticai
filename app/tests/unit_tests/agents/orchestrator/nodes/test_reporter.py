@@ -41,14 +41,17 @@ def _chat_thread_without_citations() -> list[Any]:
 async def test_a_fresh_request_without_material_refuses_without_invoking_the_child(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # Arrange
     child = _FakeChild()
     monkeypatch.setattr(node_module, "reporter_graph", child)
     events: list[Any] = []
 
+    # Act
     result = await node_module.reporter(
         {"messages": [HumanMessage("write me a report")]}, writer=events.append
     )
 
+    # Assert
     assert result["messages"][0].text() == NO_MATERIAL_NOTICE
     assert events == [{"type": "notice", "text": NO_MATERIAL_NOTICE}]
     assert child.calls == []
@@ -58,14 +61,17 @@ async def test_a_fresh_request_without_material_refuses_without_invoking_the_chi
 async def test_a_chat_only_thread_without_citations_refuses_without_invoking_the_child(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # Arrange
     child = _FakeChild()
     monkeypatch.setattr(node_module, "reporter_graph", child)
     events: list[Any] = []
 
+    # Act
     result = await node_module.reporter(
         {"messages": _chat_thread_without_citations()}, writer=events.append
     )
 
+    # Assert
     assert result["messages"][0].text() == NO_MATERIAL_NOTICE
     assert events == [{"type": "notice", "text": NO_MATERIAL_NOTICE}]
     assert child.calls == []
@@ -75,14 +81,17 @@ async def test_a_chat_only_thread_without_citations_refuses_without_invoking_the
 async def test_a_thread_with_a_cited_answer_invokes_the_child(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # Arrange
     child = _FakeChild(
         result={"report": "The report.", "outline": ["One"], "notice": ""}
     )
     monkeypatch.setattr(node_module, "reporter_graph", child)
     events: list[Any] = []
 
+    # Act
     await node_module.reporter({"messages": _chat_thread()}, writer=events.append)
 
+    # Assert
     assert child.calls
 
 
@@ -90,6 +99,7 @@ async def test_a_thread_with_a_cited_answer_invokes_the_child(
 async def test_the_child_receives_a_transcript_with_both_turns(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # Arrange
     child = _FakeChild(
         result={"report": "The report.", "outline": ["One"], "notice": ""}
     )
@@ -100,8 +110,10 @@ async def test_the_child_receives_a_transcript_with_both_turns(
         AIMessage("first answer [1](https://example.com)"),
     ]
 
+    # Act
     await node_module.reporter({"messages": messages}, writer=events.append)
 
+    # Assert
     transcript = child.calls[0]["transcript"]
     assert "User: first question" in transcript
     assert "Assistant: first answer" in transcript
@@ -111,16 +123,19 @@ async def test_the_child_receives_a_transcript_with_both_turns(
 async def test_a_report_result_is_returned_and_emits_nothing(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # Arrange
     child = _FakeChild(
         result={"report": "The report.", "outline": ["One"], "notice": ""}
     )
     monkeypatch.setattr(node_module, "reporter_graph", child)
     events: list[Any] = []
 
+    # Act
     result = await node_module.reporter(
         {"messages": _chat_thread()}, writer=events.append
     )
 
+    # Assert
     assert result["messages"][0].text() == "The report."
     assert events == []
 
@@ -129,14 +144,17 @@ async def test_a_report_result_is_returned_and_emits_nothing(
 async def test_a_notice_result_is_returned_and_emitted(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # Arrange
     child = _FakeChild(result={"report": "", "outline": [], "notice": "Refused."})
     monkeypatch.setattr(node_module, "reporter_graph", child)
     events: list[Any] = []
 
+    # Act
     result = await node_module.reporter(
         {"messages": _chat_thread()}, writer=events.append
     )
 
+    # Assert
     assert result["messages"][0].text() == "Refused."
     assert events == [{"type": "notice", "text": "Refused."}]
 
@@ -145,13 +163,16 @@ async def test_a_notice_result_is_returned_and_emitted(
 async def test_a_result_with_neither_report_nor_notice_returns_the_cancel_notice(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # Arrange
     child = _FakeChild(result={"report": "", "outline": [], "notice": ""})
     monkeypatch.setattr(node_module, "reporter_graph", child)
     events: list[Any] = []
 
+    # Act
     result = await node_module.reporter(
         {"messages": _chat_thread()}, writer=events.append
     )
 
+    # Assert
     assert result["messages"][0].text() == CANCELLED_NOTICE
     assert events == [{"type": "notice", "text": CANCELLED_NOTICE}]

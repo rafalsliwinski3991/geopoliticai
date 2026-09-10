@@ -38,10 +38,13 @@ def _patch_interrupt(monkeypatch: pytest.MonkeyPatch, reply: Any) -> dict[str, A
 async def test_an_approve_decision_keeps_the_revision_count(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # Arrange
     _patch_interrupt(monkeypatch, {"action": "approve"})
 
+    # Act
     result = await node_module.gate(_state())
 
+    # Assert
     assert result == {"decision": "approve", "instruction": "", "notice": ""}
 
 
@@ -49,10 +52,13 @@ async def test_an_approve_decision_keeps_the_revision_count(
 async def test_a_revise_decision_bumps_revisions_and_carries_the_instruction(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # Arrange
     _patch_interrupt(monkeypatch, {"action": "revise", "instruction": "drop section 3"})
 
+    # Act
     result = await node_module.gate(_state(revisions=2))
 
+    # Assert
     assert result == {
         "decision": "revise",
         "instruction": "drop section 3",
@@ -65,10 +71,13 @@ async def test_a_revise_decision_bumps_revisions_and_carries_the_instruction(
 async def test_a_cancel_decision_records_the_cancelled_notice(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # Arrange
     _patch_interrupt(monkeypatch, {"action": "cancel"})
 
+    # Act
     result = await node_module.gate(_state())
 
+    # Assert
     assert result["decision"] == "cancel"
     assert result["notice"] == CANCELLED_NOTICE
     assert "revisions" not in result
@@ -78,10 +87,13 @@ async def test_a_cancel_decision_records_the_cancelled_notice(
 async def test_a_bare_string_reply_is_decoded_as_a_revise(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # Arrange
     _patch_interrupt(monkeypatch, "make it shorter")
 
+    # Act
     result = await node_module.gate(_state(revisions=0))
 
+    # Assert
     assert result["decision"] == "revise"
     assert result["instruction"] == "make it shorter"
     assert result["revisions"] == 1
@@ -91,11 +103,14 @@ async def test_a_bare_string_reply_is_decoded_as_a_revise(
 async def test_the_pause_payload_has_exactly_the_pause_keys_and_a_copied_outline(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # Arrange
     state = _state(notice="A notice.")
     received = _patch_interrupt(monkeypatch, {"action": "approve"})
 
+    # Act
     await node_module.gate(state)
 
+    # Assert
     payload = received["value"]
     assert set(payload) == {
         "outline",
@@ -116,6 +131,7 @@ async def test_the_pause_payload_has_exactly_the_pause_keys_and_a_copied_outline
 def test_gate_takes_no_writer_parameter_because_it_would_refire_on_every_resume() -> (
     None
 ):
+    # Assert
     # Rule 3 of the StreamWriter contract: everything above `interrupt()`
     # re-runs on each resume round, so a writer call in this node would emit
     # again every time the user revises.

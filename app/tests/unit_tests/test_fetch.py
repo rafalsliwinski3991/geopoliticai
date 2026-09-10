@@ -25,6 +25,7 @@ def _html(
 
 @pytest.mark.anyio
 async def test_fetch_failure_drops_source(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Arrange
     async def fake_get(
         self: httpx.AsyncClient,
         url: str,
@@ -35,6 +36,7 @@ async def test_fetch_failure_drops_source(monkeypatch: pytest.MonkeyPatch) -> No
         raise httpx.ReadTimeout("slow")
 
     monkeypatch.setattr(httpx.AsyncClient, "get", fake_get)
+    # Act + Assert
     assert (
         await search._fetch_and_extract(
             httpx.AsyncClient(),
@@ -49,6 +51,7 @@ async def test_fetch_failure_drops_source(monkeypatch: pytest.MonkeyPatch) -> No
 async def test_mixed_extraction_failure_does_not_abort(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # Arrange
     calls: list[str] = []
 
     async def fake_get(
@@ -84,7 +87,9 @@ async def test_mixed_extraction_failure_does_not_abort(
         return _html("bad" if url.endswith("bad") else _HTML)
 
     monkeypatch.setattr(httpx.AsyncClient, "get", body_get)
+    # Act
     sources = await search.fetch_sources(candidates, EXPERT_SOURCES)
+    # Assert
     assert len(sources) == 1 and sources[0].url.endswith("good")
 
 
@@ -92,6 +97,7 @@ async def test_mixed_extraction_failure_does_not_abort(
 async def test_all_extraction_failures_return_empty(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # Arrange
     async def fake_get(
         self: httpx.AsyncClient,
         url: str,
@@ -107,6 +113,7 @@ async def test_all_extraction_failures_return_empty(
     monkeypatch.setattr(httpx.AsyncClient, "get", fake_get)
     monkeypatch.setattr(search, "_extract_text", extract)
     candidates = [Candidate("a", "https://reuters.com/a", "reuters.com")]
+    # Act + Assert
     assert await search.fetch_sources(candidates, EXPERT_SOURCES) == []
 
 
@@ -114,6 +121,7 @@ async def test_all_extraction_failures_return_empty(
 async def test_off_list_redirect_is_not_requested(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # Arrange
     requested: list[str] = []
 
     async def fake_get(
@@ -131,11 +139,13 @@ async def test_off_list_redirect_is_not_requested(
         )
 
     monkeypatch.setattr(httpx.AsyncClient, "get", fake_get)
+    # Act
     source = await search._fetch_and_extract(
         httpx.AsyncClient(),
         Candidate("t", "https://reuters.com/start", "reuters.com"),
         EXPERT_SOURCES,
     )
+    # Assert
     assert source is None
     assert requested == ["https://reuters.com/start"]
 
@@ -144,6 +154,7 @@ async def test_off_list_redirect_is_not_requested(
 async def test_same_domain_redirect_is_followed(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # Arrange
     requested: list[str] = []
 
     async def fake_get(
@@ -163,17 +174,20 @@ async def test_same_domain_redirect_is_followed(
 
     monkeypatch.setattr(httpx.AsyncClient, "get", fake_get)
     monkeypatch.setattr(search, "_extract_text", extract)
+    # Act
     source = await search._fetch_and_extract(
         httpx.AsyncClient(),
         Candidate("t", "https://reuters.com/start", "reuters.com"),
         EXPERT_SOURCES,
     )
+    # Assert
     assert source is not None
     assert requested == ["https://reuters.com/start", "https://reuters.com/final"]
 
 
 @pytest.mark.anyio
 async def test_redirect_limit_is_enforced(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Arrange
     requested: list[str] = []
 
     async def fake_get(
@@ -194,17 +208,20 @@ async def test_redirect_limit_is_enforced(monkeypatch: pytest.MonkeyPatch) -> No
         )
 
     monkeypatch.setattr(httpx.AsyncClient, "get", fake_get)
+    # Act
     source = await search._fetch_and_extract(
         httpx.AsyncClient(),
         Candidate("t", "https://reuters.com/start", "reuters.com"),
         EXPERT_SOURCES,
     )
+    # Assert
     assert source is None
     assert len(requested) == search.MAX_REDIRECTS + 1
 
 
 @pytest.mark.anyio
 async def test_fetch_caps_extracted_text(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Arrange
     async def fake_get(
         self: httpx.AsyncClient,
         url: str,
@@ -220,9 +237,11 @@ async def test_fetch_caps_extracted_text(monkeypatch: pytest.MonkeyPatch) -> Non
         return "x " * 40_000
 
     monkeypatch.setattr(search, "_extract_text", extract)
+    # Act
     source = await search._fetch_and_extract(
         httpx.AsyncClient(),
         Candidate("t", "https://reuters.com/x", "reuters.com"),
         EXPERT_SOURCES,
     )
+    # Assert
     assert source is not None and len(source.text) <= EXPERT_SOURCES.max_source_chars
