@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import os
 import sys
 from collections.abc import Awaitable, Callable, Sequence
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, cast
@@ -42,6 +44,26 @@ PHOENIX_TIMEOUT_SECONDS = 180
 # Annotated to Phoenix's declared `dict[str, float | int]` choices type:
 # an inferred `dict[str, int]` is rejected under `--strict` because `dict`
 # is invariant in its value type.
+# Two rules, not one number. Phoenix scores a bool evaluator as 0.0 or 1.0, so
+# a *passing* CODE evaluator scores 1.0. A single threshold of 3.0 applied
+# across both kinds would fail every run, including a perfect one.
+JUDGED_SCORE_THRESHOLD = 3.0  # Provisional. No historical scores exist;
+# revisit after the first runs.
+JUDGED_EVALUATORS = {"groundedness", "usefulness", "rewrite_quality", "report_fidelity"}
+# CODE evaluators fail on a falsy score, judged evaluators on < 3.0.
+logger = logging.getLogger("agent")
+
+
+@dataclass(frozen=True)
+class CaseOutcome:
+    """What one case produced, so `main` can decide the exit code once."""
+
+    case_id: str
+    scored: int
+    judge_errors: int
+    failed: list[str]
+
+
 SCORE_CHOICES: dict[str, float | int] = {str(score): score for score in range(1, 6)}
 
 ExperimentTask = Callable[[dict[str, Any]], Awaitable[dict[str, Any]]]
@@ -324,10 +346,11 @@ AGENT_RUN_INFO: dict[
 def validate_evaluations(
     result: RanExperiment,
     *,
+    case_id: str,
     expected_names: set[str],
     explanation_names: set[str],
-) -> None:
-    """Reject incomplete evaluations without duplicating Phoenix UI output."""
+) -> CaseOutcome:
+    """Reject structurally invalid results, count judge errors, collect failures."""
     matching = [run for run in result["evaluation_runs"] if run.name in expected_names]
     actual_names = {run.name for run in matching}
     if actual_names != expected_names or len(matching) != len(expected_names):
@@ -335,9 +358,18 @@ def validate_evaluations(
             f"Expected evaluations {sorted(expected_names)}, got {sorted(actual_names)}"
         )
 
+    judge_errors = 0
+    failed: list[str] = []
     for run in matching:
         if run.error:
-            raise RuntimeError(f"{run.name} failed: {run.error}")
+            # A CODE evaluator's error is a bug in this repository's evaluator
+            # and must not be buried in the judge-error tally; only judged
+            # evaluators have errors counted.
+            if run.name not in JUDGED_EVALUATORS:
+                raise RuntimeError(f"{run.name} failed: {run.error}")
+            logger.error("%s: %s judge error: %s", case_id, run.name, run.error)
+            judge_errors += 1
+            continue
         evaluation = run.result
         if not isinstance(evaluation, dict):
             raise RuntimeError(f"{run.name} returned no single evaluation result")
@@ -352,19 +384,36 @@ def validate_evaluations(
             not isinstance(explanation, str) or not explanation.strip()
         ):
             raise RuntimeError(f"{run.name} returned no explanation")
+        if run.name in JUDGED_EVALUATORS:
+            if score < JUDGED_SCORE_THRESHOLD:
+                failed.append(f"{run.name}={score}")
+        elif not score:
+            # A CODE evaluator scores 1.0 when it passes and 0.0 when it fails.
+            # Without this branch a `route_correct` of False is recorded as a
+            # perfectly valid 0.0 and the run exits green with the routing wrong.
+            failed.append(f"{run.name}=failed")
+    return CaseOutcome(
+        case_id=case_id,
+        scored=len(matching) - judge_errors,
+        judge_errors=judge_errors,
+        failed=failed,
+    )
 
 
 async def run_experiment_case(
     *,
     client: AsyncClient,
     dataset_name: str,
+    case_id: str,
+    case_count: int,
+    experiment_metadata: dict[str, Any],
     example: dict[str, Any],
     task: ExperimentTask,
     evaluators: Sequence[Any],
     expected_names: set[str],
     explanation_names: set[str],
     experiment_name: str,
-) -> None:
+) -> CaseOutcome:
     """Record one valid graph run and its evaluations for review in Phoenix."""
     dataset = await client.datasets.create_dataset(
         name=dataset_name,
@@ -372,15 +421,22 @@ async def run_experiment_case(
         dataset_description="Manual advisory quality smoke case",
         timeout=PHOENIX_TIMEOUT_SECONDS,
     )
+    # `experiment_metadata` records the run's static parameters, not its
+    # results: `run_experiment` is called before `evaluate_experiment` and
+    # Phoenix exposes no way to mutate an experiment's metadata afterwards.
+    # It is a parameter of `run_experiment`, not of `create_dataset`.
     task_result = await client.experiments.run_experiment(
         dataset=dataset,
         task=task,
         evaluators=None,
         experiment_name=experiment_name,
+        experiment_metadata=experiment_metadata,
         print_summary=False,
         concurrency=1,
         timeout=PHOENIX_TIMEOUT_SECONDS,
         repetitions=1,
+        # Kept at 0 deliberately: a retried *task* run spends real Brave and
+        # OpenAI credit. Contrast `evaluate_experiment` below.
         retries=0,
     )
 
@@ -390,16 +446,19 @@ async def run_experiment_case(
     if not isinstance(task_runs[0].get("output"), dict):
         raise RuntimeError("Task run produced no structured output")
 
+    # `retries=0` is dropped here, inheriting Phoenix's default of 3: the
+    # judge is a free-tier OpenRouter endpoint and an un-retried 429 becomes
+    # a recorded judge error indistinguishable from a quality regression.
     result = await client.experiments.evaluate_experiment(
         experiment=task_result,
         evaluators=evaluators,
         print_summary=True,
         concurrency=1,
         timeout=PHOENIX_TIMEOUT_SECONDS,
-        retries=0,
     )
-    validate_evaluations(
+    return validate_evaluations(
         result,
+        case_id=case_id,
         expected_names=expected_names,
         explanation_names=explanation_names,
     )
@@ -432,6 +491,7 @@ async def main() -> None:
     )
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
 
+    outcomes: list[CaseOutcome] = []
     for case in cases:
         task, build_evaluators, expected_names, explanation_names = AGENT_RUN_INFO[
             case["agent"]
@@ -440,16 +500,36 @@ async def main() -> None:
         # `create_dataset` with a reused name updates the dataset rather than
         # failing, so agent-keyed cases would pile up as versions of one
         # dataset while their experiments shared a single name.
-        await run_experiment_case(
-            client=client,
-            dataset_name=f"geopoliticai-{case['id']}",
-            example=case,
-            task=task,
-            evaluators=build_evaluators(judge),
-            expected_names=expected_names,
-            explanation_names=explanation_names,
-            experiment_name=f"{case['id']}-{timestamp}",
+        outcomes.append(
+            await run_experiment_case(
+                client=client,
+                dataset_name=f"geopoliticai-{case['id']}",
+                case_id=case["id"],
+                case_count=len(cases),
+                experiment_metadata={
+                    "judge_model": JUDGE_MODEL,
+                    "case_count": len(cases),
+                    "judged_score_threshold": JUDGED_SCORE_THRESHOLD,
+                },
+                example=case,
+                task=task,
+                evaluators=build_evaluators(judge),
+                expected_names=expected_names,
+                explanation_names=explanation_names,
+                experiment_name=f"{case['id']}-{timestamp}",
+            )
         )
+
+    failures = [o for o in outcomes if o.judge_errors or o.failed]
+    if failures:
+        for outcome in failures:
+            logger.error(
+                "%s: %d judge errors, failed: %s",
+                outcome.case_id,
+                outcome.judge_errors,
+                ", ".join(outcome.failed) or "none",
+            )
+        raise SystemExit(1)
 
 
 def cli(argv: Sequence[str] | None = None) -> int:
