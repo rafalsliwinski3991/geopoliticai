@@ -370,7 +370,7 @@ def build_expert_evaluators(judge: LLM) -> list[Any]:
 
 @create_evaluator(kind="CODE", name="route_correct")
 def route_correct(output: Any, reference: dict[str, Any]) -> bool:
-    """Require the completed full graph to choose the geopolitical branch."""
+    """Require the completed full graph to choose the case's expected branch."""
     if not isinstance(output, dict):
         raise RuntimeError("Orchestrator task produced no output")
     # `bool(...)` because `output.get(...)` is `Any`, and `--strict` rejects
@@ -576,7 +576,7 @@ async def run_experiment_case(
 
 
 async def main() -> None:
-    """Run the expert and orchestrator checks against live dependencies."""
+    """Run every case's checks against live dependencies."""
     cases = load_cases()
     init_environment()
     require_env(
