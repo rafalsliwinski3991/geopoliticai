@@ -36,16 +36,23 @@ related AI-tool configuration, update this file in the same change.
 - `.codex/agents/` - four Codex role definitions.
 - `.claude/skills/` - Claude skills; `swarm` exists only here. The removed Phoenix
   symlinks are no longer consumers of the deleted `.agents/skills/` catalog.
-- `.opencode/commands/` - OpenCode commands: `review` and `plan-review`.
+- `.opencode/commands/` - OpenCode commands: `review`, `plan-review`, and a
+  native `rs-implement-plan` variant.
+- `.opencode/command/` - OpenCode copies of four Claude `rs-*` commands
+  (`rs-brainstorming`, `rs-implement-plan`, `rs-improve-plan`, and
+  `rs-plan-from-brainstorm`) with the Claude-only `argument-hint` and
+  `allowed-tools` frontmatter keys removed; bodies are otherwise unchanged.
+  The two `rs-implement-plan-as-*` Claude commands were not ported because they
+  dispatch through Claude Code plugins that do not exist in opencode.
 - `.claude/commands/` - Claude Code commands: `rs-plan-from-brainstorm`,
-  `rs-improve-plan`, `rs-implement-plan`, `rs-implement-plan-as-codex`, and
-  `rs-implement-plan-as-opencode`.
+  `rs-improve-plan`, `rs-implement-plan`, `rs-implement-plan-as-codex`,
+  `rs-implement-plan-as-opencode`, and `rs-brainstorming`.
 - `.github/workflows/` - GitHub Actions workflows, including unit tests; the
   repository also uses the GitHub CLI (`gh`) for permitted repository tasks.
 - `.claude/hooks/` and `.codex/hooks/` - contain no active hook
   implementations; the `.claude/hooks/.klaussy-version` file is metadata.
-- `docs/brainstorming/` - durable session artifacts written by the Claude
-  `rs-brainstorming` skill, not at the repository root.
+- `docs/brainstorming/` - durable session artifacts written by the
+  `rs-brainstorming` command (Claude and OpenCode), not at the repository root.
 
 ## Commands
 
@@ -56,17 +63,26 @@ related AI-tool configuration, update this file in the same change.
 | plan-from-brainstorm | no | no | no | yes |
 | plan-review | no | yes | no | no |
 | review | no | yes | no | no |
-| rs-implement-plan | no | no | yes | no |
+| rs-implement-plan | no | yes | yes | no |
 | rs-implement-plan-as-codex | no | no | yes | no |
 | rs-implement-plan-as-opencode | no | no | yes | no |
-| rs-improve-plan | no | no | yes | no |
-| rs-plan-from-brainstorm | no | no | yes | no |
-| rs-brainstorming | no | no | yes | no |
+| rs-improve-plan | no | yes | yes | no |
+| rs-plan-from-brainstorm | no | yes | yes | no |
+| rs-brainstorming | no | yes | yes | no |
 
 Command locations and implementation details:
 
-- OpenCode commands: `.opencode/commands/plan-review.md` and
-  `.opencode/commands/review.md`.
+- OpenCode commands: `.opencode/commands/review.md`,
+  `.opencode/commands/plan-review.md`, and the native
+  `.opencode/commands/rs-implement-plan.md`, which sets `agent: build` and
+  `model: opencode-go/glm-5.3-flash` and runs TDD with tiered review itself
+  rather than delegating to another harness. The `.opencode/command/`
+  directory additionally holds direct copies of the Claude `rs-*` commands:
+  `rs-brainstorming.md`, `rs-implement-plan.md`, `rs-improve-plan.md`, and
+  `rs-plan-from-brainstorm.md`. `rs-implement-plan` therefore has two OpenCode
+  definitions — the native variant in `.opencode/commands/` and the Claude
+  port in `.opencode/command/`; resolve the duplicate before relying on
+  `/rs-implement-plan` in opencode.
 - Claude Code commands: `.claude/commands/rs-implement-plan.md`,
   `.claude/commands/rs-implement-plan-as-codex.md`,
   `.claude/commands/rs-implement-plan-as-opencode.md`,
@@ -138,10 +154,10 @@ Plugin configuration details:
 | managed-deep-agents | yes | yes | yes | yes |
 | swarm | no | no | yes | no |
 
-The Claude `rs-brainstorming` command stores its session files under
-`docs/brainstorming/`, not at the repository root, named
-`<YYYYMonDD>_brainstorm_v<N>_<topic-slug>.md`. The Claude
-`rs-plan-from-brainstorm` command writes to `docs/plans/` as
+The `rs-brainstorming` command (Claude and OpenCode) stores its session files
+under `docs/brainstorming/`, not at the repository root, named
+`<YYYYMonDD>_brainstorm_v<N>_<topic-slug>.md`. The `rs-plan-from-brainstorm`
+command (Claude and OpenCode) writes to `docs/plans/` as
 `<date>_plan_<topic-slug>_v<N>.md`, reusing the brainstorm's date but
 deriving its own 1-3-word topic slug from what the plan implements rather
 than copying the brainstorm's slug verbatim.
