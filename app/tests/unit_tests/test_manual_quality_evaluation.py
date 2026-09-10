@@ -181,3 +181,10 @@ def test_load_cases_accepts_the_real_shipped_cases_json() -> None:
         "orchestrator-sweden-follow-up-v1",
     }
     assert {case["agent"] for case in cases} == {"expert", "orchestrator"}
+
+
+def test_route_correct_accepts_a_case_expecting_other() -> None:
+    runner = _load_runner()
+    output = {"destination": "other", "standalone_query": "q", "answer": "a"}
+    reference = {"destination": "other"}
+    assert runner.route_correct(output=output, reference=reference) is True

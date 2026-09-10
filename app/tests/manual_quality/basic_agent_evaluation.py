@@ -15,6 +15,8 @@ from typing import Any, cast
 from uuid import uuid4
 
 from langchain_core.messages import AIMessage, AnyMessage, HumanMessage
+from langgraph.checkpoint.memory import InMemorySaver
+from langgraph.types import Command
 from phoenix.client import AsyncClient
 from phoenix.client.experiments import create_evaluator
 from phoenix.client.resources.experiments.types import RanExperiment
@@ -25,10 +27,10 @@ from tracing import init_tracing
 
 CASES_PATH = Path(__file__).with_name("cases.json")
 CASE_FIELDS = {"agent", "id", "input", "output", "metadata"}
-# `"reporter"` is added in commit 5b, with the task and evaluators that serve
-# it. Accepting an agent name here that the dispatch table cannot yet route
-# would let a valid-looking case pass the loader and then fail on lookup.
-KNOWN_AGENTS = {"expert", "orchestrator"}
+# `"reporter"` is servable from commit 5a: its case data arrives in 5b, but a
+# case naming an agent the dispatch table could not route would fail at lookup
+# instead of at load.
+KNOWN_AGENTS = {"expert", "orchestrator", "reporter"}
 # Pinned, not `openrouter/free`. Phoenix's OpenAI adapter sends the model name
 # it was configured with and never reads the resolved model back off the
 # response (`phoenix/evals/llm/adapters/openai/adapter.py`), so a router id
@@ -111,8 +113,8 @@ Choose exactly one label:
 1: does not answer the central question or is unusable.
 2: answers only one part or contains major irrelevant/confusing material.
 3: answers both parts basically but lacks an important causal connection or clear prioritization.
-4: clearly and concisely explains the security-policy change and April 2023 accession, with a minor omission.
-5: precisely connects the invasion, abandonment of non-alignment, accession process, and April 2023 completion without material omission.
+4: covers every required point with a minor omission or a small loss of precision.
+5: covers every required point precisely, with the causal connections between them made explicit and no material omission.
 
 Give a concise evidence-based explanation for the label. Identify covered or
 missing requirements; do not provide private chain-of-thought.
@@ -133,14 +135,39 @@ Expected intent:
 {expected_intent}
 
 Choose exactly one label:
-1: does not resolve Sweden/NATO or changes the user's meaning.
-2: mentions Sweden but remains materially ambiguous or asks the wrong question.
-3: is self-contained but loosely preserves the comparison or imports an unjustified Finland-specific assumption.
-4: clearly asks why Sweden pursued NATO and what happened with accession, with a small loss of nuance.
-5: fully resolves Sweden, the post-invasion move from non-alignment, and accession outcome without copying Finland's 2023 date or path.
+1: does not resolve the referent of the last user turn, or changes the user's meaning.
+2: names the referent but stays materially ambiguous, or asks a different question.
+3: is self-contained but loosely preserves the intent, or imports an assumption the history does not support.
+4: matches the expected intent with a small loss of nuance.
+5: fully matches the expected intent, self-contained, importing nothing the history does not support.
 
 Give a concise evidence-based explanation for the label. Point to the rewrite's
 observable wording; do not provide private chain-of-thought.
+"""
+
+REPORT_FIDELITY_PROMPT = """
+Judge whether the report covers the intended outline and stays within the
+research supplied in the conversation. Treat the conversation as the only
+evidence available to the report's author.
+
+Conversation:
+{conversation}
+
+Intended coverage:
+{outline_intent}
+
+Report:
+{report}
+
+Choose exactly one label:
+1: ignores the intended coverage, or asserts material facts the conversation never established.
+2: covers a minority of the intended coverage, or contains substantial unsupported material.
+3: covers most of the intended coverage with one meaningful gap or one unsupported claim.
+4: covers all of the intended coverage with a minor gap or a small unsupported detail.
+5: covers all of the intended coverage, in a coherent order, asserting nothing the conversation did not establish.
+
+Give a concise evidence-based explanation for the label. Refer only to
+observable content; do not provide private chain-of-thought.
 """
 
 
@@ -251,6 +278,58 @@ async def run_orchestrator(input: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+async def run_reporter_thread(input: dict[str, Any]) -> dict[str, Any]:
+    """Drive a paused reporter turn to completion over an in-memory saver.
+
+    The module-level `agents.orchestrator.graph.graph` is compiled with no
+    checkpointer (`graph.py:59`), and `gate` calls `interrupt()`, so a paused
+    run cannot be resumed on it. `build_graph` takes the saver for exactly
+    this reason (`orchestrator/graph.py:19-28`).
+
+    Not reusable from `run_orchestrator`, which raises on any destination
+    outside `{"geopolitical", "other"}`.
+    """
+    from agents.orchestrator.graph import build_graph, build_runtime_config
+
+    graph = build_graph(checkpointer=InMemorySaver())
+    config = build_runtime_config(thread_id=f"manual-quality-{uuid4()}")
+    records = input.get("messages")
+    if not isinstance(records, list) or not records:
+        raise ValueError("reporter input.messages must be a non-empty list")
+    messages = [message_from_record(record) for record in records]
+
+    result: dict[str, Any] = await graph.ainvoke({"messages": messages}, config=config)
+    # Measured against langgraph 1.0.1: resuming a thread with no pending
+    # interrupt is a SILENT no-op that returns the completed state and raises
+    # nothing. Without this guard, a `classify` misroute or a refusal on
+    # `has_researched_material` would let a chat or expert answer flow through
+    # every check below — it is still a non-empty `AIMessage` — and be scored
+    # by `report_fidelity` as if the reporter had written it. Nothing anywhere
+    # would report a problem. Every other task in this file fails loudly on a
+    # wrong branch; this is that check.
+    if "__interrupt__" not in result:
+        raise RuntimeError(
+            "Reporter turn never paused: classify did not route to `report`, or "
+            "the thread carried no researched material"
+        )
+    replies = input.get("resume_actions")
+    if not isinstance(replies, list) or not replies:
+        raise ValueError("reporter input.resume_actions must be a non-empty list")
+    for reply in replies:
+        result = await graph.ainvoke(Command(resume=reply), config=config)
+
+    result_messages = result.get("messages")
+    if not isinstance(result_messages, list) or not result_messages:
+        raise RuntimeError("Reporter turn produced no messages")
+    final = result_messages[-1]
+    if not isinstance(final, AIMessage):
+        raise RuntimeError("Reporter turn produced no final AI message")
+    report = final.text()
+    if not report.strip():
+        raise RuntimeError("Reporter turn produced an empty report")
+    return {"report": report}
+
+
 def build_expert_evaluators(judge: LLM) -> list[Any]:
     """Build the two expert judges with explicit Phoenix field mappings."""
     groundedness = ClassificationEvaluator(
@@ -295,8 +374,9 @@ def route_correct(output: Any, reference: dict[str, Any]) -> bool:
     if not isinstance(output, dict):
         raise RuntimeError("Orchestrator task produced no output")
     # `bool(...)` because `output.get(...)` is `Any`, and `--strict` rejects
-    # returning `Any` from a function declared to return `bool`.
-    return bool(output.get("destination") == reference["destination"] == "geopolitical")
+    # returning `Any` from a function declared to return `bool`. Compares the
+    # run against its own case's expectation, not against a fixed destination.
+    return bool(output.get("destination") == reference["destination"])
 
 
 def build_orchestrator_evaluators(judge: LLM) -> list[Any]:
@@ -322,6 +402,28 @@ def build_orchestrator_evaluators(judge: LLM) -> list[Any]:
     ]
 
 
+def build_reporter_evaluators(judge: LLM) -> list[Any]:
+    """Build the single report-fidelity judge with its explicit field mapping."""
+    fidelity = ClassificationEvaluator(
+        name="report_fidelity",
+        llm=judge,
+        prompt_template=REPORT_FIDELITY_PROMPT,
+        choices=SCORE_CHOICES,
+        include_explanation=True,
+        temperature=0,
+    )
+    return [
+        bind_evaluator(
+            evaluator=fidelity,
+            input_mapping={
+                "conversation": "input.messages",
+                "outline_intent": "reference.outline_intent",
+                "report": "output.report",
+            },
+        ),
+    ]
+
+
 # The per-agent dispatch table: task function, evaluator builder, and the
 # evaluation names each agent's case must produce. The loader's
 # `KNOWN_AGENTS` must stay a subset of these keys.
@@ -339,6 +441,12 @@ AGENT_RUN_INFO: dict[
         build_orchestrator_evaluators,
         {"route_correct", "rewrite_quality"},
         {"rewrite_quality"},
+    ),
+    "reporter": (
+        run_reporter_thread,
+        build_reporter_evaluators,
+        {"report_fidelity"},
+        {"report_fidelity"},
     ),
 }
 
