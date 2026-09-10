@@ -3,9 +3,30 @@
 from __future__ import annotations
 
 import ast
+import importlib.util
+import json
 from pathlib import Path
+from typing import Any
+
+import pytest
 
 RUNNER_PATH = Path(__file__).parents[1] / "manual_quality" / "basic_agent_evaluation.py"
+
+
+def _load_runner() -> Any:
+    spec = importlib.util.spec_from_file_location("basic_agent_evaluation", RUNNER_PATH)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _write_cases(tmp_path: Path, content: str) -> Any:
+    runner = _load_runner()
+    cases_path = tmp_path / "cases.json"
+    cases_path.write_text(content, encoding="utf-8")
+    runner.CASES_PATH = cases_path
+    return runner
 
 
 def test_live_results_use_phoenix_native_output() -> None:
@@ -46,3 +67,113 @@ def test_live_results_use_phoenix_native_output() -> None:
         and keyword.value.value is True
         for keyword in evaluate_calls[0].keywords
     )
+
+
+def test_load_cases_rejects_a_json_object(tmp_path: Path) -> None:
+    runner = _write_cases(
+        tmp_path,
+        json.dumps({"expert": {"id": "x", "input": {}, "output": {}, "metadata": {}}}),
+    )
+    with pytest.raises(ValueError, match="non-empty list of cases"):
+        runner.load_cases()
+
+
+def test_load_cases_rejects_an_empty_list(tmp_path: Path) -> None:
+    runner = _write_cases(tmp_path, json.dumps([]))
+    with pytest.raises(ValueError, match="non-empty list of cases"):
+        runner.load_cases()
+
+
+def test_load_cases_rejects_a_missing_field(tmp_path: Path) -> None:
+    case = {
+        "agent": "expert",
+        "id": "expert-x",
+        "input": {"query": "q"},
+        "metadata": {},
+    }
+    runner = _write_cases(tmp_path, json.dumps([case]))
+    with pytest.raises(ValueError, match=r"each case needs exactly"):
+        runner.load_cases()
+
+
+def test_load_cases_rejects_an_extra_field(tmp_path: Path) -> None:
+    case = {
+        "agent": "expert",
+        "id": "expert-x",
+        "input": {"query": "q"},
+        "output": {},
+        "metadata": {},
+        "extra": 1,
+    }
+    runner = _write_cases(tmp_path, json.dumps([case]))
+    with pytest.raises(ValueError, match=r"each case needs exactly"):
+        runner.load_cases()
+
+
+def test_load_cases_rejects_an_unknown_agent(tmp_path: Path) -> None:
+    case = {
+        "agent": "unknown",
+        "id": "x",
+        "input": {},
+        "output": {},
+        "metadata": {},
+    }
+    runner = _write_cases(tmp_path, json.dumps([case]))
+    with pytest.raises(ValueError, match="unknown agent"):
+        runner.load_cases()
+
+
+def test_load_cases_rejects_a_blank_id(tmp_path: Path) -> None:
+    case = {
+        "agent": "expert",
+        "id": "   ",
+        "input": {},
+        "output": {},
+        "metadata": {},
+    }
+    runner = _write_cases(tmp_path, json.dumps([case]))
+    with pytest.raises(ValueError, match=r"case\.id must be a non-empty string"):
+        runner.load_cases()
+
+
+def test_load_cases_rejects_a_duplicate_id(tmp_path: Path) -> None:
+    case = {
+        "agent": "expert",
+        "id": "expert-x",
+        "input": {},
+        "output": {},
+        "metadata": {},
+    }
+    runner = _write_cases(tmp_path, json.dumps([case, dict(case)]))
+    with pytest.raises(ValueError, match="duplicate case id"):
+        runner.load_cases()
+
+
+def test_load_cases_rejects_a_non_object_case(tmp_path: Path) -> None:
+    runner = _write_cases(tmp_path, json.dumps(["not-an-object"]))
+    with pytest.raises(ValueError, match=r"each case needs exactly"):
+        runner.load_cases()
+
+
+def test_load_cases_rejects_a_non_object_field(tmp_path: Path) -> None:
+    case = {
+        "agent": "expert",
+        "id": "x",
+        "input": "not-an-object",
+        "output": {},
+        "metadata": {},
+    }
+    runner = _write_cases(tmp_path, json.dumps([case]))
+    with pytest.raises(ValueError, match=r"must be an object"):
+        runner.load_cases()
+
+
+def test_load_cases_accepts_the_real_shipped_cases_json() -> None:
+    runner = _load_runner()
+    cases = runner.load_cases()
+    assert isinstance(cases, list)
+    assert {case["id"] for case in cases} == {
+        "expert-finland-nato-v1",
+        "orchestrator-sweden-follow-up-v1",
+    }
+    assert {case["agent"] for case in cases} == {"expert", "orchestrator"}

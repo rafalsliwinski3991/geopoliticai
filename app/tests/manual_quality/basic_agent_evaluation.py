@@ -22,8 +22,11 @@ from config import REQUIRED_ENV_VARS, init_environment, require_env
 from tracing import init_tracing
 
 CASES_PATH = Path(__file__).with_name("cases.json")
-CASE_NAMES = {"expert", "orchestrator"}
-CASE_FIELDS = {"id", "input", "output", "metadata"}
+CASE_FIELDS = {"agent", "id", "input", "output", "metadata"}
+# `"reporter"` is added in commit 5b, with the task and evaluators that serve
+# it. Accepting an agent name here that the dispatch table cannot yet route
+# would let a valid-looking case pass the loader and then fail on lookup.
+KNOWN_AGENTS = {"expert", "orchestrator"}
 # Pinned, not `openrouter/free`. Phoenix's OpenAI adapter sends the model name
 # it was configured with and never reads the resolved model back off the
 # response (`phoenix/evals/llm/adapters/openai/adapter.py`), so a router id
@@ -119,21 +122,27 @@ observable wording; do not provide private chain-of-thought.
 """
 
 
-def load_cases() -> dict[str, dict[str, Any]]:
-    """Load the two Phoenix examples and reject accidental schema drift."""
+def load_cases() -> list[dict[str, Any]]:
+    """Load the case list and reject accidental schema drift."""
     raw: object = json.loads(CASES_PATH.read_text(encoding="utf-8"))
-    if not isinstance(raw, dict) or set(raw) != CASE_NAMES:
-        raise ValueError("cases.json must contain exactly expert and orchestrator")
+    if not isinstance(raw, list) or not raw:
+        raise ValueError("cases.json must contain a non-empty list of cases")
 
-    cases = cast(dict[str, dict[str, Any]], raw)
-    for name, case in cases.items():
+    cases = cast(list[dict[str, Any]], raw)
+    seen: set[str] = set()
+    for case in cases:
         if not isinstance(case, dict) or set(case) != CASE_FIELDS:
-            raise ValueError(f"{name} must contain id, input, output, and metadata")
+            raise ValueError(f"each case needs exactly {sorted(CASE_FIELDS)}")
+        if case["agent"] not in KNOWN_AGENTS:
+            raise ValueError(f"unknown agent: {case['agent']!r}")
         if not isinstance(case["id"], str) or not case["id"].strip():
-            raise ValueError(f"{name}.id must be a non-empty string")
+            raise ValueError("case.id must be a non-empty string")
+        if case["id"] in seen:
+            raise ValueError(f"duplicate case id: {case['id']}")
+        seen.add(case["id"])
         for field in ("input", "output", "metadata"):
             if not isinstance(case[field], dict):
-                raise ValueError(f"{name}.{field} must be an object")
+                raise ValueError(f"{case['id']}.{field} must be an object")
     return cases
 
 
@@ -291,6 +300,27 @@ def build_orchestrator_evaluators(judge: LLM) -> list[Any]:
     ]
 
 
+# The per-agent dispatch table: task function, evaluator builder, and the
+# evaluation names each agent's case must produce. The loader's
+# `KNOWN_AGENTS` must stay a subset of these keys.
+AGENT_RUN_INFO: dict[
+    str, tuple[ExperimentTask, Callable[[LLM], list[Any]], set[str], set[str]]
+] = {
+    "expert": (
+        run_expert,
+        build_expert_evaluators,
+        {"groundedness", "usefulness"},
+        {"groundedness", "usefulness"},
+    ),
+    "orchestrator": (
+        run_orchestrator,
+        build_orchestrator_evaluators,
+        {"route_correct", "rewrite_quality"},
+        {"rewrite_quality"},
+    ),
+}
+
+
 def validate_evaluations(
     result: RanExperiment,
     *,
@@ -402,26 +432,24 @@ async def main() -> None:
     )
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
 
-    await run_experiment_case(
-        client=client,
-        dataset_name="geopoliticai-expert-smoke-v1",
-        example=cases["expert"],
-        task=run_expert,
-        evaluators=build_expert_evaluators(judge),
-        expected_names={"groundedness", "usefulness"},
-        explanation_names={"groundedness", "usefulness"},
-        experiment_name=f"expert-quality-{timestamp}",
-    )
-    await run_experiment_case(
-        client=client,
-        dataset_name="geopoliticai-orchestrator-smoke-v1",
-        example=cases["orchestrator"],
-        task=run_orchestrator,
-        evaluators=build_orchestrator_evaluators(judge),
-        expected_names={"route_correct", "rewrite_quality"},
-        explanation_names={"rewrite_quality"},
-        experiment_name=f"orchestrator-quality-{timestamp}",
-    )
+    for case in cases:
+        task, build_evaluators, expected_names, explanation_names = AGENT_RUN_INFO[
+            case["agent"]
+        ]
+        # Names are derived from `case["id"]`, not from `case["agent"]`:
+        # `create_dataset` with a reused name updates the dataset rather than
+        # failing, so agent-keyed cases would pile up as versions of one
+        # dataset while their experiments shared a single name.
+        await run_experiment_case(
+            client=client,
+            dataset_name=f"geopoliticai-{case['id']}",
+            example=case,
+            task=task,
+            evaluators=build_evaluators(judge),
+            expected_names=expected_names,
+            explanation_names=explanation_names,
+            experiment_name=f"{case['id']}-{timestamp}",
+        )
 
 
 def cli(argv: Sequence[str] | None = None) -> int:

@@ -1,5 +1,5 @@
-{
-  "expert": {
+[
+  {
     "id": "expert-finland-nato-v1",
     "input": {
       "query": "Why did Finland abandon military non-alignment after Russia's full-scale invasion of Ukraine, and why did it become a NATO member in April 2023?"
@@ -13,9 +13,10 @@
     "metadata": {
       "case": "finland-nato",
       "version": 1
-    }
+    },
+    "agent": "expert"
   },
-  "orchestrator": {
+  {
     "id": "orchestrator-sweden-follow-up-v1",
     "input": {
       "messages": [
@@ -40,6 +41,7 @@
     "metadata": {
       "case": "sweden-follow-up",
       "version": 1
-    }
+    },
+    "agent": "orchestrator"
   }
-}
+]
