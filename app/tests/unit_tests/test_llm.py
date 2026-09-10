@@ -37,9 +37,11 @@ class _StreamingFake:
 async def test_astream_text_still_prepends_one_system_and_one_human_message(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # Arrange
     fake = _StreamingFake()
     monkeypatch.setattr(llm, "_build_client", lambda settings: fake)
 
+    # Act + Assert
     assert [chunk async for chunk in llm.astream_text("system", "human")] == ["answer"]
     assert fake.messages is not None
     assert [message.type for message in fake.messages] == ["system", "human"]
@@ -50,12 +52,15 @@ async def test_astream_text_still_prepends_one_system_and_one_human_message(
 async def test_astream_messages_prepends_the_system_prompt_to_history(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # Arrange
     fake = _StreamingFake()
     monkeypatch.setattr(llm, "_build_client", lambda settings: fake)
     history = [HumanMessage("earlier"), AIMessage("reply")]
 
+    # Act
     [chunk async for chunk in llm.astream_messages("system", history)]
 
+    # Assert
     assert fake.messages is not None
     assert fake.messages == [SystemMessage("system"), *history]
 
@@ -64,6 +69,7 @@ async def test_astream_messages_prepends_the_system_prompt_to_history(
 async def test_astream_messages_wraps_provider_failure(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # Arrange
     class FailingFake:
         async def astream(
             self, messages: Sequence[BaseMessage], config: Any = None
@@ -73,6 +79,7 @@ async def test_astream_messages_wraps_provider_failure(
 
     monkeypatch.setattr(llm, "_build_client", lambda settings: FailingFake())
 
+    # Act + Assert
     with pytest.raises(LLMInvocationError, match="Model call failed\\."):
         [chunk async for chunk in llm.astream_messages("system", [])]
 
@@ -81,6 +88,7 @@ async def test_astream_messages_wraps_provider_failure(
 async def test_ainvoke_structured_wraps_provider_failure(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # Arrange
     class FailingFake:
         def with_structured_output(
             self, schema: type[_Result], *, method: str, strict: bool
@@ -91,6 +99,7 @@ async def test_ainvoke_structured_wraps_provider_failure(
 
     monkeypatch.setattr(llm, "_build_structured_client", lambda settings: FailingFake())
 
+    # Act + Assert
     with pytest.raises(LLMInvocationError, match="Structured model call failed\\."):
         await llm.ainvoke_structured("system", [], _Result)
 
@@ -99,6 +108,7 @@ async def test_ainvoke_structured_wraps_provider_failure(
 async def test_ainvoke_structured_is_tagged_nostream(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # Arrange
     configured_tags: list[list[str]] = []
 
     class FakeStructuredChain:
@@ -129,6 +139,7 @@ async def test_ainvoke_structured_is_tagged_nostream(
     builder.add_edge("classify", END)
     graph = builder.compile()
 
+    # Act
     frames = [
         frame
         async for frame in graph.astream(
@@ -136,6 +147,7 @@ async def test_ainvoke_structured_is_tagged_nostream(
         )
     ]
 
+    # Assert
     assert configured_tags == [[TAG_NOSTREAM]]
     assert frames == []
 

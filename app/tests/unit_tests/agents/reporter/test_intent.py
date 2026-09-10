@@ -37,12 +37,15 @@ def _stub_intent(
 async def test_each_action_round_trips_with_a_normalized_instruction(
     monkeypatch: pytest.MonkeyPatch, action: str, instruction: str
 ) -> None:
+    # Arrange
     _stub_intent(monkeypatch, cast(ResumeAction, action), instruction)
 
+    # Act
     result = await node_module.classify_resume_intent(
         "some line", {"outline": ["First", "Second"]}
     )
 
+    # Assert
     expected_instruction = "drop the Poland section" if action == "revise" else ""
     assert result == ResumeIntent(
         action=cast(ResumeAction, action), instruction=expected_instruction
@@ -53,10 +56,13 @@ async def test_each_action_round_trips_with_a_normalized_instruction(
 async def test_a_revise_with_an_empty_instruction_falls_back_to_the_users_text(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # Arrange
     _stub_intent(monkeypatch, "revise", "   ")
 
+    # Act
     result = await node_module.classify_resume_intent(
         "  Add   Poland  ", {"outline": ["First"]}
     )
 
+    # Assert
     assert result == ResumeIntent(action="revise", instruction="Add Poland")

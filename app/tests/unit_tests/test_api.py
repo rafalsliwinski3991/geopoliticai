@@ -48,46 +48,56 @@ def _progress_labels(events: list[dict[str, Any]]) -> list[str]:
 
 @pytest.mark.anyio
 async def test_health(client: httpx.AsyncClient) -> None:
+    # Act
     response = await client.get("/api/health")
+    # Assert
     assert response.json() == {"status": "ok"}
 
 
 @pytest.mark.anyio
 async def test_unknown_legacy_field_is_ignored(client: httpx.AsyncClient) -> None:
+    # Arrange
     async def stream(
         graph_input: Any, thread_id: str
     ) -> AsyncIterator[tuple[str, str]]:
         yield ("token", "answer")
 
+    # Act
     with patch("api._astream_answer", stream):
         response = await client.post(
             "/api/run_pipeline/stream",
             json={"query": "x", "thread_id": "t-1", "info" + "sphere": "legacy"},
         )
+    # Assert
     assert response.status_code == 200
     assert _events(response.text)[-1]["type"] == "result"
 
 
 @pytest.mark.anyio
 async def test_sync_route_is_gone(client: httpx.AsyncClient) -> None:
+    # Act
     response = await client.post(
         "/api/run_pipeline", json={"query": "x", "thread_id": "t-1"}
     )
+    # Assert
     assert response.status_code == 404
 
 
 @pytest.mark.anyio
 async def test_stream_progress_tokens_result(client: httpx.AsyncClient) -> None:
+    # Arrange
     async def stream(
         graph_input: Any, thread_id: str
     ) -> AsyncIterator[tuple[str, str]]:
         yield ("token", "Hello ")
         yield ("token", "world.")
 
+    # Act
     with patch("api._astream_answer", stream):
         response = await client.post(
             "/api/run_pipeline/stream", json={"query": "x", "thread_id": "t-1"}
         )
+    # Assert
     events = _events(response.text)
     assert [event["type"] for event in events] == [
         "progress",
@@ -119,6 +129,7 @@ async def test_forwarded_progress_reaches_the_browser_verbatim(
     and must arrive key for key, with nothing re-wrapped by `_generate`.
     """
 
+    # Arrange
     async def stream(
         graph_input: Any, thread_id: str
     ) -> AsyncIterator[tuple[str, dict[str, str]]]:
@@ -128,6 +139,7 @@ async def test_forwarded_progress_reaches_the_browser_verbatim(
         response = await client.post(
             "/api/run_pipeline/stream", json={"query": "x", "thread_id": "t-1"}
         )
+    # Assert
     events = _events(response.text)
     assert _progress_labels(events) == [
         "Thinking...",
@@ -145,6 +157,7 @@ async def test_a_report_emits_no_answer_progress(client: httpx.AsyncClient) -> N
     """The report path announces itself from `write`; "Writing the answer..."
     must not follow it, because `progressLog` never dedupes."""
 
+    # Arrange
     async def stream(
         graph_input: Any, thread_id: str
     ) -> AsyncIterator[tuple[str, Any]]:
@@ -152,10 +165,12 @@ async def test_a_report_emits_no_answer_progress(client: httpx.AsyncClient) -> N
         yield ("kind", "report")
         yield ("token", "Section one. ")
 
+    # Act
     with patch("api._astream_answer", stream):
         response = await client.post(
             "/api/run_pipeline/stream", json={"query": "x", "thread_id": "t-1"}
         )
+    # Assert
     events = _events(response.text)
     assert _progress_labels(events) == ["Thinking...", "Writing the report..."]
     assert all(event.get("label") != "Writing the answer..." for event in events)
@@ -168,15 +183,18 @@ async def test_a_notice_is_the_answer_and_emits_no_answer_progress(
 ) -> None:
     """A refusal or cancellation arrives whole; nothing is being written."""
 
+    # Arrange
     async def stream(
         graph_input: Any, thread_id: str
     ) -> AsyncIterator[tuple[str, Any]]:
         yield ("notice", CANCELLED_NOTICE)
 
+    # Act
     with patch("api._astream_answer", stream):
         response = await client.post(
             "/api/run_pipeline/stream", json={"query": "x", "thread_id": "t-1"}
         )
+    # Assert
     events = _events(response.text)
     assert _progress_labels(events) == ["Thinking..."]
     assert events[-1]["type"] == "result"
@@ -194,15 +212,18 @@ async def test_cancel_and_revision_cap_resumes_end_as_answers(
     """Neither notice ever reaches `write`, so neither may be a report — a
     report label puts a Download .md button on the cancellation text."""
 
+    # Arrange
     async def stream(
         graph_input: Any, thread_id: str
     ) -> AsyncIterator[tuple[str, Any]]:
         yield ("notice", notice)
 
+    # Act
     with patch("api._astream_answer", stream):
         response = await client.post(
             "/api/run_pipeline/stream", json={"query": "x", "thread_id": "t-1"}
         )
+    # Assert
     events = _events(response.text)
     assert events[-1]["type"] == "result"
     assert events[-1]["kind"] == "answer"
@@ -218,16 +239,19 @@ async def test_an_unknown_event_kind_is_ignored(client: httpx.AsyncClient) -> No
     stream with no error frame at all.
     """
 
+    # Arrange
     async def stream(
         graph_input: Any, thread_id: str
     ) -> AsyncIterator[tuple[str, str]]:
         yield ("route", "geopolitical")
         yield ("token", "hi")
 
+    # Act
     with patch("api._astream_answer", stream):
         response = await client.post(
             "/api/run_pipeline/stream", json={"query": "x", "thread_id": "t-1"}
         )
+    # Assert
     events = _events(response.text)
     assert events[-1]["type"] == "result"
     assert events[-1]["output"] == "hi"
@@ -245,15 +269,18 @@ async def test_a_pause_frame_ends_the_stream_without_a_result(
         "revisions_allowed": 3,
     }
 
+    # Arrange
     async def stream(
         graph_input: Any, thread_id: str
     ) -> AsyncIterator[tuple[str, Any]]:
         yield ("pause", pause)
 
+    # Act
     with patch("api._astream_answer", stream):
         response = await client.post(
             "/api/run_pipeline/stream", json={"query": "x", "thread_id": "t-1"}
         )
+    # Assert
     events = _events(response.text)
     assert [event["type"] for event in events] == ["progress", "pause"]
     assert set(events[-1]) == {
@@ -274,6 +301,7 @@ async def test_resume_with_no_pending_pause_is_a_409_error_frame(
     """The 409 arrives as an SSE error frame on an HTTP 200: a checkpoint read
     must not be able to change the committed status for any branch."""
 
+    # Arrange
     async def no_pause(thread_id: str) -> dict[str, Any] | None:
         return None
 
@@ -292,10 +320,12 @@ async def test_resume_with_no_pending_pause_is_a_409_error_frame(
         called = True
         yield ("token", "never")
 
+    # Act
     with patch("api._astream_answer", stream):
         response = await client.post(
             "/api/run_pipeline/stream", json={"resume": "yes", "thread_id": "t-1"}
         )
+    # Assert
     assert response.status_code == 200
     events = _events(response.text)
     assert [event["type"] for event in events] == ["progress", "error"]
@@ -316,7 +346,9 @@ async def test_pending_pause_returns_none_without_a_checkpointer(
     surface as a 500 instead of the intended 409.
     """
 
+    # Arrange
     monkeypatch.setattr(api, "graph", build_graph())
+    # Act + Assert
     assert await api._pending_pause("t-1") is None
 
 
@@ -324,6 +356,7 @@ async def test_pending_pause_returns_none_without_a_checkpointer(
 async def test_an_approve_resume_sends_a_resume_command(
     client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    # Arrange
     async def pending(thread_id: str) -> dict[str, Any] | None:
         return {
             "outline": ["Section one"],
@@ -346,10 +379,12 @@ async def test_an_approve_resume_sends_a_resume_command(
         seen.append(graph_input)
         yield ("token", "The report.")
 
+    # Act
     with patch("api._astream_answer", stream):
         response = await client.post(
             "/api/run_pipeline/stream", json={"resume": "go ahead", "thread_id": "t-1"}
         )
+    # Assert
     assert response.status_code == 200
     assert isinstance(seen[0], Command)
     assert seen[0].resume == {"action": "approve", "instruction": ""}
@@ -359,6 +394,7 @@ async def test_an_approve_resume_sends_a_resume_command(
 async def test_a_new_question_resume_starts_a_fresh_turn(
     client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    # Arrange
     async def pending(thread_id: str) -> dict[str, Any] | None:
         return {
             "outline": ["Section one"],
@@ -381,11 +417,13 @@ async def test_a_new_question_resume_starts_a_fresh_turn(
         seen.append(graph_input)
         yield ("token", "A fresh answer.")
 
+    # Act
     with patch("api._astream_answer", stream):
         response = await client.post(
             "/api/run_pipeline/stream",
             json={"resume": "What changed on the eastern flank?", "thread_id": "t-1"},
         )
+    # Assert
     assert response.status_code == 200
     assert not isinstance(seen[0], Command)
     assert seen[0]["messages"][-1].text() == "What changed on the eastern flank?"
@@ -401,6 +439,7 @@ async def test_a_query_turn_never_reads_the_checkpoint(
     """Only the resume path reads the checkpoint: an ordinary turn gains no
     new database dependency and no new failure mode."""
 
+    # Arrange
     async def boom(thread_id: str) -> dict[str, Any] | None:
         raise AssertionError("checkpoint read on a plain query turn")
 
@@ -411,10 +450,12 @@ async def test_a_query_turn_never_reads_the_checkpoint(
     ) -> AsyncIterator[tuple[str, str]]:
         yield ("token", "fine")
 
+    # Act
     with patch("api._astream_answer", stream):
         response = await client.post(
             "/api/run_pipeline/stream", json={"query": "x", "thread_id": "t-1"}
         )
+    # Assert
     assert response.status_code == 200
     events = _events(response.text)
     assert events[-1]["type"] == "result"
@@ -428,6 +469,7 @@ async def test_a_query_turn_never_reads_the_checkpoint(
 async def test_result_kind_is_stamped_from_the_write_node(
     client: httpx.AsyncClient, report_kind: bool, expected: str
 ) -> None:
+    # Arrange
     async def stream(
         graph_input: Any, thread_id: str
     ) -> AsyncIterator[tuple[str, Any]]:
@@ -435,10 +477,12 @@ async def test_result_kind_is_stamped_from_the_write_node(
             yield ("kind", "report")
         yield ("token", "text")
 
+    # Act
     with patch("api._astream_answer", stream):
         response = await client.post(
             "/api/run_pipeline/stream", json={"query": "x", "thread_id": "t-1"}
         )
+    # Assert
     events = _events(response.text)
     assert events[-1]["kind"] == expected
 
@@ -450,16 +494,19 @@ async def test_a_stream_of_exactly_max_answer_chars_is_not_truncated(
     """Nothing was dropped, so nothing may be labelled partial — a `>=`
     comparison would write `report-<date>-partial.md` for a complete report."""
 
+    # Arrange
     async def stream(
         graph_input: Any, thread_id: str
     ) -> AsyncIterator[tuple[str, str]]:
         yield ("token", "a" * (api.MAX_ANSWER_CHARS - 10))
         yield ("token", "b" * 10)
 
+    # Act
     with patch("api._astream_answer", stream):
         response = await client.post(
             "/api/run_pipeline/stream", json={"query": "x", "thread_id": "t-1"}
         )
+    # Assert
     events = _events(response.text)
     assert events[-1]["type"] == "result"
     assert len(events[-1]["output"]) == api.MAX_ANSWER_CHARS
@@ -468,6 +515,7 @@ async def test_a_stream_of_exactly_max_answer_chars_is_not_truncated(
 
 @pytest.mark.anyio
 async def test_stream_caps_answer_size(client: httpx.AsyncClient) -> None:
+    # Arrange
     fully_consumed = False
 
     async def stream(
@@ -478,10 +526,12 @@ async def test_stream_caps_answer_size(client: httpx.AsyncClient) -> None:
         yield ("token", "ignored after the cap")
         fully_consumed = True
 
+    # Act
     with patch("api._astream_answer", stream):
         response = await client.post(
             "/api/run_pipeline/stream", json={"query": "x", "thread_id": "t-1"}
         )
+    # Assert
     events = _events(response.text)
     assert events[-1]["type"] == "result"
     assert len(events[-1]["output"]) == api.MAX_ANSWER_CHARS
@@ -495,11 +545,13 @@ async def test_rate_limit_keys_on_rightmost_forwarded(
 ) -> None:
     """A caller cannot rotate the left-hand forwarded entry to get a fresh bucket."""
 
+    # Arrange
     async def stream(
         graph_input: Any, thread_id: str
     ) -> AsyncIterator[tuple[str, str]]:
         yield ("token", "answer")
 
+    # Act
     with patch("api._astream_answer", stream):
         for index in range(api.RATE_LIMIT_REQUESTS):
             response = await client.post(
@@ -518,22 +570,26 @@ async def test_rate_limit_keys_on_rightmost_forwarded(
             json={"query": "different client", "thread_id": "t-1"},
             headers={"x-forwarded-for": "spoofed, 203.0.113.6"},
         )
+    # Assert
     assert blocked.status_code == 429
     assert allowed.status_code == 200
 
 
 @pytest.mark.anyio
 async def test_stream_error_has_no_result(client: httpx.AsyncClient) -> None:
+    # Arrange
     async def stream(
         graph_input: Any, thread_id: str
     ) -> AsyncIterator[tuple[str, str]]:
         raise NoSourcesError("nothing usable")
         yield ("token", "never")
 
+    # Act
     with patch("api._astream_answer", stream):
         response = await client.post(
             "/api/run_pipeline/stream", json={"query": "x", "thread_id": "t-1"}
         )
+    # Assert
     events = _events(response.text)
     # The thinking progress frame precedes the graph, so it survives a failure.
     assert [event["type"] for event in events] == ["progress", "error"]
@@ -542,20 +598,25 @@ async def test_stream_error_has_no_result(client: httpx.AsyncClient) -> None:
 
 @pytest.mark.anyio
 async def test_thread_id_is_required(client: httpx.AsyncClient) -> None:
+    # Act
     response = await client.post("/api/run_pipeline/stream", json={"query": "x"})
+    # Assert
     assert response.status_code == 422
 
 
 @pytest.mark.anyio
 async def test_thread_id_shape_is_validated(client: httpx.AsyncClient) -> None:
+    # Act
     response = await client.post(
         "/api/run_pipeline/stream", json={"query": "x", "thread_id": "../../etc"}
     )
+    # Assert
     assert response.status_code == 422
 
 
 @pytest.mark.anyio
 async def test_query_validation(client: httpx.AsyncClient) -> None:
+    # Act + Assert
     assert (
         await client.post(
             "/api/run_pipeline/stream", json={"query": "", "thread_id": "t-1"}
@@ -578,11 +639,13 @@ async def test_query_validation(client: httpx.AsyncClient) -> None:
 
 @pytest.mark.anyio
 async def test_rate_limiting_enforced(client: httpx.AsyncClient) -> None:
+    # Arrange
     async def stream(
         graph_input: Any, thread_id: str
     ) -> AsyncIterator[tuple[str, str]]:
         yield ("token", "output")
 
+    # Act
     with patch("api._astream_answer", stream):
         for index in range(20):
             response = await client.post(
@@ -594,6 +657,7 @@ async def test_rate_limiting_enforced(client: httpx.AsyncClient) -> None:
             "/api/run_pipeline/stream",
             json={"query": "query 21", "thread_id": "t-1"},
         )
+    # Assert
     assert response.status_code == 429
 
 
@@ -609,16 +673,19 @@ async def test_rate_limiting_enforced(client: httpx.AsyncClient) -> None:
 async def test_stream_reports_error_status_per_type(
     client: httpx.AsyncClient, error: PipelineError, status: int
 ) -> None:
+    # Arrange
     async def stream(
         graph_input: Any, thread_id: str
     ) -> AsyncIterator[tuple[str, str]]:
         raise error
         yield ("token", "never")
 
+    # Act
     with patch("api._astream_answer", stream):
         response = await client.post(
             "/api/run_pipeline/stream", json={"query": "x", "thread_id": "t-1"}
         )
+    # Assert
     events = _events(response.text)
     assert [event["type"] for event in events] == ["progress", "error"]
     assert events[-1]["status"] == status
@@ -629,12 +696,15 @@ async def test_stream_reports_error_status_per_type(
 async def test_lifespan_requires_database_url(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # Arrange
     monkeypatch.setattr(api, "init_environment", lambda: None)
     monkeypatch.setattr(api, "init_tracing", lambda: None)
     monkeypatch.setattr(api, "require_env", lambda: None)
     monkeypatch.delenv("DATABASE_URL", raising=False)
 
+    # Act
     with patch("api.AsyncConnectionPool") as pool:
+        # Assert
         with pytest.raises(ValueError, match="DATABASE_URL is required"):
             async with api.lifespan(api.app):
                 pass
@@ -647,6 +717,7 @@ def test_answer_nodes_stream_write_and_never_reporter() -> None:
     same text already reaches the browser through the node's own notice event.
     Adding "reporter" here would print every refusal twice."""
 
+    # Assert
     assert "write" in api.ANSWER_NODES
     assert "reporter" not in api.ANSWER_NODES
 
@@ -655,6 +726,7 @@ def test_search_progress_no_longer_lives_in_api() -> None:
     """The frame is emitted by `classify` and merely forwarded; the constant
     in `api.py` is dead and must not be quietly left behind."""
 
+    # Assert
     assert not hasattr(api, "SEARCH_PROGRESS")
 
 
@@ -663,6 +735,7 @@ def test_report_char_cap_fits_inside_the_transport_cap() -> None:
     diverge, the checkpointed report silently exceeds what any browser ever
     received."""
 
+    # Assert
     assert MAX_REPORT_CHARS <= api.MAX_ANSWER_CHARS
 
 
@@ -687,6 +760,7 @@ async def test_astream_answer_streams_the_answer_of_either_branch(
     `_astream_answer`, its report case is also the only API-level guard for
     §4.18's namespace rule on either branch.
     """
+    # Arrange
     import importlib
 
     from langchain_core.language_models.fake_chat_models import FakeListChatModel
@@ -736,7 +810,9 @@ async def test_astream_answer_streams_the_answer_of_either_branch(
     else:
         monkeypatch.setattr(api, "graph", graph_module.build_graph())
 
+    # Act
     events = [event async for event in api._astream_answer(state, "t-1")]
+    # Assert
     tokens = "".join(text for kind, text in events if kind == "token")
     assert tokens == expected
     if destination == "geopolitical":

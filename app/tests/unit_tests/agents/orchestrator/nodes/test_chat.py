@@ -14,6 +14,7 @@ node_module = importlib.import_module("agents.orchestrator.nodes.chat")
 async def test_chat_returns_one_joined_ai_message(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # Arrange
     async def stream(
         prompt: str,
         messages: list[Any],
@@ -25,18 +26,22 @@ async def test_chat_returns_one_joined_ai_message(
         yield "world! \n"
 
     monkeypatch.setattr(node_module, "astream_messages", stream)
+    # Act
     result = await node_module.chat({"messages": [HumanMessage("hello")]})
 
+    # Assert
     assert result == {"messages": [AIMessage("Hello world!")]}
 
 
 @pytest.mark.anyio
 async def test_chat_rejects_empty_stream(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Arrange
     async def stream(*args: Any, **kwargs: Any) -> AsyncIterator[str]:
         if False:
             yield "never"
 
     monkeypatch.setattr(node_module, "astream_messages", stream)
+    # Act + Assert
     with pytest.raises(LLMInvocationError):
         await node_module.chat({"messages": [HumanMessage("hello")]})
 
@@ -45,6 +50,7 @@ async def test_chat_rejects_empty_stream(monkeypatch: pytest.MonkeyPatch) -> Non
 async def test_chat_uses_last_history_messages_and_prompt(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # Arrange
     received: dict[str, Any] = {}
 
     async def stream(
@@ -59,8 +65,10 @@ async def test_chat_uses_last_history_messages_and_prompt(
 
     monkeypatch.setattr(node_module, "astream_messages", stream)
     messages = [HumanMessage(f"message {index}") for index in range(30)]
+    # Act
     await node_module.chat({"messages": messages})
 
+    # Assert
     assert received["prompt"] == CHAT_SYSTEM_PROMPT
     assert "must not cite" in CHAT_SYSTEM_PROMPT
     assert len(received["messages"]) == 20

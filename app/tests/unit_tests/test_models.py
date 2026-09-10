@@ -9,6 +9,7 @@ from models import (
 
 
 def test_llm_invocation_error_is_a_pipeline_error() -> None:
+    # Assert
     assert issubclass(LLMInvocationError, PipelineError)
 
 
@@ -24,4 +25,5 @@ def test_llm_invocation_error_is_a_pipeline_error() -> None:
 def test_each_error_carries_its_status(
     error_type: type[PipelineError], status: int
 ) -> None:
+    # Act + Assert
     assert error_type.status == status

@@ -52,12 +52,15 @@ def _stub_stream(
 async def test_progress_is_emitted_once_before_the_first_chunk_is_pulled(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # Arrange
     events: list[Any] = []
     received: dict[str, Any] = {}
     _stub_stream(monkeypatch, events, ["Hello ", "world."], received)
 
+    # Act
     result = await node_module.write(_state(), writer=events.append)
 
+    # Assert
     assert events == [REPORT_PROGRESS]
     assert received["events_at_first_chunk"] == 1
     assert result == {"report": "Hello world."}
@@ -67,12 +70,15 @@ async def test_progress_is_emitted_once_before_the_first_chunk_is_pulled(
 async def test_the_joined_stream_is_stripped_into_the_report(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # Arrange
     events: list[Any] = []
     received: dict[str, Any] = {}
     _stub_stream(monkeypatch, events, ["  Padded ", "report \n"], received)
 
+    # Act
     result = await node_module.write(_state(), writer=events.append)
 
+    # Assert
     assert result == {"report": "Padded report"}
 
 
@@ -80,13 +86,16 @@ async def test_the_joined_stream_is_stripped_into_the_report(
 async def test_an_over_long_report_is_clipped_after_the_stream_is_fully_drained(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # Arrange
     monkeypatch.setattr(node_module, "MAX_REPORT_CHARS", 10)
     events: list[Any] = []
     received: dict[str, Any] = {}
     _stub_stream(monkeypatch, events, ["a" * 15, "b" * 10], received)
 
+    # Act
     result = await node_module.write(_state(), writer=events.append)
 
+    # Assert
     assert result["report"] == "a" * 10
     assert received["fully_drained"] is True
     assert len(result["report"]) == 10
@@ -96,10 +105,12 @@ async def test_an_over_long_report_is_clipped_after_the_stream_is_fully_drained(
 async def test_an_empty_stream_raises_llm_invocation_error(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # Arrange
     events: list[Any] = []
     received: dict[str, Any] = {}
     _stub_stream(monkeypatch, events, ["   "], received)
 
+    # Act + Assert
     with pytest.raises(LLMInvocationError):
         await node_module.write(_state(), writer=events.append)
 
@@ -108,12 +119,15 @@ async def test_an_empty_stream_raises_llm_invocation_error(
 async def test_the_prompt_carries_the_numbered_outline_and_the_transcript(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # Arrange
     events: list[Any] = []
     received: dict[str, Any] = {}
     _stub_stream(monkeypatch, events, ["The report."], received)
 
+    # Act
     await node_module.write(_state(outline=["One", "Two"]), writer=events.append)
 
+    # Assert
     assert "1. One" in received["human_prompt"]
     assert "2. Two" in received["human_prompt"]
     assert TRANSCRIPT in received["human_prompt"]

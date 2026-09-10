@@ -38,11 +38,14 @@ def _forbid_model_call(monkeypatch: pytest.MonkeyPatch) -> None:
 async def test_empty_transcript_refuses_without_a_model_call_or_progress(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # Arrange
     _forbid_model_call(monkeypatch)
     events: list[Any] = []
 
+    # Act
     result = await node_module.outline(_state(transcript="   "), writer=events.append)
 
+    # Assert
     assert result == {
         "outline": [],
         "notice": NO_MATERIAL_NOTICE,
@@ -55,13 +58,16 @@ async def test_empty_transcript_refuses_without_a_model_call_or_progress(
 async def test_spent_revision_budget_ends_with_empty_outline_and_no_progress(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # Arrange
     _forbid_model_call(monkeypatch)
     events: list[Any] = []
 
+    # Act
     result = await node_module.outline(
         _state(revisions=MAX_REVISION_ROUNDS + 1), writer=events.append
     )
 
+    # Assert
     # The empty outline is what routes the run to END; returning the sections
     # unchanged here would leave the thread paused forever.
     assert result["outline"] == []
@@ -73,6 +79,7 @@ async def test_spent_revision_budget_ends_with_empty_outline_and_no_progress(
 async def test_model_path_emits_progress_once_before_the_model_call(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # Arrange
     events: list[Any] = []
     received: dict[str, Any] = {}
 
@@ -91,8 +98,10 @@ async def test_model_path_emits_progress_once_before_the_model_call(
 
     monkeypatch.setattr(node_module, "ainvoke_structured", decide)
 
+    # Act
     result = await node_module.outline(_state(), writer=events.append)
 
+    # Assert
     assert events == [OUTLINE_PROGRESS]
     assert received["events_at_call"] == 1
     assert received["schema"] is OutlineDraft
@@ -103,6 +112,7 @@ async def test_model_path_emits_progress_once_before_the_model_call(
 async def test_sections_are_whitespace_normalized_and_blank_sections_dropped(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # Arrange
     async def decide(*args: Any, **kwargs: Any) -> OutlineDraft:
         return OutlineDraft(
             sections=["  Spread   out  ", " \t ", "Also fine"], notice=""
@@ -111,8 +121,10 @@ async def test_sections_are_whitespace_normalized_and_blank_sections_dropped(
     monkeypatch.setattr(node_module, "ainvoke_structured", decide)
     events: list[Any] = []
 
+    # Act
     result = await node_module.outline(_state(), writer=events.append)
 
+    # Assert
     assert result["outline"] == ["Spread out", "Also fine"]
 
 
@@ -120,6 +132,7 @@ async def test_sections_are_whitespace_normalized_and_blank_sections_dropped(
 async def test_an_empty_redraft_on_a_revision_keeps_the_previous_outline_and_surfaces_the_notice(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # Arrange
     previous = ["Keep me"]
 
     async def decide(*args: Any, **kwargs: Any) -> OutlineDraft:
@@ -128,11 +141,13 @@ async def test_an_empty_redraft_on_a_revision_keeps_the_previous_outline_and_sur
     monkeypatch.setattr(node_module, "ainvoke_structured", decide)
     events: list[Any] = []
 
+    # Act
     result = await node_module.outline(
         _state(outline=previous, revisions=1, instruction="add Poland"),
         writer=events.append,
     )
 
+    # Assert
     assert result["outline"] == ["Keep me"]
     assert result["notice"] == "Not in the transcript yet."
 
@@ -141,6 +156,7 @@ async def test_an_empty_redraft_on_a_revision_keeps_the_previous_outline_and_sur
 async def test_every_return_path_clears_instruction(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # Arrange
     async def empty_draft(*args: Any, **kwargs: Any) -> OutlineDraft:
         return OutlineDraft(sections=[], notice="refused")
 
@@ -149,6 +165,7 @@ async def test_every_return_path_clears_instruction(
 
     monkeypatch.setattr(node_module, "ainvoke_structured", empty_draft)
     events: list[Any] = []
+    # Act
     no_material = await node_module.outline(
         _state(transcript="", instruction="add Poland"), writer=events.append
     )
@@ -165,6 +182,7 @@ async def test_every_return_path_clears_instruction(
         _state(instruction="add Poland"), writer=events.append
     )
 
+    # Assert
     assert no_material["instruction"] == ""
     assert revision_cap["instruction"] == ""
     assert model_refusal["instruction"] == ""
@@ -175,6 +193,7 @@ async def test_every_return_path_clears_instruction(
 async def test_human_prompt_carries_transcript_outline_and_revision_instruction(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # Arrange
     received: dict[str, Any] = {}
 
     async def decide(
@@ -192,6 +211,7 @@ async def test_human_prompt_carries_transcript_outline_and_revision_instruction(
     monkeypatch.setattr(node_module, "ainvoke_structured", decide)
     events: list[Any] = []
 
+    # Act
     await node_module.outline(
         _state(outline=["Old one", "Old two"], revisions=1, instruction="add Poland"),
         writer=events.append,
@@ -200,6 +220,7 @@ async def test_human_prompt_carries_transcript_outline_and_revision_instruction(
     await node_module.outline(_state(), writer=events.append)
     fresh_prompt = received["messages"][0].text()
 
+    # Assert
     assert isinstance(received["messages"][0], HumanMessage)
     assert TRANSCRIPT in revision_prompt
     assert "Current outline:" in revision_prompt

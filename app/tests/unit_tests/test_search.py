@@ -22,6 +22,7 @@ def _brave_key(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_allowed_domain_accepts_subdomains_and_rejects_lookalikes() -> None:
+    # Act + Assert
     assert (
         search.allowed_domain("https://www.bbc.com/news", EXPERT_SOURCES) == "bbc.com"
     )
@@ -35,20 +36,25 @@ def test_allowed_domain_accepts_subdomains_and_rejects_lookalikes() -> None:
 
 
 def test_batch_query_limits() -> None:
+    # Act
     built = search.build_batch_query("word " * 400, EXPERT_SOURCES.batches[0])
+    # Assert
     assert len(built) <= search.BRAVE_MAX_QUERY_CHARS
     assert len(built.split()) <= search.BRAVE_MAX_QUERY_WORDS
 
 
 def test_merge_caps_and_defers() -> None:
+    # Arrange
     batch = [
         Candidate("a", "https://reuters.com/1", "reuters.com"),
         Candidate("b", "https://reuters.com/2", "reuters.com"),
         Candidate("c", "https://reuters.com/3", "reuters.com"),
     ]
+    # Act
     merged = search.merge_candidates(
         [batch, [Candidate("d", "https://ft.com/1", "ft.com")]], EXPERT_SOURCES
     )
+    # Assert
     assert [candidate.url for candidate in merged] == [
         "https://reuters.com/1",
         "https://reuters.com/2",
@@ -60,6 +66,7 @@ def test_merge_caps_and_defers() -> None:
 async def test_search_makes_exactly_three_batches_and_gates_urls(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # Arrange
     calls: list[str] = []
 
     async def fake_get(
@@ -80,7 +87,9 @@ async def test_search_makes_exactly_three_batches_and_gates_urls(
         )
 
     monkeypatch.setattr(httpx.AsyncClient, "get", fake_get)
+    # Act
     candidates = await search.search_allowlisted("question", EXPERT_SOURCES)
+    # Assert
     assert len(calls) == 3
     assert all(candidate.domain == "reuters.com" for candidate in candidates)
 
@@ -89,6 +98,7 @@ async def test_search_makes_exactly_three_batches_and_gates_urls(
 async def test_all_search_batches_failing_raises(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # Arrange
     async def fake_get(
         self: httpx.AsyncClient,
         url: str,
@@ -99,6 +109,7 @@ async def test_all_search_batches_failing_raises(
         raise httpx.ConnectError("boom")
 
     monkeypatch.setattr(httpx.AsyncClient, "get", fake_get)
+    # Act + Assert
     with pytest.raises(SearchUnavailableError):
         await search.search_allowlisted("question", EXPERT_SOURCES)
 
@@ -109,6 +120,7 @@ async def test_malformed_brave_items_are_skipped(
 ) -> None:
     """One malformed Brave result must not abort a batch or reach the prompt."""
 
+    # Arrange
     async def fake_get(
         self: httpx.AsyncClient,
         url: str,
@@ -127,7 +139,9 @@ async def test_malformed_brave_items_are_skipped(
         )
 
     monkeypatch.setattr(httpx.AsyncClient, "get", fake_get)
+    # Act
     candidates = await search.search_allowlisted("question", EXPERT_SOURCES)
+    # Assert
     assert [candidate.url for candidate in candidates] == [
         "https://reuters.com/article",
         "https://apnews.com/1",
@@ -143,9 +157,11 @@ async def test_search_preserves_cancellation(
 ) -> None:
     """A cancelled search batch must propagate, not be reported as a failure."""
 
+    # Arrange
     async def cancelled_batch(*args: object, **kwargs: object) -> list[Candidate]:
         raise asyncio.CancelledError()
 
     monkeypatch.setattr(search, "_brave_batch", cancelled_batch)
+    # Act + Assert
     with pytest.raises(asyncio.CancelledError):
         await search.search_allowlisted("question", EXPERT_SOURCES)

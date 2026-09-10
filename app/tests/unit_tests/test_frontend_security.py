@@ -2,7 +2,9 @@ from pathlib import Path
 
 
 def test_frontend_sanitizes_markdown_before_x_html() -> None:
+    # Arrange
     html = (Path(__file__).parents[3] / "frontend" / "index.html").read_text()
+    # Assert
     assert "DOMPurify.sanitize" in html
     assert "dompurify@3.4.13" in html
     assert "dompurify@3.4.0" not in html
