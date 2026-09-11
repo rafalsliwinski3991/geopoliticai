@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ast
+import asyncio
 import importlib.util
 import json
 import sys
@@ -10,6 +11,8 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from langchain_core.messages import AIMessage, HumanMessage
+from langgraph.types import Command
 
 RUNNER_PATH = Path(__file__).parents[1] / "manual_quality" / "basic_agent_evaluation.py"
 PROMPTS_PATH = Path(__file__).parents[1] / "manual_quality" / "judge_prompts.py"
@@ -255,3 +258,154 @@ def test_judge_specs_cover_exactly_the_five_judges() -> None:
     for name in ("usefulness", "rewrite_quality", "report_fidelity"):
         assert specs[name].prompt is not None
         assert specs[name].reference_key is not None
+
+
+class _StubGraph:
+    def __init__(self, results: list[dict[str, Any]]) -> None:
+        self._results = list(results)
+        self.calls: list[object] = []
+
+    async def ainvoke(self, state: object, config: object = None) -> dict[str, Any]:
+        self.calls.append(state)
+        if not self._results:
+            raise AssertionError("Stub graph ran out of scripted results")
+        return self._results.pop(0)
+
+
+def _patch_build_graph(
+    monkeypatch: pytest.MonkeyPatch, results: list[dict[str, Any]]
+) -> tuple[list[bool], _StubGraph]:
+    graph_module = importlib.import_module("agents.orchestrator.graph")
+
+    stub = _StubGraph(results)
+    builds: list[bool] = []
+
+    def fake_build(checkpointer: object = None) -> _StubGraph:
+        builds.append(True)
+        return stub
+
+    monkeypatch.setattr(graph_module, "build_graph", fake_build)
+    return builds, stub
+
+
+def test_run_e2e_sends_initial_state_and_command(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    builds, stub = _patch_build_graph(
+        monkeypatch,
+        [
+            {"destination": "geopolitical", "__interrupt__": ["pending"]},
+            {"destination": "report", "__interrupt__": ["pending"]},
+            {
+                "messages": [
+                    HumanMessage("Finland research citing [BBC](https://www.bbc.com/x)"),
+                    AIMessage("SWEDEN REPORT SENTINEL"),
+                ],
+                "destination": "report",
+                "standalone_query": "Why Sweden joined NATO",
+            },
+        ],
+    )
+    runner = _load_runner()
+    outcome = asyncio.run(
+        runner.run_e2e(
+            {
+                "turns": [
+                    {"query": "  Why Finland?  ", "expect": "geopolitical"},
+                    {"query": "What about Sweden?"},
+                    {"resume": "approve"},
+                ]
+            }
+        )
+    )
+    assert builds == [True]
+    assert isinstance(stub.calls[0], dict)
+    assert [
+        message.content for message in stub.calls[0]["messages"]  # type: ignore[index]
+    ] == ["Why Finland?"]
+    assert [
+        message.content for message in stub.calls[1]["messages"]  # type: ignore[index]
+    ] == ["What about Sweden?"]
+    assert isinstance(stub.calls[2], Command)
+    assert outcome["answer"] == "SWEDEN REPORT SENTINEL"
+    assert outcome["destination"] == "report"
+    assert outcome["standalone_query"] == "Why Sweden joined NATO"
+    assert "SWEDEN REPORT SENTINEL" not in outcome["conversation"]
+    assert "bbc.com" in outcome["conversation"]
+
+
+def test_run_e2e_resume_without_pending_interrupt_raises(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_build_graph(monkeypatch, [])
+    runner = _load_runner()
+    with pytest.raises(RuntimeError, match="no pending interrupt"):
+        asyncio.run(runner.run_e2e({"turns": [{"resume": "approve"}]}))
+
+
+def test_run_e2e_rejects_a_turn_carrying_neither_key(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    builds, _ = _patch_build_graph(monkeypatch, [])
+    runner = _load_runner()
+    with pytest.raises(ValueError, match=r"each e2e turn needs"):
+        asyncio.run(runner.run_e2e({"turns": [{"expect": "other"}]}))
+    assert builds == []
+
+
+def test_run_e2e_rejects_a_turn_carrying_both_resume_and_expect(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    builds, _ = _patch_build_graph(monkeypatch, [])
+    runner = _load_runner()
+    with pytest.raises(ValueError, match=r"each e2e turn needs"):
+        asyncio.run(runner.run_e2e({"turns": [{"resume": "approve", "expect": "report"}]}))
+    assert builds == []
+
+
+def test_run_e2e_rejects_an_empty_query(monkeypatch: pytest.MonkeyPatch) -> None:
+    builds, stub = _patch_build_graph(monkeypatch, [])
+    runner = _load_runner()
+    with pytest.raises(ValueError, match="must not be empty"):
+        asyncio.run(runner.run_e2e({"turns": [{"query": "   "}]}))
+    assert stub.calls == []
+
+
+def test_run_e2e_setup_turn_misroute_raises(monkeypatch: pytest.MonkeyPatch) -> None:
+    _patch_build_graph(monkeypatch, [{"destination": "other"}])
+    runner = _load_runner()
+    with pytest.raises(RuntimeError, match=r"routed to 'other'"):
+        asyncio.run(runner.run_e2e({"turns": [{"query": "q", "expect": "geopolitical"}]}))
+
+
+def test_run_e2e_unknown_expect_rejects_before_any_graph_call(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    builds, stub = _patch_build_graph(monkeypatch, [])
+    runner = _load_runner()
+    with pytest.raises(ValueError, match="unknown expected destination"):
+        asyncio.run(
+            runner.run_e2e({"turns": [{"query": "q", "expect": "atlantis"}]})
+        )
+    assert builds == []
+    assert stub.calls == []
+
+
+def test_thread_output_excludes_the_final_ai_message_from_conversation() -> None:
+    runner = _load_runner()
+    result = {
+        "messages": [
+            HumanMessage("What did NATO decide at Vilnius?"),
+            AIMessage("research: see [Reuters](https://www.reuters.com/vilnius)"),
+            HumanMessage("Write the report"),
+            AIMessage("REPORT_SENTINEL"),
+        ],
+        "destination": "report",
+        "standalone_query": "Vilnius membership report",
+    }
+    outcome = runner.thread_output(result)
+    assert outcome["answer"] == "REPORT_SENTINEL"
+    assert outcome["destination"] == "report"
+    assert outcome["standalone_query"] == "Vilnius membership report"
+    assert "REPORT_SENTINEL" not in outcome["conversation"]
+    assert "reuters.com" in outcome["conversation"]

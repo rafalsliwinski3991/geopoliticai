@@ -129,6 +129,7 @@ async def run_expert(input: dict[str, Any]) -> dict[str, Any]:
         raise RuntimeError("Expert graph returned no sources")
 
     return {
+        "standalone_query": query,
         "answer": answer,
         "sources": [
             {"title": source.title, "url": source.url, "text": source.text}
@@ -152,6 +153,56 @@ def message_from_record(record: object) -> AnyMessage:
     raise ValueError(f"Unsupported message role: {role!r}")
 
 
+def thread_output(result: dict[str, Any]) -> dict[str, Any]:
+    """Render one finished orchestrator turn into the shared judge fields.
+
+    `conversation` reuses the reporter's own `build_transcript` over
+    `messages[:-1]`, so it is the thread as it stood when this turn's answer
+    was written, not after. See the comment on the return value.
+
+    Truncation is not a concern here: `MAX_TRANSCRIPT_CHARS` is 400,000 and a
+    scripted two-turn thread is a few thousand.
+
+    The import is function-local like every other agent import in this file.
+    `agents.reporter.__init__` reaches `graph.py`, whose module scope calls
+    `init_tracing()`. At module scope that would fire on import, before `main`
+    has loaded the environment, and would drag the whole agent stack into the
+    unit tests, which must run with no keys and no database.
+    """
+    from agents.reporter import build_transcript
+
+    messages = result.get("messages")
+    if not isinstance(messages, list) or not messages:
+        raise RuntimeError("Turn produced no messages")
+    final = messages[-1]
+    if not isinstance(final, AIMessage):
+        raise RuntimeError("Turn produced no final AI message")
+    answer = final.text()
+    if not answer.strip():
+        raise RuntimeError("Turn produced an empty answer")
+    destination = result.get("destination")
+    standalone_query = result.get("standalone_query")
+    if destination not in DESTINATIONS:
+        raise RuntimeError("Turn returned no valid destination")
+    if not isinstance(standalone_query, str) or not standalone_query.strip():
+        raise RuntimeError("Turn returned no standalone query")
+    return {
+        "destination": destination,
+        "standalone_query": standalone_query,
+        "answer": answer,
+        # `messages[:-1]`, never the whole list. `final` is this turn's own
+        # answer, and both judges that read `conversation` are broken by seeing
+        # it. `report_fidelity` asks whether the report stays within the
+        # research the conversation supplied, which is vacuous once the report
+        # is itself in that conversation. `rewrite_quality` asks whether the
+        # rewrite resolves the last user turn, which the answer to that very
+        # rewrite gives away. Today's mappings dodge this by reading
+        # `input.messages`; trimming keeps the same separation while still
+        # showing the judge what the thread actually produced upstream.
+        "conversation": build_transcript(messages[:-1]),
+    }
+
+
 async def run_orchestrator(input: dict[str, Any]) -> dict[str, Any]:
     """Run the real full graph with explicit history and no checkpointer."""
     from agents.orchestrator.graph import build_runtime_config, graph
@@ -165,36 +216,16 @@ async def run_orchestrator(input: dict[str, Any]) -> dict[str, Any]:
         {"messages": messages},
         config=build_runtime_config(thread_id=f"manual-quality-{uuid4()}"),
     )
-    destination = result.get("destination")
-    standalone_query = result.get("standalone_query")
-    result_messages = result.get("messages")
-    if destination not in {"geopolitical", "other"}:
-        raise RuntimeError("Orchestrator returned no valid destination")
-    if not isinstance(standalone_query, str) or not standalone_query.strip():
-        raise RuntimeError("Orchestrator returned no standalone query")
-    if not isinstance(result_messages, list) or not result_messages:
-        raise RuntimeError("Orchestrator returned no messages")
-    final_message = result_messages[-1]
-    if not isinstance(final_message, AIMessage):
-        raise RuntimeError("Orchestrator returned no final AI message")
-
-    return {
-        "destination": destination,
-        "standalone_query": standalone_query,
-        "answer": final_message.text(),
-    }
+    return thread_output(result)
 
 
-async def run_reporter_thread(input: dict[str, Any]) -> dict[str, Any]:
+async def run_report(input: dict[str, Any]) -> dict[str, Any]:
     """Drive a paused reporter turn to completion over an in-memory saver.
 
     The module-level `agents.orchestrator.graph.graph` is compiled with no
     checkpointer (`graph.py:59`), and `gate` calls `interrupt()`, so a paused
     run cannot be resumed on it. `build_graph` takes the saver for exactly
     this reason (`orchestrator/graph.py:19-28`).
-
-    Not reusable from `run_orchestrator`, which raises on any destination
-    outside `{"geopolitical", "other"}`.
     """
     from agents.orchestrator.graph import build_graph, build_runtime_config
 
@@ -225,16 +256,83 @@ async def run_reporter_thread(input: dict[str, Any]) -> dict[str, Any]:
     for reply in replies:
         result = await graph.ainvoke(Command(resume=reply), config=config)
 
-    result_messages = result.get("messages")
-    if not isinstance(result_messages, list) or not result_messages:
-        raise RuntimeError("Reporter turn produced no messages")
-    final = result_messages[-1]
-    if not isinstance(final, AIMessage):
-        raise RuntimeError("Reporter turn produced no final AI message")
-    report = final.text()
-    if not report.strip():
-        raise RuntimeError("Reporter turn produced an empty report")
-    return {"report": report}
+    return thread_output(result)
+
+
+async def run_e2e(input: dict[str, Any]) -> dict[str, Any]:
+    """Drive a scripted multi-turn conversation over one checkpointed thread.
+
+    Each turn is either a new user message or a resume of a pending pause. The
+    module-level orchestrator graph is compiled with no checkpointer, so this
+    builds its own exactly as `run_report` does.
+
+    A `query` turn may carry `expect`, the branch it must reach, and this
+    raises when it does not. Only *setup* turns carry it. A setup turn exists
+    to put a cited expert answer into the thread so that the graded turn has
+    something to be a follow-up to; if it lands on the wrong branch the case is
+    not testing what it claims to, which is a broken fixture rather than a bad
+    answer. `run_report` already draws this line by raising when a turn never
+    paused instead of scoring it as a poor report.
+
+    The final turn carries no `expect`. Its routing is the result under test,
+    so it stays graded by `route_correct`, where a misroute records a zero
+    beside the other judges instead of erroring the whole kind.
+
+    A `resume` turn never carries `expect`: resuming does not re-run `classify`.
+    """
+    from agents.orchestrator.graph import build_graph, build_runtime_config
+    from agents.orchestrator.state import build_initial_orchestrator_state
+
+    turns = input.get("turns")
+    if not isinstance(turns, list) or not turns:
+        raise ValueError("e2e input.turns must be a non-empty list")
+    # The whole script is checked before the first turn runs, so a typo in an
+    # `expect` value costs nothing. Validated after the loop it would surface
+    # only once a live search had already been paid for.
+    for turn in turns:
+        if not isinstance(turn, dict) or set(turn) not in (
+            {"query"},
+            {"query", "expect"},
+            {"resume"},
+        ):
+            raise ValueError(
+                "each e2e turn needs 'query', 'query' with 'expect', or 'resume'"
+            )
+        if "expect" in turn and turn["expect"] not in DESTINATIONS:
+            raise ValueError(f"unknown expected destination: {turn['expect']!r}")
+
+    graph = build_graph(checkpointer=InMemorySaver())
+    config = build_runtime_config(thread_id=f"manual-quality-{uuid4()}")
+    result: dict[str, Any] = {}
+    for turn in turns:
+        if "query" in turn:
+            # `build_initial_orchestrator_state` is the helper `api.py:318`
+            # uses to start a turn. It normalizes whitespace and rejects an
+            # empty query, so this task needs no validation of its own.
+            result = await graph.ainvoke(
+                build_initial_orchestrator_state(turn["query"]), config=config
+            )
+            expected = turn.get("expect")
+            if expected is not None and result.get("destination") != expected:
+                raise RuntimeError(
+                    f"Setup turn routed to {result.get('destination')!r}, "
+                    f"expected {expected!r}. This case is not exercising what "
+                    f"it claims to. Query: {turn['query'][:80]}"
+                )
+            continue
+        # Measured against langgraph 1.0.1: resuming a thread with no pending
+        # interrupt is a SILENT no-op that returns the completed state and
+        # raises nothing. Without this a `classify` misroute would let an
+        # expert or chat answer flow through every check below and be scored
+        # as if the reporter had written it.
+        if "__interrupt__" not in result:
+            raise RuntimeError(
+                "Resume sent to a thread with no pending interrupt: classify "
+                "did not route to `report`, or the thread carried no "
+                "researched material"
+            )
+        result = await graph.ainvoke(Command(resume=turn["resume"]), config=config)
+    return thread_output(result)
 
 
 def build_expert_evaluators(judge: LLM) -> list[Any]:
@@ -368,6 +466,39 @@ def build_judges(names: Sequence[str], judge: LLM) -> list[Any]:
     return built
 
 
+@dataclass(frozen=True)
+class Kind:
+    """One dataset and one experiment: a task, and the judges every case gets.
+
+    Judges belong to the kind and not to the case because Phoenix binds
+    evaluators to a dataset, with no way to skip one for a single example.
+    A second case added to any kind is therefore graded by exactly this list,
+    or it needs a kind of its own.
+    """
+
+    task: ExperimentTask
+    judges: tuple[str, ...]
+
+
+def build_kinds() -> dict[str, Kind]:
+    """The four kinds, in the order their experiments run."""
+    return {
+        "expert": Kind(run_expert, ("groundedness", "usefulness")),
+        "orchestrator": Kind(run_orchestrator, ("route_correct", "rewrite_quality")),
+        # No `route_correct`: `run_report` raises unless the turn paused, and
+        # the orchestrator's only `interrupt()` is the reporter subgraph's gate.
+        # Pausing therefore implies the destination was `report`, so the judge
+        # could only ever score 1.0 or never run at all. The guard is strictly
+        # stronger than the judge: it also requires researched material in the
+        # thread, which routing alone does not.
+        "report": Kind(run_report, ("report_fidelity",)),
+        # `route_correct` DOES belong here. `run_e2e` guards only its setup
+        # turns; the final turn's routing is ungraded inside the task, so a zero
+        # is reachable. See `run_e2e`'s docstring.
+        "e2e": Kind(run_e2e, ("route_correct", "rewrite_quality", "usefulness")),
+    }
+
+
 def build_orchestrator_evaluators(judge: LLM) -> list[Any]:
     """Build exact routing plus the LLM rewrite judge."""
     rewrite_quality = ClassificationEvaluator(
@@ -433,7 +564,7 @@ def build_agent_run_info() -> dict[
             {"rewrite_quality"},
         ),
         "reporter": (
-            run_reporter_thread,
+            run_report,
             build_reporter_evaluators,
             {"report_fidelity"},
             {"report_fidelity"},
