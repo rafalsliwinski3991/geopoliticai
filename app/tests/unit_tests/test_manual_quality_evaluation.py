@@ -51,8 +51,7 @@ def test_rubric_prompts_live_in_judge_prompts_module() -> None:
     module_assignments = [
         node.targets[0].id
         for node in tree.body
-        if isinstance(node, ast.Assign)
-        and isinstance(node.targets[0], ast.Name)
+        if isinstance(node, ast.Assign) and isinstance(node.targets[0], ast.Name)
     ]
     for name in (
         "GROUNDEDNESS_PROMPT",
@@ -164,9 +163,23 @@ def _nested(**overrides: Any) -> str:
 
 
 def _case(**field_overrides: Any) -> dict[str, Any]:
-    case = json.loads(json.dumps(NESTED_FIXTURE["report"][0]))
+    case: dict[str, Any] = json.loads(json.dumps(NESTED_FIXTURE["report"][0]))
     case.update(field_overrides)
     return case
+
+
+def test_route_correct_accepts_the_expected_branch() -> None:
+    runner = _load_runner()
+    output = {"destination": "other", "standalone_query": "q", "answer": "a"}
+    reference = {"route_correct_destination": "other"}
+    assert runner.route_correct(output=output, reference=reference) is True
+
+
+def test_route_correct_rejects_a_misroute() -> None:
+    runner = _load_runner()
+    output = {"destination": "other", "standalone_query": "q", "answer": "a"}
+    reference = {"route_correct_destination": "geopolitical"}
+    assert runner.route_correct(output=output, reference=reference) is False
 
 
 def test_load_cases_rejects_a_json_list(tmp_path: Path) -> None:
@@ -288,9 +301,9 @@ def test_load_cases_accepts_the_real_shipped_cases_json() -> None:
 class _StubGraph:
     def __init__(self, results: list[dict[str, Any]]) -> None:
         self._results = list(results)
-        self.calls: list[object] = []
+        self.calls: list[Any] = []
 
-    async def ainvoke(self, state: object, config: object = None) -> dict[str, Any]:
+    async def ainvoke(self, state: Any, config: object = None) -> dict[str, Any]:
         self.calls.append(state)
         if not self._results:
             raise AssertionError("Stub graph ran out of scripted results")
@@ -323,7 +336,9 @@ def test_run_e2e_sends_initial_state_and_command(
             {"destination": "report", "__interrupt__": ["pending"]},
             {
                 "messages": [
-                    HumanMessage("Finland research citing [BBC](https://www.bbc.com/x)"),
+                    HumanMessage(
+                        "Finland research citing [BBC](https://www.bbc.com/x)"
+                    ),
                     AIMessage("SWEDEN REPORT SENTINEL"),
                 ],
                 "destination": "report",
@@ -345,12 +360,12 @@ def test_run_e2e_sends_initial_state_and_command(
     )
     assert builds == [True]
     assert isinstance(stub.calls[0], dict)
-    assert [
-        message.content for message in stub.calls[0]["messages"]  # type: ignore[index]
-    ] == ["Why Finland?"]
-    assert [
-        message.content for message in stub.calls[1]["messages"]  # type: ignore[index]
-    ] == ["What about Sweden?"]
+    assert [message.content for message in stub.calls[0]["messages"]] == [
+        "Why Finland?"
+    ]
+    assert [message.content for message in stub.calls[1]["messages"]] == [
+        "What about Sweden?"
+    ]
     assert isinstance(stub.calls[2], Command)
     assert outcome["answer"] == "SWEDEN REPORT SENTINEL"
     assert outcome["destination"] == "report"
@@ -402,7 +417,9 @@ def test_run_e2e_setup_turn_misroute_raises(monkeypatch: pytest.MonkeyPatch) -> 
     _patch_build_graph(monkeypatch, [{"destination": "other"}])
     runner = _load_runner()
     with pytest.raises(RuntimeError, match=r"routed to 'other'"):
-        asyncio.run(runner.run_e2e({"turns": [{"query": "q", "expect": "geopolitical"}]}))
+        asyncio.run(
+            runner.run_e2e({"turns": [{"query": "q", "expect": "geopolitical"}]})
+        )
 
 
 def test_run_e2e_unknown_expect_rejects_before_any_graph_call(
