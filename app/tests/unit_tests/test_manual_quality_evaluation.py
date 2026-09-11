@@ -413,10 +413,20 @@ def test_run_e2e_rejects_an_empty_query(monkeypatch: pytest.MonkeyPatch) -> None
     assert stub.calls == []
 
 
+def test_run_e2e_rejects_a_non_string_query(monkeypatch: pytest.MonkeyPatch) -> None:
+    builds, stub = _patch_build_graph(monkeypatch, [])
+    runner = _load_runner()
+    with pytest.raises(AttributeError):
+        asyncio.run(runner.run_e2e({"turns": [{"query": 5}]}))
+    assert stub.calls == []
+
+
 def test_run_e2e_setup_turn_misroute_raises(monkeypatch: pytest.MonkeyPatch) -> None:
     _patch_build_graph(monkeypatch, [{"destination": "other"}])
     runner = _load_runner()
-    with pytest.raises(RuntimeError, match=r"routed to 'other'"):
+    with pytest.raises(
+        RuntimeError, match=r"routed to 'other', expected 'geopolitical'"
+    ):
         asyncio.run(
             runner.run_e2e({"turns": [{"query": "q", "expect": "geopolitical"}]})
         )
