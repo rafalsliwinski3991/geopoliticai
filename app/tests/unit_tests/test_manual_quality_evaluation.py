@@ -226,8 +226,32 @@ def test_load_cases_accepts_the_real_shipped_cases_json() -> None:
     }
 
 
-def test_route_correct_accepts_a_case_expecting_other() -> None:
+def test_route_correct_accepts_the_expected_branch() -> None:
     runner = _load_runner()
     output = {"destination": "other", "standalone_query": "q", "answer": "a"}
-    reference = {"destination": "other"}
+    reference = {"route_correct_destination": "other"}
     assert runner.route_correct(output=output, reference=reference) is True
+
+
+def test_route_correct_rejects_a_misroute() -> None:
+    runner = _load_runner()
+    output = {"destination": "other", "standalone_query": "q", "answer": "a"}
+    reference = {"route_correct_destination": "geopolitical"}
+    assert runner.route_correct(output=output, reference=reference) is False
+
+
+def test_judge_specs_cover_exactly_the_five_judges() -> None:
+    runner = _load_runner()
+    specs = runner.judge_specs()
+    assert set(specs) == {
+        "route_correct",
+        "groundedness",
+        "usefulness",
+        "rewrite_quality",
+        "report_fidelity",
+    }
+    assert specs["route_correct"].prompt is None
+    assert specs["groundedness"].reference_key is None
+    for name in ("usefulness", "rewrite_quality", "report_fidelity"):
+        assert specs[name].prompt is not None
+        assert specs[name].reference_key is not None

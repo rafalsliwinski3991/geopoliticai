@@ -59,6 +59,7 @@ JUDGED_SCORE_THRESHOLD = 3.0  # Provisional. No historical scores exist;
 # revisit after the first runs.
 JUDGED_EVALUATORS = {"groundedness", "usefulness", "rewrite_quality", "report_fidelity"}
 SCORE_CHOICES: dict[str, float | int] = {str(score): score for score in range(1, 6)}
+DESTINATIONS = {"geopolitical", "other", "report"}
 
 ExperimentTask = Callable[[dict[str, Any]], Awaitable[dict[str, Any]]]
 
@@ -276,13 +277,95 @@ def build_expert_evaluators(judge: LLM) -> list[Any]:
 
 @create_evaluator(kind="CODE", name="route_correct")
 def route_correct(output: Any, reference: dict[str, Any]) -> bool:
-    """Require the completed full graph to choose the case's expected branch."""
+    """Require the completed graph to choose the case's expected branch."""
     if not isinstance(output, dict):
-        raise RuntimeError("Orchestrator task produced no output")
+        raise RuntimeError("Task produced no output")
     # `bool(...)` because `output.get(...)` is `Any`, and `--strict` rejects
     # returning `Any` from a function declared to return `bool`. Compares the
     # run against its own case's expectation, not against a fixed destination.
-    return bool(output.get("destination") == reference["destination"])
+    return bool(output.get("destination") == reference["route_correct_destination"])
+
+
+@dataclass(frozen=True)
+class JudgeSpec:
+    """How one judge is built, and what a case must supply for it.
+
+    `prompt` is None for `route_correct`, the only CODE evaluator.
+    `reference_key` is None for `groundedness`, which reads the run's own
+    sources and needs nothing from the case.
+    """
+
+    prompt: str | None
+    input_mapping: dict[str, str]
+    reference_key: str | None
+
+
+def judge_specs() -> dict[str, JudgeSpec]:
+    """Every judge this suite can run, and what each one reads."""
+    return {
+        "route_correct": JudgeSpec(None, {}, "route_correct_destination"),
+        "groundedness": JudgeSpec(
+            GROUNDEDNESS_PROMPT,
+            {
+                "question": "output.standalone_query",
+                "answer": "output.answer",
+                "sources": "output.sources",
+            },
+            None,
+        ),
+        "usefulness": JudgeSpec(
+            USEFULNESS_PROMPT,
+            {
+                "question": "output.standalone_query",
+                "answer": "output.answer",
+                "requirements": "reference.usefulness_required_points",
+            },
+            "usefulness_required_points",
+        ),
+        "rewrite_quality": JudgeSpec(
+            REWRITE_QUALITY_PROMPT,
+            {
+                "history": "output.conversation",
+                "rewrite": "output.standalone_query",
+                "expected_intent": "reference.rewrite_quality_intent",
+            },
+            "rewrite_quality_intent",
+        ),
+        "report_fidelity": JudgeSpec(
+            REPORT_FIDELITY_PROMPT,
+            {
+                "conversation": "output.conversation",
+                "outline_intent": "reference.report_fidelity_outline",
+                "report": "output.answer",
+            },
+            "report_fidelity_outline",
+        ),
+    }
+
+
+def build_judges(names: Sequence[str], judge: LLM) -> list[Any]:
+    """Bind one kind's judges, newest mapping first."""
+    specs = judge_specs()
+    built: list[Any] = []
+    for name in names:
+        spec = specs[name]
+        if spec.prompt is None:
+            built.append(route_correct)
+            continue
+        built.append(
+            bind_evaluator(
+                evaluator=ClassificationEvaluator(
+                    name=name,
+                    llm=judge,
+                    prompt_template=spec.prompt,
+                    choices=SCORE_CHOICES,
+                    include_explanation=True,
+                    temperature=0,
+                ),
+                input_mapping=spec.input_mapping,
+            )
+        )
+    return built
 
 
 def build_orchestrator_evaluators(judge: LLM) -> list[Any]:
