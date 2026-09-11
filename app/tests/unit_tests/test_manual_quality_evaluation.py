@@ -8,6 +8,7 @@ import importlib.util
 import json
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -111,153 +112,177 @@ def test_live_results_use_phoenix_native_output() -> None:
     )
 
 
-def test_load_cases_rejects_a_json_object(tmp_path: Path) -> None:
+NESTED_FIXTURE = {
+    "expert": [
+        {
+            "id": "e1",
+            "input": {"query": "q"},
+            "output": {"usefulness_required_points": ["point"]},
+            "metadata": {},
+        }
+    ],
+    "orchestrator": [
+        {
+            "id": "o1",
+            "input": {"messages": []},
+            "output": {
+                "route_correct_destination": "other",
+                "rewrite_quality_intent": "intent",
+            },
+            "metadata": {},
+        }
+    ],
+    "report": [
+        {
+            "id": "r1",
+            "input": {"messages": [], "resume_actions": []},
+            "output": {"report_fidelity_outline": "outline"},
+            "metadata": {},
+        }
+    ],
+    "e2e": [
+        {
+            "id": "z1",
+            "input": {"turns": [{"query": "q"}]},
+            "output": {
+                "route_correct_destination": "geopolitical",
+                "rewrite_quality_intent": "intent",
+                "usefulness_required_points": ["point"],
+            },
+            "metadata": {},
+        }
+    ],
+}
+
+
+def _nested(**overrides: Any) -> str:
+    """Dump a nested fixture with whole-kind or whole-case overrides."""
+    fixture = json.loads(json.dumps(NESTED_FIXTURE))
+    for kind, value in overrides.items():
+        fixture[kind] = value
+    return json.dumps(fixture)
+
+
+def _case(**field_overrides: Any) -> dict[str, Any]:
+    case = json.loads(json.dumps(NESTED_FIXTURE["report"][0]))
+    case.update(field_overrides)
+    return case
+
+
+def test_load_cases_rejects_a_json_list(tmp_path: Path) -> None:
     runner = _write_cases(
         tmp_path,
-        json.dumps({"expert": {"id": "x", "input": {}, "output": {}, "metadata": {}}}),
+        json.dumps([{"id": "x", "input": {}, "output": {}, "metadata": {}}]),
     )
-    with pytest.raises(ValueError, match="non-empty list of cases"):
+    with pytest.raises(ValueError, match="non-empty object keyed by kind"):
         runner.load_cases()
 
 
-def test_load_cases_rejects_an_empty_list(tmp_path: Path) -> None:
-    runner = _write_cases(tmp_path, json.dumps([]))
+def test_load_cases_rejects_an_empty_object(tmp_path: Path) -> None:
+    runner = _write_cases(tmp_path, json.dumps({}))
+    with pytest.raises(ValueError, match="non-empty object keyed by kind"):
+        runner.load_cases()
+
+
+def test_load_cases_rejects_an_unknown_kind(tmp_path: Path) -> None:
+    runner = _write_cases(tmp_path, _nested(unknown=[_case()]))
+    with pytest.raises(ValueError, match="must hold exactly the kinds"):
+        runner.load_cases()
+
+
+def test_load_cases_rejects_a_missing_kind(tmp_path: Path) -> None:
+    fixture = json.loads(json.dumps(NESTED_FIXTURE))
+    del fixture["e2e"]
+    runner = _write_cases(tmp_path, json.dumps(fixture))
+    with pytest.raises(ValueError, match="must hold exactly the kinds"):
+        runner.load_cases()
+
+
+def test_load_cases_rejects_an_empty_kind(tmp_path: Path) -> None:
+    runner = _write_cases(tmp_path, _nested(report=[]))
     with pytest.raises(ValueError, match="non-empty list of cases"):
         runner.load_cases()
 
 
 def test_load_cases_rejects_a_missing_field(tmp_path: Path) -> None:
-    case = {
-        "agent": "expert",
-        "id": "expert-x",
-        "input": {"query": "q"},
-        "metadata": {},
-    }
-    runner = _write_cases(tmp_path, json.dumps([case]))
+    case = _case()
+    del case["output"]
+    runner = _write_cases(tmp_path, _nested(report=[case]))
     with pytest.raises(ValueError, match=r"each case needs exactly"):
         runner.load_cases()
 
 
 def test_load_cases_rejects_an_extra_field(tmp_path: Path) -> None:
-    case = {
-        "agent": "expert",
-        "id": "expert-x",
-        "input": {"query": "q"},
-        "output": {},
-        "metadata": {},
-        "extra": 1,
-    }
-    runner = _write_cases(tmp_path, json.dumps([case]))
+    runner = _write_cases(tmp_path, _nested(report=[_case(extra=1)]))
     with pytest.raises(ValueError, match=r"each case needs exactly"):
         runner.load_cases()
 
 
-def test_load_cases_rejects_an_unknown_agent(tmp_path: Path) -> None:
-    case = {
-        "agent": "unknown",
-        "id": "x",
-        "input": {},
-        "output": {},
-        "metadata": {},
-    }
-    runner = _write_cases(tmp_path, json.dumps([case]))
-    with pytest.raises(ValueError, match="unknown agent"):
-        runner.load_cases()
-
-
 def test_load_cases_rejects_a_blank_id(tmp_path: Path) -> None:
-    case = {
-        "agent": "expert",
-        "id": "   ",
-        "input": {},
-        "output": {},
-        "metadata": {},
-    }
-    runner = _write_cases(tmp_path, json.dumps([case]))
+    runner = _write_cases(tmp_path, _nested(report=[_case(id="   ")]))
     with pytest.raises(ValueError, match=r"case\.id must be a non-empty string"):
         runner.load_cases()
 
 
-def test_load_cases_rejects_a_duplicate_id(tmp_path: Path) -> None:
-    case = {
-        "agent": "expert",
-        "id": "expert-x",
-        "input": {},
-        "output": {},
-        "metadata": {},
-    }
-    runner = _write_cases(tmp_path, json.dumps([case, dict(case)]))
+def test_load_cases_rejects_a_duplicate_id_within_a_kind(tmp_path: Path) -> None:
+    runner = _write_cases(tmp_path, _nested(report=[_case(), _case()]))
     with pytest.raises(ValueError, match="duplicate case id"):
         runner.load_cases()
 
 
+def test_load_cases_rejects_a_duplicate_id_across_kinds(tmp_path: Path) -> None:
+    expert = json.loads(json.dumps(NESTED_FIXTURE["expert"][0]))
+    expert["id"] = "shared"
+    e2e = json.loads(json.dumps(NESTED_FIXTURE["e2e"][0]))
+    e2e["id"] = "shared"
+    runner = _write_cases(tmp_path, _nested(expert=[expert], e2e=[e2e]))
+    with pytest.raises(ValueError, match="duplicate case id: shared"):
+        runner.load_cases()
+
+
 def test_load_cases_rejects_a_non_object_case(tmp_path: Path) -> None:
-    runner = _write_cases(tmp_path, json.dumps(["not-an-object"]))
+    runner = _write_cases(tmp_path, _nested(report=["not-an-object"]))
     with pytest.raises(ValueError, match=r"each case needs exactly"):
         runner.load_cases()
 
 
 def test_load_cases_rejects_a_non_object_field(tmp_path: Path) -> None:
-    case = {
-        "agent": "expert",
-        "id": "x",
-        "input": "not-an-object",
-        "output": {},
-        "metadata": {},
-    }
-    runner = _write_cases(tmp_path, json.dumps([case]))
+    runner = _write_cases(tmp_path, _nested(report=[_case(input="not-an-object")]))
     with pytest.raises(ValueError, match=r"must be an object"):
+        runner.load_cases()
+
+
+def test_load_cases_rejects_a_missing_reference_key_for_report(
+    tmp_path: Path,
+) -> None:
+    case = _case()
+    del case["output"]["report_fidelity_outline"]
+    runner = _write_cases(tmp_path, _nested(report=[case]))
+    with pytest.raises(ValueError, match=r"r1 is missing .+report_fidelity_outline"):
+        runner.load_cases()
+
+
+def test_load_cases_rejects_a_missing_reference_key_for_e2e(
+    tmp_path: Path,
+) -> None:
+    case = json.loads(json.dumps(NESTED_FIXTURE["e2e"][0]))
+    del case["output"]["rewrite_quality_intent"]
+    runner = _write_cases(tmp_path, _nested(e2e=[case]))
+    with pytest.raises(ValueError, match=r"z1 is missing .+rewrite_quality_intent"):
         runner.load_cases()
 
 
 def test_load_cases_accepts_the_real_shipped_cases_json() -> None:
     runner = _load_runner()
     cases = runner.load_cases()
-    assert isinstance(cases, list)
-    assert {case["id"] for case in cases} == {
-        "expert-finland-nato-v1",
+    assert isinstance(cases, dict)
+    assert set(cases) == {"expert", "orchestrator", "report", "e2e"}
+    assert {case["id"] for kind_cases in cases.values() for case in kind_cases} == {
         "expert-niger-coup-v1",
-        "expert-taiwan-strait-v1",
-        "orchestrator-sweden-follow-up-v1",
-        "orchestrator-eu-sanctions-follow-up-v1",
-        "reporter-vilnius-summit-v1",
+        "orchestrator-dune-follow-up-v1",
+        "report-vilnius-summit-v1",
+        "e2e-finland-sweden-v1",
     }
-    assert {case["agent"] for case in cases} == {
-        "expert",
-        "orchestrator",
-        "reporter",
-    }
-
-
-def test_route_correct_accepts_the_expected_branch() -> None:
-    runner = _load_runner()
-    output = {"destination": "other", "standalone_query": "q", "answer": "a"}
-    reference = {"route_correct_destination": "other"}
-    assert runner.route_correct(output=output, reference=reference) is True
-
-
-def test_route_correct_rejects_a_misroute() -> None:
-    runner = _load_runner()
-    output = {"destination": "other", "standalone_query": "q", "answer": "a"}
-    reference = {"route_correct_destination": "geopolitical"}
-    assert runner.route_correct(output=output, reference=reference) is False
-
-
-def test_judge_specs_cover_exactly_the_five_judges() -> None:
-    runner = _load_runner()
-    specs = runner.judge_specs()
-    assert set(specs) == {
-        "route_correct",
-        "groundedness",
-        "usefulness",
-        "rewrite_quality",
-        "report_fidelity",
-    }
-    assert specs["route_correct"].prompt is None
-    assert specs["groundedness"].reference_key is None
-    for name in ("usefulness", "rewrite_quality", "report_fidelity"):
-        assert specs[name].prompt is not None
-        assert specs[name].reference_key is not None
 
 
 class _StubGraph:
@@ -359,7 +384,9 @@ def test_run_e2e_rejects_a_turn_carrying_both_resume_and_expect(
     builds, _ = _patch_build_graph(monkeypatch, [])
     runner = _load_runner()
     with pytest.raises(ValueError, match=r"each e2e turn needs"):
-        asyncio.run(runner.run_e2e({"turns": [{"resume": "approve", "expect": "report"}]}))
+        asyncio.run(
+            runner.run_e2e({"turns": [{"resume": "approve", "expect": "report"}]})
+        )
     assert builds == []
 
 
@@ -384,9 +411,7 @@ def test_run_e2e_unknown_expect_rejects_before_any_graph_call(
     builds, stub = _patch_build_graph(monkeypatch, [])
     runner = _load_runner()
     with pytest.raises(ValueError, match="unknown expected destination"):
-        asyncio.run(
-            runner.run_e2e({"turns": [{"query": "q", "expect": "atlantis"}]})
-        )
+        asyncio.run(runner.run_e2e({"turns": [{"query": "q", "expect": "atlantis"}]}))
     assert builds == []
     assert stub.calls == []
 
@@ -409,3 +434,28 @@ def test_thread_output_excludes_the_final_ai_message_from_conversation() -> None
     assert outcome["standalone_query"] == "Vilnius membership report"
     assert "REPORT_SENTINEL" not in outcome["conversation"]
     assert "reuters.com" in outcome["conversation"]
+
+
+def test_validate_evaluations_accepts_a_kind_with_two_cases() -> None:
+    runner = _load_runner()
+    names = ("route_correct", "rewrite_quality", "usefulness")
+    runs = [
+        SimpleNamespace(
+            name=name,
+            error=None,
+            result={
+                "score": 1.0 if name == "route_correct" else 4.0,
+                "label": "4",
+                "explanation": "because",
+            },
+        )
+        for _case_index in range(2)
+        for name in names
+    ]
+    result = {"evaluation_runs": runs}
+    outcome = runner.validate_evaluations(
+        result, kind_name="e2e", kind_cases=[{}, {}], expected_names=set(names)
+    )
+    assert outcome.failed == []
+    assert outcome.judge_errors == 0
+    assert outcome.scored == 6

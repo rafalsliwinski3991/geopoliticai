@@ -32,11 +32,7 @@ from config import REQUIRED_ENV_VARS, init_environment, require_env
 from tracing import init_tracing
 
 CASES_PATH = Path(__file__).with_name("cases.json")
-CASE_FIELDS = {"agent", "id", "input", "output", "metadata"}
-# `"reporter"` is servable from commit 5a: its case data arrives in 5b, but a
-# case naming an agent the dispatch table could not route would fail at lookup
-# instead of at load.
-KNOWN_AGENTS = {"expert", "orchestrator", "reporter"}
+CASE_FIELDS = {"id", "input", "output", "metadata"}
 # Pinned, not `openrouter/free`. Phoenix's OpenAI adapter sends the model name
 # it was configured with and never reads the resolved model back off the
 # response (`phoenix/evals/llm/adapters/openai/adapter.py`), so a router id
@@ -70,35 +66,55 @@ logger = logging.getLogger("agent")
 
 @dataclass(frozen=True)
 class CaseOutcome:
-    """What one case produced, so `main` can decide the exit code once."""
+    """What one kind produced, so `main` can decide the exit code once."""
 
-    case_id: str
+    kind_id: str
     scored: int
     judge_errors: int
     failed: list[str]
 
 
-def load_cases() -> list[dict[str, Any]]:
-    """Load the case list and reject accidental schema drift."""
+def load_cases() -> dict[str, list[dict[str, Any]]]:
+    """Load the per-kind case lists and reject accidental schema drift."""
     raw: object = json.loads(CASES_PATH.read_text(encoding="utf-8"))
-    if not isinstance(raw, list) or not raw:
-        raise ValueError("cases.json must contain a non-empty list of cases")
+    if not isinstance(raw, dict) or not raw:
+        raise ValueError("cases.json must contain a non-empty object keyed by kind")
 
-    cases = cast(list[dict[str, Any]], raw)
+    cases = cast(dict[str, list[dict[str, Any]]], raw)
+    kinds = build_kinds()
+    specs = judge_specs()
+    if set(cases) != set(kinds):
+        raise ValueError(f"cases.json must hold exactly the kinds {sorted(kinds)}")
+
     seen: set[str] = set()
-    for case in cases:
-        if not isinstance(case, dict) or set(case) != CASE_FIELDS:
-            raise ValueError(f"each case needs exactly {sorted(CASE_FIELDS)}")
-        if case["agent"] not in KNOWN_AGENTS:
-            raise ValueError(f"unknown agent: {case['agent']!r}")
-        if not isinstance(case["id"], str) or not case["id"].strip():
-            raise ValueError("case.id must be a non-empty string")
-        if case["id"] in seen:
-            raise ValueError(f"duplicate case id: {case['id']}")
-        seen.add(case["id"])
-        for field in ("input", "output", "metadata"):
-            if not isinstance(case[field], dict):
-                raise ValueError(f"{case['id']}.{field} must be an object")
+    for kind_name, kind_cases in cases.items():
+        if not isinstance(kind_cases, list) or not kind_cases:
+            raise ValueError(f"{kind_name} must hold a non-empty list of cases")
+        # Judges belong to the kind, so every case under it must carry every
+        # reference key those judges read. Without this the run fails deep
+        # inside Phoenix's field mapping, per case, after the task has already
+        # spent live API credit.
+        required: set[str] = set()
+        for judge in kinds[kind_name].judges:
+            key = specs[judge].reference_key
+            if key is not None:
+                required.add(key)
+        for case in kind_cases:
+            if not isinstance(case, dict) or set(case) != CASE_FIELDS:
+                raise ValueError(f"each case needs exactly {sorted(CASE_FIELDS)}")
+            if not isinstance(case["id"], str) or not case["id"].strip():
+                raise ValueError("case.id must be a non-empty string")
+            if case["id"] in seen:
+                raise ValueError(f"duplicate case id: {case['id']}")
+            seen.add(case["id"])
+            for field in ("input", "output", "metadata"):
+                if not isinstance(case[field], dict):
+                    raise ValueError(f"{case['id']}.{field} must be an object")
+            missing = sorted(required - set(case["output"]))
+            if missing:
+                raise ValueError(
+                    f"{case['id']} is missing {missing} required by kind {kind_name}"
+                )
     return cases
 
 
@@ -335,44 +351,6 @@ async def run_e2e(input: dict[str, Any]) -> dict[str, Any]:
     return thread_output(result)
 
 
-def build_expert_evaluators(judge: LLM) -> list[Any]:
-    """Build the two expert judges with explicit Phoenix field mappings."""
-    groundedness = ClassificationEvaluator(
-        name="groundedness",
-        llm=judge,
-        prompt_template=GROUNDEDNESS_PROMPT,
-        choices=SCORE_CHOICES,
-        include_explanation=True,
-        temperature=0,
-    )
-    usefulness = ClassificationEvaluator(
-        name="usefulness",
-        llm=judge,
-        prompt_template=USEFULNESS_PROMPT,
-        choices=SCORE_CHOICES,
-        include_explanation=True,
-        temperature=0,
-    )
-    return [
-        bind_evaluator(
-            evaluator=groundedness,
-            input_mapping={
-                "question": "input.query",
-                "answer": "output.answer",
-                "sources": "output.sources",
-            },
-        ),
-        bind_evaluator(
-            evaluator=usefulness,
-            input_mapping={
-                "question": "input.query",
-                "answer": "output.answer",
-                "requirements": "reference.must_address",
-            },
-        ),
-    ]
-
-
 @create_evaluator(kind="CODE", name="route_correct")
 def route_correct(output: Any, reference: dict[str, Any]) -> bool:
     """Require the completed graph to choose the case's expected branch."""
@@ -499,92 +477,26 @@ def build_kinds() -> dict[str, Kind]:
     }
 
 
-def build_orchestrator_evaluators(judge: LLM) -> list[Any]:
-    """Build exact routing plus the LLM rewrite judge."""
-    rewrite_quality = ClassificationEvaluator(
-        name="rewrite_quality",
-        llm=judge,
-        prompt_template=REWRITE_QUALITY_PROMPT,
-        choices=SCORE_CHOICES,
-        include_explanation=True,
-        temperature=0,
-    )
-    return [
-        route_correct,
-        bind_evaluator(
-            evaluator=rewrite_quality,
-            input_mapping={
-                "history": "input.messages",
-                "rewrite": "output.standalone_query",
-                "expected_intent": "reference.standalone_query_intent",
-            },
-        ),
-    ]
-
-
-def build_reporter_evaluators(judge: LLM) -> list[Any]:
-    """Build the single report-fidelity judge with its explicit field mapping."""
-    fidelity = ClassificationEvaluator(
-        name="report_fidelity",
-        llm=judge,
-        prompt_template=REPORT_FIDELITY_PROMPT,
-        choices=SCORE_CHOICES,
-        include_explanation=True,
-        temperature=0,
-    )
-    return [
-        bind_evaluator(
-            evaluator=fidelity,
-            input_mapping={
-                "conversation": "input.messages",
-                "outline_intent": "reference.outline_intent",
-                "report": "output.report",
-            },
-        ),
-    ]
-
-
-# The per-agent dispatch table: task function, evaluator builder, and the
-# evaluation names each agent's case must produce. The loader's
-# `KNOWN_AGENTS` must stay a subset of these keys.
-def build_agent_run_info() -> dict[
-    str, tuple[ExperimentTask, Callable[[LLM], list[Any]], set[str], set[str]]
-]:
-    return {
-        "expert": (
-            run_expert,
-            build_expert_evaluators,
-            {"groundedness", "usefulness"},
-            {"groundedness", "usefulness"},
-        ),
-        "orchestrator": (
-            run_orchestrator,
-            build_orchestrator_evaluators,
-            {"route_correct", "rewrite_quality"},
-            {"rewrite_quality"},
-        ),
-        "reporter": (
-            run_report,
-            build_reporter_evaluators,
-            {"report_fidelity"},
-            {"report_fidelity"},
-        ),
-    }
-
-
 def validate_evaluations(
     result: RanExperiment,
     *,
-    case_id: str,
+    kind_name: str,
+    kind_cases: list[dict[str, Any]],
     expected_names: set[str],
-    explanation_names: set[str],
 ) -> CaseOutcome:
     """Reject structurally invalid results, count judge errors, collect failures."""
     matching = [run for run in result["evaluation_runs"] if run.name in expected_names]
     actual_names = {run.name for run in matching}
-    if actual_names != expected_names or len(matching) != len(expected_names):
+    # Was `len(matching) != len(expected_names)`, which is true for any kind
+    # holding more than one case: `matching` spans every case in the kind's
+    # experiment, so for N cases it legitimately holds N * len(expected_names)
+    # entries.
+    expected_total = len(kind_cases) * len(expected_names)
+    if actual_names != expected_names or len(matching) != expected_total:
         raise RuntimeError(
-            f"Expected evaluations {sorted(expected_names)}, got {sorted(actual_names)}"
+            f"Expected {expected_total} evaluations for {kind_name} "
+            f"({sorted(expected_names)} over {len(kind_cases)} cases), "
+            f"got {len(matching)} named {sorted(actual_names)}"
         )
 
     judge_errors = 0
@@ -596,7 +508,7 @@ def validate_evaluations(
             # evaluators have errors counted.
             if run.name not in JUDGED_EVALUATORS:
                 raise RuntimeError(f"{run.name} failed: {run.error}")
-            logger.error("%s: %s judge error: %s", case_id, run.name, run.error)
+            logger.error("%s: %s judge error: %s", kind_name, run.name, run.error)
             judge_errors += 1
             continue
         evaluation = run.result
@@ -609,44 +521,48 @@ def validate_evaluations(
             raise RuntimeError(f"{run.name} returned no numeric score")
         if not isinstance(label, str) or not label.strip():
             raise RuntimeError(f"{run.name} returned no label")
-        if run.name in explanation_names and (
+        # The judges that must return an explanation are exactly the judged
+        # ones; no separate `explanation_names` set is threaded through.
+        if run.name in JUDGED_EVALUATORS and (
             not isinstance(explanation, str) or not explanation.strip()
         ):
             raise RuntimeError(f"{run.name} returned no explanation")
         if run.name in JUDGED_EVALUATORS:
             if score < JUDGED_SCORE_THRESHOLD:
-                failed.append(f"{run.name}={score}")
+                failed.append(f"{kind_name}/{run.name}={score}")
         elif not score:
             # A CODE evaluator scores 1.0 when it passes and 0.0 when it fails.
             # Without this branch a `route_correct` of False is recorded as a
             # perfectly valid 0.0 and the run exits green with the routing wrong.
-            failed.append(f"{run.name}=failed")
+            failed.append(f"{kind_name}/{run.name}=failed")
     return CaseOutcome(
-        case_id=case_id,
+        kind_id=kind_name,
         scored=len(matching) - judge_errors,
         judge_errors=judge_errors,
         failed=failed,
     )
 
 
-async def run_experiment_case(
+async def run_kind(
     *,
     client: AsyncClient,
-    dataset_name: str,
-    case_id: str,
-    case_count: int,
-    example: dict[str, Any],
+    kind_name: str,
+    kind_cases: list[dict[str, Any]],
     task: ExperimentTask,
     evaluators: Sequence[Any],
     expected_names: set[str],
-    explanation_names: set[str],
     experiment_name: str,
 ) -> CaseOutcome:
-    """Record one valid graph run and its evaluations for review in Phoenix."""
+    """Record one valid graph run per case and its evaluations in Phoenix."""
     dataset = await client.datasets.create_dataset(
-        name=dataset_name,
-        examples=[example],
-        dataset_description="Manual advisory quality smoke case",
+        name=f"geopoliticai-{kind_name}",
+        # Phoenix reads only input, output and metadata from an example. `id`
+        # is this runner's own and stays out of the payload.
+        examples=[
+            {field: case[field] for field in ("input", "output", "metadata")}
+            for case in kind_cases
+        ],
+        dataset_description="Manual advisory quality smoke cases",
         timeout=PHOENIX_TIMEOUT_SECONDS,
     )
     # `experiment_metadata` records the run's static parameters, not its
@@ -660,7 +576,7 @@ async def run_experiment_case(
         experiment_name=experiment_name,
         experiment_metadata={
             "judge_model": JUDGE_MODEL,
-            "case_count": case_count,
+            "case_count": len(kind_cases),
             "judged_score_threshold": JUDGED_SCORE_THRESHOLD,
         },
         print_summary=False,
@@ -673,10 +589,15 @@ async def run_experiment_case(
     )
 
     task_runs = task_result["task_runs"]
-    if len(task_runs) != 1 or task_runs[0].get("error"):
-        raise RuntimeError(f"Invalid task run: {task_runs}")
-    if not isinstance(task_runs[0].get("output"), dict):
-        raise RuntimeError("Task run produced no structured output")
+    if len(task_runs) != len(kind_cases):
+        raise RuntimeError(
+            f"Expected {len(kind_cases)} task runs for {kind_name}, got {len(task_runs)}"
+        )
+    for task_run in task_runs:
+        if task_run.get("error"):
+            raise RuntimeError(f"Invalid task run: {task_run}")
+        if not isinstance(task_run.get("output"), dict):
+            raise RuntimeError("Task run produced no structured output")
 
     # `retries=0` is dropped here, inheriting Phoenix's default of 3: the
     # judge is a free-tier OpenRouter endpoint and an un-retried 429 becomes
@@ -688,16 +609,21 @@ async def run_experiment_case(
         concurrency=1,
         timeout=PHOENIX_TIMEOUT_SECONDS,
     )
+    # Failures are reported per kind, not per case. Every kind holds one
+    # case today. An evaluation run carries `experiment_run_id`, not a dataset
+    # example id, so naming the individual case inside a multi-case kind means
+    # joining through `task_runs[*]["dataset_example_id"]`. Add that join when
+    # a kind actually grows a second case.
     return validate_evaluations(
         result,
-        case_id=case_id,
+        kind_name=kind_name,
+        kind_cases=kind_cases,
         expected_names=expected_names,
-        explanation_names=explanation_names,
     )
 
 
 async def main() -> None:
-    """Run every case's checks against live dependencies."""
+    """Run every kind's checks against live dependencies."""
     cases = load_cases()
     init_environment()
     require_env(
@@ -722,29 +648,23 @@ async def main() -> None:
         base_url=OPENROUTER_BASE_URL,
     )
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    agent_run_info = build_agent_run_info()
+    kinds = build_kinds()
 
     outcomes: list[CaseOutcome] = []
-    for case in cases:
-        task, build_evaluators, expected_names, explanation_names = agent_run_info[
-            case["agent"]
-        ]
-        # Names are derived from `case["id"]`, not from `case["agent"]`:
-        # `create_dataset` with a reused name updates the dataset rather than
-        # failing, so agent-keyed cases would pile up as versions of one
-        # dataset while their experiments shared a single name.
+    for kind_name, kind in kinds.items():
+        # The dataset name is `geopoliticai-<kind>`: `create_dataset` with a
+        # reused name updates the dataset rather than failing, so per-kind
+        # datasets accumulate their runs' history in one place. The four old
+        # per-case datasets stay in Phoenix as orphaned history.
         outcomes.append(
-            await run_experiment_case(
+            await run_kind(
                 client=client,
-                dataset_name=f"geopoliticai-{case['id']}",
-                case_id=case["id"],
-                case_count=len(cases),
-                example=case,
-                task=task,
-                evaluators=build_evaluators(judge),
-                expected_names=expected_names,
-                explanation_names=explanation_names,
-                experiment_name=f"{case['id']}-{timestamp}",
+                kind_name=kind_name,
+                kind_cases=cases[kind_name],
+                task=kind.task,
+                evaluators=build_judges(kind.judges, judge),
+                expected_names=set(kind.judges),
+                experiment_name=f"{kind_name}-{timestamp}",
             )
         )
 
@@ -753,7 +673,7 @@ async def main() -> None:
         for outcome in failures:
             logger.error(
                 "%s: %d judge errors, failed: %s",
-                outcome.case_id,
+                outcome.kind_id,
                 outcome.judge_errors,
                 ", ".join(outcome.failed) or "none",
             )

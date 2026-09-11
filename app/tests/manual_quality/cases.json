@@ -1,141 +1,74 @@
-[
-  {
-    "id": "expert-finland-nato-v1",
-    "input": {
-      "query": "Why did Finland abandon military non-alignment after Russia's full-scale invasion of Ukraine, and why did it become a NATO member in April 2023?"
-    },
-    "output": {
-      "must_address": [
-        "How Russia's full-scale invasion changed Finland's security policy",
-        "Why Finland's NATO accession completed in April 2023"
-      ]
-    },
-    "metadata": {
-      "case": "finland-nato",
-      "version": 1
-    },
-    "agent": "expert"
-  },
-  {
-    "id": "orchestrator-sweden-follow-up-v1",
-    "input": {
-      "messages": [
-        {
-          "role": "user",
-          "content": "Why did Finland become a NATO member in 2023?"
-        },
-        {
-          "role": "assistant",
-          "content": "Finland joined NATO in April 2023 after Russia's full-scale invasion changed its security calculus and all allies ratified its accession."
-        },
-        {
-          "role": "user",
-          "content": "What about Sweden?"
-        }
-      ]
-    },
-    "output": {
-      "destination": "geopolitical",
-      "standalone_query_intent": "Why Sweden pursued NATO membership after Russia's full-scale invasion and what happened with its accession"
-    },
-    "metadata": {
-      "case": "sweden-follow-up",
-      "version": 1
-    },
-    "agent": "orchestrator"
-  },
-  {
-    "agent": "expert",
-    "id": "expert-niger-coup-v1",
-    "input": {
-      "query": "What has been the regional impact of the 2023 Niger coup on West African security cooperation, and how did ECOWAS's response unfold?"
-    },
-    "output": {
-      "must_address": [
-        "How the coup collapsed ECOWAS-led security cooperation with Niger",
-        "What sanctions and diplomatic pressure ECOWAS adopted and how they ended"
-      ]
-    },
-    "metadata": {
-      "case": "niger-coup",
-      "version": 1
+{
+  "expert": [
+    {
+      "id": "expert-niger-coup-v1",
+      "input": {
+        "query": "What has been the regional impact of the 2023 Niger coup on West African security cooperation, and how did ECOWAS's response unfold?"
+      },
+      "output": {
+        "usefulness_required_points": [
+          "How the coup collapsed ECOWAS-led security cooperation with Niger",
+          "What sanctions and diplomatic pressure ECOWAS adopted and how they ended"
+        ]
+      },
+      "metadata": { "case": "niger-coup", "version": 1 }
     }
-  },
-  {
-    "agent": "expert",
-    "id": "expert-taiwan-strait-v1",
-    "input": {
-      "query": "How did China's military posture around the Taiwan Strait change after Pelosi's 2022 visit, and what did the PLA's follow-up drills establish?"
-    },
-    "output": {
-      "must_address": [
-        "The large-scale drills China launched in response to the 2022 visit",
-        "The post-2022 normalization of routine PLA military pressure around the strait"
-      ]
-    },
-    "metadata": {
-      "case": "taiwan-strait",
-      "version": 1
+  ],
+  "orchestrator": [
+    {
+      "id": "orchestrator-dune-follow-up-v1",
+      "input": {
+        "messages": [
+          { "role": "user", "content": "Who wrote the novel Dune?" },
+          { "role": "assistant", "content": "Dune was written by Frank Herbert and published in 1965." },
+          { "role": "user", "content": "When did he die?" }
+        ]
+      },
+      "output": {
+        "route_correct_destination": "other",
+        "rewrite_quality_intent": "When Frank Herbert, the author of Dune, died"
+      },
+      "metadata": { "case": "dune-follow-up", "version": 1 }
     }
-  },
-  {
-    "agent": "orchestrator",
-    "id": "orchestrator-eu-sanctions-follow-up-v1",
-    "input": {
-      "messages": [
-        {
-          "role": "user",
-          "content": "What sanctions did the EU impose on Russia after the 2022 invasion?"
-        },
-        {
-          "role": "assistant",
-          "content": "The EU adopted successive sanctions packages covering energy imports, SWIFT access for major banks, asset freezes, and export controls."
-        },
-        {
-          "role": "user",
-          "content": "Have any of them been lifted?"
-        }
-      ]
-    },
-    "output": {
-      "destination": "geopolitical",
-      "standalone_query_intent": "Which of the EU sanctions imposed on Russia after the 2022 invasion have been lifted or eased, and when"
-    },
-    "metadata": {
-      "case": "eu-sanctions-follow-up",
-      "version": 1
+  ],
+  "report": [
+    {
+      "id": "report-vilnius-summit-v1",
+      "input": {
+        "messages": [
+          { "role": "user", "content": "What did NATO's 2023 Vilnius summit decide about Ukraine's membership path?" },
+          { "role": "assistant", "content": "The 2023 Vilnius communiqué dropped the MAP requirement and extended an invitation to Ukraine 'when allies agree and conditions are met' — see [BBC](https://www.bbc.com/news/world-europe-66139629) and [Reuters](https://www.reuters.com/world/europe/nato-leaders-summit-2023-07-12/). The allies also removed the requirement for a Membership Action Plan from Ukraine's path." },
+          { "role": "user", "content": "Write me a report on what the Vilnius summit decided about Ukraine's membership and what the allies' conditions were." }
+        ],
+        "resume_actions": [ { "action": "approve" } ]
+      },
+      "output": {
+        "report_fidelity_outline": "What the 2023 Vilnius summit decided about Ukraine's membership path and which conditions the allies attached, drawn only from the conversation's researched material"
+      },
+      "metadata": { "case": "vilnius-summit-report", "version": 1 }
     }
-  },
-  {
-    "agent": "reporter",
-    "id": "reporter-vilnius-summit-v1",
-    "input": {
-      "messages": [
-        {
-          "role": "user",
-          "content": "What did NATO's 2023 Vilnius summit decide about Ukraine's membership path?"
-        },
-        {
-          "role": "assistant",
-          "content": "The 2023 Vilnius communiqu\u00e9 dropped the MAP requirement and extended an invitation to Ukraine 'when allies agree and conditions are met' \u2014 see [BBC](https://www.bbc.com/news/world-europe-66139629) and [Reuters](https://www.reuters.com/world/europe/nato-leaders-summit-2023-07-12/). The allies also removed the requirement for a Membership Action Plan from Ukraine's path."
-        },
-        {
-          "role": "user",
-          "content": "Write me a report on what the Vilnius summit decided about Ukraine's membership and what the allies' conditions were."
-        }
-      ],
-      "resume_actions": [
-        {
-          "action": "approve"
-        }
-      ]
-    },
-    "output": {
-      "outline_intent": "What the 2023 Vilnius summit decided about Ukraine's membership path and which conditions the allies attached, drawn only from the conversation's researched material"
-    },
-    "metadata": {
-      "case": "vilnius-summit-report",
-      "version": 1
+  ],
+  "e2e": [
+    {
+      "id": "e2e-finland-sweden-v1",
+      "input": {
+        "turns": [
+          {
+            "query": "Why did Finland abandon military non-alignment after Russia's full-scale invasion of Ukraine, and why did it become a NATO member in April 2023?",
+            "expect": "geopolitical"
+          },
+          { "query": "What about Sweden?" }
+        ]
+      },
+      "output": {
+        "route_correct_destination": "geopolitical",
+        "rewrite_quality_intent": "Why Sweden pursued NATO membership after Russia's full-scale invasion and what happened with its accession",
+        "usefulness_required_points": [
+          "Why Sweden applied for NATO membership after Russia's full-scale invasion",
+          "What delayed Sweden's accession and when it completed"
+        ]
+      },
+      "metadata": { "case": "finland-sweden-e2e", "version": 1 }
     }
-  }
-]
+  ]
+}
