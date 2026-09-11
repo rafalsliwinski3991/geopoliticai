@@ -12,17 +12,52 @@ from typing import Any
 import pytest
 
 RUNNER_PATH = Path(__file__).parents[1] / "manual_quality" / "basic_agent_evaluation.py"
+PROMPTS_PATH = Path(__file__).parents[1] / "manual_quality" / "judge_prompts.py"
 
 
-def _load_runner() -> Any:
-    spec = importlib.util.spec_from_file_location("basic_agent_evaluation", RUNNER_PATH)
+def _load_module(name: str, path: Path) -> Any:
+    spec = importlib.util.spec_from_file_location(name, path)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     # Registered before exec so dataclasses and other runtime machinery can
     # resolve the module by name.
-    sys.modules["basic_agent_evaluation"] = module
+    sys.modules[name] = module
     spec.loader.exec_module(module)
     return module
+
+
+def _load_runner() -> Any:
+    # The runner imports `judge_prompts` from its own directory, which pytest
+    # does not put on `sys.path`; the loader must, or the exec_module below
+    # raises ModuleNotFoundError.
+    parent = str(RUNNER_PATH.parent)
+    if parent not in sys.path:
+        sys.path.insert(0, parent)
+    return _load_module("basic_agent_evaluation", RUNNER_PATH)
+
+
+def _load_prompts() -> Any:
+    return _load_module("judge_prompts", PROMPTS_PATH)
+
+
+def test_rubric_prompts_live_in_judge_prompts_module() -> None:
+    """The four prompts are moved, not duplicated, and the runner imports them."""
+    prompts = _load_prompts()
+    tree = ast.parse(RUNNER_PATH.read_text(encoding="utf-8"))
+    module_assignments = [
+        node.targets[0].id
+        for node in tree.body
+        if isinstance(node, ast.Assign)
+        and isinstance(node.targets[0], ast.Name)
+    ]
+    for name in (
+        "GROUNDEDNESS_PROMPT",
+        "USEFULNESS_PROMPT",
+        "REWRITE_QUALITY_PROMPT",
+        "REPORT_FIDELITY_PROMPT",
+    ):
+        assert getattr(_load_runner(), name) == getattr(prompts, name)
+        assert name not in module_assignments
 
 
 def _write_cases(tmp_path: Path, content: str) -> Any:
