@@ -16,7 +16,9 @@ Postgres is only the LangGraph checkpointer and uses `psycopg[binary]`.
 
 Agents live in `app/src/agents/<name>/` with graph, state, config, prompts,
 `consts/`, and node modules. Put fixed editorial data in `consts/`, prompts in
-the agent's `prompts.py`, and hardcoded tuning in dataclass config. Nodes return
+the agent's `prompts.py`, and hardcoded tuning in dataclass config. Keep all
+module-level constants together at the beginning of each Python file, immediately
+after imports and before functions or classes. Nodes return
 partial state dictionaries without mutation. Preserve shared-to-agent imports.
 
 ```text

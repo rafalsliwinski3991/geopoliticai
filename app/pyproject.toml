@@ -68,6 +68,10 @@ lint.select = [
 lint.ignore = [
     "UP006",
     "UP007",
+    # Ruff split `Optional[X]` out of UP007 into UP045. LangGraph matches node
+    # `config` annotations as strings and accepts only `RunnableConfig` or
+    # `Optional[RunnableConfig]`, never `RunnableConfig | None`.
+    "UP045",
     # We actually do want to import from typing_extensions
     "UP035",
     # Relax the convention by _not_ requiring documentation for every function parameter.

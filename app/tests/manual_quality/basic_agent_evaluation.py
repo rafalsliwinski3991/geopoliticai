@@ -52,20 +52,6 @@ PHOENIX_TIMEOUT_SECONDS = 180
 JUDGED_SCORE_THRESHOLD = 3.0  # Provisional. No historical scores exist;
 # revisit after the first runs.
 JUDGED_EVALUATORS = {"groundedness", "usefulness", "rewrite_quality", "report_fidelity"}
-# CODE evaluators fail on a falsy score, judged evaluators on < 3.0.
-logger = logging.getLogger("agent")
-
-
-@dataclass(frozen=True)
-class CaseOutcome:
-    """What one case produced, so `main` can decide the exit code once."""
-
-    case_id: str
-    scored: int
-    judge_errors: int
-    failed: list[str]
-
-
 SCORE_CHOICES: dict[str, float | int] = {str(score): score for score in range(1, 6)}
 
 ExperimentTask = Callable[[dict[str, Any]], Awaitable[dict[str, Any]]]
@@ -169,6 +155,20 @@ Choose exactly one label:
 Give a concise evidence-based explanation for the label. Refer only to
 observable content; do not provide private chain-of-thought.
 """
+
+
+# CODE evaluators fail on a falsy score, judged evaluators on < 3.0.
+logger = logging.getLogger("agent")
+
+
+@dataclass(frozen=True)
+class CaseOutcome:
+    """What one case produced, so `main` can decide the exit code once."""
+
+    case_id: str
+    scored: int
+    judge_errors: int
+    failed: list[str]
 
 
 def load_cases() -> list[dict[str, Any]]:
@@ -427,28 +427,29 @@ def build_reporter_evaluators(judge: LLM) -> list[Any]:
 # The per-agent dispatch table: task function, evaluator builder, and the
 # evaluation names each agent's case must produce. The loader's
 # `KNOWN_AGENTS` must stay a subset of these keys.
-AGENT_RUN_INFO: dict[
+def build_agent_run_info() -> dict[
     str, tuple[ExperimentTask, Callable[[LLM], list[Any]], set[str], set[str]]
-] = {
-    "expert": (
-        run_expert,
-        build_expert_evaluators,
-        {"groundedness", "usefulness"},
-        {"groundedness", "usefulness"},
-    ),
-    "orchestrator": (
-        run_orchestrator,
-        build_orchestrator_evaluators,
-        {"route_correct", "rewrite_quality"},
-        {"rewrite_quality"},
-    ),
-    "reporter": (
-        run_reporter_thread,
-        build_reporter_evaluators,
-        {"report_fidelity"},
-        {"report_fidelity"},
-    ),
-}
+]:
+    return {
+        "expert": (
+            run_expert,
+            build_expert_evaluators,
+            {"groundedness", "usefulness"},
+            {"groundedness", "usefulness"},
+        ),
+        "orchestrator": (
+            run_orchestrator,
+            build_orchestrator_evaluators,
+            {"route_correct", "rewrite_quality"},
+            {"rewrite_quality"},
+        ),
+        "reporter": (
+            run_reporter_thread,
+            build_reporter_evaluators,
+            {"report_fidelity"},
+            {"report_fidelity"},
+        ),
+    }
 
 
 def validate_evaluations(
@@ -601,10 +602,11 @@ async def main() -> None:
         base_url=OPENROUTER_BASE_URL,
     )
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    agent_run_info = build_agent_run_info()
 
     outcomes: list[CaseOutcome] = []
     for case in cases:
-        task, build_evaluators, expected_names, explanation_names = AGENT_RUN_INFO[
+        task, build_evaluators, expected_names, explanation_names = agent_run_info[
             case["agent"]
         ]
         # Names are derived from `case["id"]`, not from `case["agent"]`:
@@ -641,13 +643,13 @@ async def main() -> None:
 def cli(argv: Sequence[str] | None = None) -> int:
     """Dispatch the live run or the network-free fixture check."""
     args = list(sys.argv[1:] if argv is None else argv)
-    if args == ["--check-cases"]:
+    if args == ["--validate-cases"]:
         load_cases()
         print("cases.json is valid")
         return 0
     if args:
         print(
-            "usage: basic_agent_evaluation.py [--check-cases]",
+            "usage: basic_agent_evaluation.py [--validate-cases]",
             file=sys.stderr,
         )
         return 2

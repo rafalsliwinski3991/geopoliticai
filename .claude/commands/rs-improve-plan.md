@@ -1,7 +1,7 @@
 ---
 description: Audit a written plan against the current repo and rewrite it as a new, self-contained, right-sized version with a changelog
 argument-hint: <plan-path>
-allowed-tools: Read, Write, Edit, Glob, Grep, Bash, Agent, Skill
+allowed-tools: Read, Write, Edit, Glob, Grep, Bash, Agent, Skill, AskUserQuestion
 ---
 
 Plan: $1
@@ -20,7 +20,8 @@ Read `$1`'s filename. It must end `_v<N>.md`; if it doesn't, treat it as `v1` fo
 but do not rename it. The new path is the same directory and stem with `_v<N+1>.md`. If that path
 already exists, keep incrementing until it doesn't.
 
-Do not create the new file yet — it is written once, complete, at the end of Step 3.
+Do not create the new file yet. The revised plan is drafted in memory and is written only after the
+user explicitly approves it in Step 5.
 
 ## Step 1 — Read
 
@@ -115,9 +116,10 @@ failure scenario. No style notes, no praise, no summary of what the plan does we
 
 Write every lens's findings into the run log verbatim.
 
-## Step 4 — Revise into a new, complete version
+## Step 4 — Draft the new, complete version
 
-Write the new version at the path resolved in Step 0. **It must stand alone.** Someone reading only
+Draft the new version in memory at the path resolved in Step 0. Do not write it to disk yet. **It must
+stand alone.** Someone reading only
 this file, never opening the previous version, must get the full picture — do not write "see v1 for
 the rest" or omit a commit because it didn't change. Carry forward everything from the previous
 version that the scout and the lenses did not invalidate, and rewrite everything they did.
@@ -137,11 +139,29 @@ way `rs-plan-from-brainstorm`'s "Open questions and rejected objections" section
 drop a reviewer's finding.
 
 Do not start implementing. Beyond the scout and the tier's lenses, the only remaining agent is the
-Step 5 Codex critic.
+Step 6 Codex critic.
 
-## Step 5 — Codex critique of the new version
+## Step 5 — Ask the user to approve the draft
 
-Runs for **every tier** — lightweight, standard, and full — once the new version exists on disk.
+Present the complete drafted plan to the user, including its resolved output path, tier, and
+changelog. Then use `AskUserQuestion` to ask whether the user approves writing this exact draft to
+disk. Offer these choices:
+
+- **Approve and write** — write the complete draft to the resolved path, then continue to Step 6.
+- **Request changes** — do not write the plan; ask the user what must change and revise the in-memory
+  draft before asking for approval again.
+- **Cancel** — do not write the new plan and stop after recording the current run-log information.
+
+Never write the new plan before the user chooses **Approve and write**. Do not treat silence,
+ambiguous feedback, or a general conversational acknowledgment as approval. If the user requests
+changes, incorporate them into the draft and show the complete updated draft again before asking for
+approval. Once approved, write the draft exactly as approved; do not make additional plan changes
+before writing it.
+
+## Step 6 — Codex critique of the new version
+
+Runs for **every tier** — lightweight, standard, and full — once the user has approved the draft and
+it exists on disk.
 
 Dispatch exactly one read-only Codex critic:
 
@@ -171,7 +191,7 @@ every finding you accept, and add a changelog entry for each — accepted or rej
 — to the same **Changelog (v`<N>` → v`<N+1>`)** section. Do not create a further version file for
 this round, and do not dispatch a second critic.
 
-## Step 6 — Report
+## Step 7 — Report
 
 Report to the user: the previous plan path, the new plan path, the version bump, the plan tier,
 and the applicable review summary. For a standard or full plan, include the scout's top-line status
@@ -187,11 +207,11 @@ you accepted, plus the run-log path.
 - You are the only writer. If you catch yourself asking a review agent to change something, stop —
   they have no write tools and the request will fail.
 - Every Claude subagent in this run — the Step 2 scout and every Step 3 lens — is spawned with
-  `model: "sonnet"` (Sonnet 5). No exceptions. The Step 5 Codex critic is not a Claude subagent and
+  `model: "sonnet"` (Sonnet 5). No exceptions. The Step 6 Codex critic is not a Claude subagent and
   keeps `gpt-5.6-terra`.
 - Reviewers must be told to message their findings. An idle notification tells you a teammate
   stopped; it does not carry its output.
-- The Step 5 Codex critique is mandatory at every tier, and it is the last thing that happens before
+- The Step 6 Codex critique is mandatory at every tier, and it is the last thing that happens before
   the report.
 - Where the plan and the code disagree, the code wins, and the disagreement goes in the changelog.
 - The new version is a complete replacement, never a diff or a pointer back to the old one.
