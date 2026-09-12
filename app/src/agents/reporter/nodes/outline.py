@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import Any, Optional
 
 from langchain_core.messages import HumanMessage
 from langchain_core.runnables import RunnableConfig
@@ -33,7 +33,7 @@ def _human_prompt(state: ReporterState) -> str:
 async def outline(
     state: ReporterState,
     writer: StreamWriter,
-    config: RunnableConfig | None = None,
+    config: Optional[RunnableConfig] = None,
 ) -> dict[str, Any]:
     """Propose or revise the report's section list.
 
@@ -52,9 +52,11 @@ async def outline(
     must not survive into the next round: leaving it set would re-apply the
     previous revision on top of the next one.
 
-    `config` is declared to match every other node in this repo. It is not
-    actually injected — see §1 — so it is `None` in practice; that is
-    pre-existing and out of scope here.
+    `config`, like `writer`, must be spelled exactly `RunnableConfig` or
+    `Optional[RunnableConfig]`. Under `from __future__ import annotations`
+    LangGraph matches the annotation as a string against that allow-list, so
+    the PEP 604 `RunnableConfig | None` is silently never injected and the node
+    runs with `config=None`.
     """
     if not state["transcript"].strip():
         logger.info("outline: refusing, empty transcript")
