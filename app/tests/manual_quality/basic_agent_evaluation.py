@@ -66,40 +66,40 @@ logger = logging.getLogger("agent")
 
 @dataclass(frozen=True)
 class CaseOutcome:
-    """What one kind produced, so `main` can decide the exit code once."""
+    """What one group produced, so `main` can decide the exit code once."""
 
-    kind_id: str
+    group_id: str
     scored: int
     judge_errors: int
     failed: list[str]
 
 
 def load_cases() -> dict[str, list[dict[str, Any]]]:
-    """Load the per-kind case lists and reject accidental schema drift."""
+    """Load the per-group case lists and reject accidental schema drift."""
     raw: object = json.loads(CASES_PATH.read_text(encoding="utf-8"))
     if not isinstance(raw, dict) or not raw:
-        raise ValueError("cases.json must contain a non-empty object keyed by kind")
+        raise ValueError("cases.json must contain a non-empty object keyed by group")
 
     cases = cast(dict[str, list[dict[str, Any]]], raw)
-    kinds = build_kinds()
+    groups = build_groups()
     specs = judge_specs()
-    if set(cases) != set(kinds):
-        raise ValueError(f"cases.json must hold exactly the kinds {sorted(kinds)}")
+    if set(cases) != set(groups):
+        raise ValueError(f"cases.json must hold exactly the groups {sorted(groups)}")
 
     seen: set[str] = set()
-    for kind_name, kind_cases in cases.items():
-        if not isinstance(kind_cases, list) or not kind_cases:
-            raise ValueError(f"{kind_name} must hold a non-empty list of cases")
-        # Judges belong to the kind, so every case under it must carry every
+    for group_name, group_cases in cases.items():
+        if not isinstance(group_cases, list) or not group_cases:
+            raise ValueError(f"{group_name} must hold a non-empty list of cases")
+        # Judges belong to the group, so every case under it must carry every
         # reference key those judges read. Without this the run fails deep
         # inside Phoenix's field mapping, per case, after the task has already
         # spent live API credit.
         required: set[str] = set()
-        for judge in kinds[kind_name].judges:
+        for judge in groups[group_name].judges:
             key = specs[judge].reference_key
             if key is not None:
                 required.add(key)
-        for case in kind_cases:
+        for case in group_cases:
             if not isinstance(case, dict) or set(case) != CASE_FIELDS:
                 raise ValueError(f"each case needs exactly {sorted(CASE_FIELDS)}")
             if not isinstance(case["id"], str) or not case["id"].strip():
@@ -113,7 +113,7 @@ def load_cases() -> dict[str, list[dict[str, Any]]]:
             missing = sorted(required - set(case["output"]))
             if missing:
                 raise ValueError(
-                    f"{case['id']} is missing {missing} required by kind {kind_name}"
+                    f"{case['id']} is missing {missing} required by group {group_name}"
                 )
     return cases
 
@@ -292,7 +292,7 @@ async def run_e2e(input: dict[str, Any]) -> dict[str, Any]:
 
     The final turn carries no `expect`. Its routing is the result under test,
     so it stays graded by `route_correct`, where a misroute records a zero
-    beside the other judges instead of erroring the whole kind.
+    beside the other judges instead of erroring the whole group.
 
     A `resume` turn never carries `expect`: resuming does not re-run `classify`.
     """
@@ -420,7 +420,7 @@ def judge_specs() -> dict[str, JudgeSpec]:
 
 
 def build_judges(names: Sequence[str], judge: LLM) -> list[Any]:
-    """Bind one kind's judges, newest mapping first."""
+    """Bind one group's judges, newest mapping first."""
     specs = judge_specs()
     built: list[Any] = []
     for name in names:
@@ -445,57 +445,57 @@ def build_judges(names: Sequence[str], judge: LLM) -> list[Any]:
 
 
 @dataclass(frozen=True)
-class Kind:
+class Group:
     """One dataset and one experiment: a task, and the judges every case gets.
 
-    Judges belong to the kind and not to the case because Phoenix binds
+    Judges belong to the group and not to the case because Phoenix binds
     evaluators to a dataset, with no way to skip one for a single example.
-    A second case added to any kind is therefore graded by exactly this list,
-    or it needs a kind of its own.
+    A second case added to any group is therefore graded by exactly this list,
+    or it needs a group of its own.
     """
 
     task: ExperimentTask
     judges: tuple[str, ...]
 
 
-def build_kinds() -> dict[str, Kind]:
-    """The four kinds, in the order their experiments run."""
+def build_groups() -> dict[str, Group]:
+    """The four groups, in the order their experiments run."""
     return {
-        "expert": Kind(run_expert, ("groundedness", "usefulness")),
-        "orchestrator": Kind(run_orchestrator, ("route_correct", "rewrite_quality")),
+        "expert": Group(run_expert, ("groundedness", "usefulness")),
+        "orchestrator": Group(run_orchestrator, ("route_correct", "rewrite_quality")),
         # No `route_correct`: `run_report` raises unless the turn paused, and
         # the orchestrator's only `interrupt()` is the reporter subgraph's gate.
         # Pausing therefore implies the destination was `report`, so the judge
         # could only ever score 1.0 or never run at all. The guard is strictly
         # stronger than the judge: it also requires researched material in the
         # thread, which routing alone does not.
-        "report": Kind(run_report, ("report_fidelity",)),
+        "report": Group(run_report, ("report_fidelity",)),
         # `route_correct` DOES belong here. `run_e2e` guards only its setup
         # turns; the final turn's routing is ungraded inside the task, so a zero
         # is reachable. See `run_e2e`'s docstring.
-        "e2e": Kind(run_e2e, ("route_correct", "rewrite_quality", "usefulness")),
+        "e2e": Group(run_e2e, ("route_correct", "rewrite_quality", "usefulness")),
     }
 
 
 def validate_evaluations(
     result: RanExperiment,
     *,
-    kind_name: str,
-    kind_cases: list[dict[str, Any]],
+    group_name: str,
+    group_cases: list[dict[str, Any]],
     expected_names: set[str],
 ) -> CaseOutcome:
     """Reject structurally invalid results, count judge errors, collect failures."""
     matching = [run for run in result["evaluation_runs"] if run.name in expected_names]
     actual_names = {run.name for run in matching}
-    # Was `len(matching) != len(expected_names)`, which is true for any kind
-    # holding more than one case: `matching` spans every case in the kind's
+    # Was `len(matching) != len(expected_names)`, which is true for any group
+    # holding more than one case: `matching` spans every case in the group's
     # experiment, so for N cases it legitimately holds N * len(expected_names)
     # entries.
-    expected_total = len(kind_cases) * len(expected_names)
+    expected_total = len(group_cases) * len(expected_names)
     if actual_names != expected_names or len(matching) != expected_total:
         raise RuntimeError(
-            f"Expected {expected_total} evaluations for {kind_name} "
-            f"({sorted(expected_names)} over {len(kind_cases)} cases), "
+            f"Expected {expected_total} evaluations for {group_name} "
+            f"({sorted(expected_names)} over {len(group_cases)} cases), "
             f"got {len(matching)} named {sorted(actual_names)}"
         )
 
@@ -508,7 +508,7 @@ def validate_evaluations(
             # evaluators have errors counted.
             if run.name not in JUDGED_EVALUATORS:
                 raise RuntimeError(f"{run.name} failed: {run.error}")
-            logger.error("%s: %s judge error: %s", kind_name, run.name, run.error)
+            logger.error("%s: %s judge error: %s", group_name, run.name, run.error)
             judge_errors += 1
             continue
         evaluation = run.result
@@ -529,25 +529,25 @@ def validate_evaluations(
             raise RuntimeError(f"{run.name} returned no explanation")
         if run.name in JUDGED_EVALUATORS:
             if score < JUDGED_SCORE_THRESHOLD:
-                failed.append(f"{kind_name}/{run.name}={score}")
+                failed.append(f"{group_name}/{run.name}={score}")
         elif not score:
             # A CODE evaluator scores 1.0 when it passes and 0.0 when it fails.
             # Without this branch a `route_correct` of False is recorded as a
             # perfectly valid 0.0 and the run exits green with the routing wrong.
-            failed.append(f"{kind_name}/{run.name}=failed")
+            failed.append(f"{group_name}/{run.name}=failed")
     return CaseOutcome(
-        kind_id=kind_name,
+        group_id=group_name,
         scored=len(matching) - judge_errors,
         judge_errors=judge_errors,
         failed=failed,
     )
 
 
-async def run_kind(
+async def run_group(
     *,
     client: AsyncClient,
-    kind_name: str,
-    kind_cases: list[dict[str, Any]],
+    group_name: str,
+    group_cases: list[dict[str, Any]],
     task: ExperimentTask,
     evaluators: Sequence[Any],
     expected_names: set[str],
@@ -555,12 +555,12 @@ async def run_kind(
 ) -> CaseOutcome:
     """Record one valid graph run per case and its evaluations in Phoenix."""
     dataset = await client.datasets.create_dataset(
-        name=f"geopoliticai-{kind_name}",
+        name=f"geopoliticai-{group_name}",
         # Phoenix reads only input, output and metadata from an example. `id`
         # is this runner's own and stays out of the payload.
         examples=[
             {field: case[field] for field in ("input", "output", "metadata")}
-            for case in kind_cases
+            for case in group_cases
         ],
         dataset_description="Manual advisory quality smoke cases",
         timeout=PHOENIX_TIMEOUT_SECONDS,
@@ -576,7 +576,7 @@ async def run_kind(
         experiment_name=experiment_name,
         experiment_metadata={
             "judge_model": JUDGE_MODEL,
-            "case_count": len(kind_cases),
+            "case_count": len(group_cases),
             "judged_score_threshold": JUDGED_SCORE_THRESHOLD,
         },
         print_summary=False,
@@ -589,9 +589,9 @@ async def run_kind(
     )
 
     task_runs = task_result["task_runs"]
-    if len(task_runs) != len(kind_cases):
+    if len(task_runs) != len(group_cases):
         raise RuntimeError(
-            f"Expected {len(kind_cases)} task runs for {kind_name}, got {len(task_runs)}"
+            f"Expected {len(group_cases)} task runs for {group_name}, got {len(task_runs)}"
         )
     for task_run in task_runs:
         if task_run.get("error"):
@@ -609,21 +609,21 @@ async def run_kind(
         concurrency=1,
         timeout=PHOENIX_TIMEOUT_SECONDS,
     )
-    # Failures are reported per kind, not per case. Every kind holds one
+    # Failures are reported per group, not per case. Every group holds one
     # case today. An evaluation run carries `experiment_run_id`, not a dataset
-    # example id, so naming the individual case inside a multi-case kind means
+    # example id, so naming the individual case inside a multi-case group means
     # joining through `task_runs[*]["dataset_example_id"]`. Add that join when
-    # a kind actually grows a second case.
+    # a group actually grows a second case.
     return validate_evaluations(
         result,
-        kind_name=kind_name,
-        kind_cases=kind_cases,
+        group_name=group_name,
+        group_cases=group_cases,
         expected_names=expected_names,
     )
 
 
 async def main() -> None:
-    """Run every kind's checks against live dependencies."""
+    """Run every group's checks against live dependencies."""
     cases = load_cases()
     init_environment()
     require_env(
@@ -648,23 +648,23 @@ async def main() -> None:
         base_url=OPENROUTER_BASE_URL,
     )
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    kinds = build_kinds()
+    groups = build_groups()
 
     outcomes: list[CaseOutcome] = []
-    for kind_name, kind in kinds.items():
-        # The dataset name is `geopoliticai-<kind>`: `create_dataset` with a
-        # reused name updates the dataset rather than failing, so per-kind
+    for group_name, group in groups.items():
+        # The dataset name is `geopoliticai-<group>`: `create_dataset` with a
+        # reused name updates the dataset rather than failing, so per-group
         # datasets accumulate their runs' history in one place. The four old
         # per-case datasets stay in Phoenix as orphaned history.
         outcomes.append(
-            await run_kind(
+            await run_group(
                 client=client,
-                kind_name=kind_name,
-                kind_cases=cases[kind_name],
-                task=kind.task,
-                evaluators=build_judges(kind.judges, judge),
-                expected_names=set(kind.judges),
-                experiment_name=f"{kind_name}-{timestamp}",
+                group_name=group_name,
+                group_cases=cases[group_name],
+                task=group.task,
+                evaluators=build_judges(group.judges, judge),
+                expected_names=set(group.judges),
+                experiment_name=f"{group_name}-{timestamp}",
             )
         )
 
@@ -673,7 +673,7 @@ async def main() -> None:
         for outcome in failures:
             logger.error(
                 "%s: %d judge errors, failed: %s",
-                outcome.kind_id,
+                outcome.group_id,
                 outcome.judge_errors,
                 ", ".join(outcome.failed) or "none",
             )
