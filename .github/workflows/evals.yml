@@ -7,6 +7,7 @@ on:
 jobs:
   evals:
     runs-on: ubuntu-latest
+    environment: dev
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -31,6 +32,9 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           BRAVE_SEARCH_KEY: ${{ secrets.BRAVE_SEARCH_KEY }}
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          ARIZE_PLATFORM: AX
+          ARIZE_COLLECTOR_ENDPOINT: ${{ secrets.ARIZE_COLLECTOR_ENDPOINT }}
+          ARIZE_SPACE_ID: ${{ secrets.ARIZE_SPACE_ID }}
           PHOENIX_COLLECTOR_ENDPOINT: ${{ secrets.PHOENIX_COLLECTOR_ENDPOINT }}
-          PHOENIX_API_KEY: ${{ secrets.PHOENIX_API_KEY }}
+          ARIZE_API_KEY: ${{ secrets.ARIZE_API_KEY }}
         run: uv run python tests/manual_quality/basic_agent_evaluation.py

@@ -24,6 +24,7 @@ dependencies = [
     "httpx>=0.27,<1.0",
     "trafilatura>=2.0,<3.0",
     "uvicorn[standard]>=0.29,<1.0",
+    "arize-otel>=0.1,<1.0",
     "arize-phoenix-otel>=0.17,<1.0",
     "openinference-instrumentation-langchain>=0.1,<1.0",
 ]
@@ -93,7 +94,9 @@ dev = [
     "ruff>=0.8.2",
     # Manual live quality runner (`tests/manual_quality/`). These stay in `dev`:
     # Docker installs with `--no-dev` and copies only `src/`, while the runner
-    # needs Phoenix client/evals only when invoked explicitly by a reviewer.
+    # needs the Arize/Phoenix clients and evals only when invoked explicitly by
+    # a reviewer.
+    "arize>=8.52,<9.0",
     "arize-phoenix-client>=3.3,<4.0",
     "arize-phoenix-evals>=3.5.1,<4.0",
 ]

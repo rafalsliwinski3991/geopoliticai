@@ -1,4 +1,4 @@
-"""Manual live Phoenix quality checks for the expert and orchestrator graphs."""
+"""Manual live quality checks for the expert and orchestrator graphs."""
 
 from __future__ import annotations
 
@@ -7,13 +7,14 @@ import json
 import logging
 import os
 import sys
+from collections import Counter
 from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, cast
 from uuid import uuid4
 
+import httpx
 from judge_prompts import (
     GROUNDEDNESS_PROMPT,
     REPORT_FIDELITY_PROMPT,
@@ -28,7 +29,13 @@ from phoenix.client.experiments import create_evaluator
 from phoenix.client.resources.experiments.types import RanExperiment
 from phoenix.evals import LLM, ClassificationEvaluator, bind_evaluator
 
-from config import REQUIRED_ENV_VARS, init_environment, require_env
+from config import (
+    REQUIRED_ENV_VARS,
+    get_arize_platform,
+    get_trace_endpoint,
+    init_environment,
+    require_env,
+)
 from tracing import init_tracing
 
 CASES_PATH = Path(__file__).with_name("cases.json")
@@ -45,6 +52,9 @@ CASE_FIELDS = {"id", "input", "output", "metadata"}
 JUDGE_MODEL = "nvidia/nemotron-3-super-120b-a12b:free"
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 PHOENIX_TIMEOUT_SECONDS = 180
+JUDGE_RETRIES = 3
+# Bump when cases, prompts, or the judge change, so runs group per version.
+EXPERIMENT_VERSION = "v1"
 # Annotated to Phoenix's declared `dict[str, float | int]` choices type:
 # an inferred `dict[str, int]` is rejected under `--strict` because `dict`
 # is invariant in its value type.
@@ -120,11 +130,65 @@ def load_cases() -> dict[str, list[dict[str, Any]]]:
 
 def phoenix_base_url() -> str:
     """Derive the REST base URL from the repository's OTLP trace endpoint."""
-    endpoint = os.environ["PHOENIX_COLLECTOR_ENDPOINT"].rstrip("/")
+    endpoint = get_trace_endpoint()
+    if not endpoint:
+        raise ValueError(
+            f"Missing collector endpoint for ARIZE_PLATFORM={get_arize_platform()!r}"
+        )
+    endpoint = endpoint.rstrip("/")
     suffix = "/v1/traces"
     if not endpoint.endswith(suffix):
-        raise RuntimeError("PHOENIX_COLLECTOR_ENDPOINT must end with /v1/traces")
+        raise RuntimeError("The selected collector endpoint must end with /v1/traces")
     return endpoint[: -len(suffix)]
+
+
+def is_openrouter_success(response: httpx.Response) -> bool:
+    """A 200 still fails when OpenRouter relays an upstream error in the body."""
+    if response.is_error:
+        return False
+    try:
+        body = response.json()
+    except ValueError:
+        return False
+    return not (isinstance(body, dict) and "error" in body)
+
+
+def openrouter_http_clients(
+    counts: Counter[str],
+) -> tuple[httpx.Client, httpx.AsyncClient]:
+    """Clients that count every judge request and every successful reply.
+
+    Requests are counted before sending, so a connection failure with no
+    response still shows up as `calls - ok`.
+    """
+
+    def on_request(_request: httpx.Request) -> None:
+        counts["calls"] += 1
+
+    def on_response(response: httpx.Response) -> None:
+        response.read()
+        counts["ok"] += is_openrouter_success(response)
+
+    async def on_async_request(_request: httpx.Request) -> None:
+        counts["calls"] += 1
+
+    async def on_async_response(response: httpx.Response) -> None:
+        await response.aread()
+        counts["ok"] += is_openrouter_success(response)
+
+    return (
+        httpx.Client(
+            timeout=PHOENIX_TIMEOUT_SECONDS,
+            event_hooks={"request": [on_request], "response": [on_response]},
+        ),
+        httpx.AsyncClient(
+            timeout=PHOENIX_TIMEOUT_SECONDS,
+            event_hooks={
+                "request": [on_async_request],
+                "response": [on_async_response],
+            },
+        ),
+    )
 
 
 async def run_expert(input: dict[str, Any]) -> dict[str, Any]:
@@ -444,6 +508,93 @@ def build_judges(names: Sequence[str], judge: LLM) -> list[Any]:
     return built
 
 
+def build_ax_judges(names: Sequence[str], judge: LLM) -> list[Any]:
+    """Adapt the existing rubric judges to Arize's evaluator interface."""
+    from arize.experiments.evaluators.types import EvaluationResult
+    from arize.experiments.evaluators.utils import create_evaluator
+
+    phoenix_judges = {
+        name: build_judges([name], judge)[0]
+        for name in names
+        if name != "route_correct"
+    }
+    built: list[Any] = []
+    for name in names:
+        if name == "route_correct":
+
+            @create_evaluator(name=name)
+            def route_evaluator(
+                *, output: Any, dataset_output: Any, **_: object
+            ) -> EvaluationResult:
+                route_check = cast(Callable[..., bool], route_correct)
+                passed = route_check(
+                    output=decode_ax_value(output),
+                    reference=decode_ax_value(dataset_output),
+                )
+                return EvaluationResult(
+                    score=1.0 if passed else 0.0,
+                    label=str(passed),
+                    explanation=(
+                        "The orchestrator selected the expected destination."
+                        if passed
+                        else "The orchestrator selected a different destination."
+                    ),
+                )
+
+            built.append(route_evaluator)
+            continue
+
+        phoenix_judge = phoenix_judges[name]
+
+        @create_evaluator(name=name)
+        def rubric_evaluator(
+            *,
+            output: Any,
+            input: Any,
+            dataset_output: Any,
+            bound_judge: Any = phoenix_judge,
+            judge_name: str = name,
+            **_: object,
+        ) -> EvaluationResult:
+            eval_input = {
+                "input": decode_ax_value(input),
+                "output": decode_ax_value(output),
+                "reference": decode_ax_value(dataset_output),
+            }
+            last_error: Exception | None = None
+            for _attempt in range(JUDGE_RETRIES):
+                try:
+                    score = bound_judge.evaluate(eval_input)[0]
+                except Exception as exc:
+                    last_error = exc
+                    continue
+                return EvaluationResult(
+                    score=score.score,
+                    label=score.label,
+                    explanation=score.explanation,
+                )
+            assert last_error is not None
+            logger.error("%s judge error: %s", judge_name, last_error)
+            return EvaluationResult(
+                score=0,
+                label="judge_error",
+                explanation=f"Judge failed after {JUDGE_RETRIES} attempts.",
+            )
+
+        built.append(rubric_evaluator)
+    return built
+
+
+def decode_ax_value(value: Any) -> Any:
+    """Decode JSON strings returned for AX's canonical dataset fields."""
+    if not isinstance(value, str):
+        return value
+    try:
+        return json.loads(value)
+    except json.JSONDecodeError:
+        return value
+
+
 @dataclass(frozen=True)
 class Group:
     """One dataset and one experiment: a task, and the judges every case gets.
@@ -622,51 +773,199 @@ async def run_group(
     )
 
 
+def validate_ax_evaluations(
+    result: Any,
+    *,
+    group_name: str,
+    group_cases: list[dict[str, Any]],
+    expected_names: set[str],
+) -> CaseOutcome:
+    """Validate the result dataframe returned by Arize's experiment client."""
+    rows = result.to_dict(orient="records")
+    if len(rows) != len(group_cases):
+        raise RuntimeError(
+            f"Expected {len(group_cases)} task runs for {group_name}, got {len(rows)}"
+        )
+
+    judge_errors = 0
+    failed: list[str] = []
+    for row in rows:
+        if row.get("error"):
+            raise RuntimeError(f"Task run failed for {group_name}: {row['error']}")
+        for name in expected_names:
+            prefix = f"eval.{name}."
+            score = row.get(f"{prefix}score")
+            label = row.get(f"{prefix}label")
+            explanation = row.get(f"{prefix}explanation")
+            if score is None or (isinstance(score, float) and score != score):
+                if name == "route_correct":
+                    raise RuntimeError(f"{name} failed for {group_name}")
+                logger.error("%s: %s judge error", group_name, name)
+                judge_errors += 1
+                continue
+            if name in JUDGED_EVALUATORS and (
+                not isinstance(explanation, str) or not explanation.strip()
+            ):
+                raise RuntimeError(f"{name} returned no explanation")
+            if name in JUDGED_EVALUATORS and label == "judge_error":
+                judge_errors += 1
+                continue
+            if name in JUDGED_EVALUATORS:
+                if (
+                    not isinstance(score, (int, float))
+                    or score < JUDGED_SCORE_THRESHOLD
+                ):
+                    failed.append(f"{group_name}/{name}={score}")
+            elif not score:
+                failed.append(f"{group_name}/{name}=failed")
+            if name in JUDGED_EVALUATORS and (
+                not isinstance(label, str) or not label.strip()
+            ):
+                raise RuntimeError(f"{name} returned no label")
+    return CaseOutcome(
+        group_id=group_name,
+        scored=len(rows) * len(expected_names) - judge_errors,
+        judge_errors=judge_errors,
+        failed=failed,
+    )
+
+
+async def run_ax_group(
+    *,
+    client: Any,
+    space_id: str,
+    group_name: str,
+    group_cases: list[dict[str, Any]],
+    task: ExperimentTask,
+    evaluators: Sequence[Any],
+    expected_names: set[str],
+    experiment_name: str,
+) -> CaseOutcome:
+    """Run and upload one group through Arize AX."""
+
+    def sync_task(input: Any) -> dict[str, Any]:
+        decoded_input = decode_ax_value(input)
+        if not isinstance(decoded_input, dict):
+            raise ValueError("AX dataset input must decode to an object")
+
+        async def invoke_task() -> dict[str, Any]:
+            return await task(decoded_input)
+
+        return asyncio.run(invoke_task())
+
+    dataset = await asyncio.to_thread(
+        client.datasets.create,
+        name=f"geopoliticai-{experiment_name}",
+        space=space_id,
+        examples=[
+            {
+                "attributes.input.value": case["input"],
+                "attributes.output.value": case["output"],
+                "attributes.metadata": case["metadata"],
+            }
+            for case in group_cases
+        ],
+        force_http=True,
+    )
+    _, result = await asyncio.to_thread(
+        client.experiments.run,
+        name=experiment_name,
+        dataset=dataset.id,
+        space=space_id,
+        task=sync_task,
+        evaluators=evaluators,
+        concurrency=1,
+        timeout=PHOENIX_TIMEOUT_SECONDS,
+        metadata={
+            "judge_model": JUDGE_MODEL,
+            "case_count": str(len(group_cases)),
+            "judged_score_threshold": str(JUDGED_SCORE_THRESHOLD),
+        },
+    )
+    return validate_ax_evaluations(
+        result,
+        group_name=group_name,
+        group_cases=group_cases,
+        expected_names=expected_names,
+    )
+
+
 async def main() -> None:
     """Run every group's checks against live dependencies."""
     cases = load_cases()
     init_environment()
-    require_env(
-        (*REQUIRED_ENV_VARS, "PHOENIX_COLLECTOR_ENDPOINT", "OPENROUTER_API_KEY")
-    )
-    if not init_tracing():
-        raise RuntimeError("Phoenix tracing could not be initialized")
+    require_env((*REQUIRED_ENV_VARS, "OPENROUTER_API_KEY"))
+    platform = get_arize_platform()
+    if platform == "AX":
+        require_env(("ARIZE_API_KEY", "ARIZE_SPACE_ID"))
+        if not init_tracing():
+            raise RuntimeError("Arize AX tracing could not be initialized")
+        from arize import ArizeClient
 
-    # `PHOENIX_API_KEY` is unset locally, where the Compose Phoenix is open, and
-    # set from a repository secret in the workflow, where Phoenix Cloud requires
-    # it. One client either way: Cloud speaks the same API as the container.
-    client = AsyncClient(
-        base_url=phoenix_base_url(),
-        api_key=os.getenv("PHOENIX_API_KEY") or None,
-    )
-    # `require_env` above has already rejected an unset or empty value, so the
-    # direct read is safe and needs no wrapper of its own.
+        client: Any = ArizeClient(api_key=os.environ["ARIZE_API_KEY"])
+        space_id = os.environ["ARIZE_SPACE_ID"]
+    else:
+        base_url = phoenix_base_url()
+        if not init_tracing():
+            raise RuntimeError("Phoenix tracing could not be initialized")
+        # Only the auth-less local Phoenix is supported, so no API key is sent.
+        client = AsyncClient(base_url=base_url)
+        space_id = None
+
+    openrouter_counts: Counter[str] = Counter()
+    sync_http, async_http = openrouter_http_clients(openrouter_counts)
     judge = LLM(
         provider="openai",
         model=JUDGE_MODEL,
         api_key=os.environ["OPENROUTER_API_KEY"],
         base_url=OPENROUTER_BASE_URL,
+        sync_client_kwargs={"http_client": sync_http},
+        async_client_kwargs={"http_client": async_http},
     )
-    timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     groups = build_groups()
 
     outcomes: list[CaseOutcome] = []
     for group_name, group in groups.items():
-        # The dataset name is `geopoliticai-<group>`: `create_dataset` with a
-        # reused name updates the dataset rather than failing, so per-group
-        # datasets accumulate their runs' history in one place. The four old
-        # per-case datasets stay in Phoenix as orphaned history.
-        outcomes.append(
-            await run_group(
-                client=client,
-                group_name=group_name,
-                group_cases=cases[group_name],
-                task=group.task,
-                evaluators=build_judges(group.judges, judge),
-                expected_names=set(group.judges),
-                experiment_name=f"{group_name}-{timestamp}",
+        if platform == "AX":
+            assert space_id is not None
+            outcomes.append(
+                await run_ax_group(
+                    client=client,
+                    space_id=space_id,
+                    group_name=group_name,
+                    group_cases=cases[group_name],
+                    task=group.task,
+                    evaluators=build_ax_judges(group.judges, judge),
+                    expected_names=set(group.judges),
+                    experiment_name=f"{group_name}-{EXPERIMENT_VERSION}",
+                )
             )
-        )
+        else:
+            outcomes.append(
+                await run_group(
+                    client=client,
+                    group_name=group_name,
+                    group_cases=cases[group_name],
+                    task=group.task,
+                    evaluators=build_judges(group.judges, judge),
+                    expected_names=set(group.judges),
+                    experiment_name=f"{group_name}-{EXPERIMENT_VERSION}",
+                )
+            )
+
+    judge_errors = sum(o.judge_errors for o in outcomes)
+    judged = sum(
+        len(cases[name]) * len(JUDGED_EVALUATORS.intersection(group.judges))
+        for name, group in groups.items()
+    )
+    logger.info(
+        "OpenRouter: %d calls, %d ok, %d errors; judges: %d succeeded, %d failed",
+        openrouter_counts["calls"],
+        openrouter_counts["ok"],
+        openrouter_counts["calls"] - openrouter_counts["ok"],
+        judged - judge_errors,
+        judge_errors,
+    )
 
     failures = [o for o in outcomes if o.judge_errors or o.failed]
     if failures:

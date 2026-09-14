@@ -75,8 +75,9 @@ From the root, use `make logs-SERVICE` and `make services`. Manual quality work
 is `app/tests/manual_quality/basic_agent_evaluation.py`; it is advisory, outside
 pytest, and reachable in CI only through the dispatch-only `evals.yml` workflow,
 which gates no merge. The eval script additionally requires `OPENROUTER_API_KEY`
-and records its scores to local Phoenix or Phoenix Cloud depending on
-`PHOENIX_COLLECTOR_ENDPOINT` and `PHOENIX_API_KEY`.
+and records its scores to Arize AX or local Phoenix depending on
+`ARIZE_PLATFORM`: `AX` uses `ARIZE_SPACE_ID` and `ARIZE_API_KEY`, while
+`PHOENIX` (the default) uses `PHOENIX_COLLECTOR_ENDPOINT` and sends no API key.
 
 ## Working principles
 

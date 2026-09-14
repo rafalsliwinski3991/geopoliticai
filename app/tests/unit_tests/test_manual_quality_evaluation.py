@@ -155,10 +155,10 @@ NESTED_FIXTURE = {
 
 
 def _nested(**overrides: Any) -> str:
-    """Dump a nested fixture with whole-kind or whole-case overrides."""
+    """Dump a nested fixture with whole-group or whole-case overrides."""
     fixture = json.loads(json.dumps(NESTED_FIXTURE))
-    for kind, value in overrides.items():
-        fixture[kind] = value
+    for group, value in overrides.items():
+        fixture[group] = value
     return json.dumps(fixture)
 
 
@@ -187,31 +187,31 @@ def test_load_cases_rejects_a_json_list(tmp_path: Path) -> None:
         tmp_path,
         json.dumps([{"id": "x", "input": {}, "output": {}, "metadata": {}}]),
     )
-    with pytest.raises(ValueError, match="non-empty object keyed by kind"):
+    with pytest.raises(ValueError, match="non-empty object keyed by group"):
         runner.load_cases()
 
 
 def test_load_cases_rejects_an_empty_object(tmp_path: Path) -> None:
     runner = _write_cases(tmp_path, json.dumps({}))
-    with pytest.raises(ValueError, match="non-empty object keyed by kind"):
+    with pytest.raises(ValueError, match="non-empty object keyed by group"):
         runner.load_cases()
 
 
-def test_load_cases_rejects_an_unknown_kind(tmp_path: Path) -> None:
+def test_load_cases_rejects_an_unknown_group(tmp_path: Path) -> None:
     runner = _write_cases(tmp_path, _nested(unknown=[_case()]))
-    with pytest.raises(ValueError, match="must hold exactly the kinds"):
+    with pytest.raises(ValueError, match="must hold exactly the groups"):
         runner.load_cases()
 
 
-def test_load_cases_rejects_a_missing_kind(tmp_path: Path) -> None:
+def test_load_cases_rejects_a_missing_group(tmp_path: Path) -> None:
     fixture = json.loads(json.dumps(NESTED_FIXTURE))
     del fixture["e2e"]
     runner = _write_cases(tmp_path, json.dumps(fixture))
-    with pytest.raises(ValueError, match="must hold exactly the kinds"):
+    with pytest.raises(ValueError, match="must hold exactly the groups"):
         runner.load_cases()
 
 
-def test_load_cases_rejects_an_empty_kind(tmp_path: Path) -> None:
+def test_load_cases_rejects_an_empty_group(tmp_path: Path) -> None:
     runner = _write_cases(tmp_path, _nested(report=[]))
     with pytest.raises(ValueError, match="non-empty list of cases"):
         runner.load_cases()
@@ -237,13 +237,13 @@ def test_load_cases_rejects_a_blank_id(tmp_path: Path) -> None:
         runner.load_cases()
 
 
-def test_load_cases_rejects_a_duplicate_id_within_a_kind(tmp_path: Path) -> None:
+def test_load_cases_rejects_a_duplicate_id_within_a_group(tmp_path: Path) -> None:
     runner = _write_cases(tmp_path, _nested(report=[_case(), _case()]))
     with pytest.raises(ValueError, match="duplicate case id"):
         runner.load_cases()
 
 
-def test_load_cases_rejects_a_duplicate_id_across_kinds(tmp_path: Path) -> None:
+def test_load_cases_rejects_a_duplicate_id_across_groups(tmp_path: Path) -> None:
     expert = json.loads(json.dumps(NESTED_FIXTURE["expert"][0]))
     expert["id"] = "shared"
     e2e = json.loads(json.dumps(NESTED_FIXTURE["e2e"][0]))
@@ -290,7 +290,7 @@ def test_load_cases_accepts_the_real_shipped_cases_json() -> None:
     cases = runner.load_cases()
     assert isinstance(cases, dict)
     assert set(cases) == {"expert", "orchestrator", "report", "e2e"}
-    assert {case["id"] for kind_cases in cases.values() for case in kind_cases} == {
+    assert {case["id"] for group_cases in cases.values() for case in group_cases} == {
         "expert-niger-coup-v1",
         "orchestrator-dune-follow-up-v1",
         "report-vilnius-summit-v1",
@@ -463,7 +463,7 @@ def test_thread_output_excludes_the_final_ai_message_from_conversation() -> None
     assert "reuters.com" in outcome["conversation"]
 
 
-def test_validate_evaluations_accepts_a_kind_with_two_cases() -> None:
+def test_validate_evaluations_accepts_a_group_with_two_cases() -> None:
     runner = _load_runner()
     names = ("route_correct", "rewrite_quality", "usefulness")
     runs = [
@@ -481,8 +481,163 @@ def test_validate_evaluations_accepts_a_kind_with_two_cases() -> None:
     ]
     result = {"evaluation_runs": runs}
     outcome = runner.validate_evaluations(
-        result, kind_name="e2e", kind_cases=[{}, {}], expected_names=set(names)
+        result, group_name="e2e", group_cases=[{}, {}], expected_names=set(names)
     )
     assert outcome.failed == []
     assert outcome.judge_errors == 0
     assert outcome.scored == 6
+
+
+def test_ax_adapters_and_result_validation() -> None:
+    runner = _load_runner()
+
+    route = runner.build_ax_judges(["route_correct"], object())[0]
+    route_result = route.evaluate(
+        input={},
+        output={"destination": "report"},
+        dataset_output={"route_correct_destination": "report"},
+    )
+    assert route_result.score == 1.0
+
+    class FakePhoenixJudge:
+        def evaluate(self, _payload: dict[str, Any]) -> list[Any]:
+            return [SimpleNamespace(score=4, label="4", explanation="supported")]
+
+    original_build_judges = runner.build_judges
+    runner.build_judges = lambda _names, _judge: [FakePhoenixJudge()]
+    try:
+        rubric = runner.build_ax_judges(["groundedness"], object())[0]
+        rubric_result = rubric.evaluate(input={}, output={}, dataset_output={})
+    finally:
+        runner.build_judges = original_build_judges
+    assert rubric_result.score == 4
+    assert rubric_result.explanation == "supported"
+
+    result = SimpleNamespace(
+        to_dict=lambda orient: [
+            {
+                "error": None,
+                "eval.route_correct.score": 1.0,
+                "eval.route_correct.label": "True",
+            }
+        ]
+    )
+    outcome = runner.validate_ax_evaluations(
+        result,
+        group_name="orchestrator",
+        group_cases=[{}],
+        expected_names={"route_correct"},
+    )
+    assert outcome.scored == 1
+    assert outcome.failed == []
+
+
+def test_openrouter_success_rejects_error_bodies_and_statuses() -> None:
+    import httpx
+
+    runner = _load_runner()
+    assert runner.is_openrouter_success(httpx.Response(200, json={"choices": []}))
+    # OpenRouter reports an overloaded upstream as HTTP 200 with an error body.
+    assert not runner.is_openrouter_success(
+        httpx.Response(200, json={"error": {"code": 502}})
+    )
+    assert not runner.is_openrouter_success(httpx.Response(429, json={}))
+    assert not runner.is_openrouter_success(httpx.Response(200, text="not json"))
+
+
+def test_ax_rubric_judge_returns_judge_error_after_retries(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runner = _load_runner()
+    attempts: list[dict[str, Any]] = []
+
+    class FailingJudge:
+        def evaluate(self, payload: dict[str, Any]) -> list[Any]:
+            attempts.append(payload)
+            raise RuntimeError("upstream overloaded")
+
+    monkeypatch.setattr(runner, "build_judges", lambda _names, _judge: [FailingJudge()])
+    rubric = runner.build_ax_judges(["groundedness"], object())[0]
+    result = rubric.evaluate(input={}, output={}, dataset_output={})
+
+    assert len(attempts) == runner.JUDGE_RETRIES
+    assert result.label == "judge_error"
+    assert result.score == 0
+
+
+def _ax_result(*rows: dict[str, Any]) -> SimpleNamespace:
+    return SimpleNamespace(to_dict=lambda orient: list(rows))
+
+
+def _judged_row(**overrides: Any) -> dict[str, Any]:
+    row: dict[str, Any] = {
+        "error": None,
+        "eval.groundedness.score": 4.0,
+        "eval.groundedness.label": "4",
+        "eval.groundedness.explanation": "supported",
+    }
+    row.update(overrides)
+    return row
+
+
+@pytest.mark.parametrize(
+    ("rows", "message"),
+    [
+        ((), "Expected 1 task runs"),
+        ((_judged_row(error="boom"),), "Task run failed"),
+        (
+            (_judged_row(**{"eval.groundedness.explanation": " "}),),
+            "returned no explanation",
+        ),
+    ],
+)
+def test_validate_ax_evaluations_rejects_invalid_results(
+    rows: tuple[dict[str, Any], ...], message: str
+) -> None:
+    runner = _load_runner()
+    with pytest.raises(RuntimeError, match=message):
+        runner.validate_ax_evaluations(
+            _ax_result(*rows),
+            group_name="expert",
+            group_cases=[{}],
+            expected_names={"groundedness"},
+        )
+
+
+def test_validate_ax_evaluations_counts_judge_errors_and_failures() -> None:
+    runner = _load_runner()
+    rows = (
+        _judged_row(**{"eval.groundedness.score": float("nan")}),
+        _judged_row(**{"eval.groundedness.label": "judge_error"}),
+        _judged_row(**{"eval.groundedness.score": 2.0}),
+        _judged_row(),
+    )
+    outcome = runner.validate_ax_evaluations(
+        _ax_result(*rows),
+        group_name="expert",
+        group_cases=[{}] * 4,
+        expected_names={"groundedness"},
+    )
+    assert outcome.judge_errors == 2
+    assert outcome.scored == 2
+    assert outcome.failed == ["expert/groundedness=2.0"]
+
+
+def test_validate_ax_evaluations_route_correct_failures() -> None:
+    runner = _load_runner()
+    wrong_route = {"error": None, "eval.route_correct.score": 0.0}
+    outcome = runner.validate_ax_evaluations(
+        _ax_result(wrong_route),
+        group_name="orchestrator",
+        group_cases=[{}],
+        expected_names={"route_correct"},
+    )
+    assert outcome.failed == ["orchestrator/route_correct=failed"]
+
+    with pytest.raises(RuntimeError, match="route_correct failed"):
+        runner.validate_ax_evaluations(
+            _ax_result({"error": None}),
+            group_name="orchestrator",
+            group_cases=[{}],
+            expected_names={"route_correct"},
+        )

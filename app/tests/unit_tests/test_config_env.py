@@ -1,4 +1,44 @@
-from config import DEFAULT_LLM_SETTINGS, LLMSettings
+import pytest
+
+from config import (
+    DEFAULT_LLM_SETTINGS,
+    LLMSettings,
+    get_arize_platform,
+    get_trace_endpoint,
+)
+
+
+def test_arize_platform_defaults_to_phoenix(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("ARIZE_PLATFORM", raising=False)
+
+    assert get_arize_platform() == "PHOENIX"
+
+
+def test_arize_platform_rejects_unknown_value(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ARIZE_PLATFORM", "datadog")
+
+    with pytest.raises(ValueError, match="ARIZE_PLATFORM must be one of AX, PHOENIX"):
+        get_arize_platform()
+
+
+def test_trace_endpoint_uses_ax_for_ax_platform(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ARIZE_PLATFORM", "AX")
+    monkeypatch.setenv("ARIZE_COLLECTOR_ENDPOINT", "http://ax/v1/traces")
+    monkeypatch.setenv("PHOENIX_COLLECTOR_ENDPOINT", "http://phoenix/v1/traces")
+
+    assert get_trace_endpoint() == "http://ax/v1/traces"
+
+
+def test_trace_endpoint_uses_phoenix_for_phoenix_platform(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ARIZE_PLATFORM", "PHOENIX")
+    monkeypatch.setenv("ARIZE_COLLECTOR_ENDPOINT", "http://ax/v1/traces")
+    monkeypatch.setenv("PHOENIX_COLLECTOR_ENDPOINT", "http://phoenix/v1/traces")
+
+    assert get_trace_endpoint() == "http://phoenix/v1/traces"
 
 
 def test_default_llm_settings_values() -> None:

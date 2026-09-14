@@ -13,6 +13,7 @@ from dotenv import load_dotenv
 logger = logging.getLogger(__name__)
 
 REQUIRED_ENV_VARS = ("OPENAI_API_KEY", "BRAVE_SEARCH_KEY")
+SUPPORTED_ARIZE_PLATFORMS = frozenset({"AX", "PHOENIX"})
 
 
 @dataclass(frozen=True)
@@ -38,6 +39,24 @@ DEFAULT_LLM_SETTINGS = LLMSettings()
 # repo-root .env that Docker Compose's `env_file: .env` also uses,
 # regardless of the caller's current working directory.
 _REPO_ROOT_ENV = Path(__file__).resolve().parents[2] / ".env"
+
+
+def get_trace_endpoint() -> str | None:
+    """Select the configured collector endpoint for the active platform."""
+    platform = get_arize_platform()
+    endpoint_variable = (
+        "ARIZE_COLLECTOR_ENDPOINT" if platform == "AX" else "PHOENIX_COLLECTOR_ENDPOINT"
+    )
+    return os.getenv(endpoint_variable)
+
+
+def get_arize_platform() -> str:
+    """Return the configured tracing platform, defaulting to Phoenix."""
+    platform = (os.getenv("ARIZE_PLATFORM") or "PHOENIX").strip().upper()
+    if platform not in SUPPORTED_ARIZE_PLATFORMS:
+        supported = ", ".join(sorted(SUPPORTED_ARIZE_PLATFORMS))
+        raise ValueError(f"ARIZE_PLATFORM must be one of {supported}; got {platform!r}")
+    return platform
 
 
 def init_environment(log_level: str | None = None) -> logging.Logger:
