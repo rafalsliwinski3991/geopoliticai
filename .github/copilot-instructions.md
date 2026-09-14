@@ -21,6 +21,10 @@ module-level constants together at the beginning of each Python file, immediatel
 after imports and before functions or classes. Nodes return
 partial state dictionaries without mutation. Preserve shared-to-agent imports.
 
+Unit tests mirror `app/src/`: test `src/<path>/<name>.py` in
+`tests/unit_tests/<path>/test_<name>.py`, and give every test subdirectory an
+empty `__init__.py`. Integration tests stay flat in `tests/integration_tests/`.
+
 ```text
 START -> classify -> expert -> END
                   \-> chat   -> END

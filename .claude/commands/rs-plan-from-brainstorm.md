@@ -1,7 +1,7 @@
 ---
 description: Turn a brainstorming doc into a right-sized implementation plan, using full multi-agent review only when the change warrants it
 argument-hint: <brainstorm-doc-path> [output-plan-path]
-allowed-tools: Read, Write, Edit, Glob, Grep, Bash, Agent
+allowed-tools: Read, Write, Edit, Glob, Grep, Bash, Agent, WebFetch, WebSearch, AskUserQuestion, mcp__context7__resolve-library-id, mcp__context7__query-docs, mcp__plugin_context7_context7__resolve-library-id, mcp__plugin_context7_context7__query-docs
 ---
 
 Brainstorm doc: $1
@@ -28,6 +28,16 @@ resolve its exact library and version through Context7's `resolve-library-id`,
 then verify the relevant behavior with `query-docs`. Plan against the verified
 documentation and the installed version, not memory. Do not query Context7 for
 repository-local behavior that the checked-out code or guidance already answers.
+
+Use Context7 for library documentation only. For implementation patterns, prior
+art, and API guidance outside library docs -- vendor guides, tech blogs, GitHub
+repositories or issues -- use `WebSearch` to find sources and `WebFetch` to read
+them. Cite every web source the plan relies on, and prefer official sources when
+they conflict with others.
+
+When a question blocks a safe plan and neither the code nor the brainstorm answers
+it, ask the user with `AskUserQuestion` instead of guessing. Do not reopen settled
+decisions this way; ask only about genuine gaps.
 
 Before drafting, choose the smallest planning depth that makes implementation safe:
 
