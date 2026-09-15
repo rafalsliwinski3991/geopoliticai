@@ -61,4 +61,4 @@ Compose supplies `DATABASE_URL` from `POSTGRES_PASSWORD`; the API refuses to
 start without it. Never commit the populated file. Optional settings are
 documented in the repository guidance files.
 
-Run checks with `make lint`, `make test`, and `make integration_tests`.
+Run checks with `make lint` and `make test`.
