@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import Any, Optional
 
 from langchain_core.runnables import RunnableConfig
 from langgraph.types import StreamWriter
@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 async def write(
     state: ReporterState,
     writer: StreamWriter,
-    config: RunnableConfig | None = None,
+    config: Optional[RunnableConfig] = None,
 ) -> dict[str, Any]:
     """Write the approved report in one streamed call.
 

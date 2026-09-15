@@ -1,0 +1,59 @@
+[
+  {
+    "agent_name": "orchestrator",
+    "data": [
+      {
+        "name": "orchestrator-first-chat-question",
+        "input": {
+          "messages": [
+            {
+              "type": "human",
+              "data": {
+                "content": "Hello",
+                "additional_kwargs": {},
+                "response_metadata": {},
+                "type": "human",
+                "name": null,
+                "id": "da0c9660-ce2f-46c1-a7f2-499b53d66d67",
+                "example": false
+              }
+            }
+          ]
+        },
+        "output": {
+          "messages": [
+            {
+              "type": "human",
+              "data": {
+                "content": "Hello",
+                "additional_kwargs": {},
+                "response_metadata": {},
+                "type": "human",
+                "name": null,
+                "id": "93816817-f4dd-4a25-8c44-95535083aba2",
+                "example": false
+              }
+            },
+            {
+              "type": "ai",
+              "data": {
+                "content": "Hello! How can I assist you today?",
+                "additional_kwargs": {},
+                "response_metadata": {},
+                "type": "ai",
+                "name": null,
+                "id": "856736f7-706d-480c-bf19-87142ea4f265",
+                "example": false,
+                "tool_calls": [],
+                "invalid_tool_calls": [],
+                "usage_metadata": null
+              }
+            }
+          ],
+          "destination": "other",
+          "standalone_query": "Hello."
+        }
+      }
+    ]
+  }
+]

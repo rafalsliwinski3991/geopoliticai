@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import Any, Optional
 
 from langchain_core.messages import AIMessage
 from langchain_core.runnables import RunnableConfig
@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 
 async def chat(
-    state: OrchestratorState, config: RunnableConfig | None = None
+    state: OrchestratorState, config: Optional[RunnableConfig] = None
 ) -> dict[str, Any]:
     """Answer from the model's own knowledge, with no sources and no citations."""
     history = list(state["messages"])[-HISTORY_WINDOW_MESSAGES:]

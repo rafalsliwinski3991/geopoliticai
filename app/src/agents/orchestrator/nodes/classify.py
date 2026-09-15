@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import Any, Optional
 
 from langchain_core.runnables import RunnableConfig
 from langgraph.types import StreamWriter
@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 async def classify(
     state: OrchestratorState,
     writer: StreamWriter,
-    config: RunnableConfig | None = None,
+    config: Optional[RunnableConfig] = None,
 ) -> dict[str, Any]:
     """Pick the branch and rewrite the turn, in one structured model call.
 
@@ -40,7 +40,9 @@ async def classify(
     `writer` must be annotated exactly `StreamWriter`. Any other spelling —
     `StreamWriter | None`, or a qualified `lg_types.StreamWriter` — is silently
     not injected under `from __future__ import annotations`, and this node then
-    emits nothing forever with no error. See §4.0.
+    emits nothing forever with no error. See §4.0. `config` has the same
+    constraint and a narrower allow-list: only `RunnableConfig` and
+    `Optional[RunnableConfig]`, never the PEP 604 `RunnableConfig | None`.
     """
     history = list(state["messages"])[-HISTORY_WINDOW_MESSAGES:]
     decision = await ainvoke_structured(

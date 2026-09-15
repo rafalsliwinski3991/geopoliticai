@@ -16,8 +16,14 @@ Postgres is only the LangGraph checkpointer and uses `psycopg[binary]`.
 
 Agents live in `app/src/agents/<name>/` with graph, state, config, prompts,
 `consts/`, and node modules. Put fixed editorial data in `consts/`, prompts in
-the agent's `prompts.py`, and hardcoded tuning in dataclass config. Nodes return
+the agent's `prompts.py`, and hardcoded tuning in dataclass config. Keep all
+module-level constants together at the beginning of each Python file, immediately
+after imports and before functions or classes. Nodes return
 partial state dictionaries without mutation. Preserve shared-to-agent imports.
+
+Unit tests mirror `app/src/`: test `src/<path>/<name>.py` in
+`tests/unit_tests/<path>/test_<name>.py`, and give every test subdirectory an
+empty `__init__.py`. Integration tests stay flat in `tests/integration_tests/`.
 
 ```text
 START -> classify -> expert -> END
@@ -66,8 +72,12 @@ and fail-closed Basic Auth for `/` and `/api/`.
 Run application commands from `app/`: `uv sync --locked --dev`, `make test`,
 `make integration_tests`, `make lint`, `make format`, and `langgraph dev`.
 From the root, use `make logs-SERVICE` and `make services`. Manual quality work
-is `app/tests/manual_quality/basic_agent_evaluation.py`; it is advisory and not
-part of pytest or CI.
+is `app/tests/manual_quality/basic_agent_evaluation.py`; it is advisory, outside
+pytest, and reachable in CI only through the dispatch-only `evals.yml` workflow,
+which gates no merge. The eval script additionally requires `OPENROUTER_API_KEY`
+and records its scores to Arize AX or local Phoenix depending on
+`ARIZE_PLATFORM`: `AX` uses `ARIZE_SPACE_ID` and `ARIZE_API_KEY`, while
+`PHOENIX` (the default) uses `PHOENIX_COLLECTOR_ENDPOINT` and sends no API key.
 
 ## Working principles
 
