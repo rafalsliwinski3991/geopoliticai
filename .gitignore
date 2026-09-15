@@ -10,3 +10,7 @@ __pycache__/
 tmp
 docs/cc_logs/
 docs/opencode_logs/
+docs/plan-reviews/
+docs/plans/
+docs/brainstorming/
+docs/audits/
