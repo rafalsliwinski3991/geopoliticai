@@ -42,6 +42,16 @@ def test_init_tracing_noop_when_endpoint_unset(monkeypatch: pytest.MonkeyPatch) 
     assert tracing._initialized is False
 
 
+def test_init_tracing_disabled_for_unsupported_platform(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Arrange
+    monkeypatch.setenv("ARIZE_PLATFORM", "datadog")
+    # Act + Assert
+    assert tracing.init_tracing() is False
+    assert tracing._initialized is False
+
+
 def test_init_tracing_swallows_register_errors(monkeypatch: pytest.MonkeyPatch) -> None:
     # Arrange
     monkeypatch.setenv("ARIZE_PLATFORM", "AX")

@@ -173,3 +173,84 @@ def test_min_avg_score_gate_fails_without_scores() -> None:
     runner = _load_runner()
     with pytest.raises(SystemExit):
         runner.ensure_min_avg_score(None)
+
+
+@pytest.mark.parametrize(
+    ("content", "message"),
+    [
+        ('{"agent_name": "orchestrator"}', "must contain a list"),
+        ('[{"agent_name": "orchestrator", "data": []}]', "non-empty list"),
+        ('[{"agent_name": "orchestrator", "data": {}}]', "non-empty list"),
+        ('[{"agent_name": "reporter", "data": [{}]}]', "no orchestrator entry"),
+    ],
+)
+def test_load_examples_rejects_malformed_dataset(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, content: str, message: str
+) -> None:
+    runner = _load_runner()
+    dataset = tmp_path / "dataset.json"
+    dataset.write_text(content, encoding="utf-8")
+    monkeypatch.setattr(runner, "DATASET_PATH", dataset)
+    with pytest.raises(ValueError, match=message):
+        runner.load_examples()
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [(5, 5), ('{"a": 1}', {"a": 1}), ("not json", "not json")],
+)
+def test_decode_ax_value(value: Any, expected: Any) -> None:
+    runner = _load_runner()
+    assert runner.decode_ax_value(value) == expected
+
+
+def test_phoenix_base_url_strips_traces_suffix(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runner = _load_runner()
+    monkeypatch.setattr(
+        runner, "get_trace_endpoint", lambda: "http://phoenix:6006/v1/traces/"
+    )
+    assert runner.phoenix_base_url() == "http://phoenix:6006"
+
+
+def test_phoenix_base_url_requires_endpoint(monkeypatch: pytest.MonkeyPatch) -> None:
+    runner = _load_runner()
+    monkeypatch.setattr(runner, "get_trace_endpoint", lambda: None)
+    with pytest.raises(ValueError, match="Missing collector endpoint"):
+        runner.phoenix_base_url()
+
+
+def test_phoenix_base_url_rejects_wrong_suffix(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runner = _load_runner()
+    monkeypatch.setattr(runner, "get_trace_endpoint", lambda: "http://phoenix:6006")
+    with pytest.raises(RuntimeError, match="/v1/traces"):
+        runner.phoenix_base_url()
+
+
+def test_ax_judge_returns_judge_score() -> None:
+    runner = _load_runner()
+    score = SimpleNamespace(score=4, label="4", explanation="small gap")
+    judge = SimpleNamespace(evaluate=lambda eval_input: [score])
+    result = runner.build_ax_judge(judge)(
+        input='{"q": 1}', output={"a": 2}, dataset_output={"a": 2}
+    )
+    assert (result.score, result.label, result.explanation) == (4, "4", "small gap")
+
+
+def test_ax_judge_records_failure_after_retries() -> None:
+    runner = _load_runner()
+    calls: list[dict[str, Any]] = []
+
+    def _boom(eval_input: dict[str, Any]) -> list[Any]:
+        calls.append(eval_input)
+        raise RuntimeError("judge down")
+
+    result = runner.build_ax_judge(SimpleNamespace(evaluate=_boom))(
+        input='{"q": 1}', output={"a": 2}, dataset_output={"a": 2}
+    )
+    assert len(calls) == runner.JUDGE_RETRIES
+    assert calls[0]["input"] == {"q": 1}
+    assert (result.score, result.label) == (0, "judge_error")

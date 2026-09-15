@@ -144,6 +144,39 @@ def build_judge(llm: Any) -> Any:
     )
 
 
+def build_ax_judge(bound_judge: Any) -> Any:
+    """Wrap the judge as an AX evaluator that retries, then records a failure."""
+    from arize.experiments.evaluators.types import EvaluationResult
+
+    def ax_judge(*, input: Any, output: Any, dataset_output: Any) -> Any:
+        eval_input = {
+            "input": decode_ax_value(input),
+            "output": decode_ax_value(output),
+            "reference": decode_ax_value(dataset_output),
+        }
+        last_error: Exception | None = None
+        for _attempt in range(JUDGE_RETRIES):
+            try:
+                score = bound_judge.evaluate(eval_input)[0]
+            except Exception as exc:
+                last_error = exc
+                continue
+            return EvaluationResult(
+                score=score.score,
+                label=score.label,
+                explanation=score.explanation,
+            )
+        assert last_error is not None
+        logger.error("orchestrator_quality judge error: %s", last_error)
+        return EvaluationResult(
+            score=0,
+            label="judge_error",
+            explanation=f"Judge failed after {JUDGE_RETRIES} attempts.",
+        )
+
+    return ax_judge
+
+
 def annotate_ax_dataset(
     client: Any, space_id: str | None, dataset_id: str, ax_result: Any
 ) -> None:
@@ -261,7 +294,6 @@ async def main() -> None:
     experiment_name = f"{AGENT_NAME}-{timestamp}"
 
     if platform == "AX":
-        from arize.experiments.evaluators.types import EvaluationResult
         from arize.utils.resolve import NotFoundError
 
         def sync_task(input: Any) -> dict[str, Any]:
@@ -274,33 +306,7 @@ async def main() -> None:
 
             return asyncio.run(invoke_task())
 
-        bound_judge = build_judge(judge)
-
-        def ax_judge(*, input: Any, output: Any, dataset_output: Any) -> Any:
-            eval_input = {
-                "input": decode_ax_value(input),
-                "output": decode_ax_value(output),
-                "reference": decode_ax_value(dataset_output),
-            }
-            last_error: Exception | None = None
-            for _attempt in range(JUDGE_RETRIES):
-                try:
-                    score = bound_judge.evaluate(eval_input)[0]
-                except Exception as exc:
-                    last_error = exc
-                    continue
-                return EvaluationResult(
-                    score=score.score,
-                    label=score.label,
-                    explanation=score.explanation,
-                )
-            assert last_error is not None
-            logger.error("orchestrator_quality judge error: %s", last_error)
-            return EvaluationResult(
-                score=0,
-                label="judge_error",
-                explanation=f"Judge failed after {JUDGE_RETRIES} attempts.",
-            )
+        ax_judge = build_ax_judge(build_judge(judge))
 
         try:
             dataset = await asyncio.to_thread(
