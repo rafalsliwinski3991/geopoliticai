@@ -14,7 +14,10 @@ llm_module = importlib.import_module("llm")
 
 
 def test_graph_has_exactly_two_nodes() -> None:
+    # Act
     compiled = expert.build_graph()
+
+    # Assert
     assert set(compiled.get_graph().nodes) - {"__start__", "__end__"} == {
         "search_and_fetch",
         "answer",
@@ -22,9 +25,12 @@ def test_graph_has_exactly_two_nodes() -> None:
 
 
 def test_graph_is_linear() -> None:
+    # Act
     edges = {
         (edge.source, edge.target) for edge in expert.build_graph().get_graph().edges
     }
+
+    # Assert
     assert {
         ("__start__", "search_and_fetch"),
         ("search_and_fetch", "answer"),
@@ -36,6 +42,7 @@ def test_graph_is_linear() -> None:
 async def test_execution_streams_answer_tokens(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # Arrange
     async def candidates(query: str, policy: Any) -> list[Candidate]:
         return [Candidate("title", "https://reuters.com/x", "reuters.com")]
 
@@ -54,6 +61,8 @@ async def test_execution_streams_answer_tokens(
     compiled = graph_module.build_graph()
     state = build_initial_pipeline_state("question")
     config = graph_module.build_runtime_config()
+
+    # Act
     chunks = [
         message
         async for message, metadata in compiled.astream(
@@ -61,6 +70,8 @@ async def test_execution_streams_answer_tokens(
         )
         if metadata.get("langgraph_node") == "answer"
     ]
+
+    # Assert
     assert "".join(chunk.text() for chunk in chunks) == "Hello world."
 
 
@@ -68,6 +79,7 @@ async def test_execution_streams_answer_tokens(
 async def test_execution_propagates_llm_failure_after_partial_tokens(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # Arrange
     async def candidates(query: str, policy: Any) -> list[Candidate]:
         return [Candidate("title", "https://reuters.com/x", "reuters.com")]
 
@@ -113,12 +125,16 @@ async def test_execution_propagates_llm_failure_after_partial_tokens(
     state = build_initial_pipeline_state("question")
     config = graph_module.build_runtime_config()
     texts: list[str] = []
+
+    # Act
     with pytest.raises(LLMInvocationError):
         async for message, metadata in compiled.astream(
             state, config=config, stream_mode="messages"
         ):
             if metadata.get("langgraph_node") == "answer":
                 texts.append(message.text())
+
+    # Assert
     # Already-produced chunks are yielded before the exception surfaces, so no
     # partial output is lost.
     assert "partial" in texts

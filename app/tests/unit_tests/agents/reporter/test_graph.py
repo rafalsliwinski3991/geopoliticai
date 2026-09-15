@@ -71,15 +71,18 @@ def _config(thread_id: str) -> dict[str, dict[str, str]]:
 async def test_first_run_pauses_at_the_gate_with_the_drafted_outline(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # Arrange
     outline_calls: list[list[str]] = []
     _stub_outline_model(monkeypatch, outline_calls, [["First", "Second"]])
     compiled = _compiled()
 
+    # Act
     await compiled.ainvoke(
         build_initial_reporter_state(TRANSCRIPT), config=_config("pause-1")
     )
     state = compiled.get_state(config=_config("pause-1"))
 
+    # Assert
     assert state.next == ("gate",)
     assert state.interrupts[0].value["outline"] == ["First", "Second"]
 
@@ -88,6 +91,7 @@ async def test_first_run_pauses_at_the_gate_with_the_drafted_outline(
 async def test_a_revise_resume_redraws_and_pauses_again_with_the_new_outline(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # Arrange
     outline_calls: list[list[str]] = []
     _stub_outline_model(
         monkeypatch, outline_calls, [["Old outline"], ["New one", "New two"]]
@@ -95,12 +99,14 @@ async def test_a_revise_resume_redraws_and_pauses_again_with_the_new_outline(
     compiled = _compiled()
     config = _config("revise-1")
 
+    # Act
     await compiled.ainvoke(build_initial_reporter_state(TRANSCRIPT), config=config)
     await compiled.ainvoke(
         Command(resume={"action": "revise", "instruction": "add Poland"}), config=config
     )
     state = compiled.get_state(config=config)
 
+    # Assert
     assert state.next == ("gate",)
     assert state.interrupts[0].value["outline"] == ["New one", "New two"]
     assert len(outline_calls) == 2
@@ -110,16 +116,19 @@ async def test_a_revise_resume_redraws_and_pauses_again_with_the_new_outline(
 async def test_an_approve_resume_writes_the_report_and_finishes(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # Arrange
     write_calls: list[str] = []
     _stub_outline_model(monkeypatch, [], [["First", "Second"]])
     _stub_report_writer(monkeypatch, write_calls)
     compiled = _compiled()
     config = _config("approve-1")
 
+    # Act
     await compiled.ainvoke(build_initial_reporter_state(TRANSCRIPT), config=config)
     await compiled.ainvoke(Command(resume={"action": "approve"}), config=config)
     state = compiled.get_state(config=config)
 
+    # Assert
     assert state.next == ()
     assert state.values["report"] == "The report."
     assert write_calls
@@ -129,6 +138,7 @@ async def test_an_approve_resume_writes_the_report_and_finishes(
 async def test_a_cancel_resume_ends_without_a_report(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # Arrange
     outline_calls: list[list[str]] = []
     write_calls: list[str] = []
     _stub_outline_model(monkeypatch, outline_calls, [["First"]])
@@ -136,10 +146,12 @@ async def test_a_cancel_resume_ends_without_a_report(
     compiled = _compiled()
     config = _config("cancel-1")
 
+    # Act
     await compiled.ainvoke(build_initial_reporter_state(TRANSCRIPT), config=config)
     await compiled.ainvoke(Command(resume={"action": "cancel"}), config=config)
     state = compiled.get_state(config=config)
 
+    # Assert
     assert state.next == ()
     assert state.values["report"] == ""
     assert state.values["notice"] == CANCELLED_NOTICE
@@ -150,6 +162,7 @@ async def test_a_cancel_resume_ends_without_a_report(
 async def test_two_revisions_and_an_approval_cost_three_outline_calls_and_one_write(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # Arrange
     outline_calls: list[list[str]] = []
     write_calls: list[str] = []
     _stub_outline_model(monkeypatch, outline_calls, [["First"]])
@@ -157,6 +170,7 @@ async def test_two_revisions_and_an_approval_cost_three_outline_calls_and_one_wr
     compiled = _compiled()
     config = _config("cost-1")
 
+    # Act
     await compiled.ainvoke(build_initial_reporter_state(TRANSCRIPT), config=config)
     await compiled.ainvoke(
         Command(resume={"action": "revise", "instruction": "first change"}),
@@ -168,6 +182,7 @@ async def test_two_revisions_and_an_approval_cost_three_outline_calls_and_one_wr
     )
     await compiled.ainvoke(Command(resume={"action": "approve"}), config=config)
 
+    # Assert
     assert len(outline_calls) == 3
     assert len(write_calls) == 1
 
@@ -176,6 +191,7 @@ async def test_two_revisions_and_an_approval_cost_three_outline_calls_and_one_wr
 async def test_an_empty_transcript_ends_immediately_without_pausing(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # Arrange
     outline_calls: list[list[str]] = []
     write_calls: list[str] = []
     _stub_outline_model(monkeypatch, outline_calls, [["First"]])
@@ -183,9 +199,11 @@ async def test_an_empty_transcript_ends_immediately_without_pausing(
     compiled = _compiled()
     config = _config("empty-1")
 
+    # Act
     await compiled.ainvoke(build_initial_reporter_state(""), config=config)
     state = compiled.get_state(config=config)
 
+    # Assert
     assert state.next == ()
     assert state.values["outline"] == []
     assert state.interrupts == ()
@@ -197,6 +215,7 @@ async def test_an_empty_transcript_ends_immediately_without_pausing(
 async def test_max_revision_rounds_plus_one_revisions_end_the_run(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # Arrange
     outline_calls: list[list[str]] = []
     write_calls: list[str] = []
     _stub_outline_model(monkeypatch, outline_calls, [["First"]])
@@ -204,6 +223,7 @@ async def test_max_revision_rounds_plus_one_revisions_end_the_run(
     compiled = _compiled()
     config = _config("cap-1")
 
+    # Act
     await compiled.ainvoke(build_initial_reporter_state(TRANSCRIPT), config=config)
     for round_number in range(MAX_REVISION_ROUNDS + 1):
         await compiled.ainvoke(
@@ -217,6 +237,7 @@ async def test_max_revision_rounds_plus_one_revisions_end_the_run(
         )
     state = compiled.get_state(config=config)
 
+    # Assert
     # Asserting next == () is the point: an outline node that returned its
     # sections unchanged at the cap would leave the thread paused forever.
     assert state.next == ()
