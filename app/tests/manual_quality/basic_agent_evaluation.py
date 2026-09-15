@@ -32,6 +32,9 @@ JUDGE_MODEL = "nvidia/nemotron-3-super-120b-a12b:free"
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 TIMEOUT_SECONDS = 180
 JUDGE_RETRIES = 3
+# One judge name across both platforms: the inline evaluator, the AX
+# annotation config, and the Phoenix evaluation all carry it.
+EVALUATOR_NAME = "orchestrator_quality"
 # Annotated to Phoenix's declared `dict[str, float | int]` choices type:
 # an inferred `dict[str, int]` is rejected under `--strict` because `dict`
 # is invariant in its value type.
@@ -130,13 +133,75 @@ def build_judge(llm: Any) -> Any:
     from phoenix.evals import ClassificationEvaluator
 
     return ClassificationEvaluator(
-        name="orchestrator_quality",
+        name=EVALUATOR_NAME,
         llm=llm,
         prompt_template=ORCHESTRATOR_QUALITY_PROMPT,
         choices=SCORE_CHOICES,
         include_explanation=True,
         temperature=0,
     )
+
+
+def annotate_ax_dataset(
+    client: Any, space_id: str | None, dataset_id: str, ax_result: Any
+) -> None:
+    """Post the inline judge's score/label/reasoning onto the dataset examples.
+
+    The experiment's result rows carry `example_id` and the judge's columns;
+    annotating the examples makes the reasoning visible next to the score in
+    the dataset's Evaluations panel. Annotations are upserted per example, so
+    a later run overwrites the earlier reasoning there.
+    """
+    from arize.annotation_configs.types import (
+        CategoricalAnnotationValueRequest,
+        OptimizationDirection,
+    )
+    from arize.datasets.types import AnnotateRecordInput, AnnotationInput
+
+    score_column = f"eval.{EVALUATOR_NAME}.score"
+    label_column = f"eval.{EVALUATOR_NAME}.label"
+    explanation_column = f"eval.{EVALUATOR_NAME}.explanation"
+
+    annotations = [
+        AnnotateRecordInput(
+            record_id=str(row["example_id"]),
+            values=[
+                # Categorical configs reject an explicit `score`: AX derives
+                # it from the label, which already matches SCORE_CHOICES.
+                AnnotationInput(
+                    name=EVALUATOR_NAME,
+                    label=row[label_column],
+                    text=row[explanation_column],
+                )
+            ],
+        )
+        for row in ax_result.to_dict(orient="records")
+        if row.get("example_id") and row.get(score_column) is not None
+    ]
+    if not annotations:
+        raise RuntimeError("The experiment produced no judge scores to annotate.")
+
+    for config in client.annotation_configs.list(
+        name=EVALUATOR_NAME, space=space_id
+    ).annotation_configs:
+        if config.name == EVALUATOR_NAME:
+            break
+    else:
+        client.annotation_configs.create_categorical(
+            name=EVALUATOR_NAME,
+            space=space_id,
+            values=[
+                CategoricalAnnotationValueRequest(label=label, score=score)
+                for label, score in SCORE_CHOICES.items()
+            ],
+            optimization_direction=OptimizationDirection.MAXIMIZE,
+        )
+    client.datasets.annotate_examples(
+        dataset=dataset_id,
+        space=space_id,
+        annotations=annotations,
+    )
+    logger.info("Annotated %d dataset examples with judge results.", len(annotations))
 
 
 async def main() -> None:
@@ -240,10 +305,11 @@ async def main() -> None:
             dataset=dataset.id,
             space=space_id,
             task=sync_task,
-            evaluators={"orchestrator_quality": ax_judge},
+            evaluators={EVALUATOR_NAME: ax_judge},
             concurrency=1,
             timeout=TIMEOUT_SECONDS,
         )
+        annotate_ax_dataset(client, space_id, dataset.id, ax_result)
         failed_tasks = [
             row["error"]
             for row in ax_result.to_dict(orient="records")
@@ -296,6 +362,15 @@ async def main() -> None:
         for run in eval_result["evaluation_runs"]:
             if run.error:
                 logger.error("%s judge error: %s", run.name, run.error)
+                continue
+            result = run.result or {}
+            logger.info(
+                "%s score=%s label=%s\njudge reasoning: %s",
+                run.name,
+                result.get("score"),
+                result.get("label"),
+                result.get("explanation"),
+            )
         failed_tasks = [
             run["error"] for run in task_result["task_runs"] if run.get("error")
         ]
