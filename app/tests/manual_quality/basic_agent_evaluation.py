@@ -108,6 +108,26 @@ def decode_ax_value(value: Any) -> Any:
         return value
 
 
+def judge_view(payload: dict[str, Any]) -> dict[str, Any]:
+    """Reduce a run's full messages envelope to what the judge prompt compares.
+
+    `messages_to_dict` output carries per-message id UUIDs and empty
+    `additional_kwargs`/etc. that never match between actual and expected
+    output and only cost the judge tokens; keep the final answer text instead.
+    """
+    final_answer = ""
+    for message in reversed(payload.get("messages") or []):
+        data = message.get("data", {})
+        if data.get("type") == "ai":
+            final_answer = data.get("content", "")
+            break
+    return {
+        "destination": payload.get("destination"),
+        "standalone_query": payload.get("standalone_query"),
+        "final_answer": final_answer,
+    }
+
+
 async def run_orchestrator(input: dict[str, Any]) -> dict[str, Any]:
     """Run the real full graph with no checkpointer.
 
@@ -151,8 +171,8 @@ def build_ax_judge(bound_judge: Any) -> Any:
     def ax_judge(*, input: Any, output: Any, dataset_output: Any) -> Any:
         eval_input = {
             "input": decode_ax_value(input),
-            "output": decode_ax_value(output),
-            "reference": decode_ax_value(dataset_output),
+            "output": judge_view(decode_ax_value(output)),
+            "reference": judge_view(decode_ax_value(dataset_output)),
         }
         last_error: Exception | None = None
         for _attempt in range(JUDGE_RETRIES):
@@ -168,13 +188,57 @@ def build_ax_judge(bound_judge: Any) -> Any:
             )
         assert last_error is not None
         logger.error("orchestrator_quality judge error: %s", last_error)
+        # score=None so `.dropna()` excludes it from the average, matching the
+        # Phoenix path, which drops errored evaluator runs from its average too.
         return EvaluationResult(
-            score=0,
+            score=None,
             label="judge_error",
             explanation=f"Judge failed after {JUDGE_RETRIES} attempts.",
         )
 
     return ax_judge
+
+
+def build_phoenix_judge(bound_judge: Any) -> Any:
+    """Wrap the judge as a Phoenix evaluator that retries, then records a failure.
+
+    `evaluate_experiment`'s own `retries` never fires for this: Phoenix's
+    `_run_single_evaluation_async` catches a judge failure per example and
+    only prints it (`_print_experiment_error`), it never re-raises, so the
+    executor never sees a failure to retry. A flaky judge completion (e.g. the
+    free model returning no content) would otherwise fail that example on the
+    first try with no retry at all.
+    """
+
+    async def phoenix_judge(
+        *, input: Any, output: Any, reference: Any
+    ) -> dict[str, Any]:
+        eval_input = {
+            "input": input,
+            "output": judge_view(output),
+            "reference": judge_view(reference),
+        }
+        last_error: Exception | None = None
+        for _attempt in range(JUDGE_RETRIES):
+            try:
+                score = (await bound_judge.async_evaluate(eval_input))[0]
+            except Exception as exc:
+                last_error = exc
+                continue
+            return {
+                "score": score.score,
+                "label": score.label,
+                "explanation": score.explanation,
+            }
+        assert last_error is not None
+        logger.error("orchestrator_quality judge error: %s", last_error)
+        return {
+            "score": None,
+            "label": "judge_error",
+            "explanation": f"Judge failed after {JUDGE_RETRIES} attempts.",
+        }
+
+    return phoenix_judge
 
 
 def annotate_ax_dataset(
@@ -193,7 +257,6 @@ def annotate_ax_dataset(
     )
     from arize.datasets.types import AnnotateRecordInput, AnnotationInput
 
-    score_column = f"eval.{EVALUATOR_NAME}.score"
     label_column = f"eval.{EVALUATOR_NAME}.label"
     explanation_column = f"eval.{EVALUATOR_NAME}.explanation"
 
@@ -211,17 +274,23 @@ def annotate_ax_dataset(
             ],
         )
         for row in ax_result.to_dict(orient="records")
-        if row.get("example_id") and row.get(score_column) is not None
+        # Excludes rows whose task run errored (still judged against a `None`
+        # output, per arize's `functions.py`, which pairs every example with
+        # its run regardless of `run.error`) and rows with no valid label,
+        # such as `judge_error`, which is outside SCORE_CHOICES.
+        if row.get("example_id")
+        and not row.get("error")
+        and row.get(label_column) in SCORE_CHOICES
     ]
     if not annotations:
         raise RuntimeError("The experiment produced no judge scores to annotate.")
 
-    for config in client.annotation_configs.list(
-        name=EVALUATOR_NAME, space=space_id
-    ).annotation_configs:
-        if config.name == EVALUATOR_NAME:
-            break
-    else:
+    if not any(
+        config.name == EVALUATOR_NAME
+        for config in client.annotation_configs.list(
+            name=EVALUATOR_NAME, space=space_id
+        ).annotation_configs
+    ):
         client.annotation_configs.create_categorical(
             name=EVALUATOR_NAME,
             space=space_id,
@@ -260,7 +329,7 @@ def ensure_min_avg_score(avg_score: float | None) -> None:
 
 async def main() -> None:
     """Run the orchestrator over every example and score it with one judge."""
-    from phoenix.evals import LLM, bind_evaluator
+    from phoenix.evals import LLM
 
     examples = load_examples()
     init_environment()
@@ -300,11 +369,7 @@ async def main() -> None:
             decoded_input = decode_ax_value(input)
             if not isinstance(decoded_input, dict):
                 raise ValueError("AX dataset input must decode to an object")
-
-            async def invoke_task() -> dict[str, Any]:
-                return await run_orchestrator(decoded_input)
-
-            return asyncio.run(invoke_task())
+            return asyncio.run(run_orchestrator(decoded_input))
 
         ax_judge = build_ax_judge(build_judge(judge))
 
@@ -358,9 +423,10 @@ async def main() -> None:
                 examples=examples,
                 timeout=TIMEOUT_SECONDS,
             )
-        # `run_experiment` forwards its `retries` to the evaluators it runs, so
-        # the judge must go in a second call: a failed task must not be
-        # re-spent, while the free judge still wants its retries (D1).
+        # A failed task must not be re-spent on retry, so the judge goes in a
+        # second call, separate from the task run; `build_phoenix_judge` gives
+        # the free judge its own retries (see its docstring for why
+        # `evaluate_experiment`'s `retries` argument doesn't do that itself).
         task_result = await client.experiments.run_experiment(
             dataset=dataset,
             task=run_orchestrator,
@@ -374,16 +440,7 @@ async def main() -> None:
         )
         eval_result = await client.experiments.evaluate_experiment(
             experiment=task_result,
-            evaluators=[
-                bind_evaluator(
-                    evaluator=build_judge(judge),
-                    input_mapping={
-                        "input": "input",
-                        "output": "output",
-                        "reference": "reference",
-                    },
-                )
-            ],
+            evaluators={EVALUATOR_NAME: build_phoenix_judge(build_judge(judge))},
             print_summary=True,
             concurrency=1,
             timeout=TIMEOUT_SECONDS,

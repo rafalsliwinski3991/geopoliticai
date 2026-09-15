@@ -132,6 +132,56 @@ def test_annotate_ax_dataset_skips_rows_without_judge_scores() -> None:
     assert "annotations" not in recorded
 
 
+def test_annotate_ax_dataset_skips_rows_whose_task_run_errored() -> None:
+    """A task error still gets judged against a `None` output; must not be annotated."""
+    runner = _load_runner()
+    ax_result = _AxResultFrame(
+        [
+            {
+                "example_id": "ex-1",
+                "error": "task blew up",
+                "eval.orchestrator_quality.score": 1,
+                "eval.orchestrator_quality.label": "1",
+                "eval.orchestrator_quality.explanation": "scored a None output",
+            },
+            {
+                "example_id": "ex-2",
+                "error": None,
+                "eval.orchestrator_quality.score": 4,
+                "eval.orchestrator_quality.label": "4",
+                "eval.orchestrator_quality.explanation": "small gap",
+            },
+        ]
+    )
+    recorded: dict[str, Any] = {}
+    runner.annotate_ax_dataset(
+        _annotation_client(recorded, []), "space", "dataset-id", ax_result
+    )
+    annotations = recorded["annotations"]["annotations"]
+    assert [annotation.record_id for annotation in annotations] == ["ex-2"]
+
+
+def test_annotate_ax_dataset_skips_judge_error_label() -> None:
+    """`judge_error` isn't in SCORE_CHOICES; the categorical config would reject it."""
+    runner = _load_runner()
+    ax_result = _AxResultFrame(
+        [
+            {
+                "example_id": "ex-1",
+                "error": None,
+                "eval.orchestrator_quality.score": None,
+                "eval.orchestrator_quality.label": "judge_error",
+                "eval.orchestrator_quality.explanation": "Judge failed after 3 attempts.",
+            }
+        ]
+    )
+    recorded: dict[str, Any] = {}
+    with pytest.raises(RuntimeError, match="no judge scores"):
+        runner.annotate_ax_dataset(
+            _annotation_client(recorded, []), "space", "dataset-id", ax_result
+        )
+
+
 def test_annotate_ax_dataset_reuses_existing_annotation_config() -> None:
     runner = _load_runner()
     ax_result = _AxResultFrame(
@@ -253,4 +303,69 @@ def test_ax_judge_records_failure_after_retries() -> None:
     )
     assert len(calls) == runner.JUDGE_RETRIES
     assert calls[0]["input"] == {"q": 1}
-    assert (result.score, result.label) == (0, "judge_error")
+    # score=None (not 0) so `.dropna()` excludes it from the average, matching
+    # the Phoenix path's exclusion of errored evaluator runs.
+    assert (result.score, result.label) == (None, "judge_error")
+
+
+@pytest.mark.anyio
+async def test_phoenix_judge_returns_judge_score() -> None:
+    runner = _load_runner()
+    score = SimpleNamespace(score=4, label="4", explanation="small gap")
+
+    async def _async_evaluate(eval_input: dict[str, Any]) -> list[Any]:
+        return [score]
+
+    judge = SimpleNamespace(async_evaluate=_async_evaluate)
+    result = await runner.build_phoenix_judge(judge)(
+        input={"q": 1}, output={"a": 2}, reference={"a": 2}
+    )
+    assert result == {"score": 4, "label": "4", "explanation": "small gap"}
+
+
+@pytest.mark.anyio
+async def test_phoenix_judge_retries_then_records_failure() -> None:
+    """Phoenix never retries a judge failure itself (see build_phoenix_judge's
+    docstring), so this file must do it, the same way build_ax_judge does."""
+    runner = _load_runner()
+    calls: list[dict[str, Any]] = []
+
+    async def _boom(eval_input: dict[str, Any]) -> list[Any]:
+        calls.append(eval_input)
+        raise RuntimeError("judge down")
+
+    judge = SimpleNamespace(async_evaluate=_boom)
+    result = await runner.build_phoenix_judge(judge)(
+        input={"q": 1}, output={"a": 2}, reference={"a": 2}
+    )
+    assert len(calls) == runner.JUDGE_RETRIES
+    assert calls[0]["input"] == {"q": 1}
+    assert result == {
+        "score": None,
+        "label": "judge_error",
+        "explanation": f"Judge failed after {runner.JUDGE_RETRIES} attempts.",
+    }
+
+
+def test_judge_view_extracts_final_answer_and_drops_message_envelope() -> None:
+    runner = _load_runner()
+    payload = {
+        "messages": [
+            {"type": "human", "data": {"type": "human", "content": "hi"}},
+            {"type": "ai", "data": {"type": "ai", "content": "first"}},
+            {"type": "ai", "data": {"type": "ai", "content": "final answer"}},
+        ],
+        "destination": "geopolitical",
+        "standalone_query": "hi?",
+    }
+    assert runner.judge_view(payload) == {
+        "destination": "geopolitical",
+        "standalone_query": "hi?",
+        "final_answer": "final answer",
+    }
+
+
+def test_judge_view_handles_no_ai_message() -> None:
+    runner = _load_runner()
+    payload = {"messages": [], "destination": "other", "standalone_query": "hi"}
+    assert runner.judge_view(payload)["final_answer"] == ""
