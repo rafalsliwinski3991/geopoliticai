@@ -35,6 +35,8 @@ JUDGE_RETRIES = 3
 # One judge name across both platforms: the inline evaluator, the AX
 # annotation config, and the Phoenix evaluation all carry it.
 EVALUATOR_NAME = "orchestrator_quality"
+# CI gate: the run fails when the judge's average score falls below this.
+MIN_AVG_SCORE = 4.0
 # Annotated to Phoenix's declared `dict[str, float | int]` choices type:
 # an inferred `dict[str, int]` is rejected under `--strict` because `dict`
 # is invariant in its value type.
@@ -204,6 +206,25 @@ def annotate_ax_dataset(
     logger.info("Annotated %d dataset examples with judge results.", len(annotations))
 
 
+def ensure_min_avg_score(avg_score: float | None) -> None:
+    """Exit non-zero when the judge's average score misses the CI gate."""
+    if avg_score is None:
+        raise SystemExit(
+            f"No judge scores were produced; cannot check MIN_AVG_SCORE={MIN_AVG_SCORE}."
+        )
+    logger.info(
+        "Average %s score: %.2f (minimum %.1f)",
+        EVALUATOR_NAME,
+        avg_score,
+        MIN_AVG_SCORE,
+    )
+    if avg_score < MIN_AVG_SCORE:
+        raise SystemExit(
+            f"Average {EVALUATOR_NAME} score {avg_score:.2f} is below "
+            f"{MIN_AVG_SCORE}; failing the run."
+        )
+
+
 async def main() -> None:
     """Run the orchestrator over every example and score it with one judge."""
     from phoenix.evals import LLM, bind_evaluator
@@ -310,6 +331,8 @@ async def main() -> None:
             timeout=TIMEOUT_SECONDS,
         )
         annotate_ax_dataset(client, space_id, dataset.id, ax_result)
+        scores = ax_result[f"eval.{EVALUATOR_NAME}.score"].dropna()
+        avg_score: float | None = float(scores.mean()) if not scores.empty else None
         failed_tasks = [
             row["error"]
             for row in ax_result.to_dict(orient="records")
@@ -371,6 +394,14 @@ async def main() -> None:
                 result.get("label"),
                 result.get("explanation"),
             )
+        judge_scores = [
+            result.get("score")
+            for run in eval_result["evaluation_runs"]
+            if not run.error
+            and (result := run.result)
+            and result.get("score") is not None
+        ]
+        avg_score = sum(judge_scores) / len(judge_scores) if judge_scores else None
         failed_tasks = [
             run["error"] for run in task_result["task_runs"] if run.get("error")
         ]
@@ -379,6 +410,7 @@ async def main() -> None:
         logger.error("Failed orchestrator task run: %s", error)
     if failed_tasks:
         raise SystemExit(1)
+    ensure_min_avg_score(avg_score)
 
 
 if __name__ == "__main__":
