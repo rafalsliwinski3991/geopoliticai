@@ -75,10 +75,17 @@ and fail-closed Basic Auth for `/` and `/api/`.
 Run application commands from `app/`: `uv sync --locked --dev`, `make test`,
 `make lint`, `make format`, and `langgraph dev`.
 From the root, use `make logs-SERVICE` and `make services`. Manual quality work
-is `app/evals/offline_evals.py`; it is advisory, outside
-pytest, and reachable in CI only through the dispatch-only `evals.yml` workflow,
-which gates no merge. The eval script additionally requires `OPENROUTER_API_KEY`
-and records its scores to Arize AX or local Phoenix depending on
+is `app/evals/`: one script per eval, run from `app/` as
+`uv run python -m evals.<name>`, with judges in `evals/judges/`, shared
+AX/Phoenix code in `evals/helpers/`, and `{name, input, output}` examples in
+`evals/datasets/`. Evals never call Brave; expert and e2e examples carry
+synthetic sources, never fetched article text. Evals are advisory, outside
+pytest (their helpers, judges, and datasets are unit-tested), and reachable in
+CI only through the dispatch-only `evals.yml` workflow, which gates no merge; a
+run exits non-zero on a task crash, a judge error, or a judge average below its
+minimum (`evals/helpers/judge.py`). The eval scripts require `OPENAI_API_KEY`
+and `OPENROUTER_API_KEY` and record their scores to
+Arize AX or local Phoenix depending on
 `ARIZE_PLATFORM`: `AX` uses `ARIZE_SPACE_ID` and `ARIZE_API_KEY`, while
 `PHOENIX` (the default) uses `PHOENIX_COLLECTOR_ENDPOINT` and sends no API key.
 

@@ -1,0 +1,56 @@
+[
+  {
+    "name": "orchestrator-greeting",
+    "input": {
+      "messages": [
+        {
+          "type": "human",
+          "data": {
+            "content": "Hello",
+            "additional_kwargs": {},
+            "response_metadata": {},
+            "type": "human",
+            "name": null,
+            "id": "da0c9660-ce2f-46c1-a7f2-499b53d66d67",
+            "example": false
+          }
+        }
+      ]
+    },
+    "output": {
+      "destination": "other",
+      "standalone_query": "Hello.",
+      "answer": "Hello! How can I assist you today?"
+    }
+  },
+  {
+    "name": "orchestrator-follow-up-resolves-elision",
+    "input": {
+      "messages": [
+        {"type": "human", "data": {"type": "human", "content": "What has Germany decided about its defence budget this year?"}},
+        {"type": "ai", "data": {"type": "ai", "content": "Germany approved a higher defence budget, exempting spending above 1% of GDP from its debt brake."}},
+        {"type": "human", "data": {"type": "human", "content": "and Poland?"}}
+      ]
+    },
+    "output": {
+      "destination": "geopolitical",
+      "standalone_query": "What has Poland decided about its defence budget this year?",
+      "answer": null
+    }
+  },
+  {
+    "name": "orchestrator-briefing-request-routes-to-report",
+    "input": {
+      "messages": [
+        {"type": "human", "data": {"type": "human", "content": "What did NATO allies agree on defence spending at the Hague summit?"}},
+        {"type": "ai", "data": {"type": "ai", "content": "Allies agreed to a 5% of GDP target by 2035 [NATO](https://www.nato.int/cps/en/natohq/official_texts_236329.htm)."}},
+        {"type": "human", "data": {"type": "human", "content": "Turn that into a briefing"}}
+      ]
+    },
+    "output": {
+      "destination": "report",
+      "standalone_query": "Write a briefing on what NATO allies agreed on defence spending at the Hague summit.",
+      "answer": null
+    }
+  }
+]
