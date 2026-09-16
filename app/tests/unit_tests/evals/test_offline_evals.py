@@ -16,16 +16,16 @@ from typing import Any
 import pytest
 from langchain_core.messages import BaseMessage, messages_from_dict
 
-RUNNER_PATH = Path(__file__).parents[1] / "manual_quality" / "basic_agent_evaluation.py"
+RUNNER_PATH = Path(__file__).parents[3] / "evals" / "offline_evals.py"
 
 
 def _load_runner() -> Any:
-    spec = importlib.util.spec_from_file_location("basic_agent_evaluation", RUNNER_PATH)
+    spec = importlib.util.spec_from_file_location("offline_evals", RUNNER_PATH)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     # Registered before exec so dataclasses and other runtime machinery can
     # resolve the module by name.
-    sys.modules["basic_agent_evaluation"] = module
+    sys.modules["offline_evals"] = module
     spec.loader.exec_module(module)
     return module
 

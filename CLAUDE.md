@@ -22,8 +22,11 @@ after imports and before functions or classes. Nodes return
 partial state dictionaries without mutation. Preserve shared-to-agent imports.
 
 Unit tests mirror `app/src/`: test `src/<path>/<name>.py` in
-`tests/unit_tests/<path>/test_<name>.py`, and give every test subdirectory an
-empty `__init__.py`. Integration tests stay flat in `tests/integration_tests/`.
+`tests/unit_tests/<path>/test_<name>.py`, and give every test
+subdirectory an empty `__init__.py`. Frontend unit tests live in
+`frontend/tests/` as `.mjs` files using the Node built-in test runner
+(`npm test` from `frontend/`), not in the Python suite. Each agent's compiled graph gets its
+own `tests/unit_tests/agents/<name>/test_graph.py`.
 
 ```text
 START -> classify -> expert -> END
@@ -70,9 +73,9 @@ development ports are 8082, 3001, 55432, and loopback 6006. Production uses TLS
 and fail-closed Basic Auth for `/` and `/api/`.
 
 Run application commands from `app/`: `uv sync --locked --dev`, `make test`,
-`make integration_tests`, `make lint`, `make format`, and `langgraph dev`.
+`make lint`, `make format`, and `langgraph dev`.
 From the root, use `make logs-SERVICE` and `make services`. Manual quality work
-is `app/tests/manual_quality/basic_agent_evaluation.py`; it is advisory, outside
+is `app/evals/offline_evals.py`; it is advisory, outside
 pytest, and reachable in CI only through the dispatch-only `evals.yml` workflow,
 which gates no merge. The eval script additionally requires `OPENROUTER_API_KEY`
 and records its scores to Arize AX or local Phoenix depending on

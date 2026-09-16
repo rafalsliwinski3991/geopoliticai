@@ -31,8 +31,10 @@ CITED_ANSWER = "Here is the situation [1](https://reuters.com/x)."
 
 
 def test_graph_has_exactly_four_nodes() -> None:
+    # Act
     nodes = set(orchestrator.build_graph().get_graph().nodes)
 
+    # Assert
     assert nodes - {"__start__", "__end__"} == {
         "classify",
         "expert",
@@ -42,11 +44,13 @@ def test_graph_has_exactly_four_nodes() -> None:
 
 
 def test_graph_forks_after_classify() -> None:
+    # Act
     edges = {
         (edge.source, edge.target)
         for edge in orchestrator.build_graph().get_graph().edges
     }
 
+    # Assert
     assert {
         (START, "classify"),
         ("classify", "expert"),
@@ -59,6 +63,7 @@ def test_graph_forks_after_classify() -> None:
 
 
 def test_build_graph_needs_no_checkpointer() -> None:
+    # Act + Assert
     assert orchestrator.build_graph() is not None
 
 
@@ -129,11 +134,13 @@ async def _seed_researched_turn(
 async def test_expert_branch_streams_namespaced_answer_tokens(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # Arrange
     monkeypatch.setattr(retrieve_module, "search_allowlisted", _geopolitical_candidates)
     monkeypatch.setattr(retrieve_module, "fetch_sources", _geopolitical_sources)
     _route(monkeypatch, "geopolitical")
     _stub_report_client(monkeypatch, "Hello world.")
 
+    # Act
     events = [
         event
         async for event in orchestrator.build_graph().astream(
@@ -146,6 +153,7 @@ async def test_expert_branch_streams_namespaced_answer_tokens(
         event for event in events if event[1][1].get("langgraph_node") == "answer"
     ]
 
+    # Assert
     assert answer_events
     assert all(event[0] for event in answer_events)
     assert "".join(event[1][0].text() for event in answer_events) == "Hello world."
@@ -155,11 +163,13 @@ async def test_expert_branch_streams_namespaced_answer_tokens(
 async def test_expert_branch_streams_nothing_without_subgraphs(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # Arrange
     monkeypatch.setattr(retrieve_module, "search_allowlisted", _geopolitical_candidates)
     monkeypatch.setattr(retrieve_module, "fetch_sources", _geopolitical_sources)
     _route(monkeypatch, "geopolitical")
     _stub_report_client(monkeypatch, "Hello world.")
 
+    # Act
     events = [
         event
         async for event in orchestrator.build_graph().astream(
@@ -170,6 +180,8 @@ async def test_expert_branch_streams_nothing_without_subgraphs(
     answer_events = [
         event for event in events if event[1].get("langgraph_node") == "answer"
     ]
+
+    # Assert
     assert answer_events == []
 
 
@@ -177,6 +189,7 @@ async def test_expert_branch_streams_nothing_without_subgraphs(
 async def test_classifier_tokens_never_reach_the_stream(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # Arrange
     _route(monkeypatch, "other")
 
     async def stream(
@@ -189,6 +202,8 @@ async def test_classifier_tokens_never_reach_the_stream(
         yield "chat answer"
 
     monkeypatch.setattr(chat_module, "astream_messages", stream)
+
+    # Act
     events = [
         event
         async for event in orchestrator.build_graph().astream(
@@ -196,11 +211,13 @@ async def test_classifier_tokens_never_reach_the_stream(
         )
     ]
 
+    # Assert
     assert all(event[1].get("langgraph_node") != "classify" for event in events)
 
 
 @pytest.mark.anyio
 async def test_chat_branch_never_searches(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Arrange
     async def forbidden_search(query: str, policy: Any) -> list[Candidate]:
         raise AssertionError("chat branch must not search")
 
@@ -217,6 +234,8 @@ async def test_chat_branch_never_searches(monkeypatch: pytest.MonkeyPatch) -> No
         yield "chat answer"
 
     monkeypatch.setattr(chat_module, "astream_messages", stream)
+
+    # Act
     events = [
         event
         async for event in orchestrator.build_graph().astream(
@@ -224,6 +243,7 @@ async def test_chat_branch_never_searches(monkeypatch: pytest.MonkeyPatch) -> No
         )
     ]
 
+    # Assert
     assert any(event[1].get("langgraph_node") == "chat" for event in events)
 
 
@@ -231,6 +251,7 @@ async def test_chat_branch_never_searches(monkeypatch: pytest.MonkeyPatch) -> No
 async def test_thread_carries_history_between_turns(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # Arrange
     received: list[list[Any]] = []
 
     async def decide(
@@ -258,6 +279,7 @@ async def test_thread_carries_history_between_turns(
     compiled = orchestrator.build_graph(checkpointer=InMemorySaver())
     config = orchestrator.build_runtime_config(thread_id="thread-1")
 
+    # Act
     await compiled.ainvoke(
         build_initial_orchestrator_state("first question"), config=config
     )
@@ -265,6 +287,7 @@ async def test_thread_carries_history_between_turns(
         build_initial_orchestrator_state("second question"), config=config
     )
 
+    # Assert
     assert len(received) == 2
     assert [message.content for message in received[1]] == [
         "first question",
@@ -275,6 +298,7 @@ async def test_thread_carries_history_between_turns(
 
 @pytest.mark.anyio
 async def test_report_branch_never_searches(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Arrange
     async def forbidden_search(query: str, policy: Any) -> list[Candidate]:
         raise AssertionError("report branch must not search")
 
@@ -287,12 +311,15 @@ async def test_report_branch_never_searches(monkeypatch: pytest.MonkeyPatch) -> 
 
     # The thread already holds a cited assistant answer; the report turn runs
     # without touching the search.
+
+    # Act
     await compiled.ainvoke(
         {"messages": [AIMessage(CITED_ANSWER), HumanMessage("write me a report")]},
         config=config,
     )
     state = compiled.get_state(config=config)
 
+    # Assert
     assert state.next == ("reporter",)
     assert outline_calls == [["First"]]
 
@@ -301,6 +328,7 @@ async def test_report_branch_never_searches(monkeypatch: pytest.MonkeyPatch) -> 
 async def test_report_branch_pauses_at_top_level_namespace(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # Arrange
     outline_calls: list[list[str]] = []
     compiled = _compiled()
     config = _config("report-pause-ns-1")
@@ -308,6 +336,7 @@ async def test_report_branch_pauses_at_top_level_namespace(
     _route(monkeypatch, "report")
     _stub_outline_model(monkeypatch, outline_calls, ["First", "Second"])
 
+    # Act
     events = [
         event
         async for event in compiled.astream(
@@ -321,6 +350,7 @@ async def test_report_branch_pauses_at_top_level_namespace(
         event for event in events if event[0] == () and "__interrupt__" in event[2]
     ]
 
+    # Assert
     assert len(interrupts) == 1
 
 
@@ -328,6 +358,7 @@ async def test_report_branch_pauses_at_top_level_namespace(
 async def test_report_progress_arrives_under_the_child_namespace(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # Arrange
     compiled = _compiled()
     config = _config("report-custom-ns-1")
 
@@ -343,6 +374,8 @@ async def test_report_progress_arrives_under_the_child_namespace(
     monkeypatch.setattr(retrieve_module, "fetch_sources", _geopolitical_sources)
     _route(monkeypatch, "geopolitical")
     _stub_report_client(monkeypatch, CITED_ANSWER)
+
+    # Act
     seed_events = await collect(build_initial_orchestrator_state("question"))
 
     outline_calls: list[list[str]] = []
@@ -353,6 +386,7 @@ async def test_report_progress_arrives_under_the_child_namespace(
     search_events = [event for event in seed_events if event[2] == SEARCH_PROGRESS]
     outline_events = [event for event in report_events if event[2] == OUTLINE_PROGRESS]
 
+    # Assert
     # Reusing the `updates` namespace filter on the custom branch would drop
     # every child progress frame silently; this is the guard for that.
     assert search_events and search_events[0][0] == ()
@@ -363,6 +397,7 @@ async def test_report_progress_arrives_under_the_child_namespace(
 async def test_every_writer_node_actually_emits_through_the_graph(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # Arrange
     async def collect(
         graph: Any, input_: Any, config: dict[str, dict[str, str]] | None = None
     ) -> list[Any]:
@@ -377,17 +412,22 @@ async def test_every_writer_node_actually_emits_through_the_graph(
     monkeypatch.setattr(retrieve_module, "fetch_sources", _geopolitical_sources)
     _route(monkeypatch, "geopolitical")
     _stub_report_client(monkeypatch, "Hello world.")
+
+    # Act + Assert
     expert_events = await collect(
         orchestrator.build_graph(), build_initial_orchestrator_state("question")
     )
     assert any(event[2] == SEARCH_PROGRESS for event in expert_events)
 
+    # Arrange
     outline_calls: list[list[str]] = []
     compiled = _compiled()
     config = _config("report-writers-1")
     await _seed_researched_turn(compiled, monkeypatch, config)
     _route(monkeypatch, "report")
     _stub_outline_model(monkeypatch, outline_calls, ["First", "Second"])
+
+    # Act + Assert
     pause_events = await collect(
         compiled, build_initial_orchestrator_state("write me a report"), config
     )
@@ -412,6 +452,7 @@ async def test_every_writer_node_actually_emits_through_the_graph(
 async def test_report_branch_resumes_and_streams_from_write(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # Arrange
     outline_calls: list[list[str]] = []
     compiled = _compiled()
     config = _config("report-resume-stream-1")
@@ -423,6 +464,7 @@ async def test_report_branch_resumes_and_streams_from_write(
     )
     _stub_report_client(monkeypatch, "The report text.")
 
+    # Act
     events = [
         event
         async for event in compiled.astream(
@@ -436,6 +478,7 @@ async def test_report_branch_resumes_and_streams_from_write(
         event for event in events if event[1][1].get("langgraph_node") == "write"
     ]
 
+    # Assert
     assert write_events
     assert "".join(event[1][0].text() for event in write_events) == "The report text."
 
@@ -444,6 +487,7 @@ async def test_report_branch_resumes_and_streams_from_write(
 async def test_report_branch_does_not_rerun_outline_on_resume(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # Arrange
     outline_calls: list[list[str]] = []
     compiled = _compiled()
     config = _config("report-resume-outline-1")
@@ -455,9 +499,11 @@ async def test_report_branch_does_not_rerun_outline_on_resume(
     )
     _stub_report_client(monkeypatch, "The report.")
 
+    # Act
     await compiled.ainvoke(Command(resume={"action": "approve"}), config=config)
     state = compiled.get_state(config=config)
 
+    # Assert
     assert state.next == ()
     assert state.values["messages"][-1].text() == "The report."
     assert len(outline_calls) == 1
@@ -467,6 +513,7 @@ async def test_report_branch_does_not_rerun_outline_on_resume(
 async def test_query_on_a_paused_thread_supersedes_the_pause(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # Arrange
     outline_calls: list[list[str]] = []
     compiled = _compiled()
     config = _config("report-supersede-1")
@@ -477,8 +524,11 @@ async def test_query_on_a_paused_thread_supersedes_the_pause(
         build_initial_orchestrator_state("write me a report"), config=config
     )
     paused = compiled.get_state(config=config)
+
+    # Assert
     assert paused.next == ("reporter",)
 
+    # Arrange
     _route(monkeypatch, "other")
 
     async def stream(
@@ -491,10 +541,13 @@ async def test_query_on_a_paused_thread_supersedes_the_pause(
         yield "assistant reply"
 
     monkeypatch.setattr(chat_module, "astream_messages", stream)
+
+    # Act
     await compiled.ainvoke(
         build_initial_orchestrator_state("hello again"), config=config
     )
     state = compiled.get_state(config=config)
 
+    # Assert
     assert state.next == ()
     assert state.values["messages"][-1].content == "assistant reply"
