@@ -18,6 +18,19 @@ The first argument is a reviewed implementation-plan path.
 3. After approval, use the local `builder` role to implement the plan in its
    stated dependency order. Keep changes scoped to the approved plan; do not
    silently expand the task.
+
+### Stacked pull-request compatibility
+
+- Each ordered plan unit must have its own linear branch, created from the
+   previous unit branch. Keep the implementation and any reviewer-fix commits on
+   that branch, using a stable stack slug and names such as
+   `<stack-slug>/01-<short-slug>`.
+- Record the branch, parent branch, commit, validation, and run-log evidence for
+   every unit. Do not squash, merge, reorder, push, or create pull requests in
+   this workflow.
+- The separate `rs-create-stacked-prs` skill adopts the ordered branches with
+   `gh stack init ... --base <base>`, previews them with `gh stack view`, and
+   submits them with `gh stack submit --auto` or `--auto --open`.
 4. Run the plan's tests and the repository-required formatting, linting, and
    checks that apply. Fix failures caused by the changes. Record significant
    command results in `docs/cc_logs/` when the repository convention requires

@@ -45,6 +45,16 @@ standard or full plan, where to start. Do not implement until the user answers.
 Follow the approved plan in order, one unit at a time. Never implement two units
 in parallel or reorder dependent work.
 
+### Stacked pull-request compatibility
+
+Keep every ordered plan unit independently reviewable and compatible with GitHub's `gh stack` workflow:
+
+- At pre-flight, record the trunk/base branch and a stable stack slug. The default base is the repository's default branch from `gh repo view --json defaultBranchRef --jq .defaultBranchRef.name` unless the user specifies another one.
+- Each ordered plan unit must have its own linear branch. Create the unit branch from the previous branch before editing, use names such as `<stack-slug>/01-<short-slug>`, and keep the implementation and any reviewer-fix commits on that branch. Never squash, merge, reorder, or rewrite those commits.
+- Record each unit branch, its parent branch, commits, focused validation, gate output, and run-log entry. Reviewers and auditors compare a unit branch with its immediate parent, not only with the cumulative top branch.
+- Do not push or create pull requests in this command. The separate `rs-create-stacked-prs` workflow adopts the ordered branches with `gh stack init ... --base <base>`, previews them with `gh stack view`, and submits them with `gh stack submit --auto` or `--auto --open`.
+- If existing work is not already split into linear unit branches, leave history unchanged and let `rs-create-stacked-prs` create cumulative branch pointers. Never force-push or silently rewrite history here.
+
 For every production behavior change, use red-green-refactor:
 
 1. Write one focused test for the missing or changed behavior.

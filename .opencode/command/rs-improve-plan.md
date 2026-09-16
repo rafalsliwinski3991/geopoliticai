@@ -20,6 +20,28 @@ already exists, keep incrementing until it doesn't.
 
 Do not create the new file yet — it is written once, complete, at the end of Step 3.
 
+## Stacked pull-request planning
+
+When revising a plan, preserve or repair boundaries so the result can be
+implemented as a GitHub stacked pull-request chain without rewriting history:
+
+- Resolve and carry forward the trunk/base branch and a stable stack slug. Use
+  the repository default branch unless the user specifies another base.
+- Keep a lightweight plan as one unit when it is genuinely contained. For
+  standard and full plans, every ordered task or commit must be one independently
+  reviewable stack unit. Do not add artificial units solely to create branches.
+- Each revised unit must name its proposed branch (for example,
+  `<stack-slug>/01-<short-slug>`), parent branch, files, dependencies on earlier
+  units, focused validation, and gate command. Units must work bottom-to-top
+  without relying on uncommitted changes from another unit.
+- If the source plan combines changes that need separate review, split them into
+  ordered units and record that split in the changelog. If the source already has
+  valid boundaries, preserve them and do not reorder them silently.
+- The revised plan must state that implementation makes one linear commit per
+  unit and that `rs-create-stacked-prs` separately adopts the branches, runs
+  `gh stack view`, and submits draft or ready-for-review PRs. This workflow does
+  not push, create, merge, or rewrite pull requests.
+
 ## Step 1 — Read
 
 Read the plan in full. Then read every file, module, config, and test it names. Do not audit against

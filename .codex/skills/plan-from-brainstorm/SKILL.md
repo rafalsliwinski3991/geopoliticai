@@ -31,5 +31,26 @@ argument is the plan output path.
 6. Add an **Open questions and rejected objections** section explaining any
    unresolved decision or review finding that was deliberately not adopted.
 
+### Stacked pull-request planning
+
+Make the plan directly usable by `rs-implement-plan` and
+`rs-create-stacked-prs`:
+
+- Record the trunk/base branch and a stable stack slug. Use the repository
+   default branch unless the user specifies another base.
+- Keep a lightweight plan as one unit when it is genuinely contained. For
+   standard or full plans, each ordered task or commit must be one independently
+   reviewable stack unit; do not split inseparable work merely to create more
+   branches.
+- For every unit, record its proposed branch name, parent branch or unit, exact
+   files, consumed inputs, produced outputs, dependencies, focused validation,
+   and gate command. Order units bottom-to-top so each is usable without
+   uncommitted work from another unit.
+- State that implementation creates one or more linear commits per unit branch;
+   reviewer fixes remain on that branch. The separate
+   `rs-create-stacked-prs` workflow adopts the branches, verifies them with
+   `gh stack view`, and submits draft or ready-for-review PRs; planning itself
+   does not push, create, merge, or rewrite pull requests.
+
 Do not implement the plan, alter application code, or create a pull request.
 Report the written plan path and the validation/review performed.

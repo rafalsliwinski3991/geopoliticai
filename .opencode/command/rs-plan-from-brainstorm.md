@@ -45,6 +45,30 @@ files change: a tightly coupled test and implementation update can still be
 lightweight. If the brainstorm spans independent subsystems, split it into
 separate plans that each produce independently testable software.
 
+## Stacked pull-request planning
+
+Plans must be implementable as a GitHub stacked pull-request chain without
+rewriting history:
+
+- Resolve and record the trunk/base branch and a stable stack slug. Use the
+   repository default branch unless the user specifies another base.
+- Keep a lightweight plan as one unit when it is genuinely contained. For
+   standard and full plans, make every ordered task or commit one independently
+   reviewable stack unit. Do not create artificial units just to produce more
+   branches.
+- For every stack unit, record its proposed branch name (for example,
+   `<stack-slug>/01-<short-slug>`), parent branch, files, dependencies on earlier
+   units, focused validation, and gate command. Units must be executable in
+   bottom-to-top order without relying on uncommitted work from another unit.
+- Full plans must order units from the base branch upward and state the exact
+   output each unit provides to the next one. Standard plans must include the
+   same parent and dependency information in each ordered task.
+- The plan must say that implementation creates one or more linear commits per
+   unit branch, with reviewer fixes remaining on that branch, and
+   that `rs-create-stacked-prs` is used separately to adopt the branches, run
+   `gh stack view`, and submit draft or ready-for-review PRs. Planning does not
+   push, create, merge, or rewrite pull requests.
+
 ## Step 2 — Write the draft plan
 
 Write a **lightweight plan** to the output path with only:
