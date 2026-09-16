@@ -85,6 +85,10 @@ lint.ignore = [
 [tool.ruff.lint.pydocstyle]
 convention = "google"
 
+[tool.pytest.ini_options]
+# `uv run pytest` does not put the cwd on sys.path; the eval tests import `evals.*`.
+pythonpath = ["."]
+
 [dependency-groups]
 dev = [
     "anyio>=4.7.0",
