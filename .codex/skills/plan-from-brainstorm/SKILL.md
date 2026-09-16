@@ -46,7 +46,8 @@ Make the plan directly usable by `rs-implement-plan` and
    files, consumed inputs, produced outputs, dependencies, focused validation,
    and gate command. Order units bottom-to-top so each is usable without
    uncommitted work from another unit.
-- State that implementation creates one linear commit per unit. The separate
+- State that implementation creates one or more linear commits per unit branch;
+   reviewer fixes remain on that branch. The separate
    `rs-create-stacked-prs` workflow adopts the branches, verifies them with
    `gh stack view`, and submits draft or ready-for-review PRs; planning itself
    does not push, create, merge, or rewrite pull requests.

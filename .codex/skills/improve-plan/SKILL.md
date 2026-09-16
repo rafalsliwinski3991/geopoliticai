@@ -42,7 +42,8 @@ Make the revised plan directly usable by `rs-implement-plan` and
    without uncommitted work from another unit.
 - Preserve valid existing boundaries and order. If changes must be split or
    reordered for independent review, record that decision in the changelog.
-- State that implementation creates one linear commit per unit. The separate
+- State that implementation creates one or more linear commits per unit branch;
+   reviewer fixes remain on that branch. The separate
    `rs-create-stacked-prs` workflow adopts the branches, verifies them with
    `gh stack view`, and submits draft or ready-for-review PRs; planning itself
    does not push, create, merge, or rewrite pull requests.

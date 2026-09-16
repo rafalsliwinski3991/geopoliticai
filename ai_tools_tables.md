@@ -40,9 +40,9 @@ related AI-tool configuration, update this file in the same change.
   including `rs-create-stacked-prs`.
 - `.opencode/commands/` - OpenCode commands: `review`, `plan-review`, and a
   native `rs-implement-plan` variant.
-- `.opencode/command/` - OpenCode copies of four Claude `rs-*` commands
-  (`rs-brainstorming`, `rs-implement-plan`, `rs-improve-plan`, and
-  `rs-plan-from-brainstorm`) with the Claude-only `argument-hint` and
+- `.opencode/command/` - OpenCode copies of five Claude `rs-*` commands
+  (`rs-brainstorming`, `rs-implement-plan`, `rs-improve-plan`,
+  `rs-plan-from-brainstorm`, and `rs-create-stacked-prs`) with the Claude-only `argument-hint` and
   `allowed-tools` frontmatter keys removed; bodies are otherwise unchanged.
   The two `rs-implement-plan-as-*` Claude commands were not ported because they
   dispatch through Claude Code plugins that do not exist in opencode.
@@ -81,8 +81,8 @@ Command locations and implementation details:
   `model: opencode-go/glm-5.3-flash` and runs TDD with tiered review itself
   rather than delegating to another harness. The `.opencode/command/`
   directory additionally holds direct copies of the Claude `rs-*` commands:
-  `rs-brainstorming.md`, `rs-implement-plan.md`, `rs-improve-plan.md`, and
-  `rs-plan-from-brainstorm.md`. `rs-implement-plan` therefore has two OpenCode
+  `rs-brainstorming.md`, `rs-implement-plan.md`, `rs-improve-plan.md`,
+  `rs-plan-from-brainstorm.md`, and `rs-create-stacked-prs.md`. `rs-implement-plan` therefore has two OpenCode
   definitions — the native variant in `.opencode/commands/` and the Claude
   port in `.opencode/command/`; resolve the duplicate before relying on
   `/rs-implement-plan` in opencode.
@@ -175,10 +175,10 @@ ready-for-review PRs with `gh stack submit` after confirmation.
 
 The `rs-plan-from-brainstorm` and `rs-improve-plan` workflows now require
 stack-compatible, independently reviewable units with parent branches,
-dependencies, validation gates, and one-commit boundaries; revised plans must
+dependencies, validation gates, and linear per-unit commit boundaries; revised plans must
 record any split or reorder in their changelog.
 
-All four repository skill catalogs contain no directories whose names begin
+All five repository skill catalogs contain no directories whose names begin
 with `python-`. Python-related framework quickstarts with names such as
 `deepagents-python-quickstart`, `langchain-python-quickstart`, and
 `langgraph-python-quickstart` are distinct names and remain present.

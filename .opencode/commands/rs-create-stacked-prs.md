@@ -7,8 +7,9 @@ model: opencode-go/glm-5.3-flash
 # Create stacked pull requests
 
 Create a GitHub stacked pull-request chain from the current branch's committed work.
-Use the optional arguments as `[base-branch] [stack-slug]`. If omitted, use the
-repository default branch and derive a slug from the current branch.
+Use the optional arguments as `[base-branch] [stack-slug]`: `$1` is the base
+branch and `$2` is the stack slug when provided. If omitted, use the repository
+default branch and derive a slug from the current branch.
 
 ## Preconditions
 
@@ -34,9 +35,15 @@ For each commit from oldest to newest, create a cumulative branch pointer named
 short slug is derived from the commit subject using lowercase letters, numbers,
 and hyphens. Do not rename or delete the current branch.
 
-- If a local or remote branch with the proposed name already exists at the expected
-  commit, reuse it.
-- If it exists at another commit, stop. Never force-update an existing branch.
+- Before `gh stack init`, ensure every proposed branch is local at its expected
+   SHA. Check any local ref and the push remote (normally `origin`) with
+   `git rev-parse refs/heads/<branch>` and `git ls-remote --exit-code <remote>
+   refs/heads/<branch>`. If either existing ref differs, stop; never force-update
+   an existing branch.
+- If only the remote branch exists at the expected SHA, materialize it locally
+   with `git fetch <remote> refs/heads/<branch>:refs/heads/<branch>`, then verify
+   the local SHA. If neither ref exists, create the local branch at the expected
+   cumulative commit with `git branch <branch> <expected-sha>`.
 - The first stack branch points at the first commit and each later branch points at
   the next cumulative commit. The branches must be listed bottom-to-top.
 

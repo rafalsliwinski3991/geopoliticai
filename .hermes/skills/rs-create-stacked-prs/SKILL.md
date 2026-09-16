@@ -8,8 +8,9 @@ allowed-tools: Read, Write, Edit, Glob, Grep, Bash, Agent
 # Create stacked pull requests
 
 Create a GitHub stacked pull-request chain from the current branch's committed work.
-Use optional arguments as `[base-branch] [stack-slug]`; otherwise use the repository
-default branch and derive a slug from the current branch.
+Use optional arguments as `[base-branch] [stack-slug]`: `$1` is the base branch
+and `$2` is the stack slug when provided. Otherwise use the repository default
+branch and derive a slug from the current branch.
 
 1. Confirm the current repository, branch, and clean working tree. Stop for any
    uncommitted changes; do not include them automatically.
@@ -20,9 +21,13 @@ default branch and derive a slug from the current branch.
    finds a merge commit.
 4. Show `git log --reverse --format='%H %s' <base>..HEAD` and get confirmation of
    the proposed order and stack slug.
-5. For each commit oldest-first, create or reuse a cumulative branch pointer named
-   `<stack-slug>/<ordinal>-<short-slug>`. Reuse only when it points at the expected
-   commit; stop on any mismatch and never force-update a branch.
+5. For each commit oldest-first, ensure a local cumulative branch pointer named
+   `<stack-slug>/<ordinal>-<short-slug>` points at the expected commit. Check both
+   the local ref and the push remote (normally `origin`); if only the remote ref
+   exists at the expected commit, materialize it with
+   `git fetch <remote> refs/heads/<branch>:refs/heads/<branch>` before
+   `gh stack init`. If either ref differs, stop; never force-update a branch.
+   If neither exists, create the local branch at the expected commit.
 6. Adopt the bottom-to-top branches without changing commits:
 
    ```text

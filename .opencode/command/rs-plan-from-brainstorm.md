@@ -63,7 +63,8 @@ rewriting history:
 - Full plans must order units from the base branch upward and state the exact
    output each unit provides to the next one. Standard plans must include the
    same parent and dependency information in each ordered task.
-- The plan must say that implementation creates one linear commit per unit and
+- The plan must say that implementation creates one or more linear commits per
+   unit branch, with reviewer fixes remaining on that branch, and
    that `rs-create-stacked-prs` is used separately to adopt the branches, run
    `gh stack view`, and submit draft or ready-for-review PRs. Planning does not
    push, create, merge, or rewrite pull requests.

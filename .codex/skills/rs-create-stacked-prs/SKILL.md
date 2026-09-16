@@ -18,9 +18,13 @@ default branch and derive a slug from the current branch.
    finds a merge commit.
 4. Show `git log --reverse --format='%H %s' <base>..HEAD` and obtain explicit user
    approval for the proposed order and stack slug before creating branches.
-5. For each commit oldest-first, create or reuse a cumulative branch pointer named
-   `<stack-slug>/<ordinal>-<short-slug>`. Reuse only when it points at the expected
-   commit; stop on mismatch and never force-update a branch.
+5. For each commit oldest-first, ensure a local cumulative branch pointer named
+   `<stack-slug>/<ordinal>-<short-slug>` points at the expected commit. Check both
+   the local ref and the push remote (normally `origin`); if only the remote ref
+   exists at the expected commit, materialize it with
+   `git fetch <remote> refs/heads/<branch>:refs/heads/<branch>` before
+   `gh stack init`. If either ref differs, stop; never force-update a branch.
+   If neither exists, create the local branch at the expected commit.
 6. Adopt the bottom-to-top branches without modifying commits:
 
    ```text

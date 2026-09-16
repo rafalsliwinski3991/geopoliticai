@@ -21,8 +21,9 @@ The first argument is a reviewed implementation-plan path.
 
 ### Stacked pull-request compatibility
 
-- Each ordered plan unit must be one linear commit on its own branch, created
-   from the previous unit branch. Use a stable stack slug and names such as
+- Each ordered plan unit must have its own linear branch, created from the
+   previous unit branch. Keep the implementation and any reviewer-fix commits on
+   that branch, using a stable stack slug and names such as
    `<stack-slug>/01-<short-slug>`.
 - Record the branch, parent branch, commit, validation, and run-log evidence for
    every unit. Do not squash, merge, reorder, push, or create pull requests in
