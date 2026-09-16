@@ -36,6 +36,8 @@ related AI-tool configuration, update this file in the same change.
 - `.codex/agents/` - four Codex role definitions.
 - `.claude/skills/` - Claude skills; `swarm` exists only here. The removed Phoenix
   symlinks are no longer consumers of the deleted `.agents/skills/` catalog.
+- `.hermes/skills/` - Hermes-compatible copies of selected workflow skills,
+  including `rs-create-stacked-prs`.
 - `.opencode/commands/` - OpenCode commands: `review`, `plan-review`, and a
   native `rs-implement-plan` variant.
 - `.opencode/command/` - OpenCode copies of four Claude `rs-*` commands
@@ -66,6 +68,7 @@ related AI-tool configuration, update this file in the same change.
 | rs-implement-plan | no | yes | yes | no |
 | rs-implement-plan-as-codex | no | no | yes | no |
 | rs-implement-plan-as-opencode | no | no | yes | no |
+| rs-create-stacked-prs | no | yes | yes | yes |
 | rs-improve-plan | no | yes | yes | no |
 | rs-plan-from-brainstorm | no | yes | yes | no |
 | rs-brainstorming | no | yes | yes | no |
@@ -86,6 +89,7 @@ Command locations and implementation details:
 - Claude Code commands: `.claude/commands/rs-implement-plan.md`,
   `.claude/commands/rs-implement-plan-as-codex.md`,
   `.claude/commands/rs-implement-plan-as-opencode.md`,
+  `.claude/commands/rs-create-stacked-prs.md`,
   `.claude/commands/rs-improve-plan.md`, and
   `.claude/commands/rs-plan-from-brainstorm.md`, plus
   `.claude/commands/rs-brainstorming.md`. The Codex variant delegates all worker
@@ -153,6 +157,7 @@ Plugin configuration details:
 | langsmith-online-eval-engineering | yes | yes | yes | yes |
 | managed-deep-agents | yes | yes | yes | yes |
 | swarm | no | no | yes | no |
+| rs-create-stacked-prs | yes | no | no | yes |
 
 The `rs-brainstorming` command (Claude and OpenCode) stores its session files
 under `docs/brainstorming/`, not at the repository root, named
@@ -161,6 +166,17 @@ command (Claude and OpenCode) writes to `docs/plans/` as
 `<date>_plan_<topic-slug>_v<N>.md`, reusing the brainstorm's date but
 deriving its own 1-3-word topic slug from what the plan implements rather
 than copying the brainstorm's slug verbatim.
+
+`rs-create-stacked-prs` is available as a Claude command, two OpenCode command
+copies, a Hermes skill, a Codex skill, and a GitHub Copilot skill. It adopts
+cumulative branch pointers for the current branch's linear commits with
+`gh stack init`, previews them with `gh stack view`, and creates linked draft or
+ready-for-review PRs with `gh stack submit` after confirmation.
+
+The `rs-plan-from-brainstorm` and `rs-improve-plan` workflows now require
+stack-compatible, independently reviewable units with parent branches,
+dependencies, validation gates, and one-commit boundaries; revised plans must
+record any split or reorder in their changelog.
 
 All four repository skill catalogs contain no directories whose names begin
 with `python-`. Python-related framework quickstarts with names such as

@@ -25,5 +25,27 @@ The first argument is an existing plan path. Never overwrite that source plan.
    rejected objections** section. Preserve useful decisions from the old plan,
    but remove recommendations disproven by the current repository.
 
+### Stacked pull-request planning
+
+Make the revised plan directly usable by `rs-implement-plan` and
+`rs-create-stacked-prs`:
+
+- Carry forward or repair the trunk/base branch and stable stack slug. Use the
+   repository default branch unless the user specifies another base.
+- Keep a lightweight plan as one unit when it is genuinely contained. For
+   standard or full plans, each ordered task or commit must be one independently
+   reviewable stack unit; do not split inseparable work merely to create more
+   branches.
+- For every revised unit, record its proposed branch name, parent branch or
+   unit, exact files, consumed inputs, produced outputs, dependencies, focused
+   validation, and gate command. Order units bottom-to-top so each is usable
+   without uncommitted work from another unit.
+- Preserve valid existing boundaries and order. If changes must be split or
+   reordered for independent review, record that decision in the changelog.
+- State that implementation creates one linear commit per unit. The separate
+   `rs-create-stacked-prs` workflow adopts the branches, verifies them with
+   `gh stack view`, and submits draft or ready-for-review PRs; planning itself
+   does not push, create, merge, or rewrite pull requests.
+
 Do not implement the plan, modify application code, or alter the original
 plan. Report the new plan path and the review findings incorporated.
