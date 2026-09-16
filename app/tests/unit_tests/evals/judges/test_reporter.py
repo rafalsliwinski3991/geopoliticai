@@ -21,11 +21,20 @@ def _report_variables(report: str, outline: list[str]) -> dict[str, Any]:
 
 def test_follows_outline_passes_on_exact_structure() -> None:
     # Arrange
-    report = "# Spending target\n\n## Target\n\nText.\n\n## Review\n\nMore."
+    report = "# Report\n\n## Target\n\nText.\n\n## Funding\n\nMore."
     variables = _report_variables(report, ["Target", "Funding"])
 
     # Act + Assert
-    assert follows_outline(variables) is False  # dropped heading fails
+    assert follows_outline(variables)
+
+
+def test_follows_outline_fails_on_dropped_heading() -> None:
+    # Arrange
+    report = "# Report\n\n## Target\n\nText.\n\n## Review\n\nMore."
+    variables = _report_variables(report, ["Target", "Funding"])
+
+    # Act + Assert
+    assert follows_outline(variables) is False
 
 
 def test_follows_outline_passes_on_normalized_headings() -> None:
