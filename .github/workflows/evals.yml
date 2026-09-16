@@ -43,3 +43,16 @@ jobs:
         if: ${{ !cancelled() && steps.sync.outcome == 'success' }}
         working-directory: app
         run: uv run python -m evals.expert
+
+      - name: Run reporter evals
+        if: ${{ !cancelled() }}
+        working-directory: app
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          ARIZE_PLATFORM: AX
+          ARIZE_COLLECTOR_ENDPOINT: ${{ secrets.ARIZE_COLLECTOR_ENDPOINT }}
+          ARIZE_SPACE_ID: ${{ secrets.ARIZE_SPACE_ID }}
+          PHOENIX_COLLECTOR_ENDPOINT: ${{ secrets.PHOENIX_COLLECTOR_ENDPOINT }}
+          ARIZE_API_KEY: ${{ secrets.ARIZE_API_KEY }}
+        run: uv run python -m evals.reporter
