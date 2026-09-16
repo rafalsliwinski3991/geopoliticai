@@ -23,7 +23,9 @@ partial state dictionaries without mutation. Preserve shared-to-agent imports.
 
 Unit tests mirror `app/src/`: test `src/<path>/<name>.py` in
 `tests/unit_tests/<path>/test_<name>.py`, and give every test
-subdirectory an empty `__init__.py`. Each agent's compiled graph gets its
+subdirectory an empty `__init__.py`. Frontend unit tests live in
+`frontend/tests/` as `.mjs` files using the Node built-in test runner
+(`npm test` from `frontend/`), not in the Python suite. Each agent's compiled graph gets its
 own `tests/unit_tests/agents/<name>/test_graph.py`.
 
 ```text
