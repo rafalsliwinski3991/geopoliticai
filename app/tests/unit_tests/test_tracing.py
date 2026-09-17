@@ -68,8 +68,9 @@ def test_init_tracing_swallows_register_errors(monkeypatch: pytest.MonkeyPatch) 
     assert tracing._initialized is False
 
 
-def test_init_tracing_registers_once(monkeypatch: pytest.MonkeyPatch) -> None:
-    # Arrange
+def test_init_tracing_registers_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:  # Arrange
     monkeypatch.setenv("ARIZE_PLATFORM", "AX")
     monkeypatch.setenv("ARIZE_COLLECTOR_ENDPOINT", "http://phoenix:6006")
     monkeypatch.setenv("ARIZE_SPACE_ID", "test-space")
@@ -91,7 +92,8 @@ def test_init_tracing_registers_once(monkeypatch: pytest.MonkeyPatch) -> None:
     assert calls[0]["api_key"] == "test-arize-key"
     assert calls[0]["auto_instrument"] is True
 
-    assert tracing.init_tracing() is False
+    # A second call finds tracing already active: not a failure.
+    assert tracing.init_tracing() is True
     assert len(calls) == 1
 
 

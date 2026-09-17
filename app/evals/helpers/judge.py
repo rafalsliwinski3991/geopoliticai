@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 import re
+import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, Literal
@@ -32,6 +34,10 @@ JUDGE_RETRIES = 3
 # Pinned, not `openrouter/free`; see git history.
 JUDGE_MODEL = "nvidia/nemotron-3-super-120b-a12b:free"
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
+# Markdown link targets only: the match stops at the first ')', so a URL that
+# legitimately contains a parenthesis is truncated. Every dataset recorded so
+# far uses https://news.example/... URLs without parentheses; write balanced
+# parenthesis handling here before recording a source URL that has any.
 MARKDOWN_LINK_URL = re.compile(r"\]\((https?://[^)\s]+)\)")
 logger = logging.getLogger("agent")
 
@@ -179,6 +185,8 @@ def score(
             outcome = _classified(judge, classifier.evaluate(prepared)[0])
         except Exception as exc:
             last_error = f"{type(exc).__name__}: {exc}"
+            # The free judge model is rate limited: back off between attempts.
+            time.sleep(2**_attempt)
             continue
         if isinstance(outcome, Verdict):
             return outcome
@@ -207,6 +215,8 @@ async def async_score(
             outcome = _classified(judge, (await classifier.async_evaluate(prepared))[0])
         except Exception as exc:
             last_error = f"{type(exc).__name__}: {exc}"
+            # The free judge model is rate limited: back off between attempts.
+            await asyncio.sleep(2**_attempt)
             continue
         if isinstance(outcome, Verdict):
             return outcome

@@ -140,15 +140,22 @@ def test_score_returns_verdict_for_valid_label() -> None:
     assert verdict == Verdict("4", 0.75, "ok")
 
 
-def test_score_retries_then_records_judge_error() -> None:
+def test_score_retries_then_records_judge_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     # Arrange
     judge = Judge("j", "numeric", _view, prompt="{x}")
     calls: list[Any] = []
+    sleeps: list[float] = []
 
     def _boom(prepared: Any) -> list[Any]:
         calls.append(prepared)
         raise RuntimeError("judge down")
 
+    def _sleep(seconds: float) -> None:
+        sleeps.append(seconds)
+
+    monkeypatch.setattr("time.sleep", _sleep)
     classifier = SimpleNamespace(evaluate=_boom)
 
     # Act
@@ -156,6 +163,7 @@ def test_score_retries_then_records_judge_error() -> None:
 
     # Assert
     assert len(calls) == JUDGE_RETRIES
+    assert sleeps == [1.0, 2.0, 4.0]
     assert verdict.label == JUDGE_ERROR
     assert f"after {JUDGE_RETRIES} attempts" in verdict.explanation
 
@@ -197,15 +205,22 @@ async def test_async_score_returns_verdict_for_valid_label() -> None:
 
 
 @pytest.mark.anyio
-async def test_async_score_retries_then_records_judge_error() -> None:
+async def test_async_score_retries_then_records_judge_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     # Arrange
     judge = Judge("j", "numeric", _view, prompt="{x}")
     calls: list[Any] = []
+    sleeps: list[float] = []
 
     async def _boom(prepared: Any) -> list[Any]:
         calls.append(prepared)
         raise RuntimeError("judge down")
 
+    async def _sleep(seconds: float) -> None:
+        sleeps.append(seconds)
+
+    monkeypatch.setattr("asyncio.sleep", _sleep)
     classifier = SimpleNamespace(async_evaluate=_boom)
 
     # Act
@@ -213,6 +228,7 @@ async def test_async_score_retries_then_records_judge_error() -> None:
 
     # Assert
     assert len(calls) == JUDGE_RETRIES
+    assert sleeps == [1.0, 2.0, 4.0]
     assert verdict.label == JUDGE_ERROR
 
 

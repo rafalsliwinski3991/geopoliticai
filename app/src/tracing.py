@@ -21,11 +21,12 @@ _initialized = False
 def init_tracing() -> bool:
     """Register Phoenix or Arize AX tracing when configured; never raise.
 
-    Returns True when tracing was activated by this call.
+    Returns True when tracing is active after this call: it was already
+    active, or this call activated it.
     """
     global _initialized
     if _initialized:
-        return False
+        return True
     try:
         endpoint = get_trace_endpoint()
     except ValueError as exc:
