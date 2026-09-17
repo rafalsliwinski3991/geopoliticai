@@ -139,8 +139,10 @@ Plugin configuration details:
 | deep-agents-orchestration | yes | yes | yes | yes |
 | deepagents-python-quickstart | yes | yes | yes | yes |
 | deepagents-typescript-quickstart | yes | yes | yes | yes |
+| django-service | no | yes | yes | no |
 | ecosystem-primer | yes | yes | yes | yes |
 | eval-engineering | yes | yes | yes | yes |
+| fastapi-service | no | yes | yes | no |
 | rs-brainstorming | no | no | no | yes |
 | langchain-dependencies | yes | yes | yes | yes |
 | langchain-fundamentals | yes | yes | yes | yes |
@@ -156,6 +158,7 @@ Plugin configuration details:
 | langgraph-typescript-quickstart | yes | yes | yes | yes |
 | langsmith-online-eval-engineering | yes | yes | yes | yes |
 | managed-deep-agents | yes | yes | yes | yes |
+| react-frontend | no | yes | yes | no |
 | swarm | no | no | yes | no |
 | rs-create-stacked-prs | yes | no | no | yes |
 

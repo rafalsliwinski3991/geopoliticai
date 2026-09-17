@@ -15,7 +15,7 @@ Verify:
 
 | .claude source | .hermes mirror | Notes |
 |---|---|---|
-| `skills/*` (22 dirs) | `skills/*` verbatim copies | Same SKILL.md + references/scripts. Re-sync on .claude updates (command below). Includes `swarm`, which `.opencode/skills` lacks. |
+| `skills/*` (25 dirs) | `skills/*` verbatim copies | Same SKILL.md + references/scripts. Re-sync on .claude updates (command below). Includes `swarm`, which `.opencode/skills` lacks. |
 | `commands/rs-*.md` (6) | `skills/rs-*/SKILL.md` | Hermes registers every skill as `/<name>`, so `/rs-brainstorming` etc. work. `name:` added from filename; `allowed-tools` kept as a hint only — Hermes grants tools per session, not per skill. |
 | `agents/*.md` (5) | `skills/<agent>/SKILL.md` | Hermes has no repo-local agents dir; roles are ported as skills. Load via `skill_view("<name>")` and run via `delegate_task`, or `/<name>`. All five are read-only by contract. |
 | `CLAUDE.md` / `AGENTS.md` | (no copy) | Hermes already injects `AGENTS.md` (cwd) automatically. Deliberately no `.hermes.md` here — it would outrank and shadow `AGENTS.md` (first-match-wins). |
