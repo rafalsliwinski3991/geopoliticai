@@ -37,7 +37,12 @@ def build_evaluator(judge: Judge, classifier: Any) -> Callable[..., Any]:
             decode_ax_value(dataset_output),
         )
         return EvaluationResult(
-            score=verdict.score, label=verdict.label, explanation=verdict.explanation
+            score=verdict.score,
+            label=verdict.label,
+            # AX Flight rejects an all-null explanation column: code-check
+            # verdicts and not-applicable rows carry no reasoning, so give
+            # every stored result a deterministic text.
+            explanation=verdict.explanation or "No explanation recorded.",
         )
 
     return evaluate

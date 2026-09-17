@@ -274,3 +274,16 @@ def test_build_evaluator_decodes_json_strings_before_the_view() -> None:
     # Assert
     assert seen == [({"q": 1}, {"e": 3})]
     assert (result.score, result.label) == (1.0, "pass")
+
+
+def test_build_evaluator_never_records_an_empty_explanation() -> None:
+    # Arrange: code-check verdicts carry no explanation; AX Flight rejects an
+    # all-null explanation column, so the evaluator must fill one in.
+    judge = Judge("j", "binary", _view, check=lambda variables: True)
+    evaluator = ax_mod.build_evaluator(judge, None)
+
+    # Act
+    result = evaluator(input='{"q": 1}', output={"a": 2}, dataset_output='{"e": 3}')
+
+    # Assert
+    assert result.explanation == "No explanation recorded."
