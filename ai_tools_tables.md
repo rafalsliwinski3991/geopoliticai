@@ -205,6 +205,14 @@ repository workflows directly; OpenCode has no dedicated `critic` subagent.
 The Codex `critic` agent (`.codex/agents/critic.toml`) is the only read-only
 reviewer subagent, and no other provider ships matching agents.
 
+Claude's five read-only agents (`commit-auditor`, `preflight-scout`,
+`correctness-lens`, `framework-lens`, `guidance-compliance-lens`) and the
+`rs-implement-plan`, `rs-improve-plan`, and `rs-code-review` commands spawn
+subagents on Sonnet at medium effort (previously high effort, or `model:
+inherit` for `commit-auditor`/`preflight-scout`). The five agents and
+`rs-implement-plan`/`rs-improve-plan` are mirrored under `.hermes/skills/`
+with the same settings; `rs-code-review` has no Hermes mirror.
+
 ## Hooks
 
 The hook table includes executable hook implementations only. There are
