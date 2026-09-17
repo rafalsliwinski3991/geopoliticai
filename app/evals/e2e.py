@@ -31,11 +31,14 @@ async def run_e2e(input: dict[str, Any]) -> dict[str, Any]:
 
     graph = build_graph(checkpointer=InMemorySaver())
     config = build_runtime_config(thread_id=f"eval-{uuid4()}")
-    current: list[list[Source] | None] = [None]
+    # A plain local read at call time: `recorded_sources` re-invokes its
+    # callable on every retrieval, and the closure below closes over the
+    # variable, not a value.
+    current: list[Source] | None = None
     turns: list[dict[str, Any]] = []
-    with recorded_sources(lambda: current[0]):
+    with recorded_sources(lambda: current):
         for turn in input["turns"]:
-            current[0] = load_sources(turn["sources"]) if "sources" in turn else None
+            current = load_sources(turn["sources"]) if "sources" in turn else None
             text: str = turn["text"]
             record: dict[str, Any] = {}
             # Mirrors `api._turn_input`: text typed at a pause is a reply unless
