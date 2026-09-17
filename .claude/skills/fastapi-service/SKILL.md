@@ -21,9 +21,15 @@ blocked. Every rule below follows from that.
 async def lifespan(app: FastAPI):
     app.state.pool = AsyncConnectionPool(dsn, open=False)
     await app.state.pool.open()
-    yield
-    await app.state.pool.close()
+    try:
+        yield
+    finally:
+        await app.state.pool.close()
 ```
+
+The `try/finally` is not optional: an exception thrown at `yield` (startup failure
+surfaced later, cancellation at shutdown) would otherwise skip `close()` and leak
+the pool.
 
 ## Fail closed at startup
 
@@ -54,11 +60,22 @@ dependency-injection library; `Depends` is the one.
 ## JWT verification
 
 ```python
-jwt.decode(token, SIGNING_KEY, algorithms=["HS256"])  # always pin algorithms
+claims = jwt.decode(
+    token,
+    SIGNING_KEY,
+    algorithms=["HS256"],                  # always pin algorithms
+    options={"require": ["sub", "exp"]},   # require the claims the service relies on
+    # issuer=... / audience=... when the service is configured to check them
+)
 ```
 
-- Missing header, bad signature, expiry → **401**, always. Never fall back to an
-  anonymous identity on a decode failure.
+Pinning `algorithms` is necessary but not sufficient: PyJWT validates `exp` only
+when the claim is present, so a well-signed token with no expiry would be accepted.
+Require every claim the service relies on before accepting the token — at least
+`sub` and `exp`, plus issuer/audience when configured.
+
+- Missing header, bad signature, missing required claims, expiry → **401**,
+  always. Never fall back to an anonymous identity on a decode failure.
 - The token's subject claim is the identity for the whole request. Do not let a
   client-supplied id in the path or body stand in for it.
 - Authorization is a separate step from authentication: after decoding, check that

@@ -1,6 +1,6 @@
 ---
 name: react-frontend
-description: "INVOKE THIS SKILL when writing or changing a React + Vite frontend — components, state, data fetching, streaming responses, auth tokens in the browser, rendering untrusted Markdown or HTML, the Vite build and static serving, or Vitest tests. Use it before adding any component or frontend dependency."
+description: "INVOKE THIS SKILL when writing or changing a React + Vite frontend — components, state, data fetching, streaming responses, auth tokens in the browser, rendering untrusted Markdown or HTML, the Vite build and static serving, or frontend tests. Use it before adding any component or frontend dependency."
 ---
 
 Keep React narrow: it earns its place on interactive surfaces. Server-rendered pages
@@ -73,11 +73,11 @@ sanitized input only. This is a trust boundary, not polish — never simplify it
 
 ## Tests
 
-Vitest, run from the frontend directory. Test the behaviour most likely to break:
-the streaming reader, auth redirects, and any pause/resume or multi-step flow. Query
-by what the user sees (roles, labels, text), not by class names. jsdom is enough for
-most of it; browser mode with the Playwright provider is the current answer when a
-real layout or real events are needed — do not add it speculatively.
+The repository's frontend suite is `.mjs` files in `frontend/tests/` run by Node's
+built-in runner — `npm test` from `frontend/`. Extend that runner; do not introduce
+Vitest, jsdom, or a different test framework unless the frontend adopts one first.
+Test the behaviour most likely to break: the streaming reader, auth redirects, and
+any pause/resume or multi-step flow.
 
-Check context7 for current React, Vite and Vitest APIs before quoting config; this
+Check context7 for current React and Vite APIs before quoting config; this
 toolchain moves fast.
