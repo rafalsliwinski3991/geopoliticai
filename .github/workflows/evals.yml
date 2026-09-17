@@ -43,3 +43,8 @@ jobs:
         if: ${{ !cancelled() && steps.sync.outcome == 'success' }}
         working-directory: app
         run: uv run python -m evals.expert
+
+      - name: Run reporter evals
+        if: ${{ !cancelled() && steps.sync.outcome == 'success' }}
+        working-directory: app
+        run: uv run python -m evals.reporter
