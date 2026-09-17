@@ -1,4 +1,4 @@
-.PHONY: all format lint test tests test_watch docker_tests help extended_tests
+.PHONY: all format lint test tests test_watch docker_tests help extended_tests evals
 
 # Default target executed when no arguments are given to make.
 all: help
@@ -50,6 +50,32 @@ spell_fix:
 	codespell --toml pyproject.toml -w
 
 ######################
+# EVALS
+######################
+
+# Mirrors .github/workflows/evals.yml: sync dependencies, then run every eval
+# in order, keep going after a failure, and exit non-zero when any failed.
+# Keys and collector endpoints come from the root .env (loaded by
+# `config.init_environment`); `ARIZE_PLATFORM` is taken from the environment,
+# so point a run at local Phoenix with `docker compose up -d phoenix` and
+# `make evals ARIZE_PLATFORM=PHOENIX`.
+EVAL_MODULES = orchestrator expert reporter e2e
+
+evals:
+	uv sync --locked --dev
+	@failed=0; \
+	for module in $(EVAL_MODULES); do \
+		echo "===> $$module evals"; \
+		uv run python -m evals.$$module || failed=1; \
+	done; \
+	if [ "$$failed" = 1 ]; then \
+		echo "evals: one or more evals failed"; \
+	else \
+		echo "evals: all passed"; \
+	fi; \
+	exit $$failed
+
+######################
 # HELP
 ######################
 
@@ -61,4 +87,5 @@ help:
 	@echo 'tests                        - run unit tests'
 	@echo 'test TEST_FILE=<test_file>   - run all tests in file'
 	@echo 'test_watch                   - run unit tests in watch mode'
+	@echo 'evals                        - run the offline evals like evals.yml'
 
