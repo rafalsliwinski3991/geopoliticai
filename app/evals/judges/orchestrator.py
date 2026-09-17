@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
-from evals.helpers.judge import Judge, markdown_link_urls
+from evals.helpers.judge import Judge
+
+# Any http(s) URL counts as a citation, whatever syntax carries it.
+ANY_URL = re.compile(r"https?://\S+")
 
 QUERY_PROMPT = """
 You grade how an assistant rewrote the last user turn of a conversation into a
@@ -104,8 +108,12 @@ def routing_correct(variables: dict[str, Any]) -> bool:
 
 
 def chat_no_links(variables: dict[str, Any]) -> bool:
-    """Pass when a chat answer cites nothing (chat prompt rule 1)."""
-    return bool(variables["actual"]) and not markdown_link_urls(variables["actual"])
+    """Pass when a chat answer cites nothing (chat prompt rule 1).
+
+    Any http(s) URL counts as a citation: bare URLs, autolinks, and inline
+    markdown links alike.
+    """
+    return bool(variables["actual"]) and not ANY_URL.search(variables["actual"])
 
 
 def judges() -> tuple[Judge, ...]:

@@ -19,7 +19,6 @@
     },
     "output": {
       "destination": "other",
-      "standalone_query": "Hello.",
       "answer": "Hello! How can I assist you today?"
     }
   },
@@ -49,7 +48,6 @@
     },
     "output": {
       "destination": "report",
-      "standalone_query": "Write a briefing on what NATO allies agreed on defence spending at the Hague summit.",
       "answer": null
     }
   }

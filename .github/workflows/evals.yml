@@ -22,11 +22,12 @@ jobs:
           enable-cache: true
 
       - name: Install dependencies
+        id: sync
         working-directory: app
         run: uv sync --locked --dev
 
       - name: Run orchestrator evals
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && steps.sync.outcome == 'success' }}
         working-directory: app
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}

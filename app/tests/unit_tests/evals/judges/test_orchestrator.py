@@ -31,6 +31,18 @@ def test_chat_no_links_fails_on_markdown_link() -> None:
     assert not chat_no_links(_variables("See [x](https://a.b) for that.", "expected"))
 
 
+def test_chat_no_links_fails_on_bare_url() -> None:
+    # Act + Assert
+    assert not chat_no_links(_variables("Read https://a.b/story for that.", "expected"))
+
+
+def test_chat_no_links_fails_on_autolink() -> None:
+    # Act + Assert
+    assert not chat_no_links(
+        _variables("See <https://a.b/story> for that.", "expected")
+    )
+
+
 def test_chat_no_links_fails_on_empty_answer() -> None:
     # Act + Assert
     assert not chat_no_links(_variables("", "expected"))
