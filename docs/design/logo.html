@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mark — PoliticalAgent</title>
+<link rel="stylesheet" href="style.css">
+<style>
+  .sheet { padding: 72px 0 0; }
+  .sheet h1 { max-width: 14ch; }
+  .sheet > p { max-width: 58ch; font-size: var(--s-md); line-height: 1.5; color: var(--ink-soft); margin-top: 22px; }
+
+  .block { padding-top: 76px; }
+  .block > h2 { margin-bottom: 10px; }
+  .block > .note { color: var(--ink-soft); max-width: 58ch; font-size: var(--s-sm); }
+
+  /* ── The mark, given the room a crest needs ── */
+  .plate {
+    margin-top: 34px;
+    border-top: 1px solid var(--ink);
+    border-bottom: 1px solid var(--rule);
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 19rem);
+    gap: 48px;
+    align-items: center;
+    padding: 72px 0;
+  }
+  .plate svg { width: 208px; height: 208px; display: block; }
+  .plate-read p { font-size: var(--s-sm); color: var(--ink-soft); }
+  .plate-read .annot { display: block; margin-bottom: 10px; }
+
+  /* ── Construction ── */
+  .grid-demo { position: relative; width: 260px; height: 260px; }
+  .grid-demo svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .grid-demo .over line,
+  .grid-demo .over circle,
+  .grid-demo .over rect { stroke: var(--annot); fill: none; stroke-width: 0.4; }
+  .specs { list-style: none; margin: 0; padding: 0; }
+  .specs li {
+    display: flex;
+    justify-content: space-between;
+    gap: 20px;
+    font: 400 var(--s-sm)/1.5 var(--label);
+    padding: 9px 0;
+    border-bottom: 1px dotted var(--rule);
+  }
+  .specs b { font-weight: 500; }
+  .two {
+    margin-top: 34px;
+    display: grid;
+    grid-template-columns: 260px minmax(0, 1fr);
+    gap: 56px;
+    align-items: start;
+  }
+
+  /* ── Lockups ── */
+  .lockups { margin-top: 34px; display: grid; gap: 0; }
+  .lockup {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 10rem;
+    gap: 32px;
+    align-items: center;
+    padding: 30px 0;
+    border-top: 1px solid var(--rule);
+  }
+  .lockup:last-child { border-bottom: 1px solid var(--rule); }
+  .lockup .label { text-align: right; }
+
+  .lk { display: flex; align-items: center; gap: 18px; }
+  .lk svg { width: 44px; height: 44px; flex-shrink: 0; }
+  .lk .name {
+    font: 300 28px/1 var(--display);
+    letter-spacing: 0.06em;
+  }
+  .lk--stack { flex-direction: column; align-items: flex-start; gap: 14px; }
+  .lk--stack svg { width: 64px; height: 64px; }
+  .lk--rule { border-left: 1px solid var(--rule); padding-left: 18px; }
+
+  .onink { background: var(--ink); padding: 30px 26px; border-radius: 2px; }
+  .onink .name { color: var(--paper-lift); }
+  .onink svg circle { fill: var(--paper-lift); }
+
+  /* ── Sizes ── */
+  .sizes { margin-top: 34px; display: flex; align-items: flex-end; gap: 40px; flex-wrap: wrap; }
+  .size { text-align: left; }
+  .size svg { display: block; margin-bottom: 10px; image-rendering: auto; }
+  .s16 svg { width: 16px; height: 16px; }
+  .s24 svg { width: 24px; height: 24px; }
+  .s32 svg { width: 32px; height: 32px; }
+  .s48 svg { width: 48px; height: 48px; }
+  .s96 svg { width: 96px; height: 96px; }
+
+  .mono-row { margin-top: 34px; display: flex; gap: 40px; flex-wrap: wrap; align-items: center; }
+  .mono-row .chip-mono { color: var(--ink); }
+  .mono-row .chip-mono svg { width: 76px; height: 76px; display: block; }
+  .mono-row .on-dark { background: var(--ink); padding: 18px; border-radius: 2px; color: var(--paper-lift); }
+  .mono-row .on-sage { background: var(--sage); padding: 18px; border-radius: 2px; color: var(--paper-lift); }
+
+  .rules { margin-top: 34px; display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 0 48px; }
+  .rule-item { padding: 18px 0; border-top: 1px solid var(--rule); }
+  .rule-item h3 { font-family: var(--ui); font-size: var(--s-base); font-weight: 600; margin-bottom: 4px; }
+  .rule-item p { margin: 0; font-size: var(--s-sm); color: var(--ink-soft); max-width: none; }
+
+  @media (max-width: 880px) {
+    .plate, .two, .rules { grid-template-columns: 1fr; gap: 28px; }
+    .plate { padding: 44px 0; }
+    .lockup { grid-template-columns: 1fr; }
+    .lockup .label { text-align: left; }
+  }
+</style>
+</head>
+<body class="graticule">
+
+<header class="shell">
+  <div class="masthead">
+    <a class="wordmark" href="landing.html">Political<em>Agent</em></a>
+    <nav>
+      <a href="landing.html">Home</a>
+      <a href="blog.html">Notes</a>
+      <a href="chat.html">Chat</a>
+      <a href="logo.html" aria-current="page">Mark</a>
+    </nav>
+  </div>
+</header>
+
+<main class="shell">
+
+  <section class="sheet">
+    <p class="annot">Identity</p>
+    <h1>A crest, not an icon</h1>
+    <p>
+      Japanese <i>mon</i> and Bauhaus both reduce an idea to a circle and a few
+      straight lines, and both refuse ornament. The mark sits where they meet: a
+      disc, two cuts, one band. Nothing is drawn that does not carry meaning.
+    </p>
+  </section>
+
+  <section class="plate">
+    <svg viewBox="0 0 100 100" role="img" aria-label="The PoliticalAgent mark">
+      <defs>
+        <clipPath id="d1"><circle cx="50" cy="50" r="40"/></clipPath>
+        <mask id="m1">
+          <rect width="100" height="100" fill="#fff"/>
+          <rect x="33" y="0" width="5" height="100" fill="#000"/>
+          <rect x="58" y="0" width="5" height="100" fill="#000"/>
+        </mask>
+      </defs>
+      <circle cx="50" cy="50" r="40" fill="#16323F" mask="url(#m1)"/>
+      <rect x="72" y="0" width="8" height="100" fill="#A8175E" clip-path="url(#d1)"/>
+    </svg>
+    <div class="plate-read">
+      <p class="annot">What it says</p>
+      <p>
+        The disc is the world, and the oldest shape either tradition trusts. The
+        two cuts divide it into left, center and right — the source list, drawn
+        as meridians rather than as a chart.
+      </p>
+      <p>
+        The magenta band is the annotation ink used across the product: the mark
+        of something read and cited. It sits in the right-hand third and off the
+        center line, so the crest never settles into symmetry.
+      </p>
+    </div>
+  </section>
+
+  <section class="block">
+    <h2>Construction</h2>
+    <p class="note">
+      One circle on a 100-unit field. Every edge is a vertical at a stated
+      coordinate. There are no curves other than the disc and no angle other
+      than 90°.
+    </p>
+
+    <div class="two">
+      <div class="grid-demo">
+        <svg viewBox="0 0 100 100" aria-hidden="true">
+          <defs>
+            <clipPath id="d2"><circle cx="50" cy="50" r="40"/></clipPath>
+            <mask id="m2">
+              <rect width="100" height="100" fill="#fff"/>
+              <rect x="33" y="0" width="5" height="100" fill="#000"/>
+              <rect x="58" y="0" width="5" height="100" fill="#000"/>
+            </mask>
+          </defs>
+          <circle cx="50" cy="50" r="40" fill="#16323F" opacity="0.18" mask="url(#m2)"/>
+          <rect x="72" y="0" width="8" height="100" fill="#A8175E" opacity="0.22" clip-path="url(#d2)"/>
+        </svg>
+        <svg class="over" viewBox="0 0 100 100" aria-hidden="true">
+          <circle cx="50" cy="50" r="40"/>
+          <line x1="50" y1="2" x2="50" y2="98" stroke-dasharray="2 3"/>
+          <line x1="2" y1="50" x2="98" y2="50" stroke-dasharray="2 3"/>
+          <line x1="33" y1="6" x2="33" y2="94"/>
+          <line x1="38" y1="6" x2="38" y2="94"/>
+          <line x1="58" y1="6" x2="58" y2="94"/>
+          <line x1="63" y1="6" x2="63" y2="94"/>
+          <line x1="72" y1="6" x2="72" y2="94"/>
+          <line x1="80" y1="6" x2="80" y2="94"/>
+          <rect x="10" y="10" width="80" height="80" stroke-dasharray="2 3"/>
+        </svg>
+      </div>
+
+      <ul class="specs">
+        <li><b>Field</b><span>100 × 100</span></li>
+        <li><b>Disc</b><span>centre 50, 50 · radius 40</span></li>
+        <li><b>First cut</b><span>x 33 → 38 · width 5</span></li>
+        <li><b>Second cut</b><span>x 58 → 63 · width 5</span></li>
+        <li><b>Band</b><span>x 72 → 80 · width 8 · #A8175E</span></li>
+        <li><b>Ink</b><span>#16323F</span></li>
+        <li><b>Clear space</b><span>one cut width (5) on every side</span></li>
+        <li><b>Smallest full mark</b><span>24 px</span></li>
+      </ul>
+    </div>
+  </section>
+
+  <section class="block">
+    <h2>Lockups</h2>
+    <p class="note">
+      The name is set in Spectral Light, lowercase, tracked wide. Lowercase keeps
+      the crest louder than the word, which is the intended order.
+    </p>
+
+    <div class="lockups">
+      <div class="lockup">
+        <div class="lk">
+          <svg viewBox="0 0 100 100" aria-hidden="true">
+            <defs>
+              <clipPath id="d3"><circle cx="50" cy="50" r="40"/></clipPath>
+              <mask id="m3"><rect width="100" height="100" fill="#fff"/>
+                <rect x="33" width="5" height="100" fill="#000"/>
+                <rect x="58" width="5" height="100" fill="#000"/></mask>
+            </defs>
+            <circle cx="50" cy="50" r="40" fill="#16323F" mask="url(#m3)"/>
+            <rect x="72" width="8" height="100" fill="#A8175E" clip-path="url(#d3)"/>
+          </svg>
+          <span class="name">political agent</span>
+        </div>
+        <p class="label">Horizontal · default</p>
+      </div>
+
+      <div class="lockup">
+        <div class="lk lk--rule">
+          <svg viewBox="0 0 100 100" aria-hidden="true">
+            <defs>
+              <clipPath id="d4"><circle cx="50" cy="50" r="40"/></clipPath>
+              <mask id="m4"><rect width="100" height="100" fill="#fff"/>
+                <rect x="33" width="5" height="100" fill="#000"/>
+                <rect x="58" width="5" height="100" fill="#000"/></mask>
+            </defs>
+            <circle cx="50" cy="50" r="40" fill="#16323F" mask="url(#m4)"/>
+            <rect x="72" width="8" height="100" fill="#A8175E" clip-path="url(#d4)"/>
+          </svg>
+          <span class="name" style="font-size:20px">political agent</span>
+        </div>
+        <p class="label">Compact · app bar, sidebar</p>
+      </div>
+
+      <div class="lockup">
+        <div class="onink">
+          <div class="lk lk--stack">
+            <svg viewBox="0 0 100 100" aria-hidden="true">
+              <defs>
+                <clipPath id="d5"><circle cx="50" cy="50" r="40"/></clipPath>
+                <mask id="m5"><rect width="100" height="100" fill="#fff"/>
+                  <rect x="33" width="5" height="100" fill="#000"/>
+                  <rect x="58" width="5" height="100" fill="#000"/></mask>
+              </defs>
+              <circle cx="50" cy="50" r="40" mask="url(#m5)"/>
+              <rect x="72" width="8" height="100" fill="#A8175E" clip-path="url(#d5)"/>
+            </svg>
+            <span class="name">political agent</span>
+          </div>
+        </div>
+        <p class="label">Reversed · the disc goes paper, the band stays</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="block">
+    <h2>At size</h2>
+    <p class="note">
+      Below 24 px the two cuts close up. The small mark drops to one cut and a
+      wider band, which is the same crest with one fewer statement.
+    </p>
+
+    <div class="sizes">
+      <div class="size s16"><img src="logo-mark-small.svg" width="16" height="16" alt=""><p class="label">16 · favicon</p></div>
+      <div class="size s24"><img src="logo-mark-small.svg" width="24" height="24" alt=""><p class="label">24 · small</p></div>
+      <div class="size s32"><img src="logo-mark.svg" width="32" height="32" alt=""><p class="label">32 · full</p></div>
+      <div class="size s48"><img src="logo-mark.svg" width="48" height="48" alt=""><p class="label">48</p></div>
+      <div class="size s96"><img src="logo-mark.svg" width="96" height="96" alt=""><p class="label">96</p></div>
+    </div>
+  </section>
+
+  <section class="block">
+    <h2>One colour</h2>
+    <p class="note">
+      Where the magenta cannot survive — a stamp, an embed, a single-ink print —
+      the band becomes an outline. It inherits <code>currentColor</code>.
+    </p>
+
+    <div class="mono-row">
+      <div class="chip-mono">
+        <svg viewBox="0 0 100 100" aria-hidden="true">
+          <defs><mask id="m6"><rect width="100" height="100" fill="#fff"/>
+            <rect x="33" width="5" height="100" fill="#000"/>
+            <rect x="58" width="5" height="100" fill="#000"/>
+            <rect x="72" width="8" height="100" fill="#000"/>
+            <rect x="74.5" width="3" height="100" fill="#fff"/></mask></defs>
+          <circle cx="50" cy="50" r="40" fill="currentColor" mask="url(#m6)"/>
+        </svg>
+      </div>
+      <div class="chip-mono on-dark">
+        <svg viewBox="0 0 100 100" aria-hidden="true">
+          <defs><mask id="m7"><rect width="100" height="100" fill="#fff"/>
+            <rect x="33" width="5" height="100" fill="#000"/>
+            <rect x="58" width="5" height="100" fill="#000"/>
+            <rect x="72" width="8" height="100" fill="#000"/>
+            <rect x="74.5" width="3" height="100" fill="#fff"/></mask></defs>
+          <circle cx="50" cy="50" r="40" fill="currentColor" mask="url(#m7)"/>
+        </svg>
+      </div>
+      <div class="chip-mono on-sage">
+        <svg viewBox="0 0 100 100" aria-hidden="true">
+          <defs><mask id="m8"><rect width="100" height="100" fill="#fff"/>
+            <rect x="33" width="5" height="100" fill="#000"/>
+            <rect x="58" width="5" height="100" fill="#000"/>
+            <rect x="72" width="8" height="100" fill="#000"/>
+            <rect x="74.5" width="3" height="100" fill="#fff"/></mask></defs>
+          <circle cx="50" cy="50" r="40" fill="currentColor" mask="url(#m8)"/>
+        </svg>
+      </div>
+    </div>
+  </section>
+
+  <section class="block">
+    <h2>How to keep it</h2>
+    <div class="rules">
+      <div class="rule-item">
+        <h3>Never rotate it</h3>
+        <p>The cuts are meridians. Tilted, they stop meaning anything.</p>
+      </div>
+      <div class="rule-item">
+        <h3>Never recolour the band</h3>
+        <p>Magenta is the annotation ink. It is the one colour the mark owns.</p>
+      </div>
+      <div class="rule-item">
+        <h3>Never centre the band</h3>
+        <p>The asymmetry is the whole design. Centred, it becomes a target.</p>
+      </div>
+      <div class="rule-item">
+        <h3>Never add a container</h3>
+        <p>No rounded square, no ring, no shadow. The disc is already the frame.</p>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="shell">
+  <div class="foot">
+    <p style="margin:0">PoliticalAgent · politicalagent.eu</p>
+    <nav style="display:flex;gap:20px">
+      <a href="landing.html">Home</a>
+      <a href="blog.html">Notes</a>
+      <a href="chat.html">Chat</a>
+    </nav>
+  </div>
+</footer>
+
+</body>
+</html>

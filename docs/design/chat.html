@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Chat — PoliticalAgent</title>
+<link rel="stylesheet" href="style.css">
+<style>
+  body { height: 100dvh; overflow: hidden; }
+
+  .app {
+    display: grid;
+    grid-template-columns: 17rem minmax(0, 1fr);
+    height: 100dvh;
+  }
+
+  /* ── Sidebar: threads ── */
+  .side {
+    display: flex;
+    flex-direction: column;
+    border-right: 1px solid var(--rule);
+    background: var(--paper-lift);
+    min-height: 0;
+  }
+  .side-top { padding: 20px 18px 14px; }
+  .side-top .wordmark { display: block; margin-bottom: 16px; }
+  .new-thread {
+    display: block;
+    width: 100%;
+    text-align: left;
+    font: 500 var(--s-sm)/1 var(--ui);
+    padding: 12px 13px;
+    border: 1px solid var(--ink);
+    border-radius: 2px;
+    background: transparent;
+    color: var(--ink);
+    cursor: pointer;
+  }
+  .new-thread:hover { background: rgba(22, 50, 63, 0.07); }
+
+  .threads { flex: 1; overflow-y: auto; padding: 6px 10px 18px; }
+  .threads h2 {
+    font: 500 var(--s-xs)/1.4 var(--label);
+    color: var(--ink-soft);
+    padding: 16px 8px 7px;
+    letter-spacing: 0.02em;
+  }
+  .thread {
+    display: block;
+    padding: 9px 8px;
+    border-radius: 2px;
+    text-decoration: none;
+    font-size: var(--s-sm);
+    line-height: 1.35;
+    color: var(--ink-soft);
+    border-left: 2px solid transparent;
+  }
+  .thread:hover { background: rgba(22, 50, 63, 0.05); color: var(--ink); }
+  .thread[aria-current="page"] {
+    background: rgba(200, 220, 224, 0.5);
+    border-left-color: var(--annot);
+    color: var(--ink);
+  }
+  .thread .when { display: block; font: 400 var(--s-xs)/1.5 var(--label); color: var(--ink-soft); }
+
+  .side-foot { border-top: 1px solid var(--rule); padding: 14px 18px 16px; }
+  .quota { display: flex; justify-content: space-between; font: 400 var(--s-xs)/1.4 var(--label); color: var(--ink-soft); }
+  .meter { height: 3px; background: var(--rule); margin: 8px 0 12px; }
+  .meter i { display: block; height: 100%; width: 30%; background: var(--annot); }
+  .side-foot a { font-size: var(--s-sm); color: var(--ink-soft); text-decoration: none; }
+  .side-foot a:hover { color: var(--ink); text-decoration: underline; }
+
+  /* ── Conversation ── */
+  .main { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+  .main-top {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 18px 32px;
+    border-bottom: 1px solid var(--rule);
+  }
+  .main-top h1 { font-size: var(--s-md); }
+
+  .scroll { flex: 1; overflow-y: auto; padding: 8px 32px 28px; }
+  .conv { max-width: 78rem; margin-inline: auto; }
+
+  .row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 15rem);
+    gap: 40px;
+    padding: 22px 0;
+    border-bottom: 1px solid var(--rule);
+  }
+  .row:last-child { border-bottom: 0; }
+  .who { font: 600 var(--s-xs)/1.4 var(--label); color: var(--ink-soft); display: block; margin-bottom: 7px; }
+
+  .ask p { font-size: var(--s-md); line-height: 1.45; margin: 0; max-width: 46ch; font-family: var(--display); }
+
+  .say p { margin: 0 0 0.85em; }
+  .say p:last-child { margin-bottom: 0; }
+  .say strong { font-weight: 600; }
+
+  /* The margin: cited domains, annotated as on a chart. */
+  .margin { padding-top: 26px; }
+  .margin .annot { display: block; margin-bottom: 10px; }
+  .cite { display: block; padding: 6px 0; border-top: 1px dotted var(--rule); text-decoration: none; }
+  .cite:first-of-type { border-top: 0; }
+  .cite b { display: block; font: 500 var(--s-xs)/1.5 var(--label); color: var(--ink); }
+  .cite span { font: 400 var(--s-xs)/1.45 var(--label); color: var(--ink-soft); }
+  .cite:hover b { color: var(--annot); }
+
+  /* Progress, while the pipeline runs. */
+  .progress { font: 400 var(--s-sm)/1.6 var(--label); color: var(--ink-soft); }
+  .progress b { display: block; color: var(--ink); font-weight: 500; }
+  .caret { display: inline-block; width: 7px; height: 1em; background: var(--annot); vertical-align: -0.16em; }
+
+  /* The outline gate. */
+  .gate {
+    border-left: 2px solid var(--annot);
+    padding: 2px 0 2px 18px;
+  }
+  .gate ol { margin: 10px 0 14px 1.1em; padding: 0; line-height: 1.75; }
+  .gate-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+  .chip {
+    font: 500 var(--s-xs)/1 var(--ui);
+    padding: 9px 13px;
+    border: 1px solid var(--rule);
+    border-radius: 2px;
+    background: var(--paper-lift);
+    color: var(--ink);
+    cursor: pointer;
+  }
+  .chip:hover { border-color: var(--ink); }
+  .gate-hint { font-size: var(--s-xs); font-family: var(--label); color: var(--ink-soft); margin: 10px 0 0; }
+
+  /* ── Composer ── */
+  .composer { border-top: 1px solid var(--rule); padding: 16px 32px 22px; background: var(--paper-lift); }
+  .composer-inner { max-width: 78rem; margin-inline: auto; }
+  .field {
+    display: flex;
+    gap: 12px;
+    align-items: flex-end;
+    border: 1px solid var(--rule);
+    border-radius: 2px;
+    background: var(--paper);
+    padding: 10px 10px 10px 14px;
+  }
+  .field:focus-within { border-color: var(--ink); }
+  .field textarea {
+    flex: 1;
+    border: 0;
+    resize: none;
+    background: transparent;
+    color: var(--ink);
+    font: 400 var(--s-base)/1.5 var(--ui);
+    padding: 6px 0;
+    min-height: 2.6em;
+  }
+  .field textarea:focus { outline: none; }
+  .composer-foot { display: flex; justify-content: space-between; gap: 16px; padding-top: 8px; }
+  .composer-foot p { margin: 0; font: 400 var(--s-xs)/1.5 var(--label); color: var(--ink-soft); }
+
+  @media (max-width: 1080px) {
+    .row { grid-template-columns: 1fr; gap: 16px; }
+    .margin { padding-top: 0; border-top: 1px dotted var(--rule); padding-top: 12px; }
+  }
+  @media (max-width: 760px) {
+    .app { grid-template-columns: 1fr; }
+    .side { display: none; }
+    .scroll, .main-top, .composer { padding-inline: 18px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="app">
+
+  <aside class="side">
+    <div class="side-top">
+      <a class="wordmark" href="landing.html">Political<em>Agent</em></a>
+      <button class="new-thread" type="button">New conversation</button>
+    </div>
+
+    <nav class="threads">
+      <h2>Today</h2>
+      <a class="thread" href="#" aria-current="page">
+        Baltic energy security since 2022
+        <span class="when">4 turns · 12:40</span>
+      </a>
+      <a class="thread" href="#">
+        Who controls the Red Sea shipping lanes now
+        <span class="when">2 turns · 09:15</span>
+      </a>
+
+      <h2>Yesterday</h2>
+      <a class="thread" href="#">
+        Report: EU enlargement and the Western Balkans
+        <span class="when">7 turns</span>
+      </a>
+      <a class="thread" href="#">
+        What changed in the Sahel after the withdrawal
+        <span class="when">3 turns</span>
+      </a>
+
+      <h2>Earlier</h2>
+      <a class="thread" href="#">
+        Taiwan semiconductor export controls, 2025 onward
+        <span class="when">5 turns</span>
+      </a>
+      <a class="thread" href="#">
+        Arctic shipping routes and Russian port access
+        <span class="when">2 turns</span>
+      </a>
+    </nav>
+
+    <div class="side-foot">
+      <div class="quota">
+        <span>Research turns today</span>
+        <span>6 of 20</span>
+      </div>
+      <div class="meter" role="img" aria-label="6 of 20 research turns used today"><i></i></div>
+      <a href="/accounts/">rafal@politicalagent.eu</a>
+    </div>
+  </aside>
+
+  <main class="main">
+    <div class="main-top">
+      <h1>Baltic energy security since 2022</h1>
+      <p class="label">Started 12:02 · thread saved</p>
+    </div>
+
+    <div class="scroll">
+      <div class="conv">
+
+        <div class="row">
+          <div class="ask">
+            <span class="who">You</span>
+            <p>What has actually changed in Baltic electricity supply since the 2025 desynchronisation?</p>
+          </div>
+          <div></div>
+        </div>
+
+        <div class="row">
+          <div class="say">
+            <span class="who">PoliticalAgent</span>
+            <p>
+              The three Baltic grids left the Soviet-era BRELL ring and
+              synchronised with continental Europe, which ended their dependence
+              on Russian frequency control. Reporting since then describes a grid
+              that is technically independent but thinner: <strong>reserve
+              capacity is now bought on European balancing markets</strong>
+              rather than drawn from a neighbour, and prices move with them.
+            </p>
+            <p>
+              Two further changes come up consistently in the sources read for
+              this answer. Interconnector damage in the Gulf of Finland has moved
+              from an anomaly to a planned-for risk<span class="caret"></span>
+            </p>
+          </div>
+          <div class="margin">
+            <p class="annot">Read for this answer</p>
+            <a class="cite" href="#"><b>reuters.com</b><span>Baltic grids complete switch to European network</span></a>
+            <a class="cite" href="#"><b>ft.com</b><span>Balancing costs rise after desynchronisation</span></a>
+            <a class="cite" href="#"><b>dw.com</b><span>Estonia raises undersea cable patrols</span></a>
+            <a class="cite" href="#"><b>bbc.com</b><span>What the BRELL exit means in practice</span></a>
+          </div>
+        </div>
+
+        <div class="row">
+          <div class="ask">
+            <span class="who">You</span>
+            <p>Write that up as a report I can send on.</p>
+          </div>
+          <div></div>
+        </div>
+
+        <div class="row">
+          <div class="say">
+            <span class="who">PoliticalAgent · waiting for your reply</span>
+            <div class="gate">
+              <p>Here is the outline I would write. Approve it, tell me what to change, or cancel.</p>
+              <ol>
+                <li>Grid synchronisation with continental Europe</li>
+                <li>LNG terminals and the end of piped Russian gas</li>
+                <li>Undersea cable and pipeline incidents, 2023–2025</li>
+                <li>What each government has committed to next</li>
+              </ol>
+              <div class="gate-actions">
+                <button class="chip" type="button">Approve and write it</button>
+                <button class="chip" type="button">Revise the outline</button>
+                <button class="chip" type="button">Cancel</button>
+              </div>
+              <p class="gate-hint">Two revisions left. Typing a reply works too.</p>
+            </div>
+          </div>
+          <div class="margin">
+            <p class="annot">Pipeline</p>
+            <p class="progress">
+              <b>Outline ready</b>
+              Routed to reporter · 12 pages read · 0 turns spent until you approve
+            </p>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <div class="composer">
+      <div class="composer-inner">
+        <div class="field">
+          <label class="label" for="q" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)">Your reply</label>
+          <textarea id="q" rows="1" placeholder="Reply to the outline, or ask something new"></textarea>
+          <button class="btn" type="button">Send</button>
+        </div>
+        <div class="composer-foot">
+          <p>Answers come from the 28 listed sources only. Up to 2,000 characters.</p>
+          <p>6 of 20 research turns used today</p>
+        </div>
+      </div>
+    </div>
+  </main>
+
+</div>
+
+</body>
+</html>
