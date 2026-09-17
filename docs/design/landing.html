@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PoliticalAgent — geopolitical research with named sources</title>
+<meta name="description" content="A research assistant that searches a fixed list of 28 newsrooms and institutes, reads the pages it finds, and answers only from what it read.">
+<link rel="stylesheet" href="style.css">
+<style>
+  /* ── Hero ── */
+  .hero { padding: 92px 0 0; }
+  .hero-kicker { margin-bottom: 26px; }
+  .hero h1 { max-width: 16ch; }
+  .hero h1 .quiet { color: var(--ink-soft); }
+  .hero-lede {
+    font-size: var(--s-md);
+    line-height: 1.5;
+    max-width: 54ch;
+    margin: 28px 0 34px;
+    color: var(--ink-soft);
+  }
+  .hero-actions { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+  .hero-actions .note { font-size: var(--s-sm); color: var(--ink-soft); }
+
+  /* ── The spectrum band: the hero's real subject ── */
+  .spectrum { margin: 76px 0 0; }
+  .spectrum-axis {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    border-top: 1px solid var(--ink);
+    border-bottom: 1px solid var(--rule);
+  }
+  .band { padding: 16px 22px 26px; border-right: 1px solid var(--rule); }
+  .band:last-child { border-right: 0; }
+  .band-head {
+    font: 500 var(--s-sm)/1.3 var(--label);
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    margin-bottom: 14px;
+  }
+  .band-head .count { color: var(--ink-soft); font-weight: 400; }
+  .band ul { list-style: none; margin: 0; padding: 0; columns: 2; column-gap: 20px; }
+  .band li {
+    font: 400 var(--s-sm)/1.85 var(--label);
+    break-inside: avoid;
+    color: var(--ink);
+  }
+  .band li.inst { color: var(--sage); }
+  .band--left  { background: linear-gradient(to bottom, rgba(200,220,224,.55), transparent 70%); }
+  .band--mid   { background: linear-gradient(to bottom, rgba(200,220,224,.25), transparent 70%); }
+  .band--right { background: linear-gradient(to bottom, rgba(168,23,94,.07), transparent 70%); }
+  .spectrum-foot {
+    display: flex;
+    justify-content: space-between;
+    gap: 20px;
+    flex-wrap: wrap;
+    padding-top: 12px;
+  }
+
+  /* ── Sequence: how a question is answered ── */
+  .section { padding-top: 88px; }
+  .section > h2 { max-width: 20ch; margin-bottom: 10px; }
+  .section-note { color: var(--ink-soft); max-width: 58ch; }
+
+  .steps { margin-top: 34px; display: grid; gap: 0; }
+  .step {
+    display: grid;
+    grid-template-columns: 74px minmax(0, 1fr) minmax(0, 16rem);
+    gap: 28px;
+    padding: 24px 0;
+    border-top: 1px solid var(--rule);
+    align-items: start;
+  }
+  .step:last-child { border-bottom: 1px solid var(--rule); }
+  .step-n { font: 300 var(--s-xl)/0.9 var(--display); color: var(--water); }
+  .step h3 { margin-bottom: 6px; }
+  .step p { margin: 0; font-size: var(--s-sm); color: var(--ink-soft); }
+  .step .annot { align-self: start; }
+
+  /* ── Transcript: the outline gate ── */
+  .gate { margin-top: 34px; display: grid; grid-template-columns: minmax(0,1fr) minmax(0,22rem); gap: 44px; }
+  .transcript {
+    background: var(--paper-lift);
+    border: 1px solid var(--rule);
+    border-radius: 2px;
+    padding: 22px 24px;
+  }
+  .turn { padding: 12px 0; border-bottom: 1px dotted var(--rule); }
+  .turn:last-child { border-bottom: 0; }
+  .turn .who { font: 600 var(--s-xs)/1.4 var(--label); color: var(--ink-soft); display: block; margin-bottom: 5px; }
+  .turn p { margin: 0; font-size: var(--s-sm); line-height: 1.55; }
+  .turn ol { margin: 6px 0 0 1.1em; padding: 0; font-size: var(--s-sm); line-height: 1.7; }
+  .turn--paused { border-left: 2px solid var(--annot); padding-left: 14px; margin-left: -16px; }
+  .gate-aside p { font-size: var(--s-sm); color: var(--ink-soft); }
+
+  /* ── Limits ── */
+  .limits { margin-top: 34px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 44px; }
+  .limit { padding: 20px 0; border-top: 1px solid var(--rule); }
+  .limit h3 { font-family: var(--ui); font-size: var(--s-base); font-weight: 600; margin-bottom: 4px; }
+  .limit p { margin: 0; font-size: var(--s-sm); color: var(--ink-soft); max-width: none; }
+
+  .closer { padding-top: 88px; }
+  .closer h2 { max-width: 18ch; }
+  .closer .hero-actions { margin-top: 26px; }
+
+  @media (max-width: 900px) {
+    .spectrum-axis { grid-template-columns: 1fr; }
+    .band { border-right: 0; border-bottom: 1px solid var(--rule); }
+    .band ul { columns: 2; }
+    .step { grid-template-columns: 44px minmax(0, 1fr); }
+    .step .annot { grid-column: 2; }
+    .gate { grid-template-columns: 1fr; gap: 24px; }
+    .limits { grid-template-columns: 1fr; }
+    .hero { padding-top: 56px; }
+  }
+</style>
+</head>
+<body class="graticule">
+
+<header class="shell">
+  <div class="masthead">
+    <a class="wordmark" href="/">Political<em>Agent</em></a>
+    <nav>
+      <a href="blog.html">Notes</a>
+      <a href="#sources">Sources</a>
+      <a href="#limits">Limits</a>
+      <a href="chat.html">Open the chat</a>
+    </nav>
+  </div>
+</header>
+
+<main class="shell">
+
+  <section class="hero">
+    <p class="annot hero-kicker">Geopolitical research, English, one question at a time</p>
+    <h1>Every answer comes from newsrooms <span class="quiet">you can name.</span></h1>
+    <p class="hero-lede">
+      PoliticalAgent searches a fixed list of twenty-eight publications and
+      institutes, reads the pages it finds, and answers from that text alone.
+      If the search or the reading fails, it tells you. It does not fill the gap.
+    </p>
+    <div class="hero-actions">
+      <a class="btn" href="chat.html">Ask a question</a>
+      <a class="btn btn--quiet" href="#sources">See the source list</a>
+      <span class="note">Free while in preview · 20 research turns a day</span>
+    </div>
+  </section>
+
+  <section class="spectrum" id="sources">
+    <div class="spectrum-axis">
+      <div class="band band--left">
+        <p class="band-head">Left of center <span class="count">10</span></p>
+        <ul>
+          <li>theguardian.com</li><li>nytimes.com</li><li>washingtonpost.com</li>
+          <li>npr.org</li><li>vox.com</li><li>thenation.com</li>
+          <li>motherjones.com</li><li>aljazeera.com</li><li>dw.com</li>
+          <li class="inst">brookings.edu</li>
+        </ul>
+      </div>
+      <div class="band band--mid">
+        <p class="band-head">Center <span class="count">9</span></p>
+        <ul>
+          <li>reuters.com</li><li>apnews.com</li><li>bbc.com</li>
+          <li>bloomberg.com</li><li>ft.com</li><li>axios.com</li>
+          <li>politico.com</li><li>csmonitor.com</li><li>france24.com</li>
+        </ul>
+      </div>
+      <div class="band band--right">
+        <p class="band-head">Right of center <span class="count">9</span></p>
+        <ul>
+          <li>wsj.com</li><li>economist.com</li><li>nationalreview.com</li>
+          <li>thedispatch.com</li><li>washingtonexaminer.com</li><li>reason.com</li>
+          <li>foxnews.com</li><li class="inst">aei.org</li><li class="inst">hoover.org</li>
+        </ul>
+      </div>
+    </div>
+    <div class="spectrum-foot">
+      <p class="label">Institutes in green. Placement describes the editorial balance rule, not a rating of any publication.</p>
+      <p class="label">Three search batches · up to ten pages read per question</p>
+    </div>
+  </section>
+
+  <section class="section" id="how">
+    <h2>What happens after you press send</h2>
+    <p class="section-note">
+      Three routes, chosen by the first step. Only the research route spends a
+      turn from your daily allowance.
+    </p>
+
+    <div class="steps">
+      <div class="step">
+        <span class="step-n">1</span>
+        <div>
+          <h3>Your question is routed</h3>
+          <p>
+            A geopolitical question goes to research. A follow-up like “say that
+            again in Polish” is answered directly, without sources. A request for
+            a written report takes the third route.
+          </p>
+        </div>
+        <p class="annot">Routing is free</p>
+      </div>
+      <div class="step">
+        <span class="step-n">2</span>
+        <div>
+          <h3>The list is searched, the pages are read</h3>
+          <p>
+            Three batches of searches run across the twenty-eight domains. Up to
+            ten of the results are fetched and the article text is extracted —
+            not the headline, not the search snippet.
+          </p>
+        </div>
+        <p class="annot">Nothing outside the list is opened</p>
+      </div>
+      <div class="step">
+        <span class="step-n">3</span>
+        <div>
+          <h3>The answer is written from that text</h3>
+          <p>
+            One model pass over what was actually read, streamed to you as it is
+            written. If no page could be read, you get an error that says which
+            step failed, not a confident guess.
+          </p>
+        </div>
+        <p class="annot">One turn spent</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="reports">
+    <h2>A report stops and asks before it is written</h2>
+    <p class="section-note">
+      Long pieces are expensive to read and worse to skim when the structure is
+      wrong. So the outline comes first, and nothing is written until you reply.
+    </p>
+
+    <div class="gate">
+      <div class="transcript">
+        <div class="turn">
+          <span class="who">You</span>
+          <p>Write me a report on Baltic energy security since 2022.</p>
+        </div>
+        <div class="turn turn--paused">
+          <span class="who">PoliticalAgent · waiting for your reply</span>
+          <p>Here is the outline I would write. Reply to approve, revise, or cancel.</p>
+          <ol>
+            <li>Grid synchronisation with continental Europe</li>
+            <li>LNG terminals and the end of piped Russian gas</li>
+            <li>Undersea cable and pipeline incidents, 2023–2025</li>
+            <li>What each government has committed to next</li>
+          </ol>
+        </div>
+        <div class="turn">
+          <span class="who">You</span>
+          <p>Approved, but merge three and four and add Finland.</p>
+        </div>
+      </div>
+      <div class="gate-aside">
+        <p class="annot">Revisions</p>
+        <p>
+          You can revise the outline twice. After that the report is written from
+          the outline as it stands, so a conversation cannot loop.
+        </p>
+        <p class="annot">When it is done</p>
+        <p>
+          The finished report arrives with Download&nbsp;.md and Copy. It stays in
+          the thread, so you can come back to it tomorrow.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="limits">
+    <h2>What it will not do</h2>
+    <p class="section-note">
+      The useful version of this list is the honest one. These are design
+      decisions, not gaps waiting to be filled.
+    </p>
+
+    <div class="limits">
+      <div class="limit">
+        <h3>Invent a source</h3>
+        <p>Every citation is a page that was fetched and read in that turn.</p>
+      </div>
+      <div class="limit">
+        <h3>Fall back when search fails</h3>
+        <p>A failed search or a failed fetch is an error you see, not a quieter answer.</p>
+      </div>
+      <div class="limit">
+        <h3>Reach outside the list</h3>
+        <p>No blogs, no social posts, no press releases, no page you sent it.</p>
+      </div>
+      <div class="limit">
+        <h3>Predict outcomes</h3>
+        <p>It reports what the sources say. It does not forecast elections or wars.</p>
+      </div>
+      <div class="limit">
+        <h3>Work in other languages yet</h3>
+        <p>Questions and answers are English. The sources are English-language.</p>
+      </div>
+      <div class="limit">
+        <h3>Take long inputs</h3>
+        <p>A question is capped at 2,000 characters, which is roughly one page.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="closer">
+    <h2>Ask it something you would otherwise open six tabs for.</h2>
+    <div class="hero-actions">
+      <a class="btn" href="chat.html">Ask a question</a>
+      <a class="btn btn--quiet" href="blog.html">Read the notes</a>
+    </div>
+  </section>
+
+</main>
+
+<footer class="shell">
+  <div class="foot">
+    <p style="margin:0">PoliticalAgent · politicalagent.eu</p>
+    <nav style="display:flex;gap:20px">
+      <a href="blog.html">Notes</a>
+      <a href="#sources">Source policy</a>
+      <a href="#limits">Limits</a>
+      <a href="/accounts/login/">Sign in</a>
+    </nav>
+  </div>
+</footer>
+
+</body>
+</html>

@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Notes — PoliticalAgent</title>
+<meta name="description" content="Notes on how PoliticalAgent reads the news: source policy, method, and what the answers can and cannot carry.">
+<link rel="stylesheet" href="style.css">
+<style>
+  .intro { padding: 72px 0 0; }
+  .intro h1 { max-width: 12ch; }
+  .intro p { max-width: 56ch; font-size: var(--s-md); line-height: 1.5; color: var(--ink-soft); margin-top: 22px; }
+
+  /* Lead note: the only place a full-width treatment is spent. */
+  .lead {
+    margin-top: 58px;
+    border-top: 1px solid var(--ink);
+    border-bottom: 1px solid var(--rule);
+    padding: 30px 0 34px;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 17rem);
+    gap: 48px;
+  }
+  .lead h2 { max-width: 18ch; margin-bottom: 14px; }
+  .lead h2 a { text-decoration: none; }
+  .lead h2 a:hover { text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 4px; }
+  .lead p { color: var(--ink-soft); }
+  .lead-meta { display: flex; flex-direction: column; gap: 14px; padding-top: 8px; }
+
+  /* Archive: the margin holds the metadata, as a chart holds its labels. */
+  .archive { margin-top: 10px; }
+  .post {
+    display: grid;
+    grid-template-columns: 9rem minmax(0, 1fr) minmax(0, 11rem);
+    gap: 32px;
+    padding: 26px 0;
+    border-bottom: 1px solid var(--rule);
+    align-items: baseline;
+  }
+  .post-date { font: 400 var(--s-sm)/1.5 var(--label); color: var(--ink-soft); }
+  .post h3 { font-size: var(--s-md); margin-bottom: 6px; }
+  .post h3 a { text-decoration: none; }
+  .post h3 a:hover { text-decoration: underline; text-underline-offset: 4px; }
+  .post p { margin: 0; font-size: var(--s-sm); color: var(--ink-soft); }
+  .post-sources { font: 400 var(--s-xs)/1.7 var(--label); color: var(--ink-soft); }
+  .post-sources span { display: block; }
+
+  .topics {
+    display: flex;
+    gap: 8px 10px;
+    flex-wrap: wrap;
+    padding: 22px 0 0;
+    align-items: baseline;
+  }
+  .topic {
+    font: 500 var(--s-xs)/1 var(--label);
+    padding: 7px 11px;
+    border: 1px solid var(--rule);
+    border-radius: 2px;
+    text-decoration: none;
+    color: var(--ink-soft);
+  }
+  .topic:hover { border-color: var(--ink); color: var(--ink); }
+  .topic[aria-current="true"] { background: var(--ink); border-color: var(--ink); color: var(--paper-lift); }
+
+  .subscribe {
+    margin-top: 72px;
+    border-top: 1px solid var(--ink);
+    padding-top: 26px;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 22rem);
+    gap: 44px;
+    align-items: start;
+  }
+  .subscribe h2 { max-width: 16ch; }
+  .subscribe p { font-size: var(--s-sm); color: var(--ink-soft); margin-top: 10px; }
+  .subscribe form { display: flex; gap: 8px; flex-wrap: wrap; }
+  .subscribe input {
+    flex: 1 1 12rem;
+    font: 400 var(--s-sm)/1 var(--ui);
+    padding: 14px 13px;
+    border: 1px solid var(--rule);
+    border-radius: 2px;
+    background: var(--paper-lift);
+    color: var(--ink);
+  }
+
+  @media (max-width: 860px) {
+    .lead, .subscribe { grid-template-columns: 1fr; gap: 20px; }
+    .lead-meta { flex-direction: row; gap: 22px; flex-wrap: wrap; }
+    .post { grid-template-columns: 1fr; gap: 8px; }
+    .post-sources span { display: inline; }
+    .post-sources span + span::before { content: " · "; }
+  }
+</style>
+</head>
+<body class="graticule">
+
+<header class="shell">
+  <div class="masthead">
+    <a class="wordmark" href="landing.html">Political<em>Agent</em></a>
+    <nav>
+      <a href="blog.html" aria-current="page">Notes</a>
+      <a href="landing.html#sources">Sources</a>
+      <a href="landing.html#limits">Limits</a>
+      <a href="chat.html">Open the chat</a>
+    </nav>
+  </div>
+</header>
+
+<main class="shell">
+
+  <section class="intro">
+    <h1>Notes on reading the news</h1>
+    <p>
+      How the source list was drawn, what the machine gets wrong, and what
+      happened when we asked it the same question three weeks apart.
+    </p>
+    <div class="topics">
+      <a class="topic" href="#" aria-current="true">All</a>
+      <a class="topic" href="#">Method</a>
+      <a class="topic" href="#">Source policy</a>
+      <a class="topic" href="#">Failure cases</a>
+      <a class="topic" href="#">Release notes</a>
+    </div>
+  </section>
+
+  <article class="lead">
+    <div>
+      <p class="annot">Source policy · 12 min</p>
+      <h2><a href="#">Why the list has Fox News and Mother Jones on it</a></h2>
+      <p>
+        A balanced source list is not a list of outlets everyone agrees with. It
+        is a list where the disagreements are visible inside the answer. We went
+        through every domain, why it is there, and the four we cut after a month
+        of reading what they actually published on the questions people asked.
+      </p>
+      <p>
+        The uncomfortable part: two of the cuts were outlets we personally read.
+      </p>
+    </div>
+    <div class="lead-meta">
+      <p class="label">17 September 2026</p>
+      <p class="label">By the PoliticalAgent team</p>
+      <p class="label">Mentions 28 domains, 4 removed</p>
+    </div>
+  </article>
+
+  <section class="archive">
+
+    <article class="post">
+      <p class="post-date">9 Sep 2026</p>
+      <div>
+        <h3><a href="#">The outline gate, six weeks in</a></h3>
+        <p>
+          Two thirds of report requests get revised at the outline. Here is what
+          people change, and why we capped the revisions at two.
+        </p>
+      </div>
+      <p class="post-sources">
+        <span>Method</span>
+        <span>1,240 report turns</span>
+      </p>
+    </article>
+
+    <article class="post">
+      <p class="post-date">28 Aug 2026</p>
+      <div>
+        <h3><a href="#">When the search comes back empty</a></h3>
+        <p>
+          Ask about something that happened four hours ago and the list has
+          nothing yet. We show you the failure instead of writing around it —
+          the argument for that, and what it costs.
+        </p>
+      </div>
+      <p class="post-sources">
+        <span>Failure cases</span>
+        <span>3 worked examples</span>
+      </p>
+    </article>
+
+    <article class="post">
+      <p class="post-date">14 Aug 2026</p>
+      <div>
+        <h3><a href="#">Paywalls, and the honest version of “up to ten pages”</a></h3>
+        <p>
+          Four of the twenty-eight domains return a stub to an automated reader.
+          What that means for an answer that cites them, and how to tell.
+        </p>
+      </div>
+      <p class="post-sources">
+        <span>Source policy</span>
+        <span>ft.com, wsj.com, nytimes.com, economist.com</span>
+      </p>
+    </article>
+
+    <article class="post">
+      <p class="post-date">30 Jul 2026</p>
+      <div>
+        <h3><a href="#">Asking the same question three weeks apart</a></h3>
+        <p>
+          We re-ran forty questions about the Sahel after the news moved. Twelve
+          answers changed materially. Nine of those changes were the sources, not
+          the model.
+        </p>
+      </div>
+      <p class="post-sources">
+        <span>Method</span>
+        <span>40 questions, 2 runs</span>
+      </p>
+    </article>
+
+    <article class="post">
+      <p class="post-date">21 Jul 2026</p>
+      <div>
+        <h3><a href="#">Threads now have titles, and a sidebar</a></h3>
+        <p>
+          Your past conversations are listed, named after the question that
+          started them, and they survive a sign-out.
+        </p>
+      </div>
+      <p class="post-sources">
+        <span>Release notes</span>
+      </p>
+    </article>
+
+  </section>
+
+  <section class="subscribe">
+    <div>
+      <h2>One note a month, when there is something to report</h2>
+      <p>No digest, no product news you did not ask for. Unsubscribe in one click.</p>
+    </div>
+    <form onsubmit="return false">
+      <label class="label" for="email" style="flex-basis:100%">Email address</label>
+      <input id="email" type="email" placeholder="you@example.org" autocomplete="email">
+      <button class="btn" type="submit">Subscribe</button>
+    </form>
+  </section>
+
+</main>
+
+<footer class="shell">
+  <div class="foot">
+    <p style="margin:0">PoliticalAgent · politicalagent.eu</p>
+    <nav style="display:flex;gap:20px">
+      <a href="landing.html">Home</a>
+      <a href="landing.html#sources">Source policy</a>
+      <a href="chat.html">Chat</a>
+      <a href="/accounts/login/">Sign in</a>
+    </nav>
+  </div>
+</footer>
+
+</body>
+</html>

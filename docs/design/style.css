@@ -1,0 +1,155 @@
+/* PoliticalAgent — design mockups. Shared tokens and primitives.
+   Static only: no build step, no framework, no JS beyond one toggle in chat.html. */
+
+@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Condensed:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&family=Spectral:ital,wght@0,300;0,400;1,300&display=swap");
+
+:root {
+  color-scheme: light;
+
+  --paper: #e9ede9;
+  --paper-lift: #f2f5f1;
+  --ink: #16323f;
+  --ink-soft: #4d6670;
+  --water: #c8dce0;
+  --annot: #a8175e;
+  --sage: #6f8f6b;
+  --rule: #a9b8b5;
+
+  --display: "Spectral", Georgia, serif;
+  --ui: "IBM Plex Sans", system-ui, sans-serif;
+  --label: "IBM Plex Sans Condensed", "IBM Plex Sans", system-ui, sans-serif;
+
+  --s-xs: 12.5px;
+  --s-sm: 14px;
+  --s-base: 17px;
+  --s-md: 21px;
+  --s-lg: 27px;
+  --s-xl: 34px;
+  --s-2xl: 54px;
+  --s-3xl: 76px;
+
+  --shell: 1180px;
+  --gutter: 24px;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font: 400 var(--s-base)/1.6 var(--ui);
+}
+
+/* The graticule: a chart's latitude/longitude hairlines, barely there. */
+.graticule {
+  background-image:
+    linear-gradient(to right, rgba(22, 50, 63, 0.055) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(22, 50, 63, 0.055) 1px, transparent 1px);
+  background-size: 68px 68px;
+  background-position: center top;
+}
+
+.shell {
+  width: min(var(--shell), 100%);
+  margin-inline: auto;
+  padding-inline: var(--gutter);
+}
+
+a { color: inherit; }
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid var(--annot);
+  outline-offset: 3px;
+}
+
+h1, h2, h3 { font-family: var(--display); font-weight: 300; margin: 0; }
+h1 { font-size: clamp(2.1rem, 6.2vw, var(--s-3xl)); line-height: 1.02; letter-spacing: -0.015em; }
+h2 { font-size: clamp(1.6rem, 3.6vw, var(--s-xl)); line-height: 1.12; letter-spacing: -0.01em; }
+h3 { font-size: var(--s-md); line-height: 1.25; }
+
+p { margin: 0 0 1em; max-width: 68ch; }
+
+/* Map-label metadata: condensed, small, never shouted in caps. */
+.label {
+  font: 500 var(--s-xs)/1.35 var(--label);
+  letter-spacing: 0.02em;
+  color: var(--ink-soft);
+}
+
+/* The one recurring device: an annotation leader, as on a chart. */
+.annot {
+  font: 400 var(--s-xs)/1.4 var(--label);
+  color: var(--annot);
+}
+.annot::before {
+  content: "";
+  display: inline-block;
+  width: 18px;
+  border-top: 1px solid var(--annot);
+  vertical-align: 0.32em;
+  margin-right: 7px;
+}
+
+.rule { border: 0; border-top: 1px solid var(--rule); margin: 0; }
+
+/* ── Buttons ── */
+.btn {
+  display: inline-block;
+  font: 500 var(--s-sm)/1 var(--ui);
+  padding: 14px 22px;
+  border: 1px solid var(--ink);
+  border-radius: 2px;
+  background: var(--ink);
+  color: var(--paper-lift);
+  text-decoration: none;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.btn:hover { background: #0f2531; }
+.btn--quiet { background: transparent; color: var(--ink); }
+.btn--quiet:hover { background: rgba(22, 50, 63, 0.07); }
+
+/* ── Masthead, shared by all three surfaces ── */
+.masthead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 20px 0;
+  border-bottom: 1px solid var(--rule);
+  flex-wrap: wrap;
+}
+.wordmark {
+  font: 300 var(--s-md)/1 var(--display);
+  letter-spacing: -0.01em;
+  text-decoration: none;
+}
+.wordmark em { font-style: italic; color: var(--annot); }
+.masthead nav { display: flex; gap: 22px; font-size: var(--s-sm); }
+.masthead nav a { text-decoration: none; color: var(--ink-soft); }
+.masthead nav a:hover { color: var(--ink); text-decoration: underline; }
+.masthead nav a[aria-current="page"] { color: var(--ink); }
+
+/* ── Footer ── */
+.foot {
+  border-top: 1px solid var(--rule);
+  margin-top: 88px;
+  padding: 32px 0 56px;
+  display: flex;
+  gap: 24px;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  font-size: var(--s-sm);
+  color: var(--ink-soft);
+}
+.foot a { text-decoration: none; }
+.foot a:hover { text-decoration: underline; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition: none !important; animation: none !important; }
+}
