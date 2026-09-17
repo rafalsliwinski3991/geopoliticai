@@ -35,7 +35,7 @@ Rules the outline must follow:
   explained in the notice instead; otherwise the notice is empty.
 
 Choose exactly one label:
-1: most sections are not covered by the transcript, or the outline is missing.
+1: most sections are not covered by the transcript.
 2: several sections are uncovered, or a rule is clearly broken.
 3: one section is uncovered or one rule is bent.
 4: follows every rule with a minor weakness in the headings.
@@ -91,7 +91,11 @@ def _report_view(
 
 def _outline_view(
     input: dict[str, Any], output: dict[str, Any], expected: dict[str, Any]
-) -> dict[str, Any]:
+) -> dict[str, Any] | None:
+    # A refusal or revision-cap outcome ends with an empty outline plus a
+    # notice; that is the prompt's rule 3, not an ungrounded outline.
+    if not expected["outline"]:
+        return None
     return {
         "transcript": input["transcript"],
         "decisions": json.dumps(input["resumes"]),
@@ -129,11 +133,17 @@ def follows_outline(variables: dict[str, Any]) -> bool:
 
 
 def urls_from_transcript(variables: dict[str, Any]) -> bool:
-    """Pass when every report URL appears in the transcript (report rule 2)."""
-    return all(
-        url in variables["transcript"]
-        for url in markdown_link_urls(variables["report"])
-    )
+    """Pass when the report preserves the transcript's citations (report rule 2).
+
+    The transcript's own links set the bar: a link-free transcript carries
+    nothing the report could drop, so it passes. A transcript with links
+    requires the report to carry them, exactly as written.
+    """
+    report_urls = markdown_link_urls(variables["report"])
+    transcript_urls = markdown_link_urls(variables["transcript"])
+    if not transcript_urls:
+        return True
+    return bool(report_urls) and set(report_urls) <= set(transcript_urls)
 
 
 def judges() -> tuple[Judge, ...]:

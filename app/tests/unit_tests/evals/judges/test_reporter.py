@@ -6,6 +6,7 @@ from typing import Any
 
 from evals.judges.reporter import (
     _normalize_heading,
+    _outline_view,
     _report_rules_view,
     _report_view,
     follows_outline,
@@ -88,6 +89,28 @@ def test_urls_from_transcript_passes_on_recorded_urls() -> None:
     assert urls_from_transcript(variables)
 
 
+def test_urls_from_transcript_passes_without_links_to_preserve() -> None:
+    # Arrange: a transcript with no links carries nothing the report could drop.
+    variables = {
+        "transcript": "Assistant: no citations here.",
+        "report": "Report without links.",
+    }
+
+    # Act + Assert
+    assert urls_from_transcript(variables)
+
+
+def test_urls_from_transcript_fails_when_every_citation_dropped() -> None:
+    # Arrange
+    variables = {
+        "transcript": "Assistant: see [a](https://news.example/1).",
+        "report": "Report with the citation stripped.",
+    }
+
+    # Act + Assert
+    assert not urls_from_transcript(variables)
+
+
 def test_urls_from_transcript_fails_on_unknown_url() -> None:
     # Arrange
     variables = {
@@ -99,10 +122,29 @@ def test_urls_from_transcript_fails_on_unknown_url() -> None:
     assert not urls_from_transcript(variables)
 
 
+def test_urls_from_transcript_fails_on_truncated_url() -> None:
+    # Arrange: a truncated target must not pass as a substring of the transcript URL.
+    variables = {
+        "transcript": "Assistant: see [a](https://news.example/1/full).",
+        "report": "Report [a](https://news.example/1).",
+    }
+
+    # Act + Assert
+    assert not urls_from_transcript(variables)
+
+
 def test_report_view_returns_none_when_expected_report_empty() -> None:
     # Act + Assert
     assert _report_view({}, {}, {"report": ""}) is None
     assert _report_rules_view({}, {}, {"report": ""}) is None
+
+
+def test_outline_view_returns_none_when_expected_outline_empty() -> None:
+    # Arrange: a refusal or revision-cap outcome ends with an empty outline
+    # and a notice; the grounded-outline judge does not apply to it.
+    # Act + Assert
+    assert _outline_view({}, {}, {"outline": []}) is None
+    assert _outline_view({}, {}, {"outline": [], "notice": "no material"}) is None
 
 
 def test_report_rules_view_builds_variables() -> None:
