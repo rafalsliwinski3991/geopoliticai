@@ -41,7 +41,7 @@ def purge_orphans(orphans: list[str]) -> None:
     cleanup tool, and a half-migrated database is exactly when it is needed.
     """
     with connection.cursor() as cursor:
-        for table in ("checkpoint_writes", "checkpoint_blobs", "checkpoints"):
+        for table in CHECKPOINT_TABLES:
             try:
                 cursor.execute(f"DELETE FROM {table} WHERE thread_id = ANY(%s)", [orphans])
             except ProgrammingError:

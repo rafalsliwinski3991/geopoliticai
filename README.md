@@ -47,8 +47,8 @@ The app declares `psycopg[binary]` directly for the checkpointer; no system
 
 The stream caps emitted answers at 50,000 characters, but `_generate` continues
 draining an over-limit upstream stream before emitting the capped result so the
-checkpoint can complete. Production nginx applies Basic Auth to both `/` and
-`/api/`; `AUTH_REQUIRED=true` fails closed when credentials are missing, while
+checkpoint can complete. Production nginx applies Basic Auth to `/admin/` only; the
+API is guarded by bearer JWTs verified by `auth.py`; `AUTH_REQUIRED=true` fails closed when credentials are missing, while
 the local development configuration remains unauthenticated.
 
 The maintained application lives under `agentic_backend/`. `agentic_backend/README.md` documents setup,
