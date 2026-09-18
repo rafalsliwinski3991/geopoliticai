@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { render, screen, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import DOMPurify from "dompurify";
+import { storeThreadId } from "./useConversation";
 
 // Re-importing the hook module per test resets its module state; the hook's
 // state lives in React, so render a probe component that exposes it.
@@ -225,6 +226,218 @@ describe("streaming token display", () => {
     expect(assistants).toHaveLength(1);
     expect(assistants[0]!.text).toBe("Full answer text.");
     expect(assistants[0]!.kind).toBe("answer");
+  });
+});
+
+describe("turn boundaries", () => {
+  it("an error frame after tokens drops the streaming draft and its status copy is friendly", async () => {
+    stubStreaming([
+      [
+        { type: "token", content: "Partial" },
+        { type: "error", status: 503, message: "raw server text" },
+      ],
+      [
+        { type: "token", content: "Fresh." },
+        { type: "result", output: "Fresh.", kind: "answer", truncated: false },
+      ],
+    ]);
+    const getLatest = await renderHookProbe();
+    await act(async () => {
+      await (getLatest() as { send: (t: string) => Promise<void> }).send("one");
+    });
+    await act(async () => {
+      await (getLatest() as { send: (t: string) => Promise<void> }).send("two");
+    });
+    const { messages } = getLatest() as {
+      messages: { role: string; text: string }[];
+    };
+    const errors = messages.filter((message) => message.role === "error");
+    const assistants = messages.filter((message) => message.role === "assistant");
+    // Known statuses get the translated copy, not the raw message.
+    expect(errors).toHaveLength(1);
+    expect(errors[0]!.text).toBe(
+      "The news search is temporarily unavailable. Please try again in a few minutes.",
+    );
+    // The interrupted turn's partial answer is gone and the next turn's
+    // answer is its own bubble in the right place.
+    expect(assistants).toHaveLength(1);
+    expect(assistants[0]!.text).toBe("Fresh.");
+  });
+
+  it("a dropped connection leaves the flag cleared so the retry starts a fresh bubble", async () => {
+    let calls = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: string) => {
+        if (url === "/accounts/token/") {
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            json: async () => ({ access: "tok", expires_in: 900 }),
+          } as unknown as Response);
+        }
+        calls += 1;
+        if (calls === 1) {
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            body: new ReadableStream({
+              start(controller) {
+                controller.enqueue(
+                  new TextEncoder().encode(
+                    `data: ${JSON.stringify({ type: "token", content: "Partial" })}\n\n`,
+                  ),
+                );
+                controller.error(new Error("dropped"));
+              },
+            }),
+          } as unknown as Response);
+        }
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          body: new ReadableStream({
+            start(controller) {
+              controller.enqueue(
+                new TextEncoder().encode(
+                  `data: ${JSON.stringify({ type: "token", content: "Fresh." })}\n\ndata: ${JSON.stringify({ type: "result", output: "Fresh.", kind: "answer", truncated: false })}\n\n`,
+                ),
+              );
+              controller.close();
+            },
+          }),
+        } as unknown as Response);
+      }),
+    );
+    const getLatest = await renderHookProbe();
+    await act(async () => {
+      await (getLatest() as { send: (t: string) => Promise<void> }).send("one");
+    });
+    await act(async () => {
+      await (getLatest() as { send: (t: string) => Promise<void> }).send("retry");
+    });
+    const { messages } = getLatest() as {
+      messages: { role: string; text: string }[];
+    };
+    const errors = messages.filter((message) => message.role === "error");
+    const assistants = messages.filter((message) => message.role === "assistant");
+    expect(errors).toHaveLength(1);
+    expect(errors[0]!.text).toContain("Connection error");
+    expect(assistants).toHaveLength(1);
+    expect(assistants[0]!.text).toBe("Fresh.");
+  });
+
+  it("progress resets at the start of each turn", async () => {
+    stubStreaming([
+      [
+        { type: "progress", node: "a", label: "Turn one step" },
+        { type: "result", output: "A", kind: "answer", truncated: false },
+      ],
+      [
+        { type: "progress", node: "b", label: "Turn two step" },
+        { type: "result", output: "B", kind: "answer", truncated: false },
+      ],
+    ]);
+    const getLatest = await renderHookProbe();
+    await act(async () => {
+      await (getLatest() as { send: (t: string) => Promise<void> }).send("one");
+    });
+    await act(async () => {
+      await (getLatest() as { send: (t: string) => Promise<void> }).send("two");
+    });
+    const { progress } = getLatest() as { progress: { node: string; label: string }[] };
+    expect(progress).toEqual([{ node: "b", label: "Turn two step" }]);
+  });
+
+  it("a 429 error frame keeps the backend's own message", async () => {
+    stubStreaming([
+      [{ type: "error", status: 429, message: "Daily limit of 20 research turns reached." }],
+    ]);
+    const getLatest = await renderHookProbe();
+    await act(async () => {
+      await (getLatest() as { send: (t: string) => Promise<void> }).send("one");
+    });
+    const { messages } = getLatest() as {
+      messages: { role: string; text: string }[];
+    };
+    expect(messages.at(-1)).toEqual({
+      role: "error",
+      text: "Daily limit of 20 research turns reached.",
+    });
+  });
+
+  it("falls back to one in-memory thread id when localStorage is unavailable", async () => {
+    vi.stubGlobal("localStorage", {
+      getItem: () => {
+        throw new DOMException("denied", "SecurityError");
+      },
+      setItem: () => {
+        throw new DOMException("denied", "SecurityError");
+      },
+    });
+    const postedBodies: unknown[] = [];
+    stubStreaming(
+      [
+        [{ type: "result", output: "A", kind: "answer", truncated: false }],
+        [{ type: "result", output: "B", kind: "answer", truncated: false }],
+      ],
+      postedBodies,
+    );
+    const getLatest = await renderHookProbe();
+    await act(async () => {
+      await (getLatest() as { send: (t: string) => Promise<void> }).send("one");
+    });
+    await act(async () => {
+      await (getLatest() as { send: (t: string) => Promise<void> }).send("two");
+    });
+    vi.unstubAllGlobals();
+    const bodies = postedBodies as { thread_id?: string }[];
+    expect(bodies[0]!.thread_id).toBeTruthy();
+    expect(bodies[1]!.thread_id).toBe(bodies[0]!.thread_id);
+  });
+
+  it("storeThreadId switches the conversation key for the next turn", async () => {
+    localStorage.removeItem("politicalagent.thread_id");
+    const postedBodies: unknown[] = [];
+    stubStreaming(
+      [
+        [{ type: "result", output: "A", kind: "answer", truncated: false }],
+        [{ type: "result", output: "B", kind: "answer", truncated: false }],
+      ],
+      postedBodies,
+    );
+    const getLatest = await renderHookProbe();
+    await act(async () => {
+      await (getLatest() as { send: (t: string) => Promise<void> }).send("one");
+    });
+    await act(async () => {
+      storeThreadId("t-brand-new");
+    });
+    await act(async () => {
+      await (getLatest() as { send: (t: string) => Promise<void> }).send("two");
+    });
+    const bodies = postedBodies as { thread_id?: string }[];
+    expect(bodies[1]!.thread_id).toBe("t-brand-new");
+  });
+
+  it("reset clears the conversation state", async () => {
+    stubStreaming([[{ type: "pause", outline: ["One"], notice: "" }]]);
+    const getLatest = await renderHookProbe();
+    await act(async () => {
+      await (getLatest() as { send: (t: string) => Promise<void> }).send("one");
+    });
+    expect((getLatest() as { paused: boolean }).paused).toBe(true);
+    await act(async () => {
+      (getLatest() as { reset: () => void }).reset();
+    });
+    const state = getLatest() as {
+      messages: unknown[];
+      paused: boolean;
+      progress: unknown[];
+    };
+    expect(state.messages).toEqual([]);
+    expect(state.paused).toBe(false);
+    expect(state.progress).toEqual([]);
   });
 });
 

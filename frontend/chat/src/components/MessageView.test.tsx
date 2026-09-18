@@ -1,6 +1,6 @@
-import { describe, expect, it } from "vitest";
-import { render, screen } from "@testing-library/react";
-import { MessageView, TRUNCATED_NOTE, reportFileName } from "./MessageView";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { render, screen, act, cleanup, fireEvent } from "@testing-library/react";
+import { MessageView, OutlineCard, TRUNCATED_NOTE, reportFileName } from "./MessageView";
 import { renderMarkdown, ALLOWED_URI_REGEXP } from "../lib/markdown";
 
 describe("report actions", () => {
@@ -32,6 +32,14 @@ describe("markdown sanitization (was security.test.mjs)", () => {
     const html = renderMarkdown("[x](https://reuters.com)");
     expect(html).toContain("https://reuters.com");
   });
+
+  it("escapes the quote in a link title instead of closing the attribute", () => {
+    const html = renderMarkdown('[x](https://a "a\\" onmouseover=\\"alert(1) x=\\"")');
+    // The injected quote became an entity inside the title value, so the
+    // anchor survives with one attribute and no handler of its own.
+    expect(html).toContain('title="a&quot; onmouseover=&quot;alert(1) x=&quot;"');
+    expect(html).not.toContain('onmouseover="alert');
+  });
 });
 
 describe("product copy rules (was ux.test.mjs)", () => {
@@ -61,5 +69,61 @@ describe("message rendering", () => {
     // The markup is shown literally; no element was created from it.
     expect(document.querySelector("img")).toBeNull();
     screen.getByText('<img src=x onerror="alert(1)">');
+  });
+});
+
+describe("report actions", () => {
+  afterEach(() => {
+    cleanup();
+    vi.useRealTimers();
+  });
+
+  const report = {
+    role: "assistant",
+    text: "Report body.",
+    kind: "report",
+    truncated: false,
+  } as const;
+
+  it("appends the download anchor to the document and defers the revoke", async () => {
+    const revoke = vi.fn();
+    vi.stubGlobal("URL", { ...URL, createObjectURL: () => "blob:x", revokeObjectURL: revoke });
+    render(<MessageView message={report} />);
+    fireEvent.click(screen.getByRole("button", { name: "Download .md" }));
+    // The anchor was added for the click and is gone again.
+    expect(document.querySelector("a[download]")).toBeNull();
+    // Revoking in the same tick races the download; it must be deferred.
+    expect(revoke).not.toHaveBeenCalled();
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(revoke).toHaveBeenCalledWith("blob:x");
+    vi.unstubAllGlobals();
+  });
+
+  it("resets the Copied label after two seconds", async () => {
+    vi.useFakeTimers();
+    const write = vi.fn(() => Promise.resolve());
+    vi.stubGlobal("navigator", { ...navigator, clipboard: { writeText: write } });
+    render(<MessageView message={report} />);
+    fireEvent.click(screen.getByRole("button", { name: "Copy" }));
+    await act(async () => {});
+    expect(screen.getByRole("button", { name: "Copied" })).toBeTruthy();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000);
+    });
+    expect(screen.getByRole("button", { name: "Copy" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Copied" })).toBeNull();
+  });
+
+  it("renders duplicate outline sections with unique keys", () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    render(<OutlineCard outline={["Same", "Same"]} />);
+    const items = screen.getAllByRole("listitem");
+    expect(items).toHaveLength(2);
+    expect(items.map((item) => item.textContent)).toEqual(["Same", "Same"]);
+    // React logs "Duplicate keys" through console.error.
+    expect(errorSpy).not.toHaveBeenCalled();
+    errorSpy.mockRestore();
   });
 });

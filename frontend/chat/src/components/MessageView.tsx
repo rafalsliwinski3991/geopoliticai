@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Message } from "../hooks/useConversation";
 import { renderMarkdown } from "../lib/markdown";
 
@@ -12,6 +12,8 @@ export function reportFileName(truncated: boolean): string {
 export const TRUNCATED_NOTE =
   "[This report was truncated at 50,000 characters.]";
 
+const COPY_RESET_MS = 2000;
+
 function downloadReport(message: Message & { role: "assistant" }) {
   const body = message.truncated ? `${message.text}\n\n${TRUNCATED_NOTE}` : message.text;
   const blob = new Blob([body], { type: "text/markdown" });
@@ -19,8 +21,12 @@ function downloadReport(message: Message & { role: "assistant" }) {
   const link = document.createElement("a");
   link.href = url;
   link.download = reportFileName(message.truncated);
+  // Firefox ignores a programmatic click on an element outside the document,
+  // and revoking the object URL in the same tick races the download.
+  document.body.append(link);
   link.click();
-  URL.revokeObjectURL(url);
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 0);
 }
 
 async function copyReport(text: string) {
@@ -29,6 +35,14 @@ async function copyReport(text: string) {
 
 export function MessageView({ message }: { message: Message }) {
   const [copied, setCopied] = useState(false);
+
+  // The label is feedback about one click, not a second state: without the
+  // reset a later re-copy gives no visible confirmation.
+  useEffect(() => {
+    if (!copied) return;
+    const timer = setTimeout(() => setCopied(false), COPY_RESET_MS);
+    return () => clearTimeout(timer);
+  }, [copied]);
 
   if (message.role === "user") {
     return <p className="message user">{message.text}</p>;
@@ -80,8 +94,8 @@ export function OutlineCard({
       <h2>Proposed report outline</h2>
       {notice ? <p>{notice}</p> : null}
       <ol>
-        {outline.map((section) => (
-          <li key={section}>{section}</li>
+        {outline.map((section, index) => (
+          <li key={index}>{section}</li>
         ))}
       </ol>
       <p>Reply to approve, change, or cancel — or just ask something else.</p>
