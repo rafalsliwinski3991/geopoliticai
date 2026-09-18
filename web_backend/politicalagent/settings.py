@@ -32,6 +32,9 @@ INSTALLED_APPS = [
     "allauth",
     "allauth.account",
     "users",
+    # The public server-rendered pages (`/` and, in unit 12, the blog). No
+    # models and no signals: the template layer only.
+    "pages.apps.PagesConfig",
     # NOT the bare "chat": `ChatConfig.ready()` is what imports `signals.py`,
     # and without that import the `pre_delete` receiver is never connected —
     # deleting a user would silently leave every one of their messages in the
