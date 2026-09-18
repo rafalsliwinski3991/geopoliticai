@@ -75,7 +75,10 @@ Django's `migrate` and the checkpointer's `setup()` touch disjoint tables, but
 the checkpointer uses `CREATE INDEX CONCURRENTLY`, which cannot run inside a
 transaction — so the order is explicit and not incidental:
 
-1. `docker compose run --rm web-backend python manage.py migrate`
+1. `docker compose run --rm web-backend python manage.py migrate`, then
+   `docker compose run --rm web-backend python manage.py createcachetable` —
+   the `DatabaseCache` table allauth's rate limiter reads on the first login
+   (the root `make migrate` target runs both)
 2. start `agentic-backend` (its lifespan runs `checkpointer.setup()`)
 3. start `frontend`
 

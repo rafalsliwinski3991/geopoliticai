@@ -3,7 +3,8 @@
 `Quota.user` is a foreign key to `users_user`, so the sentinel user id that
 `agentic_backend`'s site-wide ceiling spends against must exist. 0 is chosen
 because Django's BigAutoField sequences start at 1: no real signup can ever
-collide with it. Nothing may ever delete this row — it is not a person.
+collide with it. Nothing may ever delete this row — it is not a person — and
+`is_active` is FALSE so it can never authenticate or start a password reset.
 """
 
 from django.db import connection
@@ -24,7 +25,7 @@ def insert_sentinel(apps, schema_editor) -> None:
             )
             VALUES (
                 %s, '!sentinel-site-wide-quota-not-a-real-hash', FALSE, FALSE,
-                TRUE, NOW(), %s, '', ''
+                FALSE, NOW(), %s, '', ''
             )
             ON CONFLICT (id) DO NOTHING
             """,

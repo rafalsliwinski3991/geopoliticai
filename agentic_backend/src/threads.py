@@ -9,11 +9,7 @@ it safe.
 from __future__ import annotations
 
 from dataclasses import dataclass
-<<<<<<< HEAD
 from datetime import date, datetime, timezone
-=======
-from datetime import date, datetime, timezone
->>>>>>> 61952b7 (Fix the site-wide quota sentinel, the UTC quota day, and the counted-turn tests)
 from typing import Any
 
 from psycopg import AsyncConnection

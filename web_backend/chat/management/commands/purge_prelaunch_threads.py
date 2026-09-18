@@ -11,7 +11,6 @@ only *automatic* claiming was the vulnerability.
 
 from django.core.management.base import BaseCommand
 from django.db import connection
-from django.db.utils import ProgrammingError
 
 # Child rows first, for readability rather than integrity — there are no
 # foreign keys between them.
@@ -24,28 +23,41 @@ WHERE thread_id NOT IN (SELECT id FROM chat_threads)
 """
 
 
+def _table_exists(cursor, table: str) -> bool:
+    """Report whether `table` exists, via to_regclass.
+
+    An existence read is what tolerates a partial schema; catching
+    ProgrammingError instead would also swallow privilege failures and, inside
+    `transaction.atomic`, the aborted-transaction state a failed statement
+    leaves behind.
+    """
+    cursor.execute("SELECT to_regclass(%s) IS NOT NULL", (table,))
+    return bool(cursor.fetchone()[0])
+
+
 def orphan_thread_ids() -> list[str] | None:
     """Return orphaned thread ids, or None when the checkpointer tables are missing."""
-    try:
-        with connection.cursor() as cursor:
-            cursor.execute(ORPHAN_IDS_SQL)
-            return [row[0] for row in cursor.fetchall()]
-    except ProgrammingError:
-        return None
+    with connection.cursor() as cursor:
+        if not (
+            _table_exists(cursor, "checkpoints") and _table_exists(cursor, "chat_threads")
+        ):
+            return None
+        cursor.execute(ORPHAN_IDS_SQL)
+        return [row[0] for row in cursor.fetchall()]
 
 
 def purge_orphans(orphans: list[str]) -> None:
     """Delete the checkpointer rows belonging to the orphaned threads.
 
-    Missing sibling tables (a partial schema) are tolerated: the command is a
-    cleanup tool, and a half-migrated database is exactly when it is needed.
+    Missing sibling tables (a partial schema) are skipped; any other database
+    failure propagates, because the command must never report a purge that did
+    not execute.
     """
     with connection.cursor() as cursor:
         for table in CHECKPOINT_TABLES:
-            try:
-                cursor.execute(f"DELETE FROM {table} WHERE thread_id = ANY(%s)", [orphans])
-            except ProgrammingError:
+            if not _table_exists(cursor, table):
                 continue
+            cursor.execute(f"DELETE FROM {table} WHERE thread_id = ANY(%s)", [orphans])
 
 
 class Command(BaseCommand):
@@ -54,6 +66,11 @@ class Command(BaseCommand):
     help = __doc__
 
     def add_arguments(self, parser) -> None:
+        parser.add_argument(
+            "--dry-run",
+            action="store_true",
+            help="Report what would be deleted without writing (the default).",
+        )
         parser.add_argument(
             "--apply",
             action="store_true",
