@@ -242,6 +242,34 @@ def test_deleting_a_user_cascades_into_the_checkpointer_tables(
             assert cast(Any, cursor.fetchone())["n"] == 0, table
 
 
+def test_the_site_wide_sentinel_can_be_incremented(
+    conn: Connection[dict[str, Any]],
+) -> None:
+    """The reserved sentinel row makes user_id 0 a valid quota spender.
+
+    A missing sentinel row would turn every research turn into a mid-stream
+    500: the per-user increment succeeds first, then the site-wide insert hits
+    the `quota.user_id` foreign key.
+    """
+    with conn.cursor() as cursor:
+        cursor.execute(
+            threads.INCREMENT_QUOTA,
+            {"user_id": 0, "day": date.today(), "limit": 10**9},
+        )
+        spent = cast(Any, cursor.fetchone())
+    assert spent is not None and spent["used"] >= 1
+    with conn.cursor() as cursor:
+        cursor.execute(
+            "DELETE FROM quota WHERE user_id = 0 AND used IS NOT NULL AND used > 0 AND day = %s",
+            (date.today(),),
+        )
+        cursor.execute(
+            "SELECT COUNT(*) AS n FROM quota WHERE user_id = 0 AND day = %s",
+            (date.today(),),
+        )
+        assert cursor.fetchone() is not None
+
+
 def test_orphan_query_reports_a_checkpointed_id_and_purges_cleanly(
     conn: Connection[dict[str, Any]], checkpointer: PostgresSaver
 ) -> None:

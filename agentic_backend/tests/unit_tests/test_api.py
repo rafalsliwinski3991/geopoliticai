@@ -1471,3 +1471,88 @@ async def test_get_threads_reports_the_quota_block(
         "threads": [],
         "quota": {"used": 3, "limit": DAILY_RESEARCH_TURNS},
     }
+
+
+@pytest.mark.anyio
+async def test_a_client_that_disconnects_mid_stream_is_still_counted(
+    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The count lands at the classify frame, before any token is spent.
+
+    Counting on the `expert` or `reporter` frame passes every other test here
+    and still leaves the quota bypassable by hanging up once tokens start:
+    abort the fetch mid-answer and the turn was free. This test pins the
+    counting to the earliest frame.
+    """
+    increments: list[int] = []
+
+    async def increment(pool: Any, *, user_id: int, limit: int) -> int | None:
+        increments.append(user_id)
+        return 1
+
+    monkeypatch.setattr(api, "increment_quota", increment)
+
+    async def stream(
+        graph_input: Any, thread_id: str
+    ) -> AsyncIterator[tuple[str, Any]]:
+        yield ("counted", None)
+        yield ("token", "partial answer")
+        # (in production the run continues long past the first token)
+
+    with patch("api._astream_answer", stream):
+        async with client.stream(
+            "POST", "/api/run_pipeline/stream", json={"query": "x", "thread_id": "t-1"}
+        ) as response:
+            # Read only until tokens reach the browser, then hang up: the
+            # result never arrives, and the turn is still paid for.
+            async for line in response.aiter_lines():
+                if line.startswith("data: ") and '"token"' in line:
+                    break
+    # Assert
+    assert [user_id for user_id in increments if user_id] == [1]
+
+
+@pytest.mark.anyio
+async def test_a_resume_run_counts_nothing_new(
+    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """One report is one count, taken when it was requested: classify does not
+    re-run on a resume, so approving a pending outline is free."""
+    increments: list[int] = []
+
+    async def increment(pool: Any, *, user_id: int, limit: int) -> int | None:
+        increments.append(user_id)
+        return 1
+
+    monkeypatch.setattr(api, "increment_quota", increment)
+
+    async def pending(thread_id: str) -> dict[str, Any] | None:
+        return {
+            "outline": ["Section one"],
+            "notice": "",
+            "revisions_used": 0,
+            "revisions_allowed": 3,
+        }
+
+    async def intent(text: str, pause: dict[str, Any]) -> ResumeIntent:
+        return ResumeIntent(action="approve", instruction="")
+
+    monkeypatch.setattr(api, "_pending_pause", pending)
+    monkeypatch.setattr(api, "classify_resume_intent", intent)
+
+    async def stream(
+        graph_input: Any, thread_id: str
+    ) -> AsyncIterator[tuple[str, Any]]:
+        # A resumed report run: the reporter continues from the interrupt; no
+        # `classify` update frame ever arrives in this run.
+        yield ("pause", {"outline": ["Section one"]})
+        yield ("token", "The report.")
+
+    with patch("api._astream_answer", stream):
+        response = await client.post(
+            "/api/run_pipeline/stream", json={"resume": "go ahead", "thread_id": "t-1"}
+        )
+    # Assert
+    assert response.status_code == 200
+    assert _events(response.text)[-1]["type"] == "result"
+    assert increments == []

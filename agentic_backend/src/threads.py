@@ -9,7 +9,11 @@ it safe.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date, datetime
+<<<<<<< HEAD
+from datetime import date, datetime, timezone
+=======
+from datetime import date, datetime, timezone
+>>>>>>> 61952b7 (Fix the site-wide quota sentinel, the UTC quota day, and the counted-turn tests)
 from typing import Any
 
 from psycopg import AsyncConnection
@@ -170,4 +174,4 @@ async def increment_quota(
 
 def _today() -> date:
     """Return the quota day, in UTC: the quota resets at midnight UTC."""
-    return date.today()
+    return datetime.now(timezone.utc).date()
