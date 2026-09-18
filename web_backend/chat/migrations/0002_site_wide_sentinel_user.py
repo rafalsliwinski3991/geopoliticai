@@ -33,11 +33,14 @@ def insert_sentinel(apps, schema_editor) -> None:
 
 
 def remove_sentinel(apps, schema_editor) -> None:
-    """Reverse migration only; the sentinel is never deleted in production."""
+    """Reverse migration only; the sentinel is never deleted in production.
+
+    Django emulates FK cascades in the ORM, and this runs raw SQL, so the
+    sentinel's quota rows go first.
+    """
     with connection.cursor() as cursor:
-        cursor.execute(
-            "DELETE FROM users_user WHERE id = %s", (SENTINEL_USER_ID,)
-        )
+        cursor.execute("DELETE FROM quota WHERE user_id = %s", (SENTINEL_USER_ID,))
+        cursor.execute("DELETE FROM users_user WHERE id = %s", (SENTINEL_USER_ID,))
 
 
 class Migration(migrations.Migration):

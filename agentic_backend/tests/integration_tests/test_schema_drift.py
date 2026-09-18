@@ -249,25 +249,43 @@ def test_the_site_wide_sentinel_can_be_incremented(
 
     A missing sentinel row would turn every research turn into a mid-stream
     500: the per-user increment succeeds first, then the site-wide insert hits
-    the `quota.user_id` foreign key.
+    the `quota.user_id` foreign key. The counter's prior value is restored, so
+    the test never resets a shared database's site-wide ceiling.
     """
+    day = date.today()
     with conn.cursor() as cursor:
-        cursor.execute(
-            threads.INCREMENT_QUOTA,
-            {"user_id": 0, "day": date.today(), "limit": 10**9},
-        )
-        spent = cast(Any, cursor.fetchone())
-    assert spent is not None and spent["used"] >= 1
-    with conn.cursor() as cursor:
-        cursor.execute(
-            "DELETE FROM quota WHERE user_id = 0 AND used IS NOT NULL AND used > 0 AND day = %s",
-            (date.today(),),
-        )
-        cursor.execute(
-            "SELECT COUNT(*) AS n FROM quota WHERE user_id = 0 AND day = %s",
-            (date.today(),),
-        )
-        assert cursor.fetchone() is not None
+        cursor.execute("SELECT used FROM quota WHERE user_id = 0 AND day = %s", (day,))
+        prior = cast(Any, cursor.fetchone())
+    prior_used = prior["used"] if prior else None
+    try:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                threads.INCREMENT_QUOTA,
+                {"user_id": 0, "day": day, "limit": 10**9},
+            )
+            spent = cast(Any, cursor.fetchone())
+        assert spent is not None and spent["used"] >= 1
+    finally:
+        with conn.cursor() as cursor:
+            if prior_used is None:
+                cursor.execute(
+                    "DELETE FROM quota WHERE user_id = 0 AND day = %s", (day,)
+                )
+            else:
+                cursor.execute(
+                    "UPDATE quota SET used = %s WHERE user_id = 0 AND day = %s",
+                    (prior_used, day),
+                )
+        with conn.cursor() as cursor:
+            cursor.execute(
+                "SELECT used FROM quota WHERE user_id = 0 AND day = %s", (day,)
+            )
+            restored = cast(Any, cursor.fetchone())
+        if prior_used is None:
+            # The counter did not exist today; the test leaves it that way.
+            assert restored is None
+        else:
+            assert restored is not None and restored["used"] == prior_used
 
 
 def test_orphan_query_reports_a_checkpointed_id_and_purges_cleanly(
