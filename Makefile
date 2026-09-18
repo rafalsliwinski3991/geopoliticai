@@ -42,6 +42,7 @@ config:
 DJANGO_HOST_ENV = set -a && . ./.env && set +a; \
 	POSTGRES_DB=geopoliticai POSTGRES_USER=geopoliticai \
 	POSTGRES_HOST=127.0.0.1 POSTGRES_PORT=$(POSTGRES_PORT) \
+	JWT_SIGNING_KEY=$${JWT_SIGNING_KEY:-django-host-dev-only-secret} \
 	DJANGO_SECRET_KEY=$${DJANGO_SECRET_KEY:-django-host-dev-only-secret}
 
 migrate:
