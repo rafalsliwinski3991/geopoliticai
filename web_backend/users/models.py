@@ -31,6 +31,10 @@ class UserManager(BaseUserManager):
     def create_superuser(self, email: str, password: str | None = None, **extra):
         extra.setdefault("is_staff", True)
         extra.setdefault("is_superuser", True)
+        if not extra["is_staff"]:
+            raise ValueError("Superuser must have is_staff=True.")
+        if not extra["is_superuser"]:
+            raise ValueError("Superuser must have is_superuser=True.")
         return self._create(email, password, **extra)
 
 
