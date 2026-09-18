@@ -1,6 +1,9 @@
+from pathlib import Path
+
 import pytest
 
 from config import (
+    _REPO_ROOT_ENV,
     DEFAULT_LLM_SETTINGS,
     LLMSettings,
     get_arize_platform,
@@ -60,3 +63,12 @@ def test_llm_settings_is_overridable_per_call_site() -> None:
     assert overridden.timeout_seconds == 30.0
     assert overridden.max_output_tokens == 1024
     assert DEFAULT_LLM_SETTINGS.model == "gpt-4o-mini"
+
+
+def test_repo_root_env_resolves_to_the_repo_root() -> None:
+    """The rename moved the directory, not its depth: .env stays at the repo root.
+
+    A rename that changes the nesting depth of `src/config.py` would otherwise
+    break every entrypoint's environment loading silently.
+    """
+    assert _REPO_ROOT_ENV == Path(__file__).resolve().parents[3] / ".env"

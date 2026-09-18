@@ -6,22 +6,22 @@ configuration) do not require updating it.
 
 ## Application
 
-`app/` is the maintained application; root Docker and requirements files are
-compatibility files. `app/src/` is the Python import root. Shared modules are
+`agentic_backend/` is the maintained application; root Docker and requirements files are
+compatibility files. `agentic_backend/src/` is the Python import root. Shared modules are
 `config.py`, `models.py`, `search.py`, `llm.py`, `tracing.py`, and `api.py`;
 they never import agents except `api.py`, the delivery layer, which imports
 the compiled orchestrator graph and the reporter's resume classifier. There is
 no `database.py` or `prompt_logs` path;
 Postgres is only the LangGraph checkpointer and uses `psycopg[binary]`.
 
-Agents live in `app/src/agents/<name>/` with graph, state, config, prompts,
+Agents live in `agentic_backend/src/agents/<name>/` with graph, state, config, prompts,
 `consts/`, and node modules. Put fixed editorial data in `consts/`, prompts in
 the agent's `prompts.py`, and hardcoded tuning in dataclass config. Keep all
 module-level constants together at the beginning of each Python file, immediately
 after imports and before functions or classes. Nodes return
 partial state dictionaries without mutation. Preserve shared-to-agent imports.
 
-Unit tests mirror `app/src/`: test `src/<path>/<name>.py` in
+Unit tests mirror `agentic_backend/src/`: test `src/<path>/<name>.py` in
 `tests/unit_tests/<path>/test_<name>.py`, and give every test
 subdirectory an empty `__init__.py`. Frontend unit tests live in
 `frontend/tests/` as `.mjs` files using the Node built-in test runner
@@ -68,14 +68,14 @@ thread.
 There is one root `.env`; never modify it or commit secrets. It supplies API,
 tests, Studio, and Compose. API startup requires `OPENAI_API_KEY`,
 `BRAVE_SEARCH_KEY`, and `DATABASE_URL`; tracing is optional, idempotent, and
-unredacted when enabled. Compose has Postgres, backend, frontend, and Phoenix;
+unredacted when enabled. Compose has Postgres, agentic-backend, frontend, and Phoenix;
 development ports are 8082, 3001, 55432, and loopback 6006. Production uses TLS
 and fail-closed Basic Auth for `/` and `/api/`.
 
-Run application commands from `app/`: `uv sync --locked --dev`, `make test`,
+Run application commands from `agentic_backend/`: `uv sync --locked --dev`, `make test`,
 `make lint`, `make format`, and `langgraph dev`.
 From the root, use `make logs-SERVICE` and `make services`. Manual quality work
-is `app/evals/`: one script per eval, run from `app/` as
+is `agentic_backend/evals/`: one script per eval, run from `agentic_backend/` as
 `uv run python -m evals.<name>`, with judges in `evals/judges/`, shared
 AX/Phoenix code in `evals/helpers/`, and `{name, input, output}` examples in
 `evals/datasets/`. Evals never call Brave; expert and e2e examples carry

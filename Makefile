@@ -32,11 +32,11 @@ config:
 
 help:
 	@printf '%s\n' \
-		'up        Build and start frontend, backend, and PostgreSQL' \
+		'up        Build and start frontend, agentic-backend, and PostgreSQL' \
 		'down      Stop and remove the application containers' \
 		'restart   Restart the application containers' \
 		'logs      Follow application logs' \
-		'logs-SERVICE Follow logs for one service (frontend, backend, postgres, phoenix)' \
+		'logs-SERVICE Follow logs for one service (frontend, agentic-backend, postgres, phoenix)' \
 		'services  List all Compose services' \
 		'ps        Show container status' \
 		'config    Render the effective Compose configuration' \

@@ -13,8 +13,8 @@ services:
       timeout: 5s
       retries: 12
 
-  backend:
-    build: ./app
+  agentic-backend:
+    build: ./agentic_backend
     env_file: .env
     environment:
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
@@ -34,7 +34,7 @@ services:
   frontend:
     build: ./frontend
     depends_on:
-      backend:
+      agentic-backend:
         condition: service_started
 
   phoenix:

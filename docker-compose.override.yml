@@ -5,9 +5,9 @@ services:
     ports:
       - "${FRONTEND_PORT:-8082}:80"
 
-  backend:
+  agentic-backend:
     volumes:
-      - ./app/src:/app/src
+      - ./agentic_backend/src:/app/src
       - ./frontend/index.html:/app/frontend/index.html:ro
       - ./frontend/assets:/app/frontend/assets:ro
     ports:
