@@ -6,13 +6,22 @@ configuration) do not require updating it.
 
 ## Application
 
-`agentic_backend/` is the maintained application; root Docker and requirements files are
+`agentic_backend/` is the maintained FastAPI application and `web_backend/` is the maintained
+Django identity service; root Docker and requirements files are
 compatibility files. `agentic_backend/src/` is the Python import root. Shared modules are
 `config.py`, `models.py`, `search.py`, `llm.py`, `tracing.py`, and `api.py`;
 they never import agents except `api.py`, the delivery layer, which imports
 the compiled orchestrator graph and the reporter's resume classifier. There is
 no `database.py` or `prompt_logs` path;
 Postgres is only the LangGraph checkpointer and uses `psycopg[binary]`.
+
+`web_backend/` is a second Python service (its own `pyproject.toml`, `uv.lock`, `Dockerfile`,
+and `manage.py`) that owns accounts, admin, and the `chat_threads`/`quota` tables. The two
+services never import each other and share only the database and the root `.env`. Run its tests
+from the root with `make test-web-backend` (they need the dev Postgres) and its migrations with
+`make migrate`; its apps live under `web_backend/<app>/` with the settings module at
+`web_backend/politicalagent/settings.py`. Django owns every application table;
+`agentic_backend/` reads them only through `web_backend`-migrated schema.
 
 Agents live in `agentic_backend/src/agents/<name>/` with graph, state, config, prompts,
 `consts/`, and node modules. Put fixed editorial data in `consts/`, prompts in

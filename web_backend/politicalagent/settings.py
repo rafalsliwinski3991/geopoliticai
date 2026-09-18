@@ -1,0 +1,152 @@
+"""Django settings for the PoliticalAgent public site and identity service."""
+
+import os
+from pathlib import Path
+
+from dotenv import load_dotenv
+
+BASE_DIR = Path(__file__).resolve().parent.parent
+# One repo-root .env, exactly as `agentic_backend/src/config.py` resolves it. Django does
+# not read a .env on its own, so this must actually be loaded, not merely
+# named: under Compose the values arrive through `env_file` and this is a
+# no-op, but `manage.py migrate` run from a shell has nothing else.
+REPO_ROOT_ENV = BASE_DIR.parent / ".env"
+load_dotenv(REPO_ROOT_ENV)
+
+SECRET_KEY = os.environ["DJANGO_SECRET_KEY"]
+DEBUG = os.getenv("DJANGO_DEBUG", "false").lower() == "true"
+ALLOWED_HOSTS = [h for h in os.getenv("DJANGO_ALLOWED_HOSTS", "").split(",") if h]
+CSRF_TRUSTED_ORIGINS = [
+    o for o in os.getenv("DJANGO_CSRF_TRUSTED_ORIGINS", "").split(",") if o
+]
+
+INSTALLED_APPS = [
+    "django.contrib.admin",
+    "django.contrib.auth",
+    "django.contrib.contenttypes",
+    "django.contrib.sessions",
+    "django.contrib.messages",
+    "django.contrib.staticfiles",
+    "django.contrib.sites",
+    "allauth",
+    "allauth.account",
+    "users",
+    # NOT the bare "chat": `ChatConfig.ready()` is what imports `signals.py`,
+    # and without that import the `pre_delete` receiver is never connected —
+    # deleting a user would silently leave every one of their messages in the
+    # checkpointer tables. A dead GDPR path that raises nothing and logs
+    # nothing. Added with the chat app itself.
+]
+
+MIDDLEWARE = [
+    "django.middleware.security.SecurityMiddleware",
+    "whitenoise.middleware.WhiteNoiseMiddleware",
+    "django.contrib.sessions.middleware.SessionMiddleware",
+    "django.middleware.common.CommonMiddleware",
+    "django.middleware.csrf.CsrfViewMiddleware",
+    "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "django.contrib.messages.middleware.MessageMiddleware",
+    "django.middleware.clickjacking.XFrameOptionsMiddleware",
+    "allauth.account.middleware.AccountMiddleware",
+]
+
+ROOT_URLCONF = "politicalagent.urls"
+WSGI_APPLICATION = "politicalagent.wsgi.application"
+
+TEMPLATES = [
+    {
+        "BACKEND": "django.template.backends.django.DjangoTemplates",
+        # Listed before APP_DIRS so `templates/account/*.html` overrides
+        # allauth's own copies (allauth docs, common/templates.html).
+        "DIRS": [BASE_DIR / "templates"],
+        "APP_DIRS": True,
+        "OPTIONS": {
+            "context_processors": [
+                "django.template.context_processors.debug",
+                "django.template.context_processors.request",
+                "django.contrib.auth.context_processors.auth",
+                "django.contrib.messages.context_processors.messages",
+            ],
+        },
+    },
+]
+
+DATABASES = {
+    "default": {
+        "ENGINE": "django.db.backends.postgresql",
+        "NAME": os.environ["POSTGRES_DB"],
+        "USER": os.environ["POSTGRES_USER"],
+        "PASSWORD": os.environ["POSTGRES_PASSWORD"],
+        "HOST": os.getenv("POSTGRES_HOST", "postgres"),
+        "PORT": os.getenv("POSTGRES_PORT", "5432"),
+    }
+}
+
+AUTHENTICATION_BACKENDS = [
+    "django.contrib.auth.backends.ModelBackend",
+    "allauth.account.auth_backends.AuthenticationBackend",
+]
+SITE_ID = 1
+
+# Email-only identity: no username anywhere, and an account is unusable until
+# the address is verified (Q16 — this is what gives the daily quota its teeth).
+AUTH_USER_MODEL = "users.User"
+ACCOUNT_LOGIN_METHODS = {"email"}
+ACCOUNT_SIGNUP_FIELDS = ["email*", "password1*", "password2*"]
+ACCOUNT_EMAIL_VERIFICATION = "mandatory"
+# Valid ONLY because AUTH_USER_MODEL above has no username field. Against
+# Django's stock `auth.User` this setting is a production bug: allauth's docs
+# list it under "Custom User Models", and with the stock model (username
+# unique, blank=False) allauth stops populating username, so the first signup
+# stores "" and the SECOND one dies on the unique index with a 500 — after a
+# password was accepted and before any mail is sent. A one-signup smoke test
+# passes. See the plan's §7 for why the custom model is a unit-1 decision.
+ACCOUNT_USER_MODEL_USERNAME_FIELD = None
+ACCOUNT_UNIQUE_EMAIL = True
+
+# allauth ships rate limits by default (signup 20/m/ip, login 30/m/ip,
+# login_failed 10/m/ip + 5/5m/key). They run on Django's cache, and the default
+# cache is per-process LocMemCache, which resets on restart and is not shared
+# between workers. Naming it here rather than inheriting it silently.
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.db.DatabaseCache",
+        "LOCATION": "django_cache",
+    }
+}
+LOGIN_REDIRECT_URL = "/chat"
+ACCOUNT_LOGOUT_REDIRECT_URL = "/"
+
+# Q20: the existing domain mailbox over SMTP. Settings only, no dependency —
+# switching to a relay later is an EMAIL_HOST change (flag 3).
+EMAIL_BACKEND = os.getenv(
+    "DJANGO_EMAIL_BACKEND", "django.core.mail.backends.smtp.EmailBackend"
+)
+EMAIL_HOST = os.getenv("EMAIL_HOST", "")
+EMAIL_PORT = int(os.getenv("EMAIL_PORT", "587"))
+EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER", "")
+EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD", "")
+EMAIL_USE_TLS = os.getenv("EMAIL_USE_TLS", "true").lower() == "true"
+DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "noreply@politicalagent.eu")
+
+STATIC_URL = "/static/"
+STATIC_ROOT = BASE_DIR / "staticfiles"
+STATICFILES_DIRS = [BASE_DIR / "static"]
+STORAGES = {
+    "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+    "staticfiles": {
+        "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage"
+    },
+}
+
+# Behind nginx TLS in production.
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+SESSION_COOKIE_SECURE = not DEBUG
+CSRF_COOKIE_SECURE = not DEBUG
+SESSION_COOKIE_SAMESITE = "Lax"
+
+DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+LANGUAGE_CODE = "en-us"
+TIME_ZONE = "UTC"
+USE_I18N = True
+USE_TZ = True

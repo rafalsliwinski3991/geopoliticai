@@ -28,6 +28,55 @@ jobs:
         working-directory: agentic_backend
         run: uv run pytest
 
+  web-backend-tests:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: webbackend_test
+          POSTGRES_USER: webbackend
+          POSTGRES_PASSWORD: testpassword
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      POSTGRES_DB: webbackend_test
+      POSTGRES_USER: webbackend
+      POSTGRES_PASSWORD: testpassword
+      POSTGRES_HOST: 127.0.0.1
+      POSTGRES_PORT: "5432"
+      DJANGO_SECRET_KEY: django-ci-test-only-secret
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          cache: true
+
+      - name: Install dependencies
+        working-directory: web_backend
+        run: uv sync --locked --dev
+
+      - name: Collect static files
+        working-directory: web_backend
+        run: uv run python manage.py collectstatic --noinput
+
+      - name: Run web-backend tests
+        working-directory: web_backend
+        run: uv run python manage.py test
+
   frontend-tests:
     runs-on: ubuntu-latest
     steps:

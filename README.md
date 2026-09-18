@@ -59,3 +59,12 @@ pipeline route. The streaming endpoint emits SSE `progress`, `token`, `pause`,
 `result`, and `error` events, with `result` carrying `kind` and `truncated`;
 a paused turn ends with `pause` and no `result` until the user's reply
 resumes it.
+
+A second service, `web_backend/`, hosts the Django identity service: accounts
+(allauth, email-only with mandatory verification), the admin, and the
+application tables. Its dev port is `ACCOUNTS_PORT` (default 8083). From the
+host, `make migrate` runs its migrations (always before starting
+`agentic-backend`, which runs the checkpointer's own schema setup at startup),
+`make createsuperuser` creates an admin user, and `make test-web-backend` runs
+its suite against the dev Postgres. The two services share the database and the
+root `.env` but never each other's code.
