@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% load static %}
+{% load static blog_tags %}
 
 {% block title %}Notes — PoliticalAgent{% endblock %}
 
@@ -22,7 +22,7 @@
     <div>
       <p class="annot">{{ lead.kicker }}</p>
       <h2><a href="{% url 'blog:detail' lead.slug %}">{{ lead.title }}</a></h2>
-      <p>{{ lead.body|striptags|truncatewords:60 }}</p>
+      <p>{{ lead.body|render_markdown|striptags|truncatewords:60 }}</p>
     </div>
     <div class="lead-meta">
       <p class="label">{{ lead.published_at|date:"j F Y" }}</p>
@@ -37,13 +37,15 @@
       <p class="post-date">{{ post.published_at|date:"j M Y" }}</p>
       <div>
         <h3><a href="{% url 'blog:detail' post.slug %}">{{ post.title }}</a></h3>
-        <p>{{ post.body|striptags|truncatewords:40 }}</p>
+        <p>{{ post.body|render_markdown|striptags|truncatewords:40 }}</p>
       </div>
       <p class="post-sources"><span>{{ post.kicker }}</span></p>
     </article>
-    {% empty %}
-    <p>No notes yet. The first one will appear here.</p>
     {% endfor %}
+
+    {% if not lead and not archive_posts %}
+    <p>No notes yet. The first one will appear here.</p>
+    {% endif %}
   </section>
 
   <section class="subscribe">

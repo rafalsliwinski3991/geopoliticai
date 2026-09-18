@@ -52,6 +52,18 @@ class BlogListTests(TestCase):
         self.assertContains(response, "<h1>Heading</h1>")
         self.assertContains(response, "Body <em>mark</em>.")
 
+    def test_a_single_post_does_not_show_the_empty_state(self) -> None:
+        make_post("only", "Lone note", 1)
+        response = self.client.get(reverse("blog:index"))
+        self.assertContains(response, "Lone note")
+        self.assertNotContains(response, "No notes yet")
+
+    def test_teasers_do_not_leak_markdown_syntax(self) -> None:
+        make_post("m", "Markdown teasers", 1, body="# Heading\n\nBody *mark*.")
+        response = self.client.get(reverse("blog:index"))
+        self.assertNotContains(response, "**")
+        self.assertNotContains(response, "[Heading](#)")
+
     def test_unpublished_post_404s(self) -> None:
         make_post("secret", "Hidden note", 1, is_published=False)
         response = self.client.get(reverse("blog:detail", args=["secret"]))
