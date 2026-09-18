@@ -12,21 +12,45 @@ const tokenOk = {
 } as unknown as Response;
 
 function stubFetch(tokenResponse: Response) {
-  vi.stubGlobal(
-    "fetch",
-    vi.fn((url: string) => {
-      if (url === "/accounts/token/") return Promise.resolve(tokenResponse);
+  const fetchMock = vi.fn((url: string) => {
+    if (url === "/accounts/token/") return Promise.resolve(tokenResponse);
+    if (url === "/api/threads") {
       return Promise.resolve({
         ok: true,
         status: 200,
-        body: new ReadableStream({
-          start(controller) {
-            controller.close();
-          },
+        json: async () => ({
+          threads: [
+            { id: "t1", title: "Baltic energy", created_at: "2026-09-18T10:00:00Z" },
+          ],
+          quota: { used: 6, limit: 20 },
         }),
       } as unknown as Response);
-    }),
-  );
+    }
+    if (url === "/api/threads/t1") {
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          thread_id: "t1",
+          messages: [
+            { role: "user", text: "earlier question" },
+            { role: "assistant", text: "earlier answer" },
+          ],
+        }),
+      } as unknown as Response);
+    }
+    return Promise.resolve({
+      ok: true,
+      status: 200,
+      body: new ReadableStream({
+        start(controller) {
+          controller.close();
+        },
+      }),
+    } as unknown as Response);
+  });
+  vi.stubGlobal("fetch", fetchMock);
+  return fetchMock;
 }
 
 beforeEach(() => {
@@ -76,16 +100,56 @@ describe("the app shell", () => {
     expect(screen.getByRole("heading", { name: "PoliticalAgent" })).toBeTruthy();
   });
 
-  it("New chat resets the conversation", async () => {
+  it("the New conversation control resets the conversation", async () => {
+    const fetchMock = stubFetch(tokenOk);
+    const App = await importApp();
+    render(<App />);
+    await screen.findByRole("button", { name: "Send" });
+    const input = screen.getByLabelText("Ask a question") as HTMLTextAreaElement;
+    fireEvent.change(input, { target: { value: "hello" } });
+    fireEvent.submit(input.closest("form")!);
+    expect(await screen.findByText("hello")).toBeTruthy();
+    // The completed turn's refresh must land inside this test: a promise that
+    // outlives the test would fire against the next test's unstubbed fetch.
+    await vi.waitFor(() => {
+      expect(fetchMock.mock.calls.filter(([url]) => url === "/api/threads").length).toBe(2);
+    });
+    fireEvent.click(screen.getByRole("button", { name: "New conversation" }));
+    expect(screen.queryByText("hello")).toBeNull();
+  });
+
+  it("the sidebar lists threads and reflects the quota meter", async () => {
     stubFetch(tokenOk);
     const App = await importApp();
     render(<App />);
     await screen.findByRole("button", { name: "Send" });
-    const input = screen.getByLabelText("Ask a question") as HTMLInputElement;
-    fireEvent.change(input, { target: { value: "hello" } });
+    expect(await screen.findByText("Baltic energy")).toBeTruthy();
+    expect(screen.getByText("6 of 20")).toBeTruthy();
+  });
+
+  it("selecting a thread issues one read and replaces the conversation", async () => {
+    const fetchMock = stubFetch(tokenOk);
+    const App = await importApp();
+    render(<App />);
+    await screen.findByText("Baltic energy");
+    fireEvent.click(screen.getByText("Baltic energy"));
+    expect(await screen.findByText("earlier question")).toBeTruthy();
+    expect(await screen.findByText("earlier answer")).toBeTruthy();
+    expect(fetchMock.mock.calls.filter(([url]) => url === "/api/threads/t1").length).toBe(1);
+  });
+
+  it("the thread list and quota refresh after every completed turn", async () => {
+    const fetchMock = stubFetch(tokenOk);
+    const App = await importApp();
+    render(<App />);
+    await screen.findByText("Baltic energy");
+    expect(fetchMock.mock.calls.filter(([url]) => url === "/api/threads").length).toBe(1);
+    const input = screen.getByLabelText("Ask a question") as HTMLTextAreaElement;
+    fireEvent.change(input, { target: { value: "next turn" } });
     fireEvent.submit(input.closest("form")!);
-    expect(await screen.findByText("hello")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "New chat" }));
-    expect(screen.queryByText("hello")).toBeNull();
+    await screen.findByText("next turn");
+    await vi.waitFor(() => {
+      expect(fetchMock.mock.calls.filter(([url]) => url === "/api/threads").length).toBe(2);
+    });
   });
 });

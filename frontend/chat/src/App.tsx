@@ -1,15 +1,28 @@
 import { useCallback, useEffect, useState } from "react";
 import { getAccessToken, TokenServiceError } from "./api/token";
+import {
+  listThreads,
+  readThread,
+  type Quota,
+  type ThreadSummary,
+} from "./api/threads";
 import { mintThreadId, storeThreadId, useConversation } from "./hooks/useConversation";
 import { Composer } from "./components/Composer";
 import { MessageView, OutlineCard } from "./components/MessageView";
+import { Sidebar } from "./components/Sidebar";
 
 type AuthState = "checking" | "ready" | "sign-in" | "error";
 
 export default function App() {
   const [auth, setAuth] = useState<AuthState>("checking");
   const [attempt, setAttempt] = useState(0);
-  const { messages, paused, outline, progress, isLoading, send, reset } = useConversation();
+  const { messages, paused, outline, progress, isLoading, send, reset, restore } =
+    useConversation();
+  // The thread list loads alongside authentication; it fails soft — a sidebar
+  // that cannot load must never block an ongoing conversation.
+  const [threads, setThreads] = useState<ThreadSummary[]>([]);
+  const [quota, setQuota] = useState<Quota>({ used: 0, limit: 0 });
+  const [activeTitle, setActiveTitle] = useState<string | null>(null);
 
   // Authenticate on mount, not on the first send: a login redirect that
   // waits for a submitted message would discard that message.
@@ -31,6 +44,24 @@ export default function App() {
     };
   }, [attempt]);
 
+  const refreshThreads = useCallback(() => {
+    listThreads()
+      .then((listing) => {
+        setThreads(listing.threads);
+        setQuota(listing.quota);
+      })
+      .catch((error: unknown) => {
+        // The 401 path already navigated; other failures stay silent here.
+        if (!(error instanceof Error && error.message.startsWith("Not auth"))) {
+          console.error("Thread list refresh failed", error);
+        }
+      });
+  }, []);
+
+  useEffect(() => {
+    if (auth === "ready") refreshThreads();
+  }, [auth, refreshThreads]);
+
   const retry = useCallback(() => {
     setAuth("checking");
     setAttempt((n) => n + 1);
@@ -39,9 +70,28 @@ export default function App() {
   // A fresh conversation key and a clean slate: without this, changing topics
   // keeps feeding every turn to the same LangGraph checkpoint.
   const newChat = useCallback(() => {
+    setActiveTitle(null);
     storeThreadId(mintThreadId());
     reset();
   }, [reset]);
+
+  const openThread = useCallback(
+    (threadId: string) => {
+      readThread(threadId)
+        .then((stored) => {
+          restore(threadId, stored.messages);
+          const summary = threads.find((thread) => thread.id === threadId);
+          setActiveTitle(summary?.title ?? null);
+        })
+        .catch((error: unknown) => {
+          // The selection is a navigation, not a failure state: keep the
+          // current conversation and surface nothing worse than a console
+          // note; the sidebar stays usable.
+          console.error("Could not open that conversation", error);
+        });
+    },
+    [restore, threads],
+  );
 
   if (auth !== "ready") {
     return (
@@ -73,14 +123,25 @@ export default function App() {
     );
   }
 
+  const handleSend = (text: string) => {
+    // The turn's completion also settles the new thread's title and the spent
+    // quota — both only exist after the turn finishes (the plan's one-request
+    // refresh rule).
+    void send(text).finally(refreshThreads);
+  };
+
   return (
-    <div className="app chat-solo">
+    <div className="app">
+      <Sidebar
+        threads={threads}
+        quota={quota}
+        activeId={null}
+        onOpen={openThread}
+        onNewChat={newChat}
+      />
       <main className="main">
         <div className="main-top">
-          <h1>New conversation</h1>
-          <button className="btn btn--quiet" onClick={newChat} disabled={isLoading}>
-            New chat
-          </button>
+          <h1>{activeTitle ?? "New conversation"}</h1>
         </div>
         <div className="scroll">
           <section aria-label="Conversation" className="conv">
@@ -102,7 +163,7 @@ export default function App() {
             {paused && <OutlineCard outline={outline} />}
           </section>
         </div>
-        <Composer busy={isLoading} onSend={send} />
+        <Composer busy={isLoading} onSend={handleSend} />
       </main>
     </div>
   );

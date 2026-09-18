@@ -134,6 +134,32 @@ export function useConversation() {
     setIsLoading(false);
   }, []);
 
+  // Re-open a stored conversation from the threads API: the sidebar's
+  // selection replaces whatever is on screen, and a loaded turn is never
+  // paused — the pause/outlines belong to the working thread only.
+  const restore = useCallback(
+    (threadId: string, stored: { role: "user" | "assistant"; text: string }[]) => {
+      storeThreadId(threadId);
+      setMessages(
+        stored.map((message) =>
+          message.role === "user"
+            ? { role: "user" as const, text: message.text }
+            : {
+                role: "assistant" as const,
+                text: message.text,
+                kind: "answer" as const,
+                truncated: false,
+              },
+        ),
+      );
+      setPaused(false);
+      setOutline([]);
+      setProgress([]);
+      setIsLoading(false);
+    },
+    [],
+  );
+
   function handle(event: ServerEvent) {
     switch (event.type) {
       case "progress":
@@ -240,5 +266,5 @@ export function useConversation() {
     }
   }
 
-  return { messages, paused, outline, progress, isLoading, send, reset };
+  return { messages, paused, outline, progress, isLoading, send, reset, restore };
 }

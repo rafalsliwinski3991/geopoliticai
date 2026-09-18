@@ -326,3 +326,14 @@ p { margin: 0 0 1em; max-width: 68ch; }
 
   /* SPA: the sidebar arrives in unit 10; until then the main column owns the full width. */
   .app.chat-solo { grid-template-columns: minmax(0, 1fr); }
+
+  /* ── SPA additions beyond the mockup ── */
+  .threads-empty {
+    font: 400 var(--s-sm)/1.5 var(--label);
+    color: var(--ink-soft);
+    padding: 8px;
+  }
+  .quota-block p, .side-foot .quota { margin: 0; }
+  .meter i { transition: width 0.3s ease; }
+  .threads a { display: block; }
+
