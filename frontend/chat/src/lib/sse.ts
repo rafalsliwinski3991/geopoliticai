@@ -35,11 +35,9 @@ const SSE_PREFIX = "data: ";
 export async function* streamTurn(
   body: { query: string; thread_id: string } | { resume: string; thread_id: string },
   token: string,
-  signal?: AbortSignal,
 ): AsyncGenerator<ServerEvent> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), STREAM_TIMEOUT_MS);
-  signal?.addEventListener("abort", () => controller.abort());
   try {
     const response = await fetch("/api/run_pipeline/stream", {
       method: "POST",

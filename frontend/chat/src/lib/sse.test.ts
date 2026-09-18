@@ -103,9 +103,12 @@ describe("the SSE reader", () => {
       ),
     );
     const pending = streamTurn({ query: "x", thread_id: "t" }, "tok").next();
+    // Attach the handler before the abort fires: a rejection that lands
+    // before its consumer exists is reported as unhandled and fails the run.
+    const assertion = expect(pending).rejects.toBeDefined();
     await vi.advanceTimersByTimeAsync(10 * 60 * 1000);
     // The timeout fires: the promise rejects with the abort error.
-    await expect(pending).rejects.toBeDefined();
+    await assertion;
     vi.useRealTimers();
   });
 
