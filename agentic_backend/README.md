@@ -48,14 +48,14 @@ without credentials, while local development remains unauthenticated.
 
 ```bash
 uv sync --locked --dev
-cp ../.env.example ../.env  # populate at the repo root, not under app/
+cp ../.env.example ../.env  # populate at the repo root, not under agentic_backend/
 langgraph dev
 ```
 
 There is a single canonical `.env` at the repo root; `config.py` resolves it
 by absolute path regardless of working directory, `langgraph.json`'s `env`
 field points at `../.env`, and Docker Compose's `env_file: .env` reads the
-same file. There is no separate `app/.env`. Required environment variables
+same file. There is no separate `agentic_backend/.env`. Required environment variables
 for the API are `OPENAI_API_KEY`, `BRAVE_SEARCH_KEY`, and `DATABASE_URL`.
 Compose supplies `DATABASE_URL` from `POSTGRES_PASSWORD`; the API refuses to
 start without it. Never commit the populated file. Optional settings are
