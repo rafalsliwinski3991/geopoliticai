@@ -82,7 +82,7 @@ thread.
 
 There is one root `.env`; never modify it or commit secrets. It supplies API,
 tests, Studio, and Compose. API startup requires `OPENAI_API_KEY`,
-`BRAVE_SEARCH_KEY`, and `DATABASE_URL`; tracing is optional, idempotent, and
+`BRAVE_SEARCH_KEY`, `DATABASE_URL`, and `JWT_SIGNING_KEY`; tracing is optional, idempotent, and
 unredacted when enabled. Compose has Postgres, agentic-backend, frontend, and Phoenix;
 development ports are 8082, 3001, 55432, and loopback 6006. Production uses TLS
 and fail-closed Basic Auth for `/` and `/api/`.
