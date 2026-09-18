@@ -93,3 +93,9 @@ spend caps in the OpenAI and Brave dashboards before going live — they are the
 only control that still holds when the application-layer quota
 (`DAILY_RESEARCH_TURNS` and its site-wide ceiling) is wrong. Record the
 configured figures here next to the deploy order.
+
+The chat SPA's build stage (`npm ci`) reaches a registry at deploy time, which
+today's `COPY index.html` build never did. A registry outage, a yanked
+transitive dependency or a Node EOL bump breaks only that stage — the
+mitigation is not in the Dockerfile: **the previous image stays in the
+registry, and a rollback is a tag change to the last good frontend tag.**
