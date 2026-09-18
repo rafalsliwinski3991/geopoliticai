@@ -108,6 +108,7 @@ describe("the sidebar", () => {
         quota={{ used: 0, limit: 20 }}
         activeId="a"
         onOpen={onOpen}
+        busy={false}
         onNewChat={() => {}}
         now={NOON}
       />,
@@ -152,6 +153,7 @@ describe("the sidebar", () => {
         activeId={null}
         onOpen={() => {}}
         onNewChat={onNewChat}
+        busy={false}
         now={NOON}
       />,
     );
