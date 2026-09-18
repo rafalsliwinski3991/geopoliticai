@@ -22,7 +22,7 @@ export default function App() {
   // that cannot load must never block an ongoing conversation.
   const [threads, setThreads] = useState<ThreadSummary[]>([]);
   const [quota, setQuota] = useState<Quota>({ used: 0, limit: 0 });
-  const [activeTitle, setActiveTitle] = useState<string | null>(null);
+  const [activeThread, setActiveThread] = useState<ThreadSummary | null>(null);
 
   // Authenticate on mount, not on the first send: a login redirect that
   // waits for a submitted message would discard that message.
@@ -70,7 +70,7 @@ export default function App() {
   // A fresh conversation key and a clean slate: without this, changing topics
   // keeps feeding every turn to the same LangGraph checkpoint.
   const newChat = useCallback(() => {
-    setActiveTitle(null);
+    setActiveThread(null);
     storeThreadId(mintThreadId());
     reset();
   }, [reset]);
@@ -80,8 +80,8 @@ export default function App() {
       readThread(threadId)
         .then((stored) => {
           restore(threadId, stored.messages);
-          const summary = threads.find((thread) => thread.id === threadId);
-          setActiveTitle(summary?.title ?? null);
+          const summary = threads.find((thread) => thread.id === threadId) ?? null;
+          setActiveThread(summary);
         })
         .catch((error: unknown) => {
           // The selection is a navigation, not a failure state: keep the
@@ -135,13 +135,13 @@ export default function App() {
       <Sidebar
         threads={threads}
         quota={quota}
-        activeId={null}
+        activeId={activeThread?.id ?? null}
         onOpen={openThread}
         onNewChat={newChat}
       />
       <main className="main">
         <div className="main-top">
-          <h1>{activeTitle ?? "New conversation"}</h1>
+          <h1>{activeThread?.title ?? "New conversation"}</h1>
         </div>
         <div className="scroll">
           <section aria-label="Conversation" className="conv">

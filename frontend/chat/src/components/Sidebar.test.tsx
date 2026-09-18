@@ -88,18 +88,21 @@ describe("the sidebar", () => {
     expect(screen.queryByText(/\d+ turn/)).toBeNull();
   });
 
-  it("clicking a thread opens it", () => {
+  it("selecting a thread opens it", () => {
     const onOpen = vi.fn();
     render(
       <Sidebar
         threads={[thread("a", new Date(2026, 8, 18, 9).toISOString())]}
         quota={{ used: 0, limit: 20 }}
-        activeId={null}
+        activeId="a"
         onOpen={onOpen}
         onNewChat={() => {}}
         now={NOON}
       />,
     );
+    expect(
+      screen.getByRole("link", { name: /a title/ }).getAttribute("aria-current"),
+    ).toBe("page");
     fireEvent.click(screen.getByRole("link", { name: /a title/ }));
     expect(onOpen).toHaveBeenCalledWith("a");
   });
@@ -136,5 +139,15 @@ describe("the quota meter", () => {
     expect(
       screen.getByRole("img", { name: "Daily research limit reached" }).querySelector("i")!.style.width,
     ).toBe("100%");
+  });
+
+  it("the bootstrap zero-limit state is neutral, not reached", () => {
+    // Before the first thread listing lands, App initializes quota to
+    // {used: 0, limit: 0}: 0/0 is neither 30% wide nor a saturation warning.
+    render(<QuotaMeter quota={{ used: 0, limit: 0 }} />);
+    expect(screen.getByText("0 of 0")).toBeTruthy();
+    expect(screen.queryByRole("img", { name: "Daily research limit reached" })).toBeNull();
+    const fill = screen.getByRole("img", { name: "0 of 0 research turns used today" }).querySelector("i")!;
+    expect(fill.style.width).toBe("0%");
   });
 });

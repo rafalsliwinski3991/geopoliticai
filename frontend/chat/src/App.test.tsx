@@ -136,6 +136,12 @@ describe("the app shell", () => {
     expect(await screen.findByText("earlier question")).toBeTruthy();
     expect(await screen.findByText("earlier answer")).toBeTruthy();
     expect(fetchMock.mock.calls.filter(([url]) => url === "/api/threads/t1").length).toBe(1);
+    // The selected row carries the mockup's marker (chat.html:186-188).
+    expect(
+      (
+        await screen.findByRole("link", { name: /Baltic energy/ })
+      ).getAttribute("aria-current"),
+    ).toBe("page");
   });
 
   it("the thread list and quota refresh after every completed turn", async () => {

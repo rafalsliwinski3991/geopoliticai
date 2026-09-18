@@ -2,7 +2,7 @@ import type { Quota, ThreadSummary } from "../api/threads";
 
 // The three bands sort by the viewer's local midnight (the plan's §7 note:
 // computed from created_at, no server grouping). A thread stamped exactly at
-// local midnight belongs to the previous day — the day has already changed.
+// local midnight is already today — the day has just started.
 export function groupThreads(threads: ThreadSummary[], now: Date) {
   const start = (day: Date) =>
     new Date(day.getFullYear(), day.getMonth(), day.getDate()).getTime();
@@ -29,10 +29,16 @@ export function groupThreads(threads: ThreadSummary[], now: Date) {
 }
 
 export function QuotaMeter({ quota }: { quota: Quota }) {
-  const saturated = quota.used >= quota.limit;
+  // The bootstrap listing state is {used: 0, limit: 0}: 0/0 is neither a
+  // percentage nor a saturation warning, so an unknown limit stays neutral.
+  const known = quota.limit > 0;
+  const saturated = known && quota.used >= quota.limit;
   const label = saturated
     ? "Daily research limit reached"
     : `${quota.used} of ${quota.limit} research turns used today`;
+  const width = known
+    ? `${Math.min(100, Math.round((quota.used / quota.limit) * 100))}%`
+    : "0%";
   // CSS-embedded style: the mockup's meter is one flat <i> bar.
   return (
     <div className="quota-block">
@@ -43,11 +49,7 @@ export function QuotaMeter({ quota }: { quota: Quota }) {
         </span>
       </div>
       <div className="meter" role="img" aria-label={label}>
-        <i
-          style={{
-            width: `${Math.min(100, Math.round((quota.used / quota.limit) * 100))}%`,
-          }}
-        />
+        <i style={{ width }} />
       </div>
     </div>
   );
