@@ -63,7 +63,7 @@ describe("groupThreads", () => {
 describe("the sidebar", () => {
   it("an empty list renders the empty state and no headings", () => {
     // Act
-    render(<Sidebar threads={[]} quota={{ used: 0, limit: 20 }} activeId={null} onOpen={() => {}} onNewChat={() => {}} now={NOON} />);
+    render(<Sidebar threads={[]} quota={{ used: 0, limit: 20 }} activeId={null} onOpen={() => {}} onNewChat={() => {}} busy={false} now={NOON} />);
     // Assert
     expect(screen.getByText("No conversations yet. Ask something to start one.")).toBeTruthy();
     expect(screen.queryByText("Today")).toBeNull();
@@ -84,6 +84,7 @@ describe("the sidebar", () => {
         activeId="a"
         onOpen={() => {}}
         onNewChat={() => {}}
+        busy={false}
         now={NOON}
       />,
     );
@@ -108,8 +109,8 @@ describe("the sidebar", () => {
         quota={{ used: 0, limit: 20 }}
         activeId="a"
         onOpen={onOpen}
-        busy={false}
         onNewChat={() => {}}
+        busy={false}
         now={NOON}
       />,
     );

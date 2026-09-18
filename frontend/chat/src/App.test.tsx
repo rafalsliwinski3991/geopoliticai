@@ -135,8 +135,8 @@ describe("the app shell", () => {
           ok: true,
           status: 200,
           body: new ReadableStream({
-            start(controller) {
-              this.keep = controller;
+            start() {
+              // Never closes: the turn stays in flight for the whole test.
             },
           }),
         } as unknown as Response);
