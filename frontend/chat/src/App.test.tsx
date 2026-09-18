@@ -118,6 +118,40 @@ describe("the app shell", () => {
     expect(screen.queryByText("hello")).toBeNull();
   });
 
+  it("the sidebar is inert while a turn is still streaming", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: string) => {
+        if (url === "/accounts/token/") return Promise.resolve(tokenOk);
+        if (url === "/api/threads") {
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            json: async () => ({ threads: [], quota: { used: 0, limit: 20 } }),
+          } as unknown as Response);
+        }
+        // A stream that never finishes: the turn stays in flight.
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          body: new ReadableStream({
+            start(controller) {
+              this.keep = controller;
+            },
+          }),
+        } as unknown as Response);
+      }),
+    );
+    const App = await importApp();
+    render(<App />);
+    await screen.findByRole("button", { name: "Send" });
+    const input = screen.getByLabelText("Ask a question") as HTMLTextAreaElement;
+    fireEvent.change(input, { target: { value: "long turn" } });
+    fireEvent.submit(input.closest("form")!);
+    const newChat = await screen.findByRole("button", { name: "New conversation" });
+    expect((newChat as HTMLButtonElement).disabled).toBe(true);
+  });
+
   it("the sidebar lists threads and reflects the quota meter", async () => {
     stubFetch(tokenOk);
     const App = await importApp();
