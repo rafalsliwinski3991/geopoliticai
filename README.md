@@ -38,7 +38,7 @@ both fields are normalized and capped at 2,000 characters. The frontend keeps
 the thread id in `localStorage` across reloads and its **New chat** control
 mints a new thread.
 
-The API requires `OPENAI_API_KEY`, `BRAVE_SEARCH_KEY`, and `DATABASE_URL`.
+The API requires `OPENAI_API_KEY`, `BRAVE_SEARCH_KEY`, `DATABASE_URL`, and `JWT_SIGNING_KEY`.
 Compose derives `DATABASE_URL` from `POSTGRES_PASSWORD`, gives Postgres a
 `pg_isready` healthcheck, and starts the backend only after Postgres is healthy.
 The app declares `psycopg[binary]` directly for the checkpointer; no system
