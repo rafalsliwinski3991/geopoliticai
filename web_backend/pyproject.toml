@@ -11,6 +11,9 @@ dependencies = [
     "psycopg[binary]>=3.2,<4",
     "python-dotenv>=1.0,<2",
     "gunicorn>=23.0,<24",
+    # The blog's body is Markdown → HTML for the `render_markdown` filter
+    # (unit 12); pinned minor families like every other dependency here.
+    "markdown>=3.7,<4",
 ]
 
 [dependency-groups]

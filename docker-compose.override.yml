@@ -41,6 +41,8 @@ services:
       - ./web_backend/politicalagent:/app/politicalagent
       - ./web_backend/users:/app/users
       - ./web_backend/accounts_api:/app/accounts_api
+      - ./web_backend/pages:/app/pages
+      - ./web_backend/blog:/app/blog
     command: [".venv/bin/python", "manage.py", "runserver", "0.0.0.0:8000"]
 
   postgres:

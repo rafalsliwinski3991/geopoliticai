@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Notes — PoliticalAgent{% endblock %}
+
+{% block head %}
+<meta name="description" content="Notes on how PoliticalAgent reads the news: source policy, method, and what the answers can and cannot carry.">
+<link rel="stylesheet" href="{% static 'site/blog.css' %}">
+{% endblock %}
+
+{% block content %}
+  <section class="intro">
+    <h1>Notes on reading the news</h1>
+    <p>
+      How the source list was drawn, what the machine gets wrong, and what
+      happened when we asked it the same question three weeks apart.
+    </p>
+  </section>
+
+  {% if lead %}
+  <article class="lead">
+    <div>
+      <p class="annot">{{ lead.kicker }}</p>
+      <h2><a href="{% url 'blog:detail' lead.slug %}">{{ lead.title }}</a></h2>
+      <p>{{ lead.body|striptags|truncatewords:60 }}</p>
+    </div>
+    <div class="lead-meta">
+      <p class="label">{{ lead.published_at|date:"j F Y" }}</p>
+      <p class="label">By the PoliticalAgent team</p>
+    </div>
+  </article>
+  {% endif %}
+
+  <section class="archive">
+    {% for post in archive_posts %}
+    <article class="post">
+      <p class="post-date">{{ post.published_at|date:"j M Y" }}</p>
+      <div>
+        <h3><a href="{% url 'blog:detail' post.slug %}">{{ post.title }}</a></h3>
+        <p>{{ post.body|striptags|truncatewords:40 }}</p>
+      </div>
+      <p class="post-sources"><span>{{ post.kicker }}</span></p>
+    </article>
+    {% empty %}
+    <p>No notes yet. The first one will appear here.</p>
+    {% endfor %}
+  </section>
+
+  <section class="subscribe">
+    <div>
+      <h2>One note a month, when there is something to report</h2>
+      <p>No digest, no product news you did not ask for. Unsubscribe in one click.</p>
+    </div>
+    {% comment %}
+      The mockup's subscribe form (blog.html:229-241) has no backend, so per
+      the unit 12 decision it renders as a mailto link instead of a form that
+      would silently discard input.
+    {% endcomment %}
+    <p class="lead-meta">Subscribe by writing to
+      <a href="mailto:blog@politicalagent.eu">blog@politicalagent.eu</a>.</p>
+  </section>
+{% endblock %}
