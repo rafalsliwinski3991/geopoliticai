@@ -38,23 +38,6 @@
   .post-sources { font: 400 var(--s-xs)/1.7 var(--label); color: var(--ink-soft); }
   .post-sources span { display: block; }
 
-  .topics {
-    display: flex;
-    gap: 8px 10px;
-    flex-wrap: wrap;
-    padding: 22px 0 0;
-    align-items: baseline;
-  }
-  .topic {
-    font: 500 var(--s-xs)/1 var(--label);
-    padding: 7px 11px;
-    border: 1px solid var(--rule);
-    border-radius: 2px;
-    text-decoration: none;
-    color: var(--ink-soft);
-  }
-  .topic:hover { border-color: var(--ink); color: var(--ink); }
-  .topic[aria-current="true"] { background: var(--ink); border-color: var(--ink); color: var(--paper-lift); }
 
   .subscribe {
     margin-top: 72px;
