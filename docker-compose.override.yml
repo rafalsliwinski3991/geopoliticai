@@ -27,6 +27,16 @@ services:
   web-backend:
     ports:
       - "${ACCOUNTS_PORT:-8083}:8000"
+    # Dev only: with DJANGO_DEBUG=false the settings set
+    # SESSION_COOKIE_SECURE/CSRF_COOKIE_SECURE, so over plain HTTP the session
+    # cookie is dropped and every successful admin login bounces back to
+    # /admin/login/ — the loop the stack was showing.
+    environment:
+      DJANGO_DEBUG: "true"
+      # .env carries the production host/origin lists; plain-HTTP localhost
+      # is not in them, so Django 400s every dev request with DisallowedHost.
+      DJANGO_ALLOWED_HOSTS: localhost,127.0.0.1,web-backend
+      DJANGO_CSRF_TRUSTED_ORIGINS: http://localhost:8082,http://127.0.0.1:8082,http://localhost:8083,http://127.0.0.1:8083
     volumes:
       - ./web_backend/politicalagent:/app/politicalagent
       - ./web_backend/users:/app/users

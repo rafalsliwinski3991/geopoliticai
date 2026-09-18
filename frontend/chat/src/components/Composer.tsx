@@ -18,21 +18,37 @@ export function Composer({
 
   return (
     <form
+      className="composer"
       onSubmit={(event) => {
         event.preventDefault();
         submit();
       }}
     >
-      <input
-        aria-label="Ask a question"
-        maxLength={2000}
-        placeholder={busy ? "Analyzing…" : "Ask about geopolitics…"}
-        value={value}
-        onChange={(event) => setValue(event.target.value)}
-      />
-      <button type="submit" disabled={busy}>
-        Send
-      </button>
+      <div className="composer-inner">
+        <div className="field">
+          <textarea
+            id="q"
+            rows={1}
+            aria-label="Ask a question"
+            maxLength={2000}
+            placeholder={busy ? "Analyzing…" : "Ask about geopolitics…"}
+            value={value}
+            onChange={(event) => setValue(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" && !event.shiftKey) {
+                event.preventDefault();
+                submit();
+              }
+            }}
+          />
+          <button className="btn" type="submit" disabled={busy}>
+            Send
+          </button>
+        </div>
+        <div className="composer-foot">
+          <p>Answers come from the sources read for this turn only. Up to 2,000 characters.</p>
+        </div>
+      </div>
     </form>
   );
 }

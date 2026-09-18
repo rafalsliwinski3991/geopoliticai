@@ -45,39 +45,62 @@ export function MessageView({ message }: { message: Message }) {
   }, [copied]);
 
   if (message.role === "user") {
-    return <p className="message user">{message.text}</p>;
+    return (
+      <div className="row">
+        <div className="ask">
+          <span className="who">You</span>
+          <p>{message.text}</p>
+        </div>
+        <div />
+      </div>
+    );
   }
   if (message.role === "error") {
-    return <p className="message error">{message.text}</p>;
+    return (
+      <div className="row">
+        <div className="say">
+          <span className="who">Error</span>
+          <p>{message.text}</p>
+        </div>
+        <div />
+      </div>
+    );
   }
   const isReport = message.kind === "report";
   return (
-    <div className="message assistant">
-      <div
-        className="content"
-        // The HTML is sanitized by `renderMarkdown` (DOMPurify + the URI
-        // allow-list); the raw model text never reaches the DOM directly.
-        dangerouslySetInnerHTML={{ __html: renderMarkdown(message.text) }}
-      />
-      {isReport && (
-        <div className="actions">
-          <button onClick={() => downloadReport(message)}>Download .md</button>
-          <button
-            onClick={async () => {
-              await copyReport(message.text);
-              setCopied(true);
-            }}
-          >
-            {copied ? "Copied" : "Copy"}
-          </button>
-          {message.truncated && (
-            <span className="notice">
-              This report was too long to display in full — the download contains what was
-              received, not the whole report.
-            </span>
-          )}
-        </div>
-      )}
+    <div className="row">
+      <div className="say">
+        <span className="who">PoliticalAgent</span>
+        <div
+          className="content"
+          // The HTML is sanitized by `renderMarkdown` (DOMPurify + the URI
+          // allow-list); the raw model text never reaches the DOM directly.
+          dangerouslySetInnerHTML={{ __html: renderMarkdown(message.text) }}
+        />
+        {isReport && (
+          <div className="actions">
+            <button className="btn" onClick={() => downloadReport(message)}>
+              Download .md
+            </button>
+            <button
+              className="btn btn--quiet"
+              onClick={async () => {
+                await copyReport(message.text);
+                setCopied(true);
+              }}
+            >
+              {copied ? "Copied" : "Copy"}
+            </button>
+            {message.truncated && (
+              <span className="notice">
+                This report was too long to display in full — the download contains what was
+                received, not the whole report.
+              </span>
+            )}
+          </div>
+        )}
+      </div>
+      <div />
     </div>
   );
 }
@@ -90,15 +113,17 @@ export function OutlineCard({
   notice?: string;
 }) {
   return (
-    <div className="outline">
-      <h2>Proposed report outline</h2>
-      {notice ? <p>{notice}</p> : null}
-      <ol>
-        {outline.map((section, index) => (
-          <li key={index}>{section}</li>
-        ))}
-      </ol>
-      <p>Reply to approve, change, or cancel — or just ask something else.</p>
+    <div className="row">
+      <div className="gate">
+        <p>Here is the outline I would write. Reply to approve it, change it, or cancel.</p>
+        <ol>
+          {outline.map((section, index) => (
+            <li key={index}>{section}</li>
+          ))}
+        </ol>
+        {notice ? <p>{notice}</p> : null}
+        <p className="gate-hint">Typing a reply works too.</p>
+      </div>
     </div>
   );
 }

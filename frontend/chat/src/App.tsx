@@ -45,41 +45,65 @@ export default function App() {
 
   if (auth !== "ready") {
     return (
-      <main>
-        <h1>PoliticalAgent</h1>
-        {auth === "checking" ? (
-          <p>Loading…</p>
-        ) : auth === "error" ? (
-          <p>
-            The sign-in check failed. <button onClick={retry}>Retry</button>
-          </p>
-        ) : (
-          <p>Sign in required.</p>
-        )}
-      </main>
+      <div className="app chat-solo">
+        <main className="main">
+          <div className="scroll">
+            <div className="conv">
+              <div className="row">
+                <div className="gate">
+                  <p className="wordmark">Political<em>Agent</em></p>
+                  {auth === "checking" ? (
+                    <p>Loading…</p>
+                  ) : auth === "error" ? (
+                    <p>
+                      The sign-in check failed.{" "}
+                      <button className="btn" onClick={retry}>
+                        Retry
+                      </button>
+                    </p>
+                  ) : (
+                    <p>Sign in required.</p>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        </main>
+      </div>
     );
   }
 
   return (
-    <main>
-      <h1>PoliticalAgent</h1>
-      <section aria-label="Conversation">
-        {messages.map((message, index) => (
-          <MessageView key={index} message={message} />
-        ))}
-        {progress.length > 0 && (
-          <ul aria-label="Progress">
-            {progress.map((step, index) => (
-              <li key={index}>{step.label}</li>
+    <div className="app chat-solo">
+      <main className="main">
+        <div className="main-top">
+          <h1>New conversation</h1>
+          <button className="btn btn--quiet" onClick={newChat} disabled={isLoading}>
+            New chat
+          </button>
+        </div>
+        <div className="scroll">
+          <section aria-label="Conversation" className="conv">
+            {messages.map((message, index) => (
+              <MessageView key={index} message={message} />
             ))}
-          </ul>
-        )}
-        {paused && <OutlineCard outline={outline} />}
-      </section>
-      <Composer busy={isLoading} onSend={send} />
-      <button onClick={newChat} disabled={isLoading}>
-        New chat
-      </button>
-    </main>
+            {progress.length > 0 && (
+              <div className="row">
+                <div className="say">
+                  <span className="who">Pipeline</span>
+                  <ul aria-label="Progress" className="progress">
+                    {progress.map((step, index) => (
+                      <li key={index}>{step.label}</li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+            )}
+            {paused && <OutlineCard outline={outline} />}
+          </section>
+        </div>
+        <Composer busy={isLoading} onSend={send} />
+      </main>
+    </div>
   );
 }
