@@ -450,6 +450,7 @@
         copy: "Copy",
         copied: "Copied",
         error_409: "That report is no longer waiting for a decision. Ask again to start a new one.",
+        error_429: "You have used today's research turns. Chat still works.",
         timeout_error: "⏱ Backend did not respond within 10 minutes.",
         connection_error: (msg) => `Connection error: ${msg}`,
         server_error: (code) => `Server error (${code}).`,
@@ -467,10 +468,38 @@
         const friendly = {
           409: I18N.error_409,
           422: I18N.error_422,
+          429: I18N.error_429,
           503: I18N.error_503,
           502: I18N.error_502,
         };
         return friendly[data?.status] || data?.message || I18N.error_generic;
+      }
+
+      // TEMPORARY. This file is deleted in `users-auth/09-react-chat`; the React app
+      // does this properly in `src/api/token.ts`. It exists only so that enforcing
+      // JWT on /api/* does not leave the site broken for four units.
+      let accessToken = null;
+      let accessTokenExpiry = 0;
+
+      async function getAccessToken() {
+        if (accessToken && Date.now() < accessTokenExpiry - 60_000) return accessToken;
+        const response = await fetch("/accounts/token/", { credentials: "include" });
+        if (response.status === 401) {
+          // The redirect must not loop: one retry flag, carried in
+          // sessionStorage, cleared on the first successful token.
+          if (!sessionStorage.getItem("token-redirected")) {
+            sessionStorage.setItem("token-redirected", "1");
+            window.location.href = "/accounts/login/?next=/";
+            throw new Error("Not authenticated");
+          }
+          throw new Error("Not authenticated. Please sign in again.");
+        }
+        if (!response.ok) throw new Error(`Token request failed (${response.status})`);
+        const data = await response.json();
+        accessToken = data.access;
+        accessTokenExpiry = Date.now() + data.expires_in * 1000;
+        sessionStorage.removeItem("token-redirected");
+        return accessToken;
       }
 
       document.addEventListener("alpine:init", () => {
@@ -550,7 +579,10 @@
             try {
               const response = await fetch("/api/run_pipeline/stream", {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
+                headers: {
+                  "Content-Type": "application/json",
+                  Authorization: `Bearer ${await getAccessToken()}`,
+                },
                 signal: controller.signal,
                 body: JSON.stringify(
                   this.paused

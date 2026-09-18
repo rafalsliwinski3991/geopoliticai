@@ -11,7 +11,7 @@ from contextlib import asynccontextmanager
 from threading import Lock
 from typing import Any, AsyncGenerator
 
-from fastapi import APIRouter, FastAPI, HTTPException, Request
+from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -30,8 +30,16 @@ from agents.orchestrator import (
 )
 from agents.orchestrator import graph as _default_graph
 from agents.reporter import classify_resume_intent
+from auth import Identity, require_identity
 from config import init_environment, require_env
 from models import PipelineError, ReportNotPendingError
+from threads import (
+    claim_thread,
+    is_staff,
+    list_threads,
+    owns_thread,
+    title_from,
+)
 from tracing import init_tracing
 
 logger = logging.getLogger(__name__)
@@ -111,6 +119,9 @@ async def lifespan(_app: FastAPI) -> AsyncGenerator[None, None]:
         checkpointer = AsyncPostgresSaver(pool)
         await checkpointer.setup()
         graph = build_graph(checkpointer=checkpointer)
+        # The thread/quota endpoints and the identity dependencies reach the
+        # pool the checkpointer already shares; no second pool is opened.
+        _app.state.pool = pool
         yield
     finally:
         graph = _default_graph
@@ -416,12 +427,29 @@ async def _astream_answer(
 
 @router.post("/run_pipeline/stream")
 async def run_pipeline_stream_endpoint(
-    payload: RunPipelineRequest, request: Request
+    payload: RunPipelineRequest,
+    request: Request,
+    identity: Identity = Depends(require_identity),
 ) -> StreamingResponse:
     """Run the pipeline and stream progress, pause, and answer frames over SSE."""
     _enforce_rate_limit(request)
     # No checkpoint read happens here: see `_turn_input`. The rate limit stays
     # pre-stream because it is the one failure that must not commit a 200.
+    pool: AsyncConnectionPool[AsyncConnection[DictRow]] = request.app.state.pool
+    # Upsert-then-verify: the first turn creates the thread; every turn after
+    # that (and every resume) confirms the caller owns it. `ON CONFLICT DO
+    # NOTHING` cannot tell them apart in one round trip, so the owner is read
+    # back. A resume carries no query, so it would write an empty title: the
+    # upsert is DO NOTHING against an existing thread anyway, and passing None
+    # skips the title instead of writing "".
+    owned = await claim_thread(
+        pool,
+        thread_id=payload.thread_id,
+        user_id=identity.user_id,
+        title=title_from(payload.query) if payload.query else None,
+    )
+    if not owned:
+        raise HTTPException(status_code=403, detail="That conversation is not yours.")
 
     async def _generate() -> AsyncGenerator[str, None]:
         parts: list[str] = []
@@ -533,6 +561,67 @@ async def run_pipeline_stream_endpoint(
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+
+async def _thread_messages(thread_id: str) -> list[dict[str, str]]:
+    """Read one conversation live from the checkpointer (Q6).
+
+    The checkpointer's message text lives in msgpack-serialized BYTEA, so the
+    only thing that can read it is code holding the graph — never an admin
+    pointed at the table (brainstorm §2.4). `aget_state` is that code.
+    """
+    if getattr(graph, "checkpointer", None) is None:
+        return []
+    snapshot = await graph.aget_state(build_runtime_config(thread_id=thread_id))
+    return [
+        {
+            "role": "user" if message.type == "human" else "assistant",
+            "text": message.text(),
+        }
+        for message in snapshot.values.get("messages", [])
+    ]
+
+
+@router.get("/threads")
+async def list_threads_endpoint(
+    request: Request, identity: Identity = Depends(require_identity)
+) -> dict[str, Any]:
+    """Return the caller's conversations, newest first, for the sidebar."""
+    pool = request.app.state.pool
+    return {
+        "threads": [
+            row.__dict__ for row in await list_threads(pool, user_id=identity.user_id)
+        ],
+    }
+
+
+@router.get("/threads/{thread_id}")
+async def read_thread_endpoint(
+    thread_id: str, request: Request, identity: Identity = Depends(require_identity)
+) -> dict[str, Any]:
+    """Return one of the caller's own conversations."""
+    # Rate-limited like the streaming route: this reads a checkpoint and
+    # deserializes an entire conversation, so it is not free. The daily quota
+    # (unit 6) deliberately does not cover it: reading your own history must
+    # not cost research turns.
+    _enforce_rate_limit(request)
+    pool = request.app.state.pool
+    if not await owns_thread(pool, thread_id=thread_id, user_id=identity.user_id):
+        raise HTTPException(status_code=403, detail="That conversation is not yours.")
+    return {"thread_id": thread_id, "messages": await _thread_messages(thread_id)}
+
+
+@router.get("/admin/threads/{thread_id}")
+async def admin_read_thread_endpoint(
+    thread_id: str, request: Request, identity: Identity = Depends(require_identity)
+) -> dict[str, Any]:
+    """Return any conversation, for a staff user (Q6, Q17b)."""
+    _enforce_rate_limit(request)
+    # Re-read from Postgres rather than trusting a claim: a token minted before
+    # staff was revoked stays valid for its full 15 minutes otherwise.
+    if not await is_staff(request.app.state.pool, user_id=identity.user_id):
+        raise HTTPException(status_code=403, detail="Staff only.")
+    return {"thread_id": thread_id, "messages": await _thread_messages(thread_id)}
 
 
 app.include_router(router)
