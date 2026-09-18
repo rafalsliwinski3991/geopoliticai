@@ -8,8 +8,6 @@ services:
   agentic-backend:
     volumes:
       - ./agentic_backend/src:/app/src
-      - ./frontend/index.html:/app/frontend/index.html:ro
-      - ./frontend/assets:/app/frontend/assets:ro
     ports:
       - "${BACKEND_PORT:-3001}:8000"
     environment:
