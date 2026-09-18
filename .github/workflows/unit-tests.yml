@@ -132,6 +132,21 @@ jobs:
         env:
           DATABASE_URL: postgresql://drift:testpassword@127.0.0.1:5432/drift_test
 
+  spa-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Run SPA tests
+        working-directory: frontend/chat
+        run: npm ci && npm test
+
   frontend-tests:
     runs-on: ubuntu-latest
     steps:
