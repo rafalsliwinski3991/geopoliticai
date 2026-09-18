@@ -95,4 +95,20 @@ describe("the access-token module", () => {
     await expect(getAccessToken()).rejects.toThrow("Not authenticated");
     expect(assign).toHaveBeenCalledWith(LOGIN_URL);
   });
+
+  it("raises the retryable error, not the sign-in error, on a 5xx", async () => {
+    vi.stubGlobal("fetch", vi.fn(() => Promise.resolve(jsonResponse({}, 502))));
+    const { getAccessToken, TokenServiceError } = await importToken();
+
+    await expect(getAccessToken()).rejects.toBeInstanceOf(TokenServiceError);
+    expect(assign).not.toHaveBeenCalled();
+  });
+
+  it("raises the retryable error when the token service is unreachable", async () => {
+    vi.stubGlobal("fetch", vi.fn(() => Promise.reject(new TypeError("down"))));
+    const { getAccessToken, TokenServiceError } = await importToken();
+
+    await expect(getAccessToken()).rejects.toBeInstanceOf(TokenServiceError);
+    expect(assign).not.toHaveBeenCalled();
+  });
 });

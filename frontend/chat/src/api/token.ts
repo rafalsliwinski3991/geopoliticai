@@ -5,6 +5,11 @@ const TOKEN_URL = "/accounts/token/";
 const LOGIN_URL = "/accounts/login/?next=/chat";
 const REFRESH_MARGIN_MS = 60_000;
 
+// A failure that is not "signed out": the session may be fine and the request
+// worth retrying (token service 5xx, network). The 401 path redirects to the
+// login page and never surfaces as this error.
+export class TokenServiceError extends Error {}
+
 let token: string | null = null;
 let expiresAt = 0;
 let inFlight: Promise<string> | null = null;
@@ -20,12 +25,17 @@ export async function getAccessToken(): Promise<string> {
 }
 
 async function fetchToken(): Promise<string> {
-  const response = await fetch(TOKEN_URL, { credentials: "include" });
+  let response: Response;
+  try {
+    response = await fetch(TOKEN_URL, { credentials: "include" });
+  } catch {
+    throw new TokenServiceError("Token request failed");
+  }
   if (response.status === 401) {
     window.location.assign(LOGIN_URL);
     throw new Error("Not authenticated");
   }
-  if (!response.ok) throw new Error(`Token request failed (${response.status})`);
+  if (!response.ok) throw new TokenServiceError(`Token request failed (${response.status})`);
   const data = (await response.json()) as { access: string; expires_in: number };
   token = data.access;
   expiresAt = Date.now() + data.expires_in * 1000;
