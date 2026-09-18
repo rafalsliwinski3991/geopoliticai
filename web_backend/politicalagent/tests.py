@@ -13,9 +13,27 @@ SIGNUP_PASSWORD = "resolute-amber-8"
 class AuthScreensTest(TestCase):
     """The allauth screens and the admin login gate respond as routes, not 500s."""
 
-    def test_login_page_renders(self) -> None:
-        response = self.client.get(reverse("account_login"))
+    WORDMARK = "Political<em>Agent</em>"
+    # Manifest storage hashes the filename; the prefix stays stable.
+    STYLESHEET = "site/style."
+
+    def assert_branded(self, url_name: str) -> None:
+        response = self.client.get(reverse(url_name))
         self.assertEqual(response.status_code, 200)
+        self.assertContains(response, self.WORDMARK)
+        self.assertContains(response, self.STYLESHEET)
+
+    def test_login_page_renders(self) -> None:
+        self.assert_branded("account_login")
+
+    def test_signup_page_renders(self) -> None:
+        self.assert_branded("account_signup")
+
+    def test_password_reset_page_renders(self) -> None:
+        self.assert_branded("account_reset_password")
+
+    def test_verification_sent_page_renders(self) -> None:
+        self.assert_branded("account_email_verification_sent")
 
     def test_admin_redirects_anonymous_users_to_login(self) -> None:
         response = self.client.get("/admin/")
