@@ -44,10 +44,12 @@ build-backend = "setuptools.build_meta"
 package-dir = {"" = "src"}
 py-modules = [
     "api",
+    "auth",
     "config",
     "llm",
     "models",
     "search",
+    "threads",
     "tracing",
 ]
 
