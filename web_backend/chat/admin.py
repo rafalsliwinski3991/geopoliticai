@@ -3,7 +3,6 @@
 from django.contrib import admin, messages
 from django.db import connection
 from django.db.utils import ProgrammingError
-from django.utils.html import format_html
 
 from chat.models import Quota, Thread
 
@@ -39,16 +38,12 @@ CHECKPOINTER_TABLES_MISSING = (
 
 @admin.register(Thread)
 class ThreadAdmin(admin.ModelAdmin):
-    """Thread admin with a link to the live conversation in the chat UI."""
+    """Thread admin: the id is the conversation key the chat UI stores."""
 
-    list_display = ("id", "title", "user", "created_at", "open_chat_link")
+    list_display = ("id", "title", "user", "created_at")
     search_fields = ("id", "title", "user__email")
     raw_id_fields = ("user",)
     actions = ("check_orphaned_threads",)
-
-    @admin.display(description="Live conversation")
-    def open_chat_link(self, obj: Thread) -> str:
-        return format_html('<a href="/chat">Open chat</a> <code>{}</code>', obj.id)
 
     @admin.display(description="Check for orphaned checkpointer threads")
     @admin.action(description="Check for orphaned checkpointer threads")
@@ -76,4 +71,7 @@ class QuotaAdmin(admin.ModelAdmin):
         return False
 
     def has_change_permission(self, request, obj=None) -> bool:
+        return False
+
+    def has_delete_permission(self, request, obj=None) -> bool:
         return False
