@@ -533,13 +533,30 @@ async def run_pipeline_stream_endpoint(
                     is_report = True
                     continue
                 if kind == "counted":
+                    # The site ceiling is read before the caller is charged:
+                    # a turn the site refuses must not cost the user their
+                    # own turn. Like any pre-read it is advisory — a
+                    # concurrent request can still take the last slot between
+                    # this read and the increments; `increment_quota` remains
+                    # the authority.
+                    if (
+                        await quota_used(pool, user_id=SITE_WIDE_QUOTA_USER_ID)
+                        >= DAILY_RESEARCH_TURNS_ALL_USERS
+                    ):
+                        yield _sse(
+                            {
+                                "type": "error",
+                                "status": 429,
+                                "message": "The site has used today's research capacity.",
+                            }
+                        )
+                        return
                     if not await increment_quota(
                         pool, user_id=identity.user_id, limit=DAILY_RESEARCH_TURNS
                     ):
-                        # The door check passed but a concurrent turn took the
-                        # last one. This frame is mid-stream because that is
-                        # the only place it can be known; the honest serial
-                        # path still gets its clean pre-stream 429.
+                        # A concurrent turn took the last one. This frame is
+                        # mid-stream because that is the only place the cap
+                        # can be known.
                         yield _sse(
                             {
                                 "type": "error",

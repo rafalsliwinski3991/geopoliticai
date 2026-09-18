@@ -457,6 +457,51 @@ async def test_an_approve_resume_sends_a_resume_command(
 
 
 @pytest.mark.anyio
+async def test_an_approve_resume_proceeds_at_the_cap(
+    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Approving a pending report is free: the quota must never strand it."""
+
+    async def pending(thread_id: str) -> dict[str, Any] | None:
+        return {
+            "outline": ["Section one"],
+            "notice": "",
+            "revisions_used": 1,
+            "revisions_allowed": 3,
+        }
+
+    async def intent(text: str, pause: dict[str, Any]) -> ResumeIntent:
+        return ResumeIntent(action="approve", instruction="")
+
+    async def exhausted(pool: Any, *, user_id: int) -> int:
+        return DAILY_RESEARCH_TURNS
+
+    increments: list[int] = []
+
+    async def increment(pool: Any, *, user_id: int, limit: int) -> int | None:
+        increments.append(user_id)
+        return 1
+
+    async def stream(
+        graph_input: Any, thread_id: str
+    ) -> AsyncIterator[tuple[str, str]]:
+        yield ("token", "The report.")
+
+    monkeypatch.setattr(api, "_pending_pause", pending)
+    monkeypatch.setattr(api, "classify_resume_intent", intent)
+    monkeypatch.setattr(api, "quota_used", exhausted)
+    monkeypatch.setattr(api, "increment_quota", increment)
+    with patch("api._astream_answer", stream):
+        response = await client.post(
+            "/api/run_pipeline/stream", json={"resume": "go ahead", "thread_id": "t-1"}
+        )
+    # Assert
+    assert response.status_code == 200
+    assert _events(response.text)[-1]["type"] == "result"
+    assert increments == []
+
+
+@pytest.mark.anyio
 async def test_a_new_question_resume_starts_a_fresh_turn(
     client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -1156,24 +1201,107 @@ async def test_admin_thread_endpoint_with_is_staff_true_returns_messages(
 
 
 @pytest.mark.anyio
-async def test_the_21st_research_turn_is_429_before_any_frame_is_written(
+async def test_the_21st_research_turn_is_429_mid_stream(
     client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A refusal is a clean HTTP 429 before the stream opens, not an SSE frame."""
+    """The cap is enforced in the counted branch: a research turn over it is
+    refused with a 429 error frame on an HTTP 200, never a result."""
 
     async def exhausted(pool: Any, *, user_id: int) -> int:
         return DAILY_RESEARCH_TURNS
 
-    async def boom(*args: Any, **kwargs: Any) -> AsyncIterator[tuple[str, str]]:
-        raise AssertionError("the stream must not open past the cap")
+    async def increment(pool: Any, *, user_id: int, limit: int) -> int | None:
+        return None
+
+    async def stream(
+        graph_input: Any, thread_id: str
+    ) -> AsyncIterator[tuple[str, Any]]:
+        yield ("counted", None)
         yield ("token", "never")
 
     monkeypatch.setattr(api, "quota_used", exhausted)
-    monkeypatch.setattr(api, "_astream_answer", boom)
-    response = await client.post(
-        "/api/run_pipeline/stream", json={"query": "x", "thread_id": "t-1"}
-    )
-    assert response.status_code == 429
+    monkeypatch.setattr(api, "increment_quota", increment)
+    with patch("api._astream_answer", stream):
+        response = await client.post(
+            "/api/run_pipeline/stream", json={"query": "x", "thread_id": "t-1"}
+        )
+    # Assert
+    assert response.status_code == 200
+    events = _events(response.text)
+    assert events[-1]["type"] == "error"
+    assert events[-1]["status"] == 429
+    assert all(event["type"] != "result" for event in events)
+
+
+@pytest.mark.anyio
+async def test_a_chat_routed_turn_proceeds_at_the_cap(
+    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Chat is free (Q5b): an exhausted user may still chat, and the counted
+    branch — the only place a turn is refused — never fires."""
+
+    async def exhausted(pool: Any, *, user_id: int) -> int:
+        return DAILY_RESEARCH_TURNS
+
+    increments: list[int] = []
+
+    async def increment(pool: Any, *, user_id: int, limit: int) -> int | None:
+        increments.append(user_id)
+        return 1
+
+    async def stream(
+        graph_input: Any, thread_id: str
+    ) -> AsyncIterator[tuple[str, str]]:
+        yield ("token", "Hello.")
+
+    monkeypatch.setattr(api, "quota_used", exhausted)
+    monkeypatch.setattr(api, "increment_quota", increment)
+    with patch("api._astream_answer", stream):
+        response = await client.post(
+            "/api/run_pipeline/stream",
+            json={"query": "chat please", "thread_id": "t-1"},
+        )
+    # Assert
+    assert response.status_code == 200
+    assert _events(response.text)[-1]["type"] == "result"
+    assert increments == []
+
+
+@pytest.mark.anyio
+async def test_a_turn_refused_by_the_site_ceiling_does_not_charge_the_user(
+    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The site read happens before the user's increment: a turn the site
+    refuses costs the caller nothing."""
+
+    async def site_exhausted(pool: Any, *, user_id: int) -> int:
+        return DAILY_RESEARCH_TURNS_ALL_USERS if user_id == 0 else 0
+
+    increments: list[int] = []
+
+    async def increment(pool: Any, *, user_id: int, limit: int) -> int | None:
+        increments.append(user_id)
+        return 1
+
+    async def stream(
+        graph_input: Any, thread_id: str
+    ) -> AsyncIterator[tuple[str, Any]]:
+        yield ("counted", None)
+        yield ("token", "never")
+
+    monkeypatch.setattr(api, "quota_used", site_exhausted)
+    monkeypatch.setattr(api, "increment_quota", increment)
+    with patch("api._astream_answer", stream):
+        response = await client.post(
+            "/api/run_pipeline/stream", json={"query": "x", "thread_id": "t-1"}
+        )
+    # Assert
+    events = _events(response.text)
+    assert events[-1]["type"] == "error"
+    assert events[-1]["status"] == 429
+    assert events[-1]["message"] == "The site has used today's research capacity."
+    assert all(event["type"] != "result" for event in events)
+    assert 1 not in increments
 
 
 @pytest.mark.anyio
@@ -1300,7 +1428,7 @@ async def test_a_turn_that_fails_after_routing_still_increments_once(
 async def test_a_turn_at_the_cap_ends_with_a_429_error_frame(
     client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The door passed but a concurrent turn took the last one."""
+    """A concurrent turn took the last one before this turn's increment."""
 
     async def increment(pool: Any, *, user_id: int, limit: int) -> int | None:
         return None
