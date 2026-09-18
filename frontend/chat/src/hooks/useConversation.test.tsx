@@ -170,15 +170,104 @@ describe("the conversation state machine (was ux.test.mjs pause semantics)", () 
   });
 });
 
+// Helpers only.
+
+// Renders every streamed turn event, recording the wire body of the POST so
+// tests can assert whether the turn was a `{query}` or a `{resume}`.
+function stubStreaming(payloads: object[][], postedBodies: unknown[] = []) {
+  let index = 0;
+  vi.stubGlobal(
+    "fetch",
+    vi.fn((url: string, init?: RequestInit) => {
+      if (url === "/accounts/token/") {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: async () => ({ access: "tok", expires_in: 900 }),
+        } as unknown as Response);
+      }
+      if (init?.body) postedBodies.push(JSON.parse(init.body as string));
+      const events = payloads[Math.min(index, payloads.length - 1)];
+      index += 1;
+      const stream = new ReadableStream({
+        start(controller) {
+          for (const event of events) {
+            controller.enqueue(
+              new TextEncoder().encode(`data: ${JSON.stringify(event)}\n\n`),
+            );
+          }
+          controller.close();
+        },
+      });
+      return Promise.resolve({ ok: true, status: 200, body: stream } as unknown as Response);
+    }),
+  );
+}
+
+describe("streaming token display", () => {
+  it("accumulates streamed tokens into one bubble that result replaces with the full output", async () => {
+    stubStreaming([
+      [
+        { type: "token", content: "First half. " },
+        { type: "token", content: "Second half." },
+        { type: "result", output: "Full answer text.", kind: "answer", truncated: false },
+      ],
+    ]);
+    const getLatest = await renderHookProbe();
+    await act(async () => {
+      await (getLatest() as { send: (t: string) => Promise<void> }).send("What changed?");
+    });
+    const { messages } = getLatest() as {
+      messages: { role: string; text: string; kind?: string }[];
+    };
+    const assistants = messages.filter((message) => message.role === "assistant");
+    // One streamed bubble, not one per chunk, and no duplicated full text.
+    expect(assistants).toHaveLength(1);
+    expect(assistants[0]!.text).toBe("Full answer text.");
+    expect(assistants[0]!.kind).toBe("answer");
+  });
+});
+
+describe("the paused wire body", () => {
+  it("posts {resume} while paused and {query} otherwise", async () => {
+    const postedBodies: unknown[] = [];
+    stubStreaming([
+      [{ type: "pause", outline: ["One"], notice: "" }],
+      [{ type: "result", output: "Report.", kind: "report", truncated: false }],
+    ], postedBodies);
+    const getLatest = await renderHookProbe();
+    await act(async () => {
+      await (getLatest() as { send: (t: string) => Promise<void> }).send("ask");
+    });
+    expect((getLatest() as { paused: boolean }).paused).toBe(true);
+    await act(async () => {
+      await (getLatest() as { send: (t: string) => Promise<void> }).send("approve");
+    });
+    const bodies = postedBodies as { query?: string; resume?: string; thread_id?: string }[];
+    expect(bodies[0]).toEqual({ query: "ask", thread_id: bodies[0]!.thread_id });
+    expect(bodies[0]!.resume).toBeUndefined();
+    expect(bodies[1]!.resume).toBe("approve");
+    expect(bodies[1]!.query).toBeUndefined();
+    // The same thread id persists across both turns.
+    expect(bodies[1]!.thread_id).toBe(bodies[0]!.thread_id);
+  });
+});
+
 describe("the DOMPurify version floor (was security.test.mjs)", () => {
   it("is above the floor and is not a known-bad release", () => {
     const version = DOMPurify.version;
-    const [major, minor, patch] = version.split(".").map(Number);
-    // 3.4.0 and 3.2.6 were the known-bad releases; anything newer is fine.
     const knownBad = new Set(["3.4.0", "3.2.6"]);
+    // Anything strictly later than 3.2.6 in semver order is acceptable; the
+    // known-bad releases must never reappear.
     expect(knownBad.has(version)).toBe(false);
-    expect(major).toBeGreaterThanOrEqual(3);
-    expect(minor).toBeGreaterThanOrEqual(2);
-    expect(patch).toBeGreaterThanOrEqual(7);
+    expect(versionGreater(version, "3.2.6")).toBe(true);
   });
 });
+
+function versionGreater(actual: string, floor: string): boolean {
+  const [a, b, c] = actual.split(".").map(Number);
+  const [x, y, z] = floor.split(".").map(Number);
+  if ((a ?? 0) !== (x ?? 0)) return (a ?? 0) > (x ?? 0);
+  if ((b ?? 0) !== (y ?? 0)) return (b ?? 0) > (y ?? 0);
+  return (c ?? 0) > (z ?? 0);
+}

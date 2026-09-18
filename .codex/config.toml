@@ -8,3 +8,7 @@ source = "https://github.com/DietrichGebert/ponytail.git"
 
 [plugins."ponytail@ponytail"]
 enabled = true
+
+[mcp_servers.chrome-devtools]
+command = "npx"
+args = ["-y", "chrome-devtools-mcp@latest"]

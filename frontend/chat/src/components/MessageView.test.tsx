@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { TRUNCATED_NOTE, reportFileName } from "./MessageView";
+import { render, screen } from "@testing-library/react";
+import { MessageView, TRUNCATED_NOTE, reportFileName } from "./MessageView";
 import { renderMarkdown, ALLOWED_URI_REGEXP } from "../lib/markdown";
 
 describe("report actions", () => {
@@ -46,6 +47,19 @@ describe("product copy rules (was ux.test.mjs)", () => {
       const lower = text.toLowerCase();
       expect(lower.includes("allow-listed"), path).toBe(false);
       expect(lower.includes("brave"), path).toBe(false);
+      // No node names leak into user-facing copy either.
+      for (const node of ["search_and_fetch", "classify", "expert", "reporter"]) {
+        expect(lower.includes(node), path).toBe(false);
+      }
     }
+  });
+});
+
+describe("message rendering", () => {
+  it("renders a user message as text, never as HTML", () => {
+    render(<MessageView message={{ role: "user", text: '<img src=x onerror="alert(1)">' }} />);
+    // The markup is shown literally; no element was created from it.
+    expect(document.querySelector("img")).toBeNull();
+    screen.getByText('<img src=x onerror="alert(1)">');
   });
 });

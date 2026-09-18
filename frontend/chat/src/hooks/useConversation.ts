@@ -4,7 +4,13 @@ import { HttpError, ServerEvent, streamTurn } from "../lib/sse";
 
 export type Message =
   | { role: "user"; text: string }
-  | { role: "assistant"; text: string; kind: "answer" | "report"; truncated: boolean }
+  | {
+      role: "assistant";
+      text: string;
+      kind: "answer" | "report";
+      truncated: boolean;
+      streaming?: boolean;
+    }
   | { role: "error"; text: string };
 
 // The paused rule the rewrite must preserve, stated so it cannot be lost:
@@ -70,15 +76,17 @@ export function useConversation() {
         setProgress((previous) => [...previous, { node: event.node, label: event.label }]);
         break;
       case "token":
-        // Tokens stream into the last assistant message; a turn starts with
-        // the result's text assembled from the streamed chunks.
+        // Tokens accumulate into the one assistant message the turn is
+        // streaming; a chunk that arrives when no streaming message exists
+        // starts it. The `result` frame carries the full text again and
+        // replaces the streamed transcript wholesale.
         setMessages((previous) => {
           const last = previous[previous.length - 1];
-          if (last && last.role === "assistant" && !last.text) {
+          if (last && last.role === "assistant" && last.streaming) {
             const copy = previous.slice(0, -1);
             return [
               ...copy,
-              { ...last, text: event.content, kind: "answer" as const },
+              { ...last, text: last.text + event.content },
             ];
           }
           return [
@@ -88,6 +96,7 @@ export function useConversation() {
               text: event.content,
               kind: "answer" as const,
               truncated: false,
+              streaming: true,
             },
           ];
         });
@@ -109,11 +118,17 @@ export function useConversation() {
         setPaused(false);
         setMessages((previous) => {
           const last = previous[previous.length - 1];
-          if (last && last.role === "assistant" && last.text === event.output) {
+          if (last && last.role === "assistant" && last.streaming) {
             const copy = previous.slice(0, -1);
             return [
               ...copy,
-              { ...last, kind: event.kind, truncated: event.truncated },
+              {
+                ...last,
+                text: event.output,
+                kind: event.kind,
+                truncated: event.truncated,
+                streaming: false,
+              },
             ];
           }
           return [
