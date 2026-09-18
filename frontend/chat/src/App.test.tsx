@@ -72,6 +72,8 @@ describe("the app shell", () => {
     const App = await importApp();
     render(<App />);
     expect(await screen.findByText("Sign in required.")).toBeTruthy();
+    // The gate screen must still carry a page heading for screen readers.
+    expect(screen.getByRole("heading", { name: "PoliticalAgent" })).toBeTruthy();
   });
 
   it("New chat resets the conversation", async () => {

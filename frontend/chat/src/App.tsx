@@ -51,7 +51,7 @@ export default function App() {
             <div className="conv">
               <div className="row">
                 <div className="gate">
-                  <p className="wordmark">Political<em>Agent</em></p>
+                  <h1 className="wordmark">Political<em>Agent</em></h1>
                   {auth === "checking" ? (
                     <p>Loading…</p>
                   ) : auth === "error" ? (

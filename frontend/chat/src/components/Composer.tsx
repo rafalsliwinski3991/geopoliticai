@@ -35,6 +35,9 @@ export function Composer({
             value={value}
             onChange={(event) => setValue(event.target.value)}
             onKeyDown={(event) => {
+              // Enter confirms the suggestion of a pending IME composition
+              // (CJK input); submitting then would send half-formed text.
+              if (event.nativeEvent.isComposing) return;
               if (event.key === "Enter" && !event.shiftKey) {
                 event.preventDefault();
                 submit();
