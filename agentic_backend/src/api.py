@@ -31,13 +31,21 @@ from agents.orchestrator import (
 from agents.orchestrator import graph as _default_graph
 from agents.reporter import classify_resume_intent
 from auth import Identity, require_identity
-from config import init_environment, require_env
+from config import (
+    DAILY_RESEARCH_TURNS,
+    DAILY_RESEARCH_TURNS_ALL_USERS,
+    SITE_WIDE_QUOTA_USER_ID,
+    init_environment,
+    require_env,
+)
 from models import PipelineError, ReportNotPendingError
 from threads import (
     claim_thread,
+    increment_quota,
     is_staff,
     list_threads,
     owns_thread,
+    quota_used,
     title_from,
 )
 from tracing import init_tracing
@@ -80,6 +88,12 @@ ANSWER_PROGRESS = {"node": "answer", "label": "Writing the answer..."}
 # browser through the node's own `notice` custom event. Adding `"reporter"`
 # here would print every refusal and cancellation twice.
 ANSWER_NODES = frozenset({"answer", "chat", "write"})
+
+# `other` — the chat branch — is absent on purpose (Q5b): chat turns stay
+# free. `classify` does not re-run on a resume, so approving or revising a
+# pending report does not count again: one report is one count, taken when it
+# was requested, and the reporter's own revision cap bounds the rounds.
+RESEARCH_DESTINATIONS = frozenset({"geopolitical", "report"})
 
 POSTGRES_CONNECTION_KWARGS: dict[str, Any] = {
     "autocommit": True,
@@ -185,14 +199,24 @@ class RunPipelineRequest(BaseModel):
         return self
 
 
-def _resolve_client_id(request: Request) -> str:
-    """Resolve a client address, honoring the address appended by nginx.
+def _resolve_client_id(request: Request, identity: Identity | None = None) -> str:
+    """Resolve a rate-limit key: the authenticated user, else the client address.
 
     nginx appends the connecting peer as the last `X-Forwarded-For` entry, so
     the right-most value is the address this request actually came from. Taking
     the first entry instead would let a caller spoof the id and rotate it to
     dodge the rate limit.
+
+    Keyed on the authenticated user id when there is one (§7, Q17): a signed-in
+    caller must not be able to rotate the forwarded header to dodge their
+    bucket. The unauthenticated fallback keeps the spoofing note above: a
+    header-based id is spoofable, and the daily quota in Postgres is the real
+    bound on an authenticated caller. ponytail: the window is in-process, so
+    with more than one uvicorn worker the per-minute limit multiplies by the
+    worker count; the daily quota backstops it.
     """
+    if identity is not None:
+        return f"user:{identity.user_id}"
     forwarded = request.headers.get("x-forwarded-for", "")
     if forwarded.strip():
         return forwarded.split(",")[-1].strip()
@@ -215,10 +239,10 @@ def _flush_stale_clients(now: float) -> None:
             del _rate_limit_store[client_id]
 
 
-def _enforce_rate_limit(request: Request) -> None:
+def _enforce_rate_limit(request: Request, identity: Identity | None = None) -> None:
     """Apply the in-process per-client rate limit."""
     now = time.monotonic()
-    client_id = _resolve_client_id(request)
+    client_id = _resolve_client_id(request, identity)
     with _rate_limit_lock:
         timestamps = _rate_limit_store.get(client_id)
         if timestamps is None:
@@ -372,6 +396,7 @@ async def _astream_answer(
     """
     config = build_runtime_config(thread_id=thread_id)
     streamed_nodes: set[str] = set()
+    counted = False
     async for namespace, mode, data in graph.astream(
         graph_input,
         config=config,
@@ -399,6 +424,20 @@ async def _astream_answer(
         if mode == "updates":
             if namespace or not isinstance(data, dict):
                 continue
+            # Counted from `classify`, NOT from `expert`/`reporter`. An
+            # `updates` frame arrives only after its node RETURNS, so counting
+            # on `expert` means the count lands after three Brave batches,
+            # trafilatura, and the whole streamed model call — while tokens
+            # reached the browser much earlier through `messages` mode. A
+            # client that aborts the fetch mid-answer has already spent the
+            # money and never gets counted. `classify` returns in about a
+            # second, before anything expensive starts, and its update already
+            # carries the branch (`agents/orchestrator/nodes/classify.py:68`).
+            decision = data.get("classify")
+            if not counted and isinstance(decision, dict):
+                if decision.get("destination") in RESEARCH_DESTINATIONS:
+                    counted = True
+                    yield ("counted", None)
             interrupts = data.get("__interrupt__")
             if interrupts:
                 yield ("pause", interrupts[0].value)
@@ -432,9 +471,10 @@ async def run_pipeline_stream_endpoint(
     identity: Identity = Depends(require_identity),
 ) -> StreamingResponse:
     """Run the pipeline and stream progress, pause, and answer frames over SSE."""
-    _enforce_rate_limit(request)
+    _enforce_rate_limit(request, identity)
     # No checkpoint read happens here: see `_turn_input`. The rate limit stays
     # pre-stream because it is the one failure that must not commit a 200.
+    pool: AsyncConnectionPool[AsyncConnection[DictRow]] = request.app.state.pool
     pool: AsyncConnectionPool[AsyncConnection[DictRow]] = request.app.state.pool
     # A resume can never be a thread's first turn: it belongs to a report the
     # endpoint already created, so it only verifies ownership — never upsert-
@@ -442,6 +482,12 @@ async def run_pipeline_stream_endpoint(
     # an empty title. A query owns the upsert-then-verify path: `ON CONFLICT
     # DO NOTHING` cannot tell the first turn from a later one in one round
     # trip, so the owner is read back.
+    # No pre-routing quota check here: before `classify` runs, the endpoint
+    # cannot tell a chargeable research turn from a free chat turn or a report
+    # resume (§7 S2), and a door check that guesses would 429 turns that cost
+    # nothing — stranding a pending report forever. `increment_quota` in the
+    # counted branch below is the sole authority, refusing a research turn as
+    # a mid-stream 429 error frame.
     if payload.resume is not None:
         owned = await owns_thread(
             pool, thread_id=payload.thread_id, user_id=identity.user_id
@@ -485,6 +531,39 @@ async def run_pipeline_stream_endpoint(
                     continue
                 if kind == "kind":
                     is_report = True
+                    continue
+                if kind == "counted":
+                    if not await increment_quota(
+                        pool, user_id=identity.user_id, limit=DAILY_RESEARCH_TURNS
+                    ):
+                        # The door check passed but a concurrent turn took the
+                        # last one. This frame is mid-stream because that is
+                        # the only place it can be known; the honest serial
+                        # path still gets its clean pre-stream 429.
+                        yield _sse(
+                            {
+                                "type": "error",
+                                "status": 429,
+                                "message": "Daily research limit reached.",
+                            }
+                        )
+                        return
+                    if not await increment_quota(
+                        pool,
+                        user_id=SITE_WIDE_QUOTA_USER_ID,
+                        limit=DAILY_RESEARCH_TURNS_ALL_USERS,
+                    ):
+                        # The site-wide ceiling: the operator's bill has a
+                        # second, coarser bound no single account controls.
+                        # Chat turns never reach this branch (Q5b).
+                        yield _sse(
+                            {
+                                "type": "error",
+                                "status": 429,
+                                "message": "The site has used today's research capacity.",
+                            }
+                        )
+                        return
                     continue
                 if kind not in ("token", "notice"):
                     # An event kind this layer does not know. Ignoring it is
@@ -591,12 +670,16 @@ async def _thread_messages(thread_id: str) -> list[dict[str, str]]:
 async def list_threads_endpoint(
     request: Request, identity: Identity = Depends(require_identity)
 ) -> dict[str, Any]:
-    """Return the caller's conversations, newest first, for the sidebar."""
+    """Return the caller's conversations and today's quota, for the sidebar."""
     pool = request.app.state.pool
     return {
         "threads": [
             row.__dict__ for row in await list_threads(pool, user_id=identity.user_id)
         ],
+        "quota": {
+            "used": await quota_used(pool, user_id=identity.user_id),
+            "limit": DAILY_RESEARCH_TURNS,
+        },
     }
 
 
@@ -609,7 +692,7 @@ async def read_thread_endpoint(
     # deserializes an entire conversation, so it is not free. The daily quota
     # (unit 6) deliberately does not cover it: reading your own history must
     # not cost research turns.
-    _enforce_rate_limit(request)
+    _enforce_rate_limit(request, identity)
     pool = request.app.state.pool
     if not await owns_thread(pool, thread_id=thread_id, user_id=identity.user_id):
         raise HTTPException(status_code=403, detail="That conversation is not yours.")
@@ -621,7 +704,7 @@ async def admin_read_thread_endpoint(
     thread_id: str, request: Request, identity: Identity = Depends(require_identity)
 ) -> dict[str, Any]:
     """Return any conversation, for a staff user (Q6, Q17b)."""
-    _enforce_rate_limit(request)
+    _enforce_rate_limit(request, identity)
     # Re-read from Postgres rather than trusting a claim: a token minted before
     # staff was revoked stays valid for its full 15 minutes otherwise.
     if not await is_staff(request.app.state.pool, user_id=identity.user_id):

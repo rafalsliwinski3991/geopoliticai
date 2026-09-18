@@ -71,7 +71,7 @@ answer-node AI text, except that the `reporter` node's refusal, cancel, and
 revision-cap paths make no model call: that node emits its own `notice` custom
 event and the delivery layer turns it into answer text. SSE events are
 `progress`, `token`, `pause`, `result`, and `error`, with `result` carrying
-`kind` and `truncated`; known pipeline statuses are 422, 503, 502, and 409.
+`kind` and `truncated`; known pipeline statuses are 422, 503, 502, 409, and 429.
 The UI sanitizes Markdown and persists the thread id in
 `localStorage`. `_generate` emits at most 50,000 characters, marked with the
 `truncated` flag, but drains upstream output so checkpoint writes finish; the
@@ -83,9 +83,14 @@ thread.
 There is one root `.env`; never modify it or commit secrets. It supplies API,
 tests, Studio, and Compose. API startup requires `OPENAI_API_KEY`,
 `BRAVE_SEARCH_KEY`, `DATABASE_URL`, and `JWT_SIGNING_KEY`; tracing is optional, idempotent, and
-unredacted when enabled. Compose has Postgres, agentic-backend, frontend, and Phoenix;
-development ports are 8082, 3001, 55432, and loopback 6006. Production uses TLS
-and fail-closed Basic Auth for `/` and `/api/`.
+unredacted when enabled. Compose has Postgres, agentic-backend, web-backend, frontend, and Phoenix;
+development ports are 8082, 8083, 3001, 55432, and loopback 6006. Production uses TLS
+and fail-closed Basic Auth for `/` and `/api/`. The daily research quota is
+`DAILY_RESEARCH_TURNS` in `agentic_backend/src/config.py`, with a site-wide
+ceiling on the same `quota` table behind a reserved sentinel user id; the
+schema-drift guard lives in `agentic_backend/tests/integration_tests/` and
+runs with `make test-integration` (needs Django-migrated Postgres; skips
+without `DATABASE_URL`).
 
 Run application commands from `agentic_backend/`: `uv sync --locked --dev`, `make test`,
 `make lint`, `make format`, and `langgraph dev`.

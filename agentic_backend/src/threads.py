@@ -9,7 +9,7 @@ it safe.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 
 from psycopg import AsyncConnection
@@ -31,12 +31,28 @@ WHERE user_id = %(user_id)s
 ORDER BY created_at DESC
 """
 SELECT_IS_STAFF = "SELECT is_staff FROM users_user WHERE id = %(user_id)s"
+SELECT_QUOTA_USED = """
+SELECT used FROM quota WHERE user_id = %(user_id)s AND day = %(day)s
+"""
+# Conditional and atomic: the WHERE on the conflict target makes the database,
+# not the application, the thing that decides whether a turn is affordable. It
+# returns no row when the cap is already reached, which is how N concurrent
+# requests that all passed the door check still consume only the turns that
+# remain. A plain `used = quota.used + 1` lets concurrency buy extras.
+INCREMENT_QUOTA = """
+INSERT INTO quota (user_id, day, used)
+VALUES (%(user_id)s, %(day)s, 1)
+ON CONFLICT (user_id, day) DO UPDATE SET used = quota.used + 1
+WHERE quota.used < %(limit)s
+RETURNING used
+"""
 
 # Every statement above, with a parameter set that is valid but matches nothing.
 # `test_schema_drift` executes each one so a renamed column fails in CI.
 DRIFT_PROBES: tuple[tuple[str, dict[str, Any]], ...] = (
     (SELECT_THREAD_OWNER, {"thread_id": "drift-probe"}),
     (SELECT_THREADS, {"user_id": 0}),
+    (SELECT_QUOTA_USED, {"user_id": 0, "day": date(1970, 1, 1)}),
     (SELECT_IS_STAFF, {"user_id": 0}),
 )
 
@@ -115,4 +131,43 @@ async def is_staff(
     async with pool.connection() as conn:
         cursor = await conn.execute(SELECT_IS_STAFF, {"user_id": user_id})
         row = await cursor.fetchone()
-    return bool(row and row["is_staff"])
+    return bool(row and (row or {}).get("is_staff"))
+
+
+async def quota_used(
+    pool: AsyncConnectionPool[AsyncConnection[DictRow]], *, user_id: int
+) -> int:
+    """Return the research turns this identity has spent today (0 when none)."""
+    async with pool.connection() as conn:
+        cursor = await conn.execute(
+            SELECT_QUOTA_USED, {"user_id": user_id, "day": _today()}
+        )
+        row = await cursor.fetchone()
+    return int((row or {}).get("used") or 0)
+
+
+async def increment_quota(
+    pool: AsyncConnectionPool[AsyncConnection[DictRow]],
+    *,
+    user_id: int,
+    limit: int,
+) -> int | None:
+    """Spend one research turn atomically; None when the cap is already reached.
+
+    The conditional upsert means N concurrent turns cannot buy extras: the
+    database decides affordability, and the door check (`quota_used`) is only
+    there for the clean pre-stream 429.
+    """
+    async with pool.connection() as conn:
+        cursor = await conn.execute(
+            INCREMENT_QUOTA, {"user_id": user_id, "day": _today(), "limit": limit}
+        )
+        row = await cursor.fetchone()
+    if row is None:
+        return None
+    return int(row["used"])
+
+
+def _today() -> date:
+    """Return the quota day, in UTC: the quota resets at midnight UTC."""
+    return date.today()
