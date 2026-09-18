@@ -439,14 +439,14 @@ async def run_pipeline_stream_endpoint(
     # Upsert-then-verify: the first turn creates the thread; every turn after
     # that (and every resume) confirms the caller owns it. `ON CONFLICT DO
     # NOTHING` cannot tell them apart in one round trip, so the owner is read
-    # back. A resume carries no query, so it would write an empty title: the
-    # upsert is DO NOTHING against an existing thread anyway, and passing None
-    # skips the title instead of writing "".
+    # back. A resume carries no query, so it upserts an empty title: the
+    # column is NOT NULL and Postgres checks that before the arbiter index,
+    # so None would raise NotNullViolation even against an existing thread.
     owned = await claim_thread(
         pool,
         thread_id=payload.thread_id,
         user_id=identity.user_id,
-        title=title_from(payload.query) if payload.query else None,
+        title=title_from(payload.query) if payload.query else "",
     )
     if not owned:
         raise HTTPException(status_code=403, detail="That conversation is not yours.")

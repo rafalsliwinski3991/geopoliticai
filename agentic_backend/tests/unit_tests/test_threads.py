@@ -102,7 +102,7 @@ async def test_claim_thread_reports_true_for_the_owners_second_turn(
     _fake_pool: _FakePool,
 ) -> None:
     _fake_pool.conn.scripted_rows = {threads.SELECT_THREAD_OWNER: [{"user_id": 7}]}
-    assert await claim_thread(pool(_fake_pool), thread_id="t1", user_id=7, title=None)
+    assert await claim_thread(pool(_fake_pool), thread_id="t1", user_id=7, title="")
 
 
 @pytest.mark.anyio
@@ -111,7 +111,7 @@ async def test_claim_thread_reports_false_for_another_users_thread(
 ) -> None:
     _fake_pool.conn.scripted_rows = {threads.SELECT_THREAD_OWNER: [{"user_id": 8}]}
     assert not await claim_thread(
-        pool(_fake_pool), thread_id="t1", user_id=7, title=None
+        pool(_fake_pool), thread_id="t1", user_id=7, title=""
     )
 
 
@@ -121,7 +121,7 @@ async def test_claim_thread_reports_false_for_an_unknown_thread(
 ) -> None:
     _fake_pool.conn.scripted_rows = {threads.SELECT_THREAD_OWNER: []}
     assert not await claim_thread(
-        pool(_fake_pool), thread_id="t1", user_id=7, title=None
+        pool(_fake_pool), thread_id="t1", user_id=7, title=""
     )
 
 

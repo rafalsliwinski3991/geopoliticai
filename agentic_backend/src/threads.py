@@ -9,6 +9,7 @@ it safe.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any
 
 from psycopg import AsyncConnection
@@ -52,7 +53,7 @@ class ThreadRow:
 
     id: str
     title: str
-    created_at: str
+    created_at: datetime
 
 
 async def claim_thread(
@@ -60,13 +61,16 @@ async def claim_thread(
     *,
     thread_id: str,
     user_id: int,
-    title: str | None,
+    title: str,
 ) -> bool:
     """Create the thread if it is new; report whether it belongs to this user.
 
     One round trip creates it and a second reads the owner, because
     `ON CONFLICT DO NOTHING` returns no row when the thread already exists and
-    the existing owner is exactly what must be checked.
+    the existing owner is exactly what must be checked. `title` must be a
+    string, never None: the column is NOT NULL and Postgres checks that before
+    the arbiter index, so a None would raise NotNullViolation even when the
+    upsert conflicts.
     """
     async with pool.connection() as conn:
         await conn.execute(
