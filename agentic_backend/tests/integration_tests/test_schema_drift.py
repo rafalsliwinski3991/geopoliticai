@@ -120,6 +120,7 @@ def _empty_checkpoint() -> Any:
 
 def test_every_drift_probe_executes(conn: Connection[dict[str, Any]]) -> None:
     """A renamed or dropped column fails here, and only here, before production."""
+    # Arrange + Act + Assert: every probe must execute a valid, no-match query.
     for statement, params in threads.DRIFT_PROBES:
         with conn.cursor() as cursor:
             cursor.execute(statement, params)
@@ -129,7 +130,10 @@ def test_every_drift_probe_executes(conn: Connection[dict[str, Any]]) -> None:
 def test_upsert_thread_creates_once_and_the_owner_is_read_back(
     conn: Connection[dict[str, Any]], user_id: int
 ) -> None:
+    # Arrange
+    # Arrange
     with conn.cursor() as cursor:
+        # Act
         cursor.execute(
             threads.UPSERT_THREAD,
             {"thread_id": "drift-1", "user_id": user_id, "title": "NATO"},
@@ -142,6 +146,8 @@ def test_upsert_thread_creates_once_and_the_owner_is_read_back(
         row = cast(Any, cursor.fetchone())
         cursor.execute("SELECT title FROM chat_threads WHERE id = 'drift-1'")
         title = cast(Any, cursor.fetchone())["title"]
+
+    # Assert
     assert row["user_id"] == user_id
     assert title == "NATO"
 
@@ -149,13 +155,16 @@ def test_upsert_thread_creates_once_and_the_owner_is_read_back(
 def test_select_threads_returns_the_serialized_columns(
     conn: Connection[dict[str, Any]], user_id: int
 ) -> None:
+    # Arrange
     with conn.cursor() as cursor:
         cursor.execute(
             threads.UPSERT_THREAD,
             {"thread_id": "drift-2", "user_id": user_id, "title": "Lithuania"},
         )
+        # Act
         cursor.execute(threads.SELECT_THREADS, {"user_id": user_id})
         rows = cursor.fetchall()
+    # Assert
     row = cast(Any, next(r for r in rows if r["id"] == "drift-2"))
     assert row["title"] == "Lithuania"
     assert row["created_at"] is not None
@@ -165,6 +174,7 @@ def test_increment_quota_upserts_increments_and_caps(
     conn: Connection[dict[str, Any]], user_id: int
 ) -> None:
     """The conditional atomic upsert, both ON CONFLICT branches, for real."""
+    # Arrange
     day = date.today()
     with conn.cursor() as cursor:
         cursor.execute(
@@ -179,6 +189,8 @@ def test_increment_quota_upserts_increments_and_caps(
             threads.INCREMENT_QUOTA, {"user_id": user_id, "day": day, "limit": 2}
         )
         capped = cursor.fetchone()
+
+    # Assert
     assert (first, second) == (1, 2)
     # The WHERE on the conflict target decides affordability: no row at the cap.
     assert capped is None
@@ -194,6 +206,7 @@ def test_deleting_a_user_cascades_into_the_checkpointer_tables(
     checkpointer DELETEs (pre_delete), then the ORM's chat_threads/quota
     cascade, then the user row.
     """
+    # Arrange
     thread_id = "drift-3"
     with conn.cursor() as cursor:
         cursor.execute(
@@ -207,6 +220,7 @@ def test_deleting_a_user_cascades_into_the_checkpointer_tables(
     )
     checkpointer.put_writes(saved_config, [("channel", "value")], "task-1")
 
+    # Act
     with conn.cursor() as cursor:
         # The signal fires on pre_delete, inside the user-delete transaction.
         for statement in CASCADE_SQL:
@@ -214,6 +228,8 @@ def test_deleting_a_user_cascades_into_the_checkpointer_tables(
         cursor.execute("DELETE FROM chat_threads WHERE user_id = %s", (user_id,))
         cursor.execute("DELETE FROM quota WHERE user_id = %s", (user_id,))
         cursor.execute("DELETE FROM users_user WHERE id = %s", (user_id,))
+
+    # Assert
     with conn.cursor() as cursor:
         cursor.execute(
             "SELECT COUNT(*) AS n FROM chat_threads WHERE id = %s", (thread_id,)
@@ -230,14 +246,23 @@ def test_orphan_query_reports_a_checkpointed_id_and_purges_cleanly(
     conn: Connection[dict[str, Any]], checkpointer: PostgresSaver
 ) -> None:
     """The admin action's safety net: a checkpointed id with no chat_threads row."""
+    # Arrange
     thread_id = "drift-orphan"
     config = {"configurable": {"thread_id": thread_id, "checkpoint_ns": ""}}
     checkpoint = _empty_checkpoint()
     checkpointer.put(cast(Any, config), checkpoint, CheckpointMetadata(), {})
+
+    # Act
     with conn.cursor() as cursor:
         cursor.execute(ORPHAN_THREAD_SQL)
-        assert thread_id in {row["thread_id"] for row in cursor.fetchall()}
+        orphans = {row["thread_id"] for row in cursor.fetchall()}
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM checkpoints WHERE thread_id = %s", (thread_id,))
+    cursor.close()
     with conn.cursor() as cursor:
-        cursor.execute("DELETE FROM checkpoints WHERE thread_id = %s", (thread_id,))
         cursor.execute(ORPHAN_THREAD_SQL)
-        assert thread_id not in {row["thread_id"] for row in cursor.fetchall()}
+        remaining = {row["thread_id"] for row in cursor.fetchall()}
+
+    # Assert
+    assert thread_id in orphans
+    assert thread_id not in remaining

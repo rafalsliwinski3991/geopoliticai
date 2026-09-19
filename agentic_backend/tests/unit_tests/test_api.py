@@ -25,6 +25,7 @@ from agents.reporter.consts.progress import OUTLINE_PROGRESS, REPORT_PROGRESS
 from config import (
     DAILY_RESEARCH_TURNS,
     DAILY_RESEARCH_TURNS_ALL_USERS,
+    SITE_WIDE_QUOTA_USER_ID,
 )
 from models import (
     LLMInvocationError,
@@ -1207,11 +1208,12 @@ async def test_the_21st_research_turn_is_429_mid_stream(
     """The cap is enforced in the counted branch: a research turn over it is
     refused with a 429 error frame on an HTTP 200, never a result."""
 
-    async def exhausted(pool: Any, *, user_id: int) -> int:
-        return DAILY_RESEARCH_TURNS
-
     async def increment(pool: Any, *, user_id: int, limit: int) -> int | None:
-        return None
+        # The caller's own cap is the one already reached; the site still has
+        # headroom for the refusal.
+        if user_id != SITE_WIDE_QUOTA_USER_ID:
+            return None
+        return 1
 
     async def stream(
         graph_input: Any, thread_id: str
@@ -1219,7 +1221,6 @@ async def test_the_21st_research_turn_is_429_mid_stream(
         yield ("counted", None)
         yield ("token", "never")
 
-    monkeypatch.setattr(api, "quota_used", exhausted)
     monkeypatch.setattr(api, "increment_quota", increment)
     with patch("api._astream_answer", stream):
         response = await client.post(
@@ -1271,16 +1272,16 @@ async def test_a_chat_routed_turn_proceeds_at_the_cap(
 async def test_a_turn_refused_by_the_site_ceiling_does_not_charge_the_user(
     client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The site read happens before the user's increment: a turn the site
-    refuses costs the caller nothing."""
-
-    async def site_exhausted(pool: Any, *, user_id: int) -> int:
-        return DAILY_RESEARCH_TURNS_ALL_USERS if user_id == 0 else 0
+    """The site increment commits before the user's: a turn the site refuses
+    costs the caller nothing, with no advisory read that a race could open."""
 
     increments: list[int] = []
 
     async def increment(pool: Any, *, user_id: int, limit: int) -> int | None:
         increments.append(user_id)
+        # The site is already at its ceiling; the caller still has headroom.
+        if user_id == SITE_WIDE_QUOTA_USER_ID:
+            return None
         return 1
 
     async def stream(
@@ -1289,7 +1290,6 @@ async def test_a_turn_refused_by_the_site_ceiling_does_not_charge_the_user(
         yield ("counted", None)
         yield ("token", "never")
 
-    monkeypatch.setattr(api, "quota_used", site_exhausted)
     monkeypatch.setattr(api, "increment_quota", increment)
     with patch("api._astream_answer", stream):
         response = await client.post(
