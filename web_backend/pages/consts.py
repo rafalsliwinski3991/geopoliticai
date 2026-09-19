@@ -1,33 +1,14 @@
-"""Editorial constants for the public site pages.
+"""Editorial constants for the public site pages (unit 11).
 
 The source spectrum is a verbatim copy of
 `agentic_backend/src/agents/expert/consts/sources.py`'s `ALLOWED_DOMAINS` —
 the web_backend may not import the agent library, so the drift is guarded by
-`pages/tests.py` instead of by code.
+`tests/pages/test_landing.py` instead of by code.
 """
 
 from __future__ import annotations
 
-from typing import NamedTuple
-
-
-class Band(NamedTuple):
-    label: str
-    slot: str
-    domains: tuple[str, ...]
-    institutes: frozenset[str]
-
-
-class _Roster(NamedTuple):
-    bands: tuple[Band, ...]
-
-    def domains(self) -> tuple[str, ...]:
-        return tuple(domain for band in self.bands for domain in band.domains)
-
-    @property
-    def total(self) -> int:
-        return len(self.domains())
-
+from pages.roster_types import Band, _Roster
 
 LANDING_SECTIONS = _Roster(
     bands=(

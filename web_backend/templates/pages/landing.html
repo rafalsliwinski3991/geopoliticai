@@ -56,9 +56,9 @@
         <div>
           <h3>Your question is routed</h3>
           <p>
-            A geopolitical question goes to research. A follow-up like “say that
-            again in Polish” is answered directly, without sources. A request for
-            a written report takes the third route.
+            A geopolitical question goes to research. A follow-up like “go
+            deeper on the cable incidents” is answered directly, without
+            sources. A request for a written report takes the third route.
           </p>
         </div>
         <p class="annot">Routing is free</p>
@@ -81,8 +81,9 @@
           <h3>The answer is written from that text</h3>
           <p>
             One model pass over what was actually read, streamed to you as it is
-            written. If no page could be read, you get an error that says which
-            step failed, not a confident guess.
+            written. If every page candidate fails to load or extract, you
+            get an error that names the step that failed, not a confident
+            guess.
           </p>
         </div>
         <p class="annot">One turn spent</p>
@@ -99,6 +100,10 @@
 
     <div class="gate">
       <div class="transcript">
+        <div class="turn">
+          <span class="who">PoliticalAgent · mid-conversation</span>
+          <p>…and that closes the researched exchange: sources read, answer written. A report can be requested after such an exchange.</p>
+        </div>
         <div class="turn">
           <span class="who">You</span>
           <p>Write me a report on Baltic energy security since 2022.</p>
@@ -146,8 +151,8 @@
         <p>Every citation is a page that was fetched and read in that turn.</p>
       </div>
       <div class="limit">
-        <h3>Fall back when search fails</h3>
-        <p>A failed search or a failed fetch is an error you see, not a quieter answer.</p>
+        <h3>Answer without every page intact</h3>
+        <p>A page the fetch could not read is dropped. Only a turn with nothing readable at all is an error — never a quieter answer.</p>
       </div>
       <div class="limit">
         <h3>Reach outside the list</h3>
