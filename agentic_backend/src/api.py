@@ -436,18 +436,23 @@ async def run_pipeline_stream_endpoint(
     # No checkpoint read happens here: see `_turn_input`. The rate limit stays
     # pre-stream because it is the one failure that must not commit a 200.
     pool: AsyncConnectionPool[AsyncConnection[DictRow]] = request.app.state.pool
-    # Upsert-then-verify: the first turn creates the thread; every turn after
-    # that (and every resume) confirms the caller owns it. `ON CONFLICT DO
-    # NOTHING` cannot tell them apart in one round trip, so the owner is read
-    # back. A resume carries no query, so it upserts an empty title: the
-    # column is NOT NULL and Postgres checks that before the arbiter index,
-    # so None would raise NotNullViolation even against an existing thread.
-    owned = await claim_thread(
-        pool,
-        thread_id=payload.thread_id,
-        user_id=identity.user_id,
-        title=title_from(payload.query) if payload.query else "",
-    )
+    # A resume can never be a thread's first turn: it belongs to a report the
+    # endpoint already created, so it only verifies ownership — never upsert-
+    # ing means a stale or hand-crafted resume cannot mint a ghost thread with
+    # an empty title. A query owns the upsert-then-verify path: `ON CONFLICT
+    # DO NOTHING` cannot tell the first turn from a later one in one round
+    # trip, so the owner is read back.
+    if payload.resume is not None:
+        owned = await owns_thread(
+            pool, thread_id=payload.thread_id, user_id=identity.user_id
+        )
+    else:
+        owned = await claim_thread(
+            pool,
+            thread_id=payload.thread_id,
+            user_id=identity.user_id,
+            title=title_from(payload.query) if payload.query else "",
+        )
     if not owned:
         raise HTTPException(status_code=403, detail="That conversation is not yours.")
 

@@ -68,6 +68,11 @@ def _owned_thread(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setattr(api, "claim_thread", claim)
 
+    async def own(*args: Any, **kwargs: Any) -> bool:
+        return True
+
+    monkeypatch.setattr(api, "owns_thread", own)
+
 
 def _events(body: str) -> list[dict[str, Any]]:
     return [
@@ -79,6 +84,22 @@ def _events(body: str) -> list[dict[str, Any]]:
 
 def _progress_labels(events: list[dict[str, Any]]) -> list[str]:
     return [event["label"] for event in events if event["type"] == "progress"]
+
+
+def _pending_pause_stub(thread_id: str) -> dict[str, Any]:
+    """The pause frame `_turn_input` must find for a resume to proceed."""
+    return {"outline": ["Section one"], "revisions_used": 0, "revisions_allowed": 3}
+
+
+async def _pending_pause_async(thread_id: str) -> dict[str, Any]:
+    return _pending_pause_stub(thread_id)
+
+
+def _owning_thread(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def own(*args: Any, **kwargs: Any) -> bool:
+        return True
+
+    monkeypatch.setattr(api, "owns_thread", own)
 
 
 @pytest.mark.anyio
@@ -934,6 +955,77 @@ async def test_another_users_thread_is_403_and_the_graph_is_never_invoked(
     response = await client.post(
         "/api/run_pipeline/stream", json={"query": "x", "thread_id": "t-1"}
     )
+    assert response.status_code == 403
+
+
+@pytest.mark.anyio
+async def test_a_resume_never_upserts_and_never_mints_a_thread(
+    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A resume verifies ownership only; a fresh thread it can never create.
+
+    Upserting on the resume path minted a blank-titled `chat_threads` row for
+    every stale or hand-crafted resume before the pending-report read raised
+    the 409 — a ghost conversation the sidebar would keep forever.
+    """
+
+    # Arrange
+    async def boom(*args: Any, **kwargs: Any) -> bool:
+        raise AssertionError("a resume must not create a thread")
+        return True
+
+    async def own(*args: Any, **kwargs: Any) -> bool:
+        # True: the thread exists and belongs to the caller.
+        return True
+
+    async def stream(
+        graph_input: Any, thread_id: str
+    ) -> AsyncIterator[tuple[str, str]]:
+        yield ("token", "answer")
+
+    monkeypatch.setattr(api, "claim_thread", boom)
+    monkeypatch.setattr(api, "owns_thread", own)
+    monkeypatch.setattr(api, "_pending_pause", _pending_pause_async)
+
+    async def approve(text: str, pause: dict[str, Any]) -> ResumeIntent:
+        return ResumeIntent(action="approve", instruction="")
+
+    monkeypatch.setattr(api, "classify_resume_intent", approve)
+
+    # Act
+    with patch("api._astream_answer", stream):
+        response = await client.post(
+            "/api/run_pipeline/stream", json={"resume": "go ahead", "thread_id": "t-1"}
+        )
+
+    # Assert
+    assert response.status_code == 200
+    assert _events(response.text)[-1]["type"] == "result"
+
+
+@pytest.mark.anyio
+async def test_a_resume_of_an_unknown_thread_is_403_without_upserting(
+    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """No upsert means an unknown thread cannot be created by a resume."""
+
+    # Arrange
+    async def boom(*args: Any, **kwargs: Any) -> bool:
+        raise AssertionError("a resume must not create a thread")
+        return True
+
+    async def no_thread(*args: Any, **kwargs: Any) -> bool:
+        return False
+
+    monkeypatch.setattr(api, "claim_thread", boom)
+    monkeypatch.setattr(api, "owns_thread", no_thread)
+
+    # Act
+    response = await client.post(
+        "/api/run_pipeline/stream", json={"resume": "go ahead", "thread_id": "t-404"}
+    )
+
+    # Assert
     assert response.status_code == 403
 
 
