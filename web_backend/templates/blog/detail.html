@@ -10,6 +10,7 @@
 {% block content %}
   <article class="archive">
     <p class="post-date">{{ post.published_at|date:"j F Y" }} · {{ post.kicker }}</p>
+    <h1>{{ post.title }}</h1>
     {# The body is author-only Markdown rendered by `render_markdown` (blog_tags). #}
     <div class="post-body">{{ post.body|render_markdown }}</div>
   </article>
