@@ -9,11 +9,14 @@ describe("the composer", () => {
   });
 
   it("Enter submits and clears; Shift+Enter does not submit", () => {
+    // Arrange
     const onSend = vi.fn();
+    // Act
     render(<Composer busy={false} onSend={onSend} />);
     const area = screen.getByLabelText("Ask a question") as HTMLTextAreaElement;
     fireEvent.change(area, { target: { value: "hello" } });
     fireEvent.keyDown(area, { key: "Enter", shiftKey: true });
+    // Assert
     expect(onSend).not.toHaveBeenCalled();
     fireEvent.keyDown(area, { key: "Enter" });
     expect(onSend).toHaveBeenCalledWith("hello");
@@ -21,7 +24,9 @@ describe("the composer", () => {
   });
 
   it("a pending IME composition does not submit on Enter", () => {
+    // Arrange
     const onSend = vi.fn();
+    // Act
     render(<Composer busy={false} onSend={onSend} />);
     const area = screen.getByLabelText("Ask a question") as HTMLTextAreaElement;
     fireEvent.change(area, { target: { value: "こんにちは" } });
@@ -35,17 +40,21 @@ describe("the composer", () => {
         cancelable: true,
       }),
     );
+    // Assert
     expect(onSend).not.toHaveBeenCalled();
     fireEvent.keyDown(area, { key: "Enter" });
     expect(onSend).toHaveBeenCalledWith("こんにちは");
   });
 
   it("a busy composer ignores the submit key", () => {
+    // Arrange
     const onSend = vi.fn();
+    // Act
     render(<Composer busy={true} onSend={onSend} />);
     const area = screen.getByLabelText("Ask a question") as HTMLTextAreaElement;
     fireEvent.change(area, { target: { value: "hello" } });
     fireEvent.keyDown(area, { key: "Enter" });
+    // Assert
     expect(onSend).not.toHaveBeenCalled();
     expect(area.value).toBe("hello");
   });

@@ -131,8 +131,8 @@ describe("the app shell", () => {
     const fetchMock = stubFetch(tokenOk);
     const App = await importApp();
     render(<App />);
-    await screen.findByText("Baltic energy");
-    fireEvent.click(screen.getByText("Baltic energy"));
+    await screen.findByRole("link", { name: /Baltic energy/ });
+    fireEvent.click(screen.getByRole("link", { name: /Baltic energy/ }));
     expect(await screen.findByText("earlier question")).toBeTruthy();
     expect(await screen.findByText("earlier answer")).toBeTruthy();
     expect(fetchMock.mock.calls.filter(([url]) => url === "/api/threads/t1").length).toBe(1);
@@ -148,7 +148,7 @@ describe("the app shell", () => {
     const fetchMock = stubFetch(tokenOk);
     const App = await importApp();
     render(<App />);
-    await screen.findByText("Baltic energy");
+    await screen.findByRole("link", { name: /Baltic energy/ });
     expect(fetchMock.mock.calls.filter(([url]) => url === "/api/threads").length).toBe(1);
     const input = screen.getByLabelText("Ask a question") as HTMLTextAreaElement;
     fireEvent.change(input, { target: { value: "next turn" } });

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { getAccessToken, TokenServiceError } from "./api/token";
 import {
   listThreads,
@@ -6,7 +6,7 @@ import {
   type Quota,
   type ThreadSummary,
 } from "./api/threads";
-import { mintThreadId, storeThreadId, useConversation } from "./hooks/useConversation";
+import { mintThreadId, loadThreadId, storeThreadId, useConversation } from "./hooks/useConversation";
 import { Composer } from "./components/Composer";
 import { MessageView, OutlineCard } from "./components/MessageView";
 import { Sidebar } from "./components/Sidebar";
@@ -49,6 +49,17 @@ export default function App() {
       .then((listing) => {
         setThreads(listing.threads);
         setQuota(listing.quota);
+        // Every refresh after a turn settles the thread the turn actually
+        // used, so a conversation started in this tab becomes the active one:
+        // without this the heading stays "New conversation" forever and the
+        // sidebar never marks the real current thread. `newChat` clears the
+        // selection and stores a fresh id, so on an empty thread the match
+        // simply fails and the current selection stays.
+        setActiveThread(
+          (current) =>
+            listing.threads.find((thread) => thread.id === loadThreadId()) ??
+            current,
+        );
       })
       .catch((error: unknown) => {
         // The 401 path already navigated; other failures stay silent here.
@@ -75,10 +86,17 @@ export default function App() {
     reset();
   }, [reset]);
 
+  // The latest openThread selection wins: a thread read that resolves after a
+  // later selection must not overwrite it.
+  const openRequestRef = useRef(0);
+
   const openThread = useCallback(
     (threadId: string) => {
+      const requested = openRequestRef.current + 1;
+      openRequestRef.current = requested;
       readThread(threadId)
         .then((stored) => {
+          if (requested !== openRequestRef.current) return;
           restore(threadId, stored.messages);
           const summary = threads.find((thread) => thread.id === threadId) ?? null;
           setActiveThread(summary);
@@ -126,7 +144,10 @@ export default function App() {
   const handleSend = (text: string) => {
     // The turn's completion also settles the new thread's title and the spent
     // quota — both only exist after the turn finishes (the plan's one-request
-    // refresh rule).
+    // refresh rule). The refreshed listing is reconciled with the thread the
+    // turn actually used, so a conversation started in this tab becomes the
+    // active one: without this the heading stays "New conversation" and the
+    // sidebar never marks the real current thread.
     void send(text).finally(refreshThreads);
   };
 
@@ -142,6 +163,17 @@ export default function App() {
       <main className="main">
         <div className="main-top">
           <h1>{activeThread?.title ?? "New conversation"}</h1>
+          {/* The sidebar hides below the mobile breakpoint; this is the only
+              new-conversation control that survives there. Without it, a
+              mobile user stays welded to one checkpoint forever. */}
+          <button
+            className="btn new-thread-mobile"
+            type="button"
+            disabled={isLoading}
+            onClick={newChat}
+          >
+            New
+          </button>
         </div>
         <div className="scroll">
           <section aria-label="Conversation" className="conv">

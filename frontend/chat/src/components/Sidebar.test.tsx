@@ -18,6 +18,7 @@ const NOON = new Date(2026, 8, 18, 12, 0, 0);
 
 describe("groupThreads", () => {
   it("groups the three bands by local midnight", () => {
+    // Arrange
     const groups = groupThreads(
       [
         thread("today", new Date(2026, 8, 18, 9, 0).toISOString()),
@@ -26,22 +27,26 @@ describe("groupThreads", () => {
       ],
       NOON,
     );
+    // Assert
     expect(groups.today.map((t) => t.id)).toEqual(["today"]);
     expect(groups.yesterday.map((t) => t.id)).toEqual(["yesterday"]);
     expect(groups.earlier.map((t) => t.id)).toEqual(["earlier"]);
   });
 
   it("a thread stamped exactly at local midnight is today — the day just started", () => {
+    // Arrange
     const midnight = new Date(2026, 8, 18, 0, 0, 0);
     const groups = groupThreads(
       [thread("midnight", midnight.toISOString())],
       NOON,
     );
+    // Assert
     expect(groups.today.map((t) => t.id)).toEqual(["midnight"]);
     expect(groups.yesterday).toEqual([]);
   });
 
   it("one day before the boundary is yesterday even at the same clock time", () => {
+    // Arrange
     const groups = groupThreads(
       [
         thread("same-week", new Date(2026, 8, 17, 12).toISOString()),
@@ -49,6 +54,7 @@ describe("groupThreads", () => {
       ],
       NOON,
     );
+    // Assert
     expect(groups.yesterday.map((t) => t.id)).toEqual(["same-week"]);
     expect(groups.earlier.map((t) => t.id)).toEqual(["a-week-ago"]);
   });
@@ -56,7 +62,9 @@ describe("groupThreads", () => {
 
 describe("the sidebar", () => {
   it("an empty list renders the empty state and no headings", () => {
+    // Act
     render(<Sidebar threads={[]} quota={{ used: 0, limit: 20 }} activeId={null} onOpen={() => {}} onNewChat={() => {}} now={NOON} />);
+    // Assert
     expect(screen.getByText("No conversations yet. Ask something to start one.")).toBeTruthy();
     expect(screen.queryByText("Today")).toBeNull();
     expect(screen.queryByText("Yesterday")).toBeNull();
@@ -64,6 +72,7 @@ describe("the sidebar", () => {
   });
 
   it("renders the group headings and the newest-first thread rows", () => {
+    // Act
     render(
       <Sidebar
         threads={[
@@ -78,6 +87,7 @@ describe("the sidebar", () => {
         now={NOON}
       />,
     );
+    // Assert
     expect(screen.getByText("Today")).toBeTruthy();
     expect(screen.getByText("Yesterday")).toBeTruthy();
     expect(screen.getByText("Earlier")).toBeTruthy();
@@ -89,7 +99,9 @@ describe("the sidebar", () => {
   });
 
   it("selecting a thread opens it", () => {
+    // Arrange
     const onOpen = vi.fn();
+    // Act
     render(
       <Sidebar
         threads={[thread("a", new Date(2026, 8, 18, 9).toISOString())]}
@@ -100,6 +112,7 @@ describe("the sidebar", () => {
         now={NOON}
       />,
     );
+    // Assert
     expect(
       screen.getByRole("link", { name: /a title/ }).getAttribute("aria-current"),
     ).toBe("page");
@@ -108,7 +121,9 @@ describe("the sidebar", () => {
   });
 
   it("the New conversation button calls onNewChat", () => {
+    // Arrange
     const onNewChat = vi.fn();
+    // Act
     render(
       <Sidebar
         threads={[]}
@@ -120,13 +135,16 @@ describe("the sidebar", () => {
       />,
     );
     fireEvent.click(screen.getByRole("button", { name: "New conversation" }));
+    // Assert
     expect(onNewChat).toHaveBeenCalled();
   });
 });
 
 describe("the quota meter", () => {
   it("renders the used and limit counts and the fill width", () => {
+    // Act
     render(<QuotaMeter quota={{ used: 6, limit: 20 }} />);
+    // Assert
     expect(screen.getByText("Research turns today")).toBeTruthy();
     expect(screen.getByText("6 of 20")).toBeTruthy();
     const fill = screen.getByRole("img", { name: "6 of 20 research turns used today" }).querySelector("i")!;
@@ -134,7 +152,9 @@ describe("the quota meter", () => {
   });
 
   it("a saturated meter is announced as such", () => {
+    // Act
     render(<QuotaMeter quota={{ used: 20, limit: 20 }} />);
+    // Assert
     expect(screen.getByText("20 of 20")).toBeTruthy();
     expect(
       screen.getByRole("img", { name: "Daily research limit reached" }).querySelector("i")!.style.width,
@@ -144,7 +164,9 @@ describe("the quota meter", () => {
   it("the bootstrap zero-limit state is neutral, not reached", () => {
     // Before the first thread listing lands, App initializes quota to
     // {used: 0, limit: 0}: 0/0 is neither 30% wide nor a saturation warning.
+    // Act
     render(<QuotaMeter quota={{ used: 0, limit: 0 }} />);
+    // Assert
     expect(screen.getByText("0 of 0")).toBeTruthy();
     expect(screen.queryByRole("img", { name: "Daily research limit reached" })).toBeNull();
     const fill = screen.getByRole("img", { name: "0 of 0 research turns used today" }).querySelector("i")!;

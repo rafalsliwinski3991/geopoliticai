@@ -40,6 +40,7 @@ afterEach(() => {
 
 describe("the threads API", () => {
   it("listThreads GETs /api/threads and unwraps threads + quota", async () => {
+    // Arrange
     const threads: ThreadSummary[] = [
       { id: "t1", title: "Baltic energy", created_at: "2026-09-18T10:00:00Z" },
     ];
@@ -51,12 +52,15 @@ describe("the threads API", () => {
         : Promise.resolve(tokenResponse()),
     );
     vi.stubGlobal("fetch", fetchMock);
+    // Act
     const result = await listThreads();
+    // Assert
     expect(result.threads).toEqual(threads);
     expect(result.quota).toEqual({ used: 6, limit: 20 });
   });
 
   it("readThread GETs the thread resource and unwraps its messages", async () => {
+    // Arrange
     const messages = [
       { role: "user", text: "hi" },
       { role: "assistant", text: "hello" },
@@ -67,7 +71,9 @@ describe("the threads API", () => {
         : Promise.resolve(tokenResponse()),
     );
     vi.stubGlobal("fetch", fetchMock);
+    // Act
     const result = await readThread("t1");
+    // Assert
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/threads/t1",
       expect.anything(),
@@ -76,6 +82,7 @@ describe("the threads API", () => {
   });
 
   it("the bearer token rides on the threads request", async () => {
+    // Arrange
     let seen: unknown;
     const fetchMock = vi.fn((url: string, init: RequestInit) => {
       if (url === "/api/threads") {
@@ -88,10 +95,12 @@ describe("the threads API", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
     await listThreads();
+    // Assert
     expect((seen as Record<string, string>).Authorization).toBe("Bearer tok");
   });
 
   it("a 401 re-authenticates by redirecting to the login page", async () => {
+    // Arrange
     vi.stubGlobal(
       "fetch",
       vi.fn((url: string) =>
@@ -100,6 +109,7 @@ describe("the threads API", () => {
           : Promise.resolve(jsonResponse({}, 401)),
       ),
     );
+    // Assert
     await expect(listThreads()).rejects.toThrow();
     expect(assign).toHaveBeenCalledWith(
       expect.stringContaining("/accounts/login/"),

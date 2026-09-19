@@ -24,6 +24,7 @@ describe("the SSE reader", () => {
   });
 
   it("parses one event per data line", async () => {
+    // Arrange
     vi.stubGlobal(
       "fetch",
       vi.fn(() =>
@@ -35,9 +36,11 @@ describe("the SSE reader", () => {
       ),
     );
     const events = [];
+    // Act
     for await (const event of streamTurn({ query: "x", thread_id: "t" }, "tok")) {
       events.push(event);
     }
+    // Assert
     expect(events).toEqual([
       { type: "progress", node: "a", label: "x" },
       { type: "token", content: "hi" },
@@ -45,6 +48,7 @@ describe("the SSE reader", () => {
   });
 
   it("yields one event when a data line splits across two chunks", async () => {
+    // Arrange
     const first = 'data: {"type":"tok';
     const second = 'en","content":"hi"}\n\n';
     let released = false;
@@ -65,13 +69,16 @@ describe("the SSE reader", () => {
       vi.fn(() => Promise.resolve({ ok: true, status: 200, body } as unknown as Response)),
     );
     const events = [];
+    // Act
     for await (const event of streamTurn({ query: "x", thread_id: "t" }, "tok")) {
       events.push(event);
     }
+    // Assert
     expect(events).toEqual([{ type: "token", content: "hi" }]);
   });
 
   it("skips a malformed line without killing the stream", async () => {
+    // Arrange
     vi.stubGlobal(
       "fetch",
       vi.fn(() =>
@@ -83,9 +90,11 @@ describe("the SSE reader", () => {
       ),
     );
     const events = [];
+    // Act
     for await (const event of streamTurn({ query: "x", thread_id: "t" }, "tok")) {
       events.push(event);
     }
+    // Assert
     expect(events).toEqual([{ type: "token", content: "ok" }]);
   });
 
@@ -113,6 +122,7 @@ describe("the SSE reader", () => {
   });
 
   it("raises HttpError with the server detail for non-200 responses", async () => {
+    // Arrange
     vi.stubGlobal(
       "fetch",
       vi.fn(() =>
@@ -123,6 +133,7 @@ describe("the SSE reader", () => {
         } as unknown as Response),
       ),
     );
+    // Act + Assert: the rejection carries the server detail.
     await expect(async () => {
       for await (const _ of streamTurn({ query: "x", thread_id: "t" }, "tok")) {
         /* no events expected */

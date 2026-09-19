@@ -36,17 +36,20 @@ describe("the access-token module", () => {
   });
 
   it("fetches the token with the session cookie", async () => {
+    // Arrange
     const fetchMock = vi.fn(() =>
       Promise.resolve(jsonResponse({ access: "t1", expires_in: 900 })),
     );
     vi.stubGlobal("fetch", fetchMock);
     const { getAccessToken } = await importToken();
 
+    // Assert
     expect(await getAccessToken()).toBe("t1");
     expect(fetchMock).toHaveBeenCalledWith(TOKEN_URL, { credentials: "include" });
   });
 
   it("caches the token within the 60s margin", async () => {
+    // Arrange
     const fetchMock = vi.fn(() =>
       Promise.resolve(jsonResponse({ access: "t1", expires_in: 900 })),
     );
@@ -55,10 +58,12 @@ describe("the access-token module", () => {
 
     await getAccessToken();
     await getAccessToken();
+    // Assert
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it("re-fetches when the token is within 60s of expiry", async () => {
+    // Arrange
     const fetchMock = vi.fn(() =>
       Promise.resolve(jsonResponse({ access: "t1", expires_in: 30 })),
     );
@@ -67,10 +72,12 @@ describe("the access-token module", () => {
 
     await getAccessToken();
     await getAccessToken();
+    // Assert
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
   it("shares one in-flight promise across concurrent callers", async () => {
+    // Arrange
     let resolveFetch: (value: Response) => void = () => undefined;
     const fetchMock = vi.fn(
       () =>
@@ -84,30 +91,37 @@ describe("the access-token module", () => {
     const first = getAccessToken();
     const second = getAccessToken();
     resolveFetch(jsonResponse({ access: "shared", expires_in: 900 }));
+    // Assert
     expect(await Promise.all([first, second])).toEqual(["shared", "shared"]);
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it("redirects to the login page on a 401", async () => {
+    // Arrange
     vi.stubGlobal("fetch", vi.fn(() => Promise.resolve(jsonResponse({}, 401))));
     const { getAccessToken } = await importToken();
 
+    // Assert
     await expect(getAccessToken()).rejects.toThrow("Not authenticated");
     expect(assign).toHaveBeenCalledWith(LOGIN_URL);
   });
 
   it("raises the retryable error, not the sign-in error, on a 5xx", async () => {
+    // Arrange
     vi.stubGlobal("fetch", vi.fn(() => Promise.resolve(jsonResponse({}, 502))));
     const { getAccessToken, TokenServiceError } = await importToken();
 
+    // Assert
     await expect(getAccessToken()).rejects.toBeInstanceOf(TokenServiceError);
     expect(assign).not.toHaveBeenCalled();
   });
 
   it("raises the retryable error when the token service is unreachable", async () => {
+    // Arrange
     vi.stubGlobal("fetch", vi.fn(() => Promise.reject(new TypeError("down"))));
     const { getAccessToken, TokenServiceError } = await importToken();
 
+    // Assert
     await expect(getAccessToken()).rejects.toBeInstanceOf(TokenServiceError);
     expect(assign).not.toHaveBeenCalled();
   });
