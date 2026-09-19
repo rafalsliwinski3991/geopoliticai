@@ -49,7 +49,10 @@ export async function* streamTurn(
       const detail = (await response.json().catch(() => ({}))) as { detail?: string };
       throw new HttpError(response.status, detail.detail);
     }
-    const reader = response.body!.getReader();
+    if (response.body === null) {
+      throw new Error("The stream arrived without a body.");
+    }
+    const reader = response.body.getReader();
     const decoder = new TextDecoder();
     let buffer = "";
     for (;;) {
@@ -71,5 +74,9 @@ export async function* streamTurn(
     }
   } finally {
     clearTimeout(timeout);
+    // The consumer can abandon the generator (a break, or mid-stream unmount):
+    // leaving the fetch body open would keep the backend generating into a
+    // socket nobody reads. Aborting an already-finished request is a no-op.
+    controller.abort();
   }
 }

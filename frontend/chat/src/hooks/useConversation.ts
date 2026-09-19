@@ -169,18 +169,20 @@ export function useConversation() {
         setPaused(true);
         setOutline(event.outline);
         // The streamed draft stops being a draft; the notice below it is the
-        // turn's real output.
+        // turn's real output. A pause without a notice appends nothing: an
+        // empty assistant bubble would render just a label and a blank block.
         setMessages((previous) => {
           const last = previous[previous.length - 1];
           const closed =
             last && last.role === "assistant" && last.streaming
               ? [...previous.slice(0, -1), { ...last, streaming: false }]
               : previous;
+          if (!event.notice) return closed;
           return [
             ...closed,
             {
               role: "assistant" as const,
-              text: event.notice ?? "",
+              text: event.notice,
               kind: "answer" as const,
               truncated: false,
             },
