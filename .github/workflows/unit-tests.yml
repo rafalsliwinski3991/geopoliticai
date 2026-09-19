@@ -143,9 +143,11 @@ jobs:
         with:
           node-version: "22"
 
-      - name: Run SPA tests
+      - name: Run SPA tests and the type-checking build
         working-directory: frontend/chat
-        run: npm ci && npm test
+        # Vitest transpiles without type-checking; `tsc -b && vite build` is
+        # what catches type errors the test run would miss.
+        run: npm ci && npm test && npm run build
 
   frontend-tests:
     runs-on: ubuntu-latest
