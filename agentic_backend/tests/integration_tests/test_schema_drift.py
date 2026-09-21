@@ -54,7 +54,8 @@ CASCADE_TABLES = ("checkpoint_writes", "checkpoint_blobs", "checkpoints")
 CASCADE_SQL = tuple(
     f"DELETE FROM {table} WHERE thread_id = ANY(%s)" for table in CASCADE_TABLES
 )
-# The orphan-check query the brainstorm specifies verbatim (chat.admin).
+# The orphan-check query `web_backend/chat/management/commands/purge_prelaunch_threads.py`
+# runs verbatim before purging the checkpointer rows.
 ORPHAN_THREAD_SQL = """
 SELECT DISTINCT thread_id
 FROM checkpoints
