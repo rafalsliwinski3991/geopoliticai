@@ -10,11 +10,11 @@ configuration) do not require updating it.
 Django identity service; root Docker and requirements files are
 compatibility files. `agentic_backend/src/` is the Python import root. Shared modules are
 `config.py`, `models.py`, `search.py`, `llm.py`, `tracing.py`, `api.py`, `auth.py`, and
-`threads.py`; they never import agents except `api.py`, the delivery layer, which imports
+`db/sql.py`; they never import agents except `api.py`, the delivery layer, which imports
 the compiled orchestrator graph and the reporter's resume classifier. There is
 no `database.py` or `prompt_logs` path; `agentic_backend/` reaches Postgres
 only through the LangGraph checkpointer and the Django-owned `chat_threads`/
-`quota` statements in `threads.py` (schema owned by `web_backend`'s
+`quota` statements in `db/sql.py` (schema owned by `web_backend`'s
 migrations; guarded by `agentic_backend/tests/integration_tests/`).
 
 `web_backend/` is a second Python service (its own `pyproject.toml`, `uv.lock`, `Dockerfile`,

@@ -13,7 +13,7 @@ they never import agents except `api.py`, the delivery layer, which imports
 the compiled orchestrator graph and the reporter's resume classifier. There is
 no `database.py` or `prompt_logs` path;
 Postgres is reached through the LangGraph checkpointer and the Django-owned
-`chat_threads`/`quota` statements in `threads.py` (schema owned by
+`chat_threads`/`quota` statements in `db/sql.py` (schema owned by
 `web_backend`'s migrations), using `psycopg[binary]`.
 
 Agents live in `agentic_backend/src/agents/<name>/` with graph, state, config, prompts,
