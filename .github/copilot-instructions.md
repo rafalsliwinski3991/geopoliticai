@@ -12,7 +12,9 @@ compatibility files. `agentic_backend/src/` is the Python import root. Shared mo
 they never import agents except `api.py`, the delivery layer, which imports
 the compiled orchestrator graph and the reporter's resume classifier. There is
 no `database.py` or `prompt_logs` path;
-Postgres is only the LangGraph checkpointer and uses `psycopg[binary]`.
+Postgres is reached through the LangGraph checkpointer and the Django-owned
+`chat_threads`/`quota` statements in `threads.py` (schema owned by
+`web_backend`'s migrations), using `psycopg[binary]`.
 
 Agents live in `agentic_backend/src/agents/<name>/` with graph, state, config, prompts,
 `consts/`, and node modules. Put fixed editorial data in `consts/`, prompts in
@@ -67,7 +69,7 @@ thread.
 
 There is one root `.env`; never modify it or commit secrets. It supplies API,
 tests, Studio, and Compose. API startup requires `OPENAI_API_KEY`,
-`BRAVE_SEARCH_KEY`, and `DATABASE_URL`; tracing is optional, idempotent, and
+`BRAVE_SEARCH_KEY`, `DATABASE_URL`, and `JWT_SIGNING_KEY`; tracing is optional, idempotent, and
 unredacted when enabled. Compose has Postgres, agentic-backend, frontend, and Phoenix;
 development ports are 8082, 3001, 55432, and loopback 6006. Production uses TLS
 and fail-closed Basic Auth for `/` and `/api/`.

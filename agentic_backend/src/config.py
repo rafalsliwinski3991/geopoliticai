@@ -12,7 +12,10 @@ from dotenv import load_dotenv
 
 logger = logging.getLogger(__name__)
 
-REQUIRED_ENV_VARS = ("OPENAI_API_KEY", "BRAVE_SEARCH_KEY")
+REQUIRED_ENV_VARS = ("OPENAI_API_KEY", "BRAVE_SEARCH_KEY", "JWT_SIGNING_KEY")
+# Checked at startup, never at import: `langgraph dev` and the unit suite run
+# `build_graph()` with no checkpointer and patch `require_env` where needed,
+# but the API must not come up unable to authenticate anyone (§1.6, fail closed).
 SUPPORTED_ARIZE_PLATFORMS = frozenset({"AX", "PHOENIX"})
 
 

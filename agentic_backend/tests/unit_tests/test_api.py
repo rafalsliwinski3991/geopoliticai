@@ -1,8 +1,11 @@
 import json
+import os
+from datetime import datetime, timedelta, timezone
 from typing import Any, AsyncIterator, cast
 from unittest.mock import patch
 
 import httpx
+import jwt
 import pytest
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.types import Command
@@ -24,14 +27,51 @@ from models import (
     PipelineError,
     SearchUnavailableError,
 )
+from threads import ThreadRow
+
+
+def _mint_token(user_id: int, *, expired: bool = False) -> str:
+    """Mint a test token with simplejwt's documented claim shape."""
+    exp = datetime.now(timezone.utc) + timedelta(minutes=-1 if expired else 15)
+    return jwt.encode(
+        {"user_id": str(user_id), "token_type": "access", "exp": exp, "jti": "t"},
+        os.environ["JWT_SIGNING_KEY"],
+        algorithm="HS256",
+    )
+
+
+def _client_with_token(token: str) -> httpx.AsyncClient:
+    return httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=api.app),
+        base_url="http://test",
+        headers={"Authorization": f"Bearer {token}"},
+    )
 
 
 @pytest.fixture
 def client() -> httpx.AsyncClient:
     api._rate_limit_store.clear()
+    api.app.state.pool = None  # every test patches the threads helpers it needs
     return httpx.AsyncClient(
-        transport=httpx.ASGITransport(app=api.app), base_url="http://test"
+        transport=httpx.ASGITransport(app=api.app),
+        base_url="http://test",
+        headers={"Authorization": f"Bearer {_mint_token(user_id=1)}"},
     )
+
+
+@pytest.fixture(autouse=True)
+def _owned_thread(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A turn whose thread is claimed by the caller, unless a test says no."""
+
+    async def claim(*args: Any, **kwargs: Any) -> bool:
+        return True
+
+    monkeypatch.setattr(api, "claim_thread", claim)
+
+    async def own(*args: Any, **kwargs: Any) -> bool:
+        return True
+
+    monkeypatch.setattr(api, "owns_thread", own)
 
 
 def _events(body: str) -> list[dict[str, Any]]:
@@ -44,6 +84,22 @@ def _events(body: str) -> list[dict[str, Any]]:
 
 def _progress_labels(events: list[dict[str, Any]]) -> list[str]:
     return [event["label"] for event in events if event["type"] == "progress"]
+
+
+def _pending_pause_stub(thread_id: str) -> dict[str, Any]:
+    """The pause frame `_turn_input` must find for a resume to proceed."""
+    return {"outline": ["Section one"], "revisions_used": 0, "revisions_allowed": 3}
+
+
+async def _pending_pause_async(thread_id: str) -> dict[str, Any]:
+    return _pending_pause_stub(thread_id)
+
+
+def _owning_thread(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def own(*args: Any, **kwargs: Any) -> bool:
+        return True
+
+    monkeypatch.setattr(api, "owns_thread", own)
 
 
 @pytest.mark.anyio
@@ -833,3 +889,239 @@ async def test_astream_answer_streams_the_answer_of_either_branch(
         assert len(pauses) == 1
         assert pauses[0]["outline"] == ["Section one"]
         assert ("progress", OUTLINE_PROGRESS) in events
+
+
+@pytest.mark.anyio
+async def test_stream_without_a_token_is_401_and_the_graph_is_never_touched(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """One test asserts the negative: no header, no graph, no 200."""
+    api._rate_limit_store.clear()
+    api.app.state.pool = None
+    client = httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=api.app), base_url="http://test"
+    )
+
+    async def boom(*args: Any, **kwargs: Any) -> tuple[str, str]:
+        raise AssertionError("the graph must not be reached without a token")
+        return ("token", "never")
+
+    monkeypatch.setattr(api, "claim_thread", boom)
+    monkeypatch.setattr(api, "_astream_answer", boom)
+
+    response = await client.post(
+        "/api/run_pipeline/stream", json={"query": "x", "thread_id": "t-1"}
+    )
+    assert response.status_code == 401
+
+
+@pytest.mark.anyio
+async def test_stream_with_an_expired_token_is_401(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    api._rate_limit_store.clear()
+    api.app.state.pool = None
+    client = _client_with_token(_mint_token(user_id=1, expired=True))
+
+    async def boom(*args: Any, **kwargs: Any) -> tuple[str, str]:
+        raise AssertionError("the graph must not be reached with an expired token")
+        return ("token", "never")
+
+    monkeypatch.setattr(api, "claim_thread", boom)
+    monkeypatch.setattr(api, "_astream_answer", boom)
+
+    response = await client.post(
+        "/api/run_pipeline/stream", json={"query": "x", "thread_id": "t-1"}
+    )
+    assert response.status_code == 401
+
+
+@pytest.mark.anyio
+async def test_another_users_thread_is_403_and_the_graph_is_never_invoked(
+    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The thread ownership check runs before anything expensive happens."""
+
+    async def deny(*args: Any, **kwargs: Any) -> bool:
+        return False
+
+    async def boom(*args: Any, **kwargs: Any) -> tuple[str, str]:
+        raise AssertionError("the graph must not run for someone else's thread")
+        return ("token", "never")
+
+    monkeypatch.setattr(api, "claim_thread", deny)
+    monkeypatch.setattr(api, "_astream_answer", boom)
+
+    response = await client.post(
+        "/api/run_pipeline/stream", json={"query": "x", "thread_id": "t-1"}
+    )
+    assert response.status_code == 403
+
+
+@pytest.mark.anyio
+async def test_a_resume_never_upserts_and_never_mints_a_thread(
+    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A resume verifies ownership only; a fresh thread it can never create.
+
+    Upserting on the resume path minted a blank-titled `chat_threads` row for
+    every stale or hand-crafted resume before the pending-report read raised
+    the 409 — a ghost conversation the sidebar would keep forever.
+    """
+
+    # Arrange
+    async def boom(*args: Any, **kwargs: Any) -> bool:
+        raise AssertionError("a resume must not create a thread")
+        return True
+
+    async def own(*args: Any, **kwargs: Any) -> bool:
+        # True: the thread exists and belongs to the caller.
+        return True
+
+    async def stream(
+        graph_input: Any, thread_id: str
+    ) -> AsyncIterator[tuple[str, str]]:
+        yield ("token", "answer")
+
+    monkeypatch.setattr(api, "claim_thread", boom)
+    monkeypatch.setattr(api, "owns_thread", own)
+    monkeypatch.setattr(api, "_pending_pause", _pending_pause_async)
+
+    async def approve(text: str, pause: dict[str, Any]) -> ResumeIntent:
+        return ResumeIntent(action="approve", instruction="")
+
+    monkeypatch.setattr(api, "classify_resume_intent", approve)
+
+    # Act
+    with patch("api._astream_answer", stream):
+        response = await client.post(
+            "/api/run_pipeline/stream", json={"resume": "go ahead", "thread_id": "t-1"}
+        )
+
+    # Assert
+    assert response.status_code == 200
+    assert _events(response.text)[-1]["type"] == "result"
+
+
+@pytest.mark.anyio
+async def test_a_resume_of_an_unknown_thread_is_403_without_upserting(
+    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """No upsert means an unknown thread cannot be created by a resume."""
+
+    # Arrange
+    async def boom(*args: Any, **kwargs: Any) -> bool:
+        raise AssertionError("a resume must not create a thread")
+        return True
+
+    async def no_thread(*args: Any, **kwargs: Any) -> bool:
+        return False
+
+    monkeypatch.setattr(api, "claim_thread", boom)
+    monkeypatch.setattr(api, "owns_thread", no_thread)
+
+    # Act
+    response = await client.post(
+        "/api/run_pipeline/stream", json={"resume": "go ahead", "thread_id": "t-404"}
+    )
+
+    # Assert
+    assert response.status_code == 403
+
+
+@pytest.mark.anyio
+async def test_get_threads_returns_only_the_callers_rows(
+    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    seen_kwargs: dict[str, Any] = {}
+
+    async def list_threads(pool: Any, *, user_id: int) -> list[ThreadRow]:
+        seen_kwargs["user_id"] = user_id
+        return [
+            ThreadRow(id="t1", title="NATO", created_at="2026-09-18T10:00:00Z"),
+        ]
+
+    monkeypatch.setattr(api, "list_threads", list_threads)
+    response = await client.get("/api/threads")
+    # Assert
+    assert response.status_code == 200
+    assert response.json() == {
+        "threads": [{"id": "t1", "title": "NATO", "created_at": "2026-09-18T10:00:00Z"}]
+    }
+    assert seen_kwargs["user_id"] == 1
+
+
+@pytest.mark.anyio
+async def test_get_thread_403_for_a_thread_the_caller_does_not_own(
+    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def deny(*args: Any, **kwargs: Any) -> bool:
+        return False
+
+    async def boom(*args: Any, **kwargs: Any) -> list[dict[str, str]]:
+        raise AssertionError("the checkpoint must not be read for a foreign thread")
+        return []
+
+    monkeypatch.setattr(api, "owns_thread", deny)
+    monkeypatch.setattr(api, "_thread_messages", boom)
+    response = await client.get("/api/threads/t-1")
+    assert response.status_code == 403
+
+
+@pytest.mark.anyio
+async def test_get_thread_returns_the_callers_messages(
+    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def own(*args: Any, **kwargs: Any) -> bool:
+        return True
+
+    async def messages(thread_id: str) -> list[dict[str, str]]:
+        return [{"role": "user", "text": "hello"}]
+
+    monkeypatch.setattr(api, "owns_thread", own)
+    monkeypatch.setattr(api, "_thread_messages", messages)
+    response = await client.get("/api/threads/t-1")
+    # Assert
+    assert response.status_code == 200
+    assert response.json() == {
+        "thread_id": "t-1",
+        "messages": [{"role": "user", "text": "hello"}],
+    }
+
+
+@pytest.mark.anyio
+async def test_admin_thread_endpoint_with_is_staff_false_is_403(
+    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def not_staff(*args: Any, **kwargs: Any) -> bool:
+        return False
+
+    async def boom(*args: Any, **kwargs: Any) -> list[dict[str, str]]:
+        raise AssertionError("staff check must gate the checkpoint read")
+        return []
+
+    monkeypatch.setattr(api, "is_staff", not_staff)
+    monkeypatch.setattr(api, "_thread_messages", boom)
+    response = await client.get("/api/admin/threads/t-1")
+    assert response.status_code == 403
+
+
+@pytest.mark.anyio
+async def test_admin_thread_endpoint_with_is_staff_true_returns_messages(
+    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def staff(*args: Any, **kwargs: Any) -> bool:
+        return True
+
+    async def messages(thread_id: str) -> list[dict[str, str]]:
+        return [{"role": "assistant", "text": "The answer."}]
+
+    monkeypatch.setattr(api, "is_staff", staff)
+    monkeypatch.setattr(api, "_thread_messages", messages)
+    response = await client.get("/api/admin/threads/t-1")
+    # Assert
+    assert response.status_code == 200
+    assert response.json() == {
+        "thread_id": "t-1",
+        "messages": [{"role": "assistant", "text": "The answer."}],
+    }

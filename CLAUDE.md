@@ -9,11 +9,13 @@ configuration) do not require updating it.
 `agentic_backend/` is the maintained FastAPI application and `web_backend/` is the maintained
 Django identity service; root Docker and requirements files are
 compatibility files. `agentic_backend/src/` is the Python import root. Shared modules are
-`config.py`, `models.py`, `search.py`, `llm.py`, `tracing.py`, and `api.py`;
-they never import agents except `api.py`, the delivery layer, which imports
+`config.py`, `models.py`, `search.py`, `llm.py`, `tracing.py`, `api.py`, `auth.py`, and
+`threads.py`; they never import agents except `api.py`, the delivery layer, which imports
 the compiled orchestrator graph and the reporter's resume classifier. There is
-no `database.py` or `prompt_logs` path;
-Postgres is only the LangGraph checkpointer and uses `psycopg[binary]`.
+no `database.py` or `prompt_logs` path; `agentic_backend/` reaches Postgres
+only through the LangGraph checkpointer and the Django-owned `chat_threads`/
+`quota` statements in `threads.py` (schema owned by `web_backend`'s
+migrations; guarded by `agentic_backend/tests/integration_tests/`).
 
 `web_backend/` is a second Python service (its own `pyproject.toml`, `uv.lock`, `Dockerfile`,
 and `manage.py`) that owns accounts, admin, and the `chat_threads`/`quota` tables. The two
@@ -53,10 +55,14 @@ streamed plain-text model call. Expert search, source, and model failures are
 hard errors; do not add degraded fallbacks.
 
 The API accepts exactly one of `{query, thread_id}` or `{resume, thread_id}`.
-It normalizes/caps both `query` and `resume` at 2,000 characters, validates a
+Every `/api/*` route requires a bearer access token minted by Django at
+`GET /accounts/token/` (verified in `auth.py`; a failed verification is 401,
+a foreign thread is 403). It normalizes/caps both `query` and `resume` at 2,000 characters, validates a
 required thread id of at most 100 characters, and uses
 an `AsyncPostgresSaver` initialized at startup. `build_graph()` remains usable
-without a checkpointer for tests and Studio. Stream with `custom`, `updates`,
+without a checkpointer for tests and Studio, and `auth.py` reads
+`JWT_SIGNING_KEY` at call time, never at import, so neither can require an
+identity service. Stream with `custom`, `updates`,
 and `messages` plus `subgraphs=True`; nodes emit their own progress through a
 `StreamWriter`, and the delivery layer forwards custom payloads without
 filtering them by namespace, because a subgraph's custom events arrive under
@@ -76,7 +82,7 @@ thread.
 
 There is one root `.env`; never modify it or commit secrets. It supplies API,
 tests, Studio, and Compose. API startup requires `OPENAI_API_KEY`,
-`BRAVE_SEARCH_KEY`, and `DATABASE_URL`; tracing is optional, idempotent, and
+`BRAVE_SEARCH_KEY`, `DATABASE_URL`, and `JWT_SIGNING_KEY`; tracing is optional, idempotent, and
 unredacted when enabled. Compose has Postgres, agentic-backend, frontend, and Phoenix;
 development ports are 8082, 3001, 55432, and loopback 6006. Production uses TLS
 and fail-closed Basic Auth for `/` and `/api/`.

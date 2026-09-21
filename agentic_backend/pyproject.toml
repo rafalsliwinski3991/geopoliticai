@@ -27,6 +27,9 @@ dependencies = [
     "arize-otel>=0.1,<1.0",
     "arize-phoenix-otel>=0.17,<1.0",
     "openinference-instrumentation-langchain>=0.1,<1.0",
+    # 2.12.0 fixed the `crit` header vulnerability; this promotes what was a
+    # dev-only transitive of langgraph-api to a runtime dependency.
+    "pyjwt>=2.12,<3.0",
 ]
 
 
@@ -41,10 +44,12 @@ build-backend = "setuptools.build_meta"
 package-dir = {"" = "src"}
 py-modules = [
     "api",
+    "auth",
     "config",
     "llm",
     "models",
     "search",
+    "threads",
     "tracing",
 ]
 
