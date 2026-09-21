@@ -63,7 +63,7 @@ describe("groupThreads", () => {
 describe("the sidebar", () => {
   it("an empty list renders the empty state and no headings", () => {
     // Act
-    render(<Sidebar threads={[]} quota={{ used: 0, limit: 20 }} activeId={null} onOpen={() => {}} onNewChat={() => {}} now={NOON} />);
+    render(<Sidebar threads={[]} quota={{ used: 0, limit: 20 }} activeId={null} onOpen={() => {}} onNewChat={() => {}} busy={false} now={NOON} />);
     // Assert
     expect(screen.getByText("No conversations yet. Ask something to start one.")).toBeTruthy();
     expect(screen.queryByText("Today")).toBeNull();
@@ -84,6 +84,7 @@ describe("the sidebar", () => {
         activeId="a"
         onOpen={() => {}}
         onNewChat={() => {}}
+        busy={false}
         now={NOON}
       />,
     );
@@ -109,6 +110,7 @@ describe("the sidebar", () => {
         activeId="a"
         onOpen={onOpen}
         onNewChat={() => {}}
+        busy={false}
         now={NOON}
       />,
     );
@@ -118,6 +120,27 @@ describe("the sidebar", () => {
     ).toBe("page");
     fireEvent.click(screen.getByRole("link", { name: /a title/ }));
     expect(onOpen).toHaveBeenCalledWith("a");
+  });
+
+  it("a busy sidebar ignores selections — the streaming turn owns the screen", () => {
+    const onOpen = vi.fn();
+    const onNewChat = vi.fn();
+    render(
+      <Sidebar
+        threads={[thread("a", new Date(2026, 8, 18, 9).toISOString())]}
+        quota={{ used: 0, limit: 20 }}
+        activeId={null}
+        busy
+        onOpen={onOpen}
+        onNewChat={onNewChat}
+        now={NOON}
+      />,
+    );
+    expect((screen.getByRole("button", { name: "New conversation" }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(screen.getByRole("link", { name: /a title/ }));
+    fireEvent.click(screen.getByRole("button", { name: "New conversation" }));
+    expect(onOpen).not.toHaveBeenCalled();
+    expect(onNewChat).not.toHaveBeenCalled();
   });
 
   it("the New conversation button calls onNewChat", () => {
@@ -131,6 +154,7 @@ describe("the sidebar", () => {
         activeId={null}
         onOpen={() => {}}
         onNewChat={onNewChat}
+        busy={false}
         now={NOON}
       />,
     );

@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% load static blog_tags %}
+
+{% block title %}{{ post.title }} — Notes — PoliticalAgent{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="{% static 'site/blog.css' %}">
+{% endblock %}
+
+{% block content %}
+  <article class="archive">
+    <p class="post-date">{{ post.published_at|date:"j F Y" }} · {{ post.kicker }}</p>
+    <h1>{{ post.title }}</h1>
+    {# The body is author-only Markdown rendered by `render_markdown` (blog_tags). #}
+    <div class="post-body">{{ post.body|render_markdown }}</div>
+  </article>
+  <p class="lead-meta"><a href="{% url 'blog:index' %}">← All notes</a></p>
+{% endblock %}

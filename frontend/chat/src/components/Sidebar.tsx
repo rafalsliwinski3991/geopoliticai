@@ -66,6 +66,7 @@ export function Sidebar({
   threads,
   quota,
   activeId,
+  busy,
   onOpen,
   onNewChat,
   now = new Date(),
@@ -73,6 +74,11 @@ export function Sidebar({
   threads: ThreadSummary[];
   quota: Quota;
   activeId: string | null;
+  // While a turn streams, the whole selection column is inert: dropping or
+  // switching conversations mid-turn would let the still-running turn write
+  // into the wrong conversation. This restores the guard the old "New chat"
+  // button carried as disabled={isLoading}.
+  busy: boolean;
   onOpen: (threadId: string) => void;
   onNewChat: () => void;
   now?: Date;
@@ -90,8 +96,10 @@ export function Sidebar({
             aria-current={thread.id === activeId ? ("page" as const) : undefined}
             onClick={(event) => {
               event.preventDefault();
+              if (busy) return;
               onOpen(thread.id);
             }}
+            aria-disabled={busy}
           >
             {thread.title}
             <span className="when">{clockTime(thread.created_at)}</span>
@@ -106,7 +114,7 @@ export function Sidebar({
         <a className="wordmark" href="/">
           Political<em>Agent</em>
         </a>
-        <button className="new-thread" type="button" onClick={onNewChat}>
+        <button className="new-thread" type="button" disabled={busy} onClick={onNewChat}>
           New conversation
         </button>
       </div>

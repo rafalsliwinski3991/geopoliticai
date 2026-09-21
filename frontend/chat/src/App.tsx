@@ -157,6 +157,7 @@ export default function App() {
         threads={threads}
         quota={quota}
         activeId={activeThread?.id ?? null}
+        busy={isLoading}
         onOpen={openThread}
         onNewChat={newChat}
       />

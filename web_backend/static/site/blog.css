@@ -1,0 +1,70 @@
+/* PoliticalAgent — blog styles copied from docs/design/blog.html;
+   site/style.css keeps only the shared tokens. */
+  .intro { padding: 72px 0 0; }
+  .intro h1 { max-width: 12ch; }
+  .intro p { max-width: 56ch; font-size: var(--s-md); line-height: 1.5; color: var(--ink-soft); margin-top: 22px; }
+
+  /* Lead note: the only place a full-width treatment is spent. */
+  .lead {
+    margin-top: 58px;
+    border-top: 1px solid var(--ink);
+    border-bottom: 1px solid var(--rule);
+    padding: 30px 0 34px;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 17rem);
+    gap: 48px;
+  }
+  .lead h2 { max-width: 18ch; margin-bottom: 14px; }
+  .lead h2 a { text-decoration: none; }
+  .lead h2 a:hover { text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 4px; }
+  .lead p { color: var(--ink-soft); }
+  .lead-meta { display: flex; flex-direction: column; gap: 14px; padding-top: 8px; }
+
+  /* Archive: the margin holds the metadata, as a chart holds its labels. */
+  .archive { margin-top: 10px; }
+  .post {
+    display: grid;
+    grid-template-columns: 9rem minmax(0, 1fr) minmax(0, 11rem);
+    gap: 32px;
+    padding: 26px 0;
+    border-bottom: 1px solid var(--rule);
+    align-items: baseline;
+  }
+  .post-date { font: 400 var(--s-sm)/1.5 var(--label); color: var(--ink-soft); }
+  .post h3 { font-size: var(--s-md); margin-bottom: 6px; }
+  .post h3 a { text-decoration: none; }
+  .post h3 a:hover { text-decoration: underline; text-underline-offset: 4px; }
+  .post p { margin: 0; font-size: var(--s-sm); color: var(--ink-soft); }
+  .post-sources { font: 400 var(--s-xs)/1.7 var(--label); color: var(--ink-soft); }
+  .post-sources span { display: block; }
+
+
+  .subscribe {
+    margin-top: 72px;
+    border-top: 1px solid var(--ink);
+    padding-top: 26px;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 22rem);
+    gap: 44px;
+    align-items: start;
+  }
+  .subscribe h2 { max-width: 16ch; }
+  .subscribe p { font-size: var(--s-sm); color: var(--ink-soft); margin-top: 10px; }
+  .subscribe form { display: flex; gap: 8px; flex-wrap: wrap; }
+  .subscribe input {
+    flex: 1 1 12rem;
+    font: 400 var(--s-sm)/1 var(--ui);
+    padding: 14px 13px;
+    border: 1px solid var(--rule);
+    border-radius: 2px;
+    background: var(--paper-lift);
+    color: var(--ink);
+  }
+
+  @media (max-width: 860px) {
+    .lead, .subscribe { grid-template-columns: 1fr; gap: 20px; }
+    .lead-meta { flex-direction: row; gap: 22px; flex-wrap: wrap; }
+    .post { grid-template-columns: 1fr; gap: 8px; }
+    .post-sources span { display: inline; }
+    .post-sources span + span::before { content: " · "; }
+  }
