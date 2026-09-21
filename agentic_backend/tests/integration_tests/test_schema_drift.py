@@ -37,6 +37,17 @@ pytestmark = pytest.mark.skipif(
     reason="needs a real Postgres (make test-integration)",
 )
 
+# Every read statement in `db/sql.py`, with parameters that are valid but match
+# nothing, so executing them against a real database proves the columns exist
+# without depending on any row. Kept in lockstep by
+# `test_every_read_statement_has_a_probe`.
+NO_MATCH_PROBES: tuple[tuple[str, dict[str, Any]], ...] = (
+    (sql.SELECT_THREAD_OWNER, {"thread_id": "drift-probe"}),
+    (sql.SELECT_THREADS, {"user_id": 0}),
+    (sql.SELECT_QUOTA_USED, {"user_id": 0, "day": date(1970, 1, 1)}),
+    (sql.SELECT_IS_STAFF, {"user_id": 0}),
+)
+
 CASCADE_TABLES = ("checkpoint_writes", "checkpoint_blobs", "checkpoints")
 # The DELETE statements `web_backend/chat/signals.py` runs, mirrored here so a
 # rename on either side fails the other side's guard.
@@ -145,10 +156,22 @@ def _empty_checkpoint() -> Any:
 def test_every_drift_probe_executes(conn: Connection[dict[str, Any]]) -> None:
     """A renamed or dropped column fails here, and only here, before production."""
     # Act + Assert: every probe must execute as a valid, no-match query.
-    for statement, params in sql.DRIFT_PROBES:
+    for statement, params in NO_MATCH_PROBES:
         with conn.cursor() as cursor:
             cursor.execute(statement, params)
             cursor.fetchall()
+
+
+def test_every_read_statement_has_a_probe() -> None:
+    """A new SELECT_ in db/sql.py without a probe fails here, not in production."""
+    # Arrange
+    read_statements = {
+        value for name, value in vars(sql).items() if name.startswith("SELECT_")
+    }
+    # Act
+    probed = {statement for statement, _ in NO_MATCH_PROBES}
+    # Assert
+    assert read_statements == probed
 
 
 def test_upsert_thread_creates_once_and_the_owner_is_read_back(

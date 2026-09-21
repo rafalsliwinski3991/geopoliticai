@@ -9,7 +9,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
-from typing import Any
 
 from psycopg import AsyncConnection
 from psycopg.rows import DictRow
@@ -46,18 +45,9 @@ WHERE quota.used < %(limit)s
 RETURNING used
 """
 
-# Every statement above, with a parameter set that is valid but matches nothing.
-# `test_schema_drift` executes each one so a renamed column fails in CI.
-DRIFT_PROBES: tuple[tuple[str, dict[str, Any]], ...] = (
-    (SELECT_THREAD_OWNER, {"thread_id": "drift-probe"}),
-    (SELECT_THREADS, {"user_id": 0}),
-    (SELECT_QUOTA_USED, {"user_id": 0, "day": date(1970, 1, 1)}),
-    (SELECT_IS_STAFF, {"user_id": 0}),
-)
-
 
 def title_from(query: str) -> str:
-    """Derive a thread title from the first query (Q15)."""
+    """Derive a thread title from the first query."""
     cleaned = " ".join(query.split())
     return cleaned[:MAX_TITLE_LENGTH]
 
