@@ -1,5 +1,6 @@
 """Unit tests for the raw-psycopg threads module (units 5, 6)."""
 
+import datetime
 from typing import Any, cast
 
 import pytest
@@ -153,3 +154,40 @@ async def test_is_staff_reads_the_database(_fake_pool: _FakePool) -> None:
     assert not await is_staff(pool(_fake_pool), user_id=1)
     _fake_pool.conn.scripted_rows = {threads.SELECT_IS_STAFF: []}
     assert not await is_staff(pool(_fake_pool), user_id=1)
+
+
+@pytest.mark.anyio
+async def test_quota_used_returns_the_spent_count() -> None:
+    import datetime
+
+    fake = _FakePool({threads.SELECT_QUOTA_USED: [{"used": 7}]})
+    assert await threads.quota_used(pool(fake), user_id=1) == 7
+    statement, params = fake.conn.executed[0]
+    assert statement == threads.SELECT_QUOTA_USED
+    assert params["user_id"] == 1
+    assert params["day"] == datetime.date.today()
+
+
+@pytest.mark.anyio
+async def test_quota_used_is_zero_without_a_row() -> None:
+    fake = _FakePool({threads.SELECT_QUOTA_USED: []})
+    assert await threads.quota_used(pool(fake), user_id=1) == 0
+
+
+@pytest.mark.anyio
+async def test_increment_quota_sends_the_conditional_upsert() -> None:
+    fake = _FakePool({threads.INCREMENT_QUOTA: [{"used": 1}]})
+    assert await threads.increment_quota(pool(fake), user_id=1, limit=20) == 1
+    statement, params = fake.conn.executed[0]
+    assert statement == threads.INCREMENT_QUOTA
+    assert params == {
+        "user_id": 1,
+        "day": datetime.date.today(),
+        "limit": 20,
+    }
+
+
+@pytest.mark.anyio
+async def test_increment_quota_returns_falsy_at_the_cap() -> None:
+    fake = _FakePool({threads.INCREMENT_QUOTA: []})
+    assert not await threads.increment_quota(pool(fake), user_id=1, limit=20)

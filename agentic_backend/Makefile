@@ -1,10 +1,16 @@
-.PHONY: all format lint test tests test_watch docker_tests help extended_tests evals
+.PHONY: all format lint test tests test-integration test_watch docker_tests help extended_tests evals
 
 # Default target executed when no arguments are given to make.
 all: help
 
 # Define a variable for the test file path.
 TEST_FILE ?= tests/unit_tests/
+
+# Needs a real Postgres that Django has migrated (`make migrate` at the root)
+# and that the checkpointer has set up; the test skips itself without
+# DATABASE_URL. CI's schema-drift job encodes that order.
+test-integration:
+	python -m pytest tests/integration_tests/
 
 test:
 	python -m pytest $(TEST_FILE)
@@ -85,6 +91,7 @@ help:
 	@echo 'lint                         - run linters'
 	@echo 'test                         - run unit tests'
 	@echo 'tests                        - run unit tests'
+	@echo 'test-integration             - run the schema-drift suite against a real Postgres'
 	@echo 'test TEST_FILE=<test_file>   - run all tests in file'
 	@echo 'test_watch                   - run unit tests in watch mode'
 	@echo 'evals                        - run the offline evals like evals.yml'

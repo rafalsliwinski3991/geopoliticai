@@ -11,6 +11,7 @@ from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.types import Command
 
 import api
+import auth
 from agents.orchestrator import build_graph, build_initial_orchestrator_state
 from agents.orchestrator.consts.progress import SEARCH_PROGRESS
 from agents.reporter import ResumeIntent
@@ -21,6 +22,11 @@ from agents.reporter.consts.messages import (
     REVISION_CAP_NOTICE,
 )
 from agents.reporter.consts.progress import OUTLINE_PROGRESS, REPORT_PROGRESS
+from config import (
+    DAILY_RESEARCH_TURNS,
+    DAILY_RESEARCH_TURNS_ALL_USERS,
+    SITE_WIDE_QUOTA_USER_ID,
+)
 from models import (
     LLMInvocationError,
     NoSourcesError,
@@ -60,13 +66,18 @@ def client() -> httpx.AsyncClient:
 
 
 @pytest.fixture(autouse=True)
-def _owned_thread(monkeypatch: pytest.MonkeyPatch) -> None:
-    """A turn whose thread is claimed by the caller, unless a test says no."""
+def _owned_thread_with_quota_headroom(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A turn whose thread is claimed and whose quota has headroom, unless a
+    test says otherwise."""
 
     async def claim(*args: Any, **kwargs: Any) -> bool:
         return True
 
+    async def headroom(pool: Any, *, user_id: int) -> int:
+        return 0
+
     monkeypatch.setattr(api, "claim_thread", claim)
+    monkeypatch.setattr(api, "quota_used", headroom)
 
     async def own(*args: Any, **kwargs: Any) -> bool:
         return True
@@ -447,6 +458,51 @@ async def test_an_approve_resume_sends_a_resume_command(
 
 
 @pytest.mark.anyio
+async def test_an_approve_resume_proceeds_at_the_cap(
+    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Approving a pending report is free: the quota must never strand it."""
+
+    async def pending(thread_id: str) -> dict[str, Any] | None:
+        return {
+            "outline": ["Section one"],
+            "notice": "",
+            "revisions_used": 1,
+            "revisions_allowed": 3,
+        }
+
+    async def intent(text: str, pause: dict[str, Any]) -> ResumeIntent:
+        return ResumeIntent(action="approve", instruction="")
+
+    async def exhausted(pool: Any, *, user_id: int) -> int:
+        return DAILY_RESEARCH_TURNS
+
+    increments: list[int] = []
+
+    async def increment(pool: Any, *, user_id: int, limit: int) -> int | None:
+        increments.append(user_id)
+        return 1
+
+    async def stream(
+        graph_input: Any, thread_id: str
+    ) -> AsyncIterator[tuple[str, str]]:
+        yield ("token", "The report.")
+
+    monkeypatch.setattr(api, "_pending_pause", pending)
+    monkeypatch.setattr(api, "classify_resume_intent", intent)
+    monkeypatch.setattr(api, "quota_used", exhausted)
+    monkeypatch.setattr(api, "increment_quota", increment)
+    with patch("api._astream_answer", stream):
+        response = await client.post(
+            "/api/run_pipeline/stream", json={"resume": "go ahead", "thread_id": "t-1"}
+        )
+    # Assert
+    assert response.status_code == 200
+    assert _events(response.text)[-1]["type"] == "result"
+    assert increments == []
+
+
+@pytest.mark.anyio
 async def test_a_new_question_resume_starts_a_fresh_turn(
     client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -596,10 +652,10 @@ async def test_stream_caps_answer_size(client: httpx.AsyncClient) -> None:
 
 
 @pytest.mark.anyio
-async def test_rate_limit_keys_on_rightmost_forwarded(
+async def test_rate_limit_keys_on_the_authenticated_user(
     client: httpx.AsyncClient,
 ) -> None:
-    """A caller cannot rotate the left-hand forwarded entry to get a fresh bucket."""
+    """A signed-in caller cannot rotate X-Forwarded-For to get a fresh bucket (Q17)."""
 
     # Arrange
     async def stream(
@@ -621,14 +677,29 @@ async def test_rate_limit_keys_on_rightmost_forwarded(
             json={"query": "one more", "thread_id": "t-1"},
             headers={"x-forwarded-for": "another-spoof, 203.0.113.5"},
         )
-        allowed = await client.post(
+        other_identity = _client_with_token(_mint_token(user_id=2))
+        allowed = await other_identity.post(
             "/api/run_pipeline/stream",
             json={"query": "different client", "thread_id": "t-1"},
-            headers={"x-forwarded-for": "spoofed, 203.0.113.6"},
         )
     # Assert
     assert blocked.status_code == 429
     assert allowed.status_code == 200
+
+
+def test_resolve_client_id_falls_back_to_the_rightmost_forwarded() -> None:
+    """The unauthenticated fallback keeps the right-most-entry rule."""
+
+    stub = cast(
+        Any,
+        type(
+            "R",
+            (),
+            {"headers": {"x-forwarded-for": "a, b, 203.0.113.5"}, "client": None},
+        )(),
+    )
+    assert api._resolve_client_id(stub) == "203.0.113.5"
+    assert api._resolve_client_id(stub, auth.Identity(user_id=7)) == "user:7"
 
 
 @pytest.mark.anyio
@@ -1046,7 +1117,10 @@ async def test_get_threads_returns_only_the_callers_rows(
     # Assert
     assert response.status_code == 200
     assert response.json() == {
-        "threads": [{"id": "t1", "title": "NATO", "created_at": "2026-09-18T10:00:00Z"}]
+        "threads": [
+            {"id": "t1", "title": "NATO", "created_at": "2026-09-18T10:00:00Z"}
+        ],
+        "quota": {"used": 0, "limit": DAILY_RESEARCH_TURNS},
     }
     assert seen_kwargs["user_id"] == 1
 
@@ -1124,4 +1198,276 @@ async def test_admin_thread_endpoint_with_is_staff_true_returns_messages(
     assert response.json() == {
         "thread_id": "t-1",
         "messages": [{"role": "assistant", "text": "The answer."}],
+    }
+
+
+@pytest.mark.anyio
+async def test_the_21st_research_turn_is_429_mid_stream(
+    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The cap is enforced in the counted branch: a research turn over it is
+    refused with a 429 error frame on an HTTP 200, never a result."""
+
+    async def increment(pool: Any, *, user_id: int, limit: int) -> int | None:
+        # The caller's own cap is the one already reached; the site still has
+        # headroom for the refusal.
+        if user_id != SITE_WIDE_QUOTA_USER_ID:
+            return None
+        return 1
+
+    async def stream(
+        graph_input: Any, thread_id: str
+    ) -> AsyncIterator[tuple[str, Any]]:
+        yield ("counted", None)
+        yield ("token", "never")
+
+    monkeypatch.setattr(api, "increment_quota", increment)
+    with patch("api._astream_answer", stream):
+        response = await client.post(
+            "/api/run_pipeline/stream", json={"query": "x", "thread_id": "t-1"}
+        )
+    # Assert
+    assert response.status_code == 200
+    events = _events(response.text)
+    assert events[-1]["type"] == "error"
+    assert events[-1]["status"] == 429
+    assert all(event["type"] != "result" for event in events)
+
+
+@pytest.mark.anyio
+async def test_a_chat_routed_turn_proceeds_at_the_cap(
+    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Chat is free (Q5b): an exhausted user may still chat, and the counted
+    branch — the only place a turn is refused — never fires."""
+
+    async def exhausted(pool: Any, *, user_id: int) -> int:
+        return DAILY_RESEARCH_TURNS
+
+    increments: list[int] = []
+
+    async def increment(pool: Any, *, user_id: int, limit: int) -> int | None:
+        increments.append(user_id)
+        return 1
+
+    async def stream(
+        graph_input: Any, thread_id: str
+    ) -> AsyncIterator[tuple[str, str]]:
+        yield ("token", "Hello.")
+
+    monkeypatch.setattr(api, "quota_used", exhausted)
+    monkeypatch.setattr(api, "increment_quota", increment)
+    with patch("api._astream_answer", stream):
+        response = await client.post(
+            "/api/run_pipeline/stream",
+            json={"query": "chat please", "thread_id": "t-1"},
+        )
+    # Assert
+    assert response.status_code == 200
+    assert _events(response.text)[-1]["type"] == "result"
+    assert increments == []
+
+
+@pytest.mark.anyio
+async def test_a_turn_refused_by_the_site_ceiling_does_not_charge_the_user(
+    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The site increment commits before the user's: a turn the site refuses
+    costs the caller nothing, with no advisory read that a race could open."""
+
+    increments: list[int] = []
+
+    async def increment(pool: Any, *, user_id: int, limit: int) -> int | None:
+        increments.append(user_id)
+        # The site is already at its ceiling; the caller still has headroom.
+        if user_id == SITE_WIDE_QUOTA_USER_ID:
+            return None
+        return 1
+
+    async def stream(
+        graph_input: Any, thread_id: str
+    ) -> AsyncIterator[tuple[str, Any]]:
+        yield ("counted", None)
+        yield ("token", "never")
+
+    monkeypatch.setattr(api, "increment_quota", increment)
+    with patch("api._astream_answer", stream):
+        response = await client.post(
+            "/api/run_pipeline/stream", json={"query": "x", "thread_id": "t-1"}
+        )
+    # Assert
+    events = _events(response.text)
+    assert events[-1]["type"] == "error"
+    assert events[-1]["status"] == 429
+    assert events[-1]["message"] == "The site has used today's research capacity."
+    assert all(event["type"] != "result" for event in events)
+    assert 1 not in increments
+
+
+@pytest.mark.anyio
+async def test_a_chat_routed_turn_does_not_increment_the_quota(
+    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`other` is not a research destination; the increment never fires."""
+
+    increments: list[int] = []
+
+    async def increment(pool: Any, *, user_id: int, limit: int) -> int | None:
+        increments.append(user_id)
+        return 1
+
+    monkeypatch.setattr(api, "increment_quota", increment)
+
+    async def stream(
+        graph_input: Any, thread_id: str
+    ) -> AsyncIterator[tuple[str, str]]:
+        yield ("token", "Hello.")
+
+    with patch("api._astream_answer", stream):
+        response = await client.post(
+            "/api/run_pipeline/stream",
+            json={"query": "chat please", "thread_id": "t-1"},
+        )
+    # Assert
+    assert response.status_code == 200
+    assert _events(response.text)[-1]["type"] == "result"
+    assert increments == []
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("destination", ["geopolitical", "report"])
+async def test_a_research_routed_turn_increments_exactly_once(
+    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch, destination: str
+) -> None:
+    """Counting rides the `classify` updates frame, once, in _generate.
+
+    This test fails against a `_generate` that never grew the `counted`
+    branch, which is the whole point: implementing only the _astream_answer
+    half ships an unlimited quota with a green suite.
+    """
+    from langchain_core.messages import AIMessage
+
+    increments: list[tuple[int, int]] = []
+
+    async def increment(pool: Any, *, user_id: int, limit: int) -> int | None:
+        increments.append((user_id, limit))
+        return 1
+
+    monkeypatch.setattr(api, "increment_quota", increment)
+
+    classify_update = {
+        "classify": {"destination": destination, "standalone_query": "q"}
+    }
+    seen_inputs: list[Any] = []
+
+    class _FakeGraph:
+        async def astream(
+            self, graph_input: Any, config: Any, **kwargs: Any
+        ) -> AsyncIterator[tuple[Any, str, Any]]:
+            seen_inputs.append(graph_input)
+            # updates mode, empty namespace first — as langgraph delivers it
+            yield ("", "updates", classify_update)
+            # the answer arrives via messages mode
+            yield (
+                ("",),
+                "messages",
+                (AIMessage("Answer."), {"langgraph_node": "chat"}),
+            )
+
+    monkeypatch.setattr(api, "graph", _FakeGraph())
+
+    response = await client.post(
+        "/api/run_pipeline/stream", json={"query": "x", "thread_id": "t-1"}
+    )
+    # Assert
+    assert response.status_code == 200
+    events = _events(response.text)
+    assert events[-1]["type"] == "result"
+    # Exactly one count for the caller; the second call on the same code path
+    # is the site-wide sentinel (user 0), not a second user count.
+    assert [user_id for user_id, _ in increments if user_id] == [1]
+    assert [limit for user_id, limit in increments if user_id] == [DAILY_RESEARCH_TURNS]
+    assert [limit for user_id, limit in increments if not user_id] == [
+        DAILY_RESEARCH_TURNS_ALL_USERS
+    ]
+
+
+@pytest.mark.anyio
+async def test_a_turn_that_fails_after_routing_still_increments_once(
+    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The model call the turn paid for already happened; the money is spent."""
+
+    increments: list[int] = []
+
+    async def increment(pool: Any, *, user_id: int, limit: int) -> int | None:
+        increments.append(user_id)
+        return 1
+
+    monkeypatch.setattr(api, "increment_quota", increment)
+
+    async def stream(
+        graph_input: Any, thread_id: str
+    ) -> AsyncIterator[tuple[str, Any]]:
+        yield ("counted", None)
+        raise NoSourcesError("down")
+        yield ("token", "never")
+
+    with patch("api._astream_answer", stream):
+        response = await client.post(
+            "/api/run_pipeline/stream", json={"query": "x", "thread_id": "t-1"}
+        )
+    # Assert
+    assert response.status_code == 200
+    events = _events(response.text)
+    assert events[-1]["type"] == "error"
+    assert [user_id for user_id in increments if user_id] == [1]
+
+
+@pytest.mark.anyio
+async def test_a_turn_at_the_cap_ends_with_a_429_error_frame(
+    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A concurrent turn took the last one before this turn's increment."""
+
+    async def increment(pool: Any, *, user_id: int, limit: int) -> int | None:
+        return None
+
+    monkeypatch.setattr(api, "increment_quota", increment)
+
+    async def stream(
+        graph_input: Any, thread_id: str
+    ) -> AsyncIterator[tuple[str, Any]]:
+        yield ("counted", None)
+        yield ("token", "free answer")
+
+    with patch("api._astream_answer", stream):
+        response = await client.post(
+            "/api/run_pipeline/stream", json={"query": "x", "thread_id": "t-1"}
+        )
+    # Assert
+    events = _events(response.text)
+    assert events[-1]["type"] == "error"
+    assert events[-1]["status"] == 429
+    assert all(event["type"] != "result" for event in events)
+
+
+@pytest.mark.anyio
+async def test_get_threads_reports_the_quota_block(
+    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def list_threads(pool: Any, *, user_id: int) -> list[ThreadRow]:
+        return []
+
+    async def quota_used(pool: Any, *, user_id: int) -> int:
+        return 3
+
+    monkeypatch.setattr(api, "list_threads", list_threads)
+    monkeypatch.setattr(api, "quota_used", quota_used)
+    response = await client.get("/api/threads")
+    # Assert
+    assert response.status_code == 200
+    assert response.json() == {
+        "threads": [],
+        "quota": {"used": 3, "limit": DAILY_RESEARCH_TURNS},
     }
