@@ -37,8 +37,7 @@ from config import (
     init_environment,
     require_env,
 )
-from models import PipelineError, ReportNotPendingError
-from threads import (
+from db.sql import (
     claim_thread,
     increment_quota,
     is_staff,
@@ -47,6 +46,7 @@ from threads import (
     quota_used,
     title_from,
 )
+from models import PipelineError, ReportNotPendingError
 from tracing import init_tracing
 
 logger = logging.getLogger(__name__)

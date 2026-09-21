@@ -49,13 +49,12 @@ py-modules = [
     "llm",
     "models",
     "search",
-    "threads",
     "tracing",
 ]
 
 [tool.setuptools.packages.find]
 where = ["src"]
-include = ["agents*"]
+include = ["agents*", "db*"]
 
 
 [tool.setuptools.package-data]

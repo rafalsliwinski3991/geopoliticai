@@ -2,7 +2,7 @@
 
 Django owns every table these statements touch; `agentic_backend/` addresses
 them by name with raw psycopg and runs no migrations of its own. This suite
-executes *every* statement in `threads.py` against a database migrated by
+    executes *every* statement in `db/sql.py` against a database migrated by
 Django and set up by the checkpointer, so a renamed or dropped column fails in
 CI instead of in production.
 
@@ -30,7 +30,7 @@ from langgraph.checkpoint.postgres import PostgresSaver
 from psycopg import Connection, connect
 from psycopg.rows import dict_row
 
-import threads
+from db import sql
 
 pytestmark = pytest.mark.skipif(
     not os.getenv("DATABASE_URL"),
@@ -120,8 +120,8 @@ def _empty_checkpoint() -> Any:
 
 def test_every_drift_probe_executes(conn: Connection[dict[str, Any]]) -> None:
     """A renamed or dropped column fails here, and only here, before production."""
-    # Arrange + Act + Assert: every probe must execute a valid, no-match query.
-    for statement, params in threads.DRIFT_PROBES:
+    # Act
+    for statement, params in sql.DRIFT_PROBES:
         with conn.cursor() as cursor:
             cursor.execute(statement, params)
             cursor.fetchall()
@@ -135,14 +135,14 @@ def test_upsert_thread_creates_once_and_the_owner_is_read_back(
     with conn.cursor() as cursor:
         # Act
         cursor.execute(
-            threads.UPSERT_THREAD,
+            sql.UPSERT_THREAD,
             {"thread_id": "drift-1", "user_id": user_id, "title": "NATO"},
         )
         cursor.execute(
-            threads.UPSERT_THREAD,
+            sql.UPSERT_THREAD,
             {"thread_id": "drift-1", "user_id": user_id, "title": "NATO again"},
         )
-        cursor.execute(threads.SELECT_THREAD_OWNER, {"thread_id": "drift-1"})
+        cursor.execute(sql.SELECT_THREAD_OWNER, {"thread_id": "drift-1"})
         row = cast(Any, cursor.fetchone())
         cursor.execute("SELECT title FROM chat_threads WHERE id = 'drift-1'")
         title = cast(Any, cursor.fetchone())["title"]
@@ -158,11 +158,11 @@ def test_select_threads_returns_the_serialized_columns(
     # Arrange
     with conn.cursor() as cursor:
         cursor.execute(
-            threads.UPSERT_THREAD,
+            sql.UPSERT_THREAD,
             {"thread_id": "drift-2", "user_id": user_id, "title": "Lithuania"},
         )
         # Act
-        cursor.execute(threads.SELECT_THREADS, {"user_id": user_id})
+        cursor.execute(sql.SELECT_THREADS, {"user_id": user_id})
         rows = cursor.fetchall()
     # Assert
     row = cast(Any, next(r for r in rows if r["id"] == "drift-2"))
@@ -178,15 +178,15 @@ def test_increment_quota_upserts_increments_and_caps(
     day = date.today()
     with conn.cursor() as cursor:
         cursor.execute(
-            threads.INCREMENT_QUOTA, {"user_id": user_id, "day": day, "limit": 2}
+            sql.INCREMENT_QUOTA, {"user_id": user_id, "day": day, "limit": 2}
         )
         first = cast(Any, cursor.fetchone())["used"]
         cursor.execute(
-            threads.INCREMENT_QUOTA, {"user_id": user_id, "day": day, "limit": 2}
+            sql.INCREMENT_QUOTA, {"user_id": user_id, "day": day, "limit": 2}
         )
         second = cast(Any, cursor.fetchone())["used"]
         cursor.execute(
-            threads.INCREMENT_QUOTA, {"user_id": user_id, "day": day, "limit": 2}
+            sql.INCREMENT_QUOTA, {"user_id": user_id, "day": day, "limit": 2}
         )
         capped = cursor.fetchone()
 
@@ -210,7 +210,7 @@ def test_deleting_a_user_cascades_into_the_checkpointer_tables(
     thread_id = "drift-3"
     with conn.cursor() as cursor:
         cursor.execute(
-            threads.UPSERT_THREAD,
+            sql.UPSERT_THREAD,
             {"thread_id": thread_id, "user_id": user_id, "title": ""},
         )
     config = {"configurable": {"thread_id": thread_id, "checkpoint_ns": ""}}
@@ -260,7 +260,7 @@ def test_the_site_wide_sentinel_can_be_incremented(
     try:
         with conn.cursor() as cursor:
             cursor.execute(
-                threads.INCREMENT_QUOTA,
+                sql.INCREMENT_QUOTA,
                 {"user_id": 0, "day": day, "limit": 10**9},
             )
             spent = cast(Any, cursor.fetchone())
