@@ -322,7 +322,25 @@ p { margin: 0 0 1em; max-width: 68ch; }
     .app { grid-template-columns: 1fr; }
     .side { display: none; }
     .scroll, .main-top, .composer { padding-inline: 18px; }
+    /* The only new-conversation control that survives the hidden sidebar. */
+    .main-top { display: flex; align-items: baseline; gap: 12px; }
+    .new-thread-mobile { margin-left: auto; }
+  }
+  .new-thread-mobile { display: none; }
+  @media (max-width: 760px) {
+    .new-thread-mobile { display: inline-flex; }
   }
 
   /* SPA: the sidebar arrives in unit 10; until then the main column owns the full width. */
   .app.chat-solo { grid-template-columns: minmax(0, 1fr); }
+
+  /* ── SPA additions beyond the mockup ── */
+  .threads-empty {
+    font: 400 var(--s-sm)/1.5 var(--label);
+    color: var(--ink-soft);
+    padding: 8px;
+  }
+  .quota-block p, .side-foot .quota { margin: 0; }
+  .meter i { transition: width 0.3s ease; }
+  .threads a { display: block; }
+

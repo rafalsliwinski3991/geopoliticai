@@ -2,7 +2,9 @@
 // cookie (Q24, edge case 9). A reload re-fetches it from the session cookie,
 // which is the credential that actually persists.
 const TOKEN_URL = "/accounts/token/";
-const LOGIN_URL = "/accounts/login/?next=/chat";
+// Exported for every authenticated caller: the login redirect is the shared
+// re-authentication UX, not a token-module private detail.
+export const LOGIN_URL = "/accounts/login/?next=/chat";
 const REFRESH_MARGIN_MS = 60_000;
 
 // A failure that is not "signed out": the session may be fine and the request
