@@ -97,7 +97,7 @@ addresses.
 Before you flag a framework or library call as wrong, or recommend a different pattern in its place,
 check the current documentation through Context7: call `resolve-library-id` for the exact library and
 the version installed here, then call `query-docs` with that identifier. Read the installed version
-from `app/pyproject.toml` and `app/uv.lock` rather than assuming the latest release. Record any
+from `agentic_backend/pyproject.toml` and `agentic_backend/uv.lock` rather than assuming the latest release. Record any
 material documentation result in the run log, and cite it in the finding.
 
 This closes the two failure modes that produce confident wrong findings: recommending a pattern that
@@ -157,7 +157,7 @@ confidence-and-evidence rule from Step 3, and the Context7 rule from Step 3 for 
 turns on external framework behavior. Require one finding per line as JSON:
 
 ```json
-{"severity":"CRITICAL|INFORMATIONAL","confidence":8,"path":"app/src/api.py","line":42,"category":"...","summary":"...","fix":"...","fingerprint":"path:line:category","lens":"..."}
+{"severity":"CRITICAL|INFORMATIONAL","confidence":8,"path":"agentic_backend/src/api.py","line":42,"category":"...","summary":"...","fix":"...","fingerprint":"path:line:category","lens":"..."}
 ```
 
 with `NO FINDINGS` and nothing else when a lens finds nothing. If a lens fails or times out, log the
@@ -195,7 +195,7 @@ approves.
 
 **When a fix changes production behavior, use red-green-refactor.** Write one focused test for the
 behavior, run it and confirm it fails for the expected reason, make the smallest change that passes
-it, then re-run that test and the relevant gate. Run `make test` and `make lint` from `app/` after
+it, then re-run that test and the relevant gate. Run `make test` and `make lint` from `agentic_backend/` after
 the last fix, and record the tail of their real output in the run log. A run log entry without that
 output is treated as a skipped gate.
 

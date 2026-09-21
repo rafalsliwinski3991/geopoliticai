@@ -34,7 +34,8 @@ class LLMSettings:
 
 DEFAULT_LLM_SETTINGS = LLMSettings()
 
-# app/src/config.py -> app/src -> app -> repo root. Resolved explicitly so
+# agentic_backend/src/config.py -> agentic_backend/src -> agentic_backend ->
+# repo root. Resolved explicitly so
 # every entrypoint (API, tests, langgraph dev) reads the same
 # repo-root .env that Docker Compose's `env_file: .env` also uses,
 # regardless of the caller's current working directory.

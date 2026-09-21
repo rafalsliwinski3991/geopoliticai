@@ -102,7 +102,7 @@ Command locations and implementation details:
   `.codex/commands/` directory.
 
 GitHub Actions workflows are stored in `.github/workflows/` and
-`app/.github/workflows/`; they are CI automation rather than interactive
+`agentic_backend/.github/workflows/`; they are CI automation rather than interactive
 harness commands. The GitHub CLI (`gh`) is used through permitted shell
 commands and has no repository-local command definition.
 

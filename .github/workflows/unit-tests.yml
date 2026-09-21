@@ -21,11 +21,11 @@ jobs:
           cache: true
 
       - name: Install dependencies
-        working-directory: app
+        working-directory: agentic_backend
         run: uv sync --locked --dev
 
       - name: Run unit tests
-        working-directory: app
+        working-directory: agentic_backend
         run: uv run pytest
 
   frontend-tests:

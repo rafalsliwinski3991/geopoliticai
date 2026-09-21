@@ -255,7 +255,7 @@ Record a brief reason when a lens does not apply.
 For **GeopoliticAI**, verify the current repository rather than assuming its
 architecture is frozen. When affected by the plan, pay particular attention to:
 
-- `app/` as the maintained Python application, `app/src/` as the import root,
+- `agentic_backend/` as the maintained Python application, `agentic_backend/src/` as the import root,
   and the separation between shared modules and agent modules.
 - LangGraph state updates, child-graph interfaces, checkpointer behavior, and
   interruption/resume paths; trace the specific graph actually being changed.

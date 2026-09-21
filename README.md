@@ -51,8 +51,8 @@ checkpoint can complete. Production nginx applies Basic Auth to both `/` and
 `/api/`; `AUTH_REQUIRED=true` fails closed when credentials are missing, while
 the local development configuration remains unauthenticated.
 
-The maintained application lives under `app/`. `app/README.md` documents setup,
-the API contract, and the static English frontend; `app/src/` is the Python
+The maintained application lives under `agentic_backend/`. `agentic_backend/README.md` documents setup,
+the API contract, and the static English frontend; `agentic_backend/src/` is the Python
 import root. The FastAPI app exposes `GET /api/health`,
 `POST /api/run_pipeline/stream`, and `/` for the frontend, with no synchronous
 pipeline route. The streaming endpoint emits SSE `progress`, `token`, `pause`,

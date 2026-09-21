@@ -5,7 +5,7 @@ services:
   phoenix:
     restart: unless-stopped
 
-  backend:
+  agentic-backend:
     restart: unless-stopped
     healthcheck:
       test:
@@ -28,6 +28,6 @@ services:
       AUTH_USER: ${AUTH_USER:?AUTH_USER must be set in production}
       AUTH_PASSWORD: ${AUTH_PASSWORD:?AUTH_PASSWORD must be set in production}
     depends_on:
-      backend:
+      agentic-backend:
         condition: service_healthy
     restart: unless-stopped
