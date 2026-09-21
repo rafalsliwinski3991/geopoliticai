@@ -1,28 +1,30 @@
 import { useCallback, useEffect, useState } from "react";
 import { getAccessToken, TokenServiceError } from "./api/token";
+import { mintThreadId, storeThreadId, useConversation } from "./hooks/useConversation";
+import { Composer } from "./components/Composer";
+import { MessageView, OutlineCard } from "./components/MessageView";
 
 type AuthState = "checking" | "ready" | "sign-in" | "error";
 
-// Unit 8 ships the shell only: the composer, the conversation and the sidebar
-// arrive with units 9 and 10. What must work here is the token path — the app
-// cannot render a working turn without it, so it is fetched on mount rather
-// than on the first send.
 export default function App() {
-  const [state, setState] = useState<AuthState>("checking");
+  const [auth, setAuth] = useState<AuthState>("checking");
   const [attempt, setAttempt] = useState(0);
+  const { messages, paused, outline, progress, isLoading, send, reset } = useConversation();
 
+  // Authenticate on mount, not on the first send: a login redirect that
+  // waits for a submitted message would discard that message.
   useEffect(() => {
     let cancelled = false;
     getAccessToken()
       .then(() => {
-        if (!cancelled) setState("ready");
+        if (!cancelled) setAuth("ready");
       })
       .catch((error: unknown) => {
         if (cancelled) return;
         // A 401 redirects to the login page; the thrown error only unwinds
-        // the promise. Anything else is a token-service outage, which a
-        // reload should not be required to recover from.
-        setState(error instanceof TokenServiceError ? "error" : "sign-in");
+        // the promise. Anything else is a token-service outage, which must
+        // not permanently mark the session unauthenticated.
+        setAuth(error instanceof TokenServiceError ? "error" : "sign-in");
       });
     return () => {
       cancelled = true;
@@ -30,25 +32,78 @@ export default function App() {
   }, [attempt]);
 
   const retry = useCallback(() => {
-    setState("checking");
+    setAuth("checking");
     setAttempt((n) => n + 1);
   }, []);
 
+  // A fresh conversation key and a clean slate: without this, changing topics
+  // keeps feeding every turn to the same LangGraph checkpoint.
+  const newChat = useCallback(() => {
+    storeThreadId(mintThreadId());
+    reset();
+  }, [reset]);
+
+  if (auth !== "ready") {
+    return (
+      <div className="app chat-solo">
+        <main className="main">
+          <div className="scroll">
+            <div className="conv">
+              <div className="row">
+                <div className="gate">
+                  <h1 className="wordmark">Political<em>Agent</em></h1>
+                  {auth === "checking" ? (
+                    <p>Loading…</p>
+                  ) : auth === "error" ? (
+                    <p>
+                      The sign-in check failed.{" "}
+                      <button className="btn" onClick={retry}>
+                        Retry
+                      </button>
+                    </p>
+                  ) : (
+                    <p>Sign in required.</p>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        </main>
+      </div>
+    );
+  }
+
   return (
-    <main>
-      <h1>PoliticalAgent</h1>
-      {state === "checking" ? (
-        <p>Loading…</p>
-      ) : state === "ready" ? (
-        <p>Your conversations are kept to your account.</p>
-      ) : state === "error" ? (
-        <p>
-          The sign-in check failed.{" "}
-          <button onClick={retry}>Retry</button>
-        </p>
-      ) : (
-        <p>Sign in required.</p>
-      )}
-    </main>
+    <div className="app chat-solo">
+      <main className="main">
+        <div className="main-top">
+          <h1>New conversation</h1>
+          <button className="btn btn--quiet" onClick={newChat} disabled={isLoading}>
+            New chat
+          </button>
+        </div>
+        <div className="scroll">
+          <section aria-label="Conversation" className="conv">
+            {messages.map((message, index) => (
+              <MessageView key={index} message={message} />
+            ))}
+            {progress.length > 0 && (
+              <div className="row">
+                <div className="say">
+                  <span className="who">Pipeline</span>
+                  <ul aria-label="Progress" className="progress">
+                    {progress.map((step, index) => (
+                      <li key={index}>{step.label}</li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+            )}
+            {paused && <OutlineCard outline={outline} />}
+          </section>
+        </div>
+        <Composer busy={isLoading} onSend={send} />
+      </main>
+    </div>
   );
 }

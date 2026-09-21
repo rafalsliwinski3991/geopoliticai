@@ -13,8 +13,7 @@ from typing import Any, AsyncGenerator
 
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, StreamingResponse
-from fastapi.staticfiles import StaticFiles
+from fastapi.responses import StreamingResponse
 from langchain_core.messages import AIMessage
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from langgraph.types import Command
@@ -262,34 +261,6 @@ def _enforce_rate_limit(request: Request, identity: Identity | None = None) -> N
             )
         timestamps.append(now)
         _rate_limit_store[client_id] = timestamps
-
-
-_FRONTEND_HTML = os.getenv("FRONTEND_HTML_PATH", "/app/frontend/index.html")
-_FRONTEND_ASSETS = os.path.join(os.path.dirname(_FRONTEND_HTML), "assets")
-if os.path.isdir(_FRONTEND_ASSETS):
-    app.mount(
-        "/assets", StaticFiles(directory=_FRONTEND_ASSETS), name="frontend-assets"
-    )
-
-
-def _frontend_html_path() -> str:
-    """Resolve the frontend shell at request time.
-
-    The repo-root `.env`, which ``lifespan`` loads via ``init_environment()``,
-    becomes available only after this module is imported, so the path must not be
-    read at import time. The ``/assets`` mount above stays on the import-time
-    default because a static mount cannot be re-resolved per request.
-    """
-    return os.getenv("FRONTEND_HTML_PATH", "/app/frontend/index.html")
-
-
-@app.get("/")
-async def serve_frontend() -> FileResponse:
-    """Serve the static frontend shell when available."""
-    html = _frontend_html_path()
-    if os.path.exists(html):
-        return FileResponse(html)
-    raise HTTPException(status_code=404, detail="Frontend not available")
 
 
 @router.get("/health")

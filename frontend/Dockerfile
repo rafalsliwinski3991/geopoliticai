@@ -14,9 +14,6 @@ FROM nginx:1.27-alpine@sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54ef
 RUN apk add --no-cache apache2-utils
 
 COPY --from=build /build/dist/ /usr/share/nginx/html/chat/
-# The legacy Alpine chat still owns `/` until unit 9 deletes it.
-COPY index.html /usr/share/nginx/html/index.html
-COPY assets/ /usr/share/nginx/html/assets/
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 COPY proxy_common.conf /etc/nginx/proxy_common.conf
 COPY docker-entrypoint.sh /docker-entrypoint.sh

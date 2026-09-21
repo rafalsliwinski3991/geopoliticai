@@ -20,6 +20,7 @@ RUN uv sync --frozen --no-dev
 # settings.py reads these env vars at import; the placeholders are only used
 # to satisfy the import — collectstatic touches no database.
 RUN DJANGO_SECRET_KEY=build-only-placeholder \
+    JWT_SIGNING_KEY=build-only-placeholder \
     POSTGRES_DB=build-only-placeholder \
     POSTGRES_USER=build-only-placeholder \
     POSTGRES_PASSWORD=build-only-placeholder \
