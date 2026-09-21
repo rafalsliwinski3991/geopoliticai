@@ -1,0 +1,182 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}PoliticalAgent — geopolitical research with named sources{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="{% static 'site/landing.css' %}">
+{% endblock %}
+
+{% block content %}
+  <section class="hero">
+    <p class="annot hero-kicker">Geopolitical research, English, one question at a time</p>
+    <h1>Every answer comes from newsrooms <span class="quiet">you can name.</span></h1>
+    <p class="hero-lede">
+      PoliticalAgent searches a fixed list of {{ total_domains }} publications and
+      institutes, reads the pages it finds, and answers from that text alone.
+      If the search or the reading fails, it tells you. It does not fill the gap.
+    </p>
+    <div class="hero-actions">
+      <a class="btn" href="/chat">Ask a question</a>
+      <a class="btn btn--quiet" href="#sources">See the source list</a>
+      <span class="note">Free while in preview · 20 research turns a day</span>
+      {% if not user.is_authenticated %}<span class="note"><a href="/accounts/signup/">Create an account</a></span>{% endif %}
+    </div>
+  </section>
+
+  <section class="spectrum" id="sources">
+    <div class="spectrum-axis">
+      {% for band in LANDING_SECTIONS.bands %}
+      <div class="band band--{{ band.slot }}">
+        <p class="band-head">{{ band.label }} <span class="count">{{ band.domains|length }}</span></p>
+        <ul>
+          {% for domain in band.domains %}
+          <li{% if domain in band.institutes %} class="inst"{% endif %}>{{ domain }}</li>
+          {% endfor %}
+        </ul>
+      </div>
+      {% endfor %}
+    </div>
+    <div class="spectrum-foot">
+      <p class="label">Institutes in green. Placement describes the editorial balance rule, not a rating of any publication.</p>
+      <p class="label">Three search batches · up to ten pages read per question</p>
+    </div>
+  </section>
+
+  <section class="section" id="how">
+    <h2>What happens after you press send</h2>
+    <p class="section-note">
+      Three routes, chosen by the first step. Only the research route spends a
+      turn from your daily allowance.
+    </p>
+
+    <div class="steps">
+      <div class="step">
+        <span class="step-n">1</span>
+        <div>
+          <h3>Your question is routed</h3>
+          <p>
+            A geopolitical question goes to research. A follow-up like “go
+            deeper on the cable incidents” is answered directly, without
+            sources. A request for a written report takes the third route.
+          </p>
+        </div>
+        <p class="annot">Routing is free</p>
+      </div>
+      <div class="step">
+        <span class="step-n">2</span>
+        <div>
+          <h3>The list is searched, the pages are read</h3>
+          <p>
+            Three batches of searches run across the {{ total_domains }} domains. Up to
+            ten of the results are fetched and the article text is extracted —
+            not the headline, not the search snippet.
+          </p>
+        </div>
+        <p class="annot">Nothing outside the list is opened</p>
+      </div>
+      <div class="step">
+        <span class="step-n">3</span>
+        <div>
+          <h3>The answer is written from that text</h3>
+          <p>
+            One model pass over what was actually read, streamed to you as it is
+            written. If every page candidate fails to load or extract, you
+            get an error that names the step that failed, not a confident
+            guess.
+          </p>
+        </div>
+        <p class="annot">One turn spent</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="reports">
+    <h2>A report stops and asks before it is written</h2>
+    <p class="section-note">
+      Long pieces are expensive to read and worse to skim when the structure is
+      wrong. So the outline comes first, and nothing is written until you reply.
+    </p>
+
+    <div class="gate">
+      <div class="transcript">
+        <div class="turn">
+          <span class="who">PoliticalAgent · mid-conversation</span>
+          <p>…and that closes the researched exchange: sources read, answer written. A report can be requested after such an exchange.</p>
+        </div>
+        <div class="turn">
+          <span class="who">You</span>
+          <p>Write me a report on Baltic energy security since 2022.</p>
+        </div>
+        <div class="turn turn--paused">
+          <span class="who">PoliticalAgent · waiting for your reply</span>
+          <p>Here is the outline I would write. Reply to approve, revise, or cancel.</p>
+          <ol>
+            <li>Grid synchronisation with continental Europe</li>
+            <li>LNG terminals and the end of piped Russian gas</li>
+            <li>Undersea cable and pipeline incidents, 2023–2025</li>
+            <li>What each government has committed to next</li>
+          </ol>
+        </div>
+        <div class="turn">
+          <span class="who">You</span>
+          <p>Approved, but merge three and four and add Finland.</p>
+        </div>
+      </div>
+      <div class="gate-aside">
+        <p class="annot">Revisions</p>
+        <p>
+          You can revise the outline twice. After that the report is written from
+          the outline as it stands, so a conversation cannot loop.
+        </p>
+        <p class="annot">When it is done</p>
+        <p>
+          The finished report arrives with Download&nbsp;.md and Copy. It stays in
+          the thread, so you can come back to it tomorrow.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="limits">
+    <h2>What it will not do</h2>
+    <p class="section-note">
+      The useful version of this list is the honest one. These are design
+      decisions, not gaps waiting to be filled.
+    </p>
+
+    <div class="limits">
+      <div class="limit">
+        <h3>Invent a source</h3>
+        <p>Every citation is a page that was fetched and read in that turn.</p>
+      </div>
+      <div class="limit">
+        <h3>Answer without every page intact</h3>
+        <p>A page the fetch could not read is dropped. Only a turn with nothing readable at all is an error — never a quieter answer.</p>
+      </div>
+      <div class="limit">
+        <h3>Reach outside the list</h3>
+        <p>No blogs, no social posts, no press releases, no page you sent it.</p>
+      </div>
+      <div class="limit">
+        <h3>Predict outcomes</h3>
+        <p>It reports what the sources say. It does not forecast elections or wars.</p>
+      </div>
+      <div class="limit">
+        <h3>Work in other languages yet</h3>
+        <p>Questions and answers are English. The sources are English-language.</p>
+      </div>
+      <div class="limit">
+        <h3>Take long inputs</h3>
+        <p>A question is capped at 2,000 characters, which is roughly one page.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="closer">
+    <h2>Ask it something you would otherwise open six tabs for.</h2>
+    <div class="hero-actions">
+      <a class="btn" href="/chat">Ask a question</a>
+    </div>
+  </section>
+{% endblock %}
