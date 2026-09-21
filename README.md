@@ -47,8 +47,8 @@ The app declares `psycopg[binary]` directly for the checkpointer; no system
 
 The stream caps emitted answers at 50,000 characters, but `_generate` continues
 draining an over-limit upstream stream before emitting the capped result so the
-checkpoint can complete. Production nginx applies Basic Auth to both `/` and
-`/api/`; `AUTH_REQUIRED=true` fails closed when credentials are missing, while
+checkpoint can complete. Production nginx applies Basic Auth to `/admin/` only; the
+API is guarded by bearer JWTs verified by `auth.py`; `AUTH_REQUIRED=true` fails closed when credentials are missing, while
 the local development configuration remains unauthenticated.
 
 The maintained application lives under `agentic_backend/`. `agentic_backend/README.md` documents setup,
@@ -68,3 +68,28 @@ host, `make migrate` runs its migrations (always before starting
 `make createsuperuser` creates an admin user, and `make test-web-backend` runs
 its suite against the dev Postgres. The two services share the database and the
 root `.env` but never each other's code.
+
+## Deploy order (two migration systems share one database)
+
+Django's `migrate` and the checkpointer's `setup()` touch disjoint tables, but
+the checkpointer uses `CREATE INDEX CONCURRENTLY`, which cannot run inside a
+transaction — so the order is explicit and not incidental:
+
+1. `docker compose run --rm web-backend python manage.py migrate`, then
+   `docker compose run --rm web-backend python manage.py createcachetable` —
+   the `DatabaseCache` table allauth's rate limiter reads on the first login
+   (the root `make migrate` target runs both)
+2. start `agentic-backend` (its lifespan runs `checkpointer.setup()`)
+3. start `frontend`
+
+Do not add a migrate-on-start hook to the `web-backend` container: two
+replicas would race. Before the Basic Auth cutover (`users-auth/07`), run the
+pre-launch purge with a `pg_dump` in hand: `purge_prelaunch_threads --dry-run`,
+read the count, then `--apply` — deleted checkpointer rows are recoverable only
+from that dump.
+
+**Operator-side spend caps (not code, and not optional):** configure hard
+spend caps in the OpenAI and Brave dashboards before going live — they are the
+only control that still holds when the application-layer quota
+(`DAILY_RESEARCH_TURNS` and its site-wide ceiling) is wrong. Record the
+configured figures here next to the deploy order.

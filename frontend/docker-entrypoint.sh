@@ -5,6 +5,7 @@ if [ "${AUTH_REQUIRED:-false}" = "true" ] && {
     [ -z "${AUTH_USER:-}" ] || [ -z "${AUTH_PASSWORD:-}" ];
 }; then
     printf '%s\n' 'AUTH_REQUIRED=true requires both AUTH_USER and AUTH_PASSWORD' >&2
+    printf '%s\n' '(they guard the /admin/ surface; the API is guarded by JWTs)' >&2
     exit 1
 fi
 
@@ -14,6 +15,8 @@ if [ -n "${AUTH_USER:-}" ] && [ -n "${AUTH_PASSWORD:-}" ]; then
         > /etc/nginx/auth_snippet.conf
 else
     # Authentication is intentionally disabled for local development.
+    # In production this leaves /admin/ unguarded until AUTH_USER and
+    # AUTH_PASSWORD are set — the only location that includes the snippet.
     printf '' > /etc/nginx/auth_snippet.conf
 fi
 

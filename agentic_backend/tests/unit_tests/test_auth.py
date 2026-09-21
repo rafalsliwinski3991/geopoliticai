@@ -65,7 +65,7 @@ def test_an_expired_token_is_rejected() -> None:
 
 def test_a_token_signed_with_a_different_key_is_rejected() -> None:
     with pytest.raises(HTTPException) as exc_info:
-        auth.decode_token(_mint(key="not-the-signing-key"))
+        auth.decode_token(_mint(key="wrong-key-not-the-signing-key-0123456789abcdef"))
     assert exc_info.value.status_code == 401
 
 
