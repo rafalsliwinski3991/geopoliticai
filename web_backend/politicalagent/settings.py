@@ -1,6 +1,7 @@
 """Django settings for the PoliticalAgent public site and identity service."""
 
 import os
+from datetime import timedelta
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -116,6 +117,25 @@ CACHES = {
 }
 LOGIN_REDIRECT_URL = "/chat"
 ACCOUNT_LOGOUT_REDIRECT_URL = "/"
+
+# `rest_framework` is deliberately NOT added to INSTALLED_APPS. `AccessToken`
+# reaches only simplejwt's `tokens.py` and `settings.py`; the app registry
+# entry buys nothing when no DRF view, serializer or template is used.
+
+SIMPLE_JWT = {
+    # Shared with `agentic_backend/` through the environment, and deliberately NOT
+    # Django's SECRET_KEY: the API only ever needs to *verify*, and must
+    # never hold a key that can also sign a session cookie.
+    "SIGNING_KEY": os.environ["JWT_SIGNING_KEY"],
+    "ALGORITHM": "HS256",
+    # Comfortably above the frontend's 10-minute stream cap, which is
+    # checked once at request start.
+    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=15),
+    "USER_ID_FIELD": "id",
+    "USER_ID_CLAIM": "user_id",
+    "AUTH_HEADER_TYPES": ("Bearer",),
+}
+ACCESS_TOKEN_SECONDS = int(SIMPLE_JWT["ACCESS_TOKEN_LIFETIME"].total_seconds())
 
 # Q20: the existing domain mailbox over SMTP. Settings only, no dependency —
 # switching to a relay later is an EMAIL_HOST change (flag 3).

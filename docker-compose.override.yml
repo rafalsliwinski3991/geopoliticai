@@ -32,6 +32,7 @@ services:
     volumes:
       - ./web_backend/politicalagent:/app/politicalagent
       - ./web_backend/users:/app/users
+      - ./web_backend/accounts_api:/app/accounts_api
     command: [".venv/bin/python", "manage.py", "runserver", "0.0.0.0:8000"]
 
   postgres:
