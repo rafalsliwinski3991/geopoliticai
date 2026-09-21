@@ -27,13 +27,13 @@ from config import (
     DAILY_RESEARCH_TURNS_ALL_USERS,
     SITE_WIDE_QUOTA_USER_ID,
 )
+from db.sql import ThreadRow
 from models import (
     LLMInvocationError,
     NoSourcesError,
     PipelineError,
     SearchUnavailableError,
 )
-from threads import ThreadRow
 
 
 def _mint_token(user_id: int, *, expired: bool = False) -> str:

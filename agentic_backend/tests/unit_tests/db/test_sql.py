@@ -1,12 +1,12 @@
-"""Unit tests for the raw-psycopg threads module (units 5, 6)."""
+"""Unit tests for the raw-psycopg db/sql.py module (units 5, 6)."""
 
 import datetime
 from typing import Any, cast
 
 import pytest
 
-import threads
-from threads import (
+from db import sql
+from db.sql import (
     ThreadRow,
     claim_thread,
     is_staff,
@@ -74,11 +74,8 @@ def _fake_pool() -> _FakePool:
 
 
 def test_title_from_truncates_and_collapses_whitespace() -> None:
-    assert (
-        title_from("  a\t b  " * 20)
-        == ("a b " * 20).strip()[: threads.MAX_TITLE_LENGTH]
-    )
-    assert len(title_from("a b " * 40)) == threads.MAX_TITLE_LENGTH
+    assert title_from("  a\t b  " * 20) == ("a b " * 20).strip()[: sql.MAX_TITLE_LENGTH]
+    assert len(title_from("a b " * 40)) == sql.MAX_TITLE_LENGTH
 
 
 def test_title_from_of_an_empty_query_is_empty() -> None:
@@ -89,12 +86,12 @@ def test_title_from_of_an_empty_query_is_empty() -> None:
 async def test_claim_thread_reports_true_for_a_new_thread(
     _fake_pool: _FakePool, seen: list[tuple[str, dict[str, Any]]]
 ) -> None:
-    _fake_pool.conn.scripted_rows = {threads.SELECT_THREAD_OWNER: [{"user_id": 7}]}
+    _fake_pool.conn.scripted_rows = {sql.SELECT_THREAD_OWNER: [{"user_id": 7}]}
     assert await claim_thread(
         pool(_fake_pool), thread_id="t1", user_id=7, title="Question"
     )
     statements = [statement for statement, _ in seen]
-    assert statements == [threads.UPSERT_THREAD, threads.SELECT_THREAD_OWNER]
+    assert statements == [sql.UPSERT_THREAD, sql.SELECT_THREAD_OWNER]
     assert seen[0][1] == {"thread_id": "t1", "user_id": 7, "title": "Question"}
 
 
@@ -102,7 +99,7 @@ async def test_claim_thread_reports_true_for_a_new_thread(
 async def test_claim_thread_reports_true_for_the_owners_second_turn(
     _fake_pool: _FakePool,
 ) -> None:
-    _fake_pool.conn.scripted_rows = {threads.SELECT_THREAD_OWNER: [{"user_id": 7}]}
+    _fake_pool.conn.scripted_rows = {sql.SELECT_THREAD_OWNER: [{"user_id": 7}]}
     assert await claim_thread(pool(_fake_pool), thread_id="t1", user_id=7, title="")
 
 
@@ -110,7 +107,7 @@ async def test_claim_thread_reports_true_for_the_owners_second_turn(
 async def test_claim_thread_reports_false_for_another_users_thread(
     _fake_pool: _FakePool,
 ) -> None:
-    _fake_pool.conn.scripted_rows = {threads.SELECT_THREAD_OWNER: [{"user_id": 8}]}
+    _fake_pool.conn.scripted_rows = {sql.SELECT_THREAD_OWNER: [{"user_id": 8}]}
     assert not await claim_thread(pool(_fake_pool), thread_id="t1", user_id=7, title="")
 
 
@@ -118,7 +115,7 @@ async def test_claim_thread_reports_false_for_another_users_thread(
 async def test_claim_thread_reports_false_for_an_unknown_thread(
     _fake_pool: _FakePool,
 ) -> None:
-    _fake_pool.conn.scripted_rows = {threads.SELECT_THREAD_OWNER: []}
+    _fake_pool.conn.scripted_rows = {sql.SELECT_THREAD_OWNER: []}
     assert not await claim_thread(pool(_fake_pool), thread_id="t1", user_id=7, title="")
 
 
@@ -126,15 +123,15 @@ async def test_claim_thread_reports_false_for_an_unknown_thread(
 async def test_owns_thread_reads_the_owner_without_upserting(
     _fake_pool: _FakePool, seen: list[tuple[str, dict[str, Any]]]
 ) -> None:
-    _fake_pool.conn.scripted_rows = {threads.SELECT_THREAD_OWNER: [{"user_id": 7}]}
+    _fake_pool.conn.scripted_rows = {sql.SELECT_THREAD_OWNER: [{"user_id": 7}]}
     assert await owns_thread(pool(_fake_pool), thread_id="t1", user_id=7)
-    assert [statement for statement, _ in seen] == [threads.SELECT_THREAD_OWNER]
+    assert [statement for statement, _ in seen] == [sql.SELECT_THREAD_OWNER]
 
 
 @pytest.mark.anyio
 async def test_list_threads_maps_rows_for_the_sidebar(_fake_pool: _FakePool) -> None:
     _fake_pool.conn.scripted_rows = {
-        threads.SELECT_THREADS: [
+        sql.SELECT_THREADS: [
             {"id": "t1", "title": "NATO", "created_at": "2026-09-18T10:00:00Z"}
         ]
     }
@@ -144,11 +141,11 @@ async def test_list_threads_maps_rows_for_the_sidebar(_fake_pool: _FakePool) -> 
 
 @pytest.mark.anyio
 async def test_is_staff_reads_the_database(_fake_pool: _FakePool) -> None:
-    _fake_pool.conn.scripted_rows = {threads.SELECT_IS_STAFF: [{"is_staff": True}]}
+    _fake_pool.conn.scripted_rows = {sql.SELECT_IS_STAFF: [{"is_staff": True}]}
     assert await is_staff(pool(_fake_pool), user_id=1)
-    _fake_pool.conn.scripted_rows = {threads.SELECT_IS_STAFF: [{"is_staff": False}]}
+    _fake_pool.conn.scripted_rows = {sql.SELECT_IS_STAFF: [{"is_staff": False}]}
     assert not await is_staff(pool(_fake_pool), user_id=1)
-    _fake_pool.conn.scripted_rows = {threads.SELECT_IS_STAFF: []}
+    _fake_pool.conn.scripted_rows = {sql.SELECT_IS_STAFF: []}
     assert not await is_staff(pool(_fake_pool), user_id=1)
 
 
@@ -156,26 +153,26 @@ async def test_is_staff_reads_the_database(_fake_pool: _FakePool) -> None:
 async def test_quota_used_returns_the_spent_count() -> None:
     import datetime
 
-    fake = _FakePool({threads.SELECT_QUOTA_USED: [{"used": 7}]})
-    assert await threads.quota_used(pool(fake), user_id=1) == 7
+    fake = _FakePool({sql.SELECT_QUOTA_USED: [{"used": 7}]})
+    assert await sql.quota_used(pool(fake), user_id=1) == 7
     statement, params = fake.conn.executed[0]
-    assert statement == threads.SELECT_QUOTA_USED
+    assert statement == sql.SELECT_QUOTA_USED
     assert params["user_id"] == 1
     assert params["day"] == datetime.date.today()
 
 
 @pytest.mark.anyio
 async def test_quota_used_is_zero_without_a_row() -> None:
-    fake = _FakePool({threads.SELECT_QUOTA_USED: []})
-    assert await threads.quota_used(pool(fake), user_id=1) == 0
+    fake = _FakePool({sql.SELECT_QUOTA_USED: []})
+    assert await sql.quota_used(pool(fake), user_id=1) == 0
 
 
 @pytest.mark.anyio
 async def test_increment_quota_sends_the_conditional_upsert() -> None:
-    fake = _FakePool({threads.INCREMENT_QUOTA: [{"used": 1}]})
-    assert await threads.increment_quota(pool(fake), user_id=1, limit=20) == 1
+    fake = _FakePool({sql.INCREMENT_QUOTA: [{"used": 1}]})
+    assert await sql.increment_quota(pool(fake), user_id=1, limit=20) == 1
     statement, params = fake.conn.executed[0]
-    assert statement == threads.INCREMENT_QUOTA
+    assert statement == sql.INCREMENT_QUOTA
     assert params == {
         "user_id": 1,
         "day": datetime.date.today(),
@@ -185,5 +182,5 @@ async def test_increment_quota_sends_the_conditional_upsert() -> None:
 
 @pytest.mark.anyio
 async def test_increment_quota_returns_falsy_at_the_cap() -> None:
-    fake = _FakePool({threads.INCREMENT_QUOTA: []})
-    assert not await threads.increment_quota(pool(fake), user_id=1, limit=20)
+    fake = _FakePool({sql.INCREMENT_QUOTA: []})
+    assert not await sql.increment_quota(pool(fake), user_id=1, limit=20)
