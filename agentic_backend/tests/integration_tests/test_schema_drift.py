@@ -1,8 +1,8 @@
-"""The mandatory schema-drift guard (brainstorm flag 4).
+"""The mandatory schema-drift guard.
 
 Django owns every table these statements touch; `agentic_backend/` addresses
 them by name with raw psycopg and runs no migrations of its own. This suite
-    executes *every* statement in `db/sql.py` against a database migrated by
+executes *every* statement in `db/sql.py` against a database migrated by
 Django and set up by the checkpointer, so a renamed or dropped column fails in
 CI instead of in production.
 
@@ -21,7 +21,7 @@ statements actually match the shape langgraph's writer produces.
 
 import os
 import time
-from datetime import date
+from datetime import date, datetime, timezone
 from typing import Any, Generator, cast
 
 import pytest
@@ -37,11 +37,11 @@ pytestmark = pytest.mark.skipif(
     reason="needs a real Postgres (make test-integration)",
 )
 
+CASCADE_TABLES = ("checkpoint_writes", "checkpoint_blobs", "checkpoints")
 # The DELETE statements `web_backend/chat/signals.py` runs, mirrored here so a
 # rename on either side fails the other side's guard.
 CASCADE_SQL = tuple(
-    f"DELETE FROM {table} WHERE thread_id = ANY(%s)"
-    for table in ("checkpoint_writes", "checkpoint_blobs", "checkpoints")
+    f"DELETE FROM {table} WHERE thread_id = ANY(%s)" for table in CASCADE_TABLES
 )
 # The orphan-check query the brainstorm specifies verbatim (chat.admin).
 ORPHAN_THREAD_SQL = """
@@ -49,6 +49,32 @@ SELECT DISTINCT thread_id
 FROM checkpoints
 WHERE thread_id NOT IN (SELECT id FROM chat_threads)
 """
+
+
+def run(conn: Connection[dict[str, Any]], statement: str, params: Any = None) -> None:
+    """Execute one statement on its own cursor."""
+    with conn.cursor() as cursor:
+        cursor.execute(statement, params)
+
+
+def fetch_one(
+    conn: Connection[dict[str, Any]], statement: str, params: Any = None
+) -> Any:
+    """Execute one statement and return its single row, or None."""
+    with conn.cursor() as cursor:
+        cursor.execute(statement, params)
+        return cursor.fetchone()
+
+
+def make_thread(
+    conn: Connection[dict[str, Any]], thread_id: str, user_id: int, title: str = ""
+) -> None:
+    """Insert one `chat_threads` row through the statement under test."""
+    run(
+        conn,
+        sql.UPSERT_THREAD,
+        {"thread_id": thread_id, "user_id": user_id, "title": title},
+    )
 
 
 @pytest.fixture(scope="module")
@@ -106,8 +132,6 @@ def user_id(
 
 def _empty_checkpoint() -> Any:
     """A minimal well-formed checkpoint; content is irrelevant to the SQL."""
-    from datetime import datetime, timezone
-
     return {
         "v": "1",
         "id": "drift-checkpoint-id",
@@ -120,7 +144,7 @@ def _empty_checkpoint() -> Any:
 
 def test_every_drift_probe_executes(conn: Connection[dict[str, Any]]) -> None:
     """A renamed or dropped column fails here, and only here, before production."""
-    # Act
+    # Act + Assert: every probe must execute as a valid, no-match query.
     for statement, params in sql.DRIFT_PROBES:
         with conn.cursor() as cursor:
             cursor.execute(statement, params)
@@ -130,23 +154,13 @@ def test_every_drift_probe_executes(conn: Connection[dict[str, Any]]) -> None:
 def test_upsert_thread_creates_once_and_the_owner_is_read_back(
     conn: Connection[dict[str, Any]], user_id: int
 ) -> None:
-    # Arrange
-    # Arrange
-    with conn.cursor() as cursor:
-        # Act
-        cursor.execute(
-            sql.UPSERT_THREAD,
-            {"thread_id": "drift-1", "user_id": user_id, "title": "NATO"},
-        )
-        cursor.execute(
-            sql.UPSERT_THREAD,
-            {"thread_id": "drift-1", "user_id": user_id, "title": "NATO again"},
-        )
-        cursor.execute(sql.SELECT_THREAD_OWNER, {"thread_id": "drift-1"})
-        row = cast(Any, cursor.fetchone())
-        cursor.execute("SELECT title FROM chat_threads WHERE id = 'drift-1'")
-        title = cast(Any, cursor.fetchone())["title"]
-
+    # Act: the second upsert is the idempotent-conflict update.
+    make_thread(conn, "drift-1", user_id, "NATO")
+    make_thread(conn, "drift-1", user_id, "NATO again")
+    row = fetch_one(conn, sql.SELECT_THREAD_OWNER, {"thread_id": "drift-1"})
+    title = fetch_one(conn, "SELECT title FROM chat_threads WHERE id = 'drift-1'")[
+        "title"
+    ]
     # Assert
     assert row["user_id"] == user_id
     assert title == "NATO"
@@ -156,16 +170,13 @@ def test_select_threads_returns_the_serialized_columns(
     conn: Connection[dict[str, Any]], user_id: int
 ) -> None:
     # Arrange
+    make_thread(conn, "drift-2", user_id, "Lithuania")
+    # Act
     with conn.cursor() as cursor:
-        cursor.execute(
-            sql.UPSERT_THREAD,
-            {"thread_id": "drift-2", "user_id": user_id, "title": "Lithuania"},
-        )
-        # Act
         cursor.execute(sql.SELECT_THREADS, {"user_id": user_id})
         rows = cursor.fetchall()
     # Assert
-    row = cast(Any, next(r for r in rows if r["id"] == "drift-2"))
+    row = next(r for r in rows if r["id"] == "drift-2")
     assert row["title"] == "Lithuania"
     assert row["created_at"] is not None
 
@@ -176,20 +187,16 @@ def test_increment_quota_upserts_increments_and_caps(
     """The conditional atomic upsert, both ON CONFLICT branches, for real."""
     # Arrange
     day = date.today()
-    with conn.cursor() as cursor:
-        cursor.execute(
-            sql.INCREMENT_QUOTA, {"user_id": user_id, "day": day, "limit": 2}
-        )
-        first = cast(Any, cursor.fetchone())["used"]
-        cursor.execute(
-            sql.INCREMENT_QUOTA, {"user_id": user_id, "day": day, "limit": 2}
-        )
-        second = cast(Any, cursor.fetchone())["used"]
-        cursor.execute(
-            sql.INCREMENT_QUOTA, {"user_id": user_id, "day": day, "limit": 2}
-        )
-        capped = cursor.fetchone()
-
+    # Act
+    first = fetch_one(
+        conn, sql.INCREMENT_QUOTA, {"user_id": user_id, "day": day, "limit": 2}
+    )["used"]
+    second = fetch_one(
+        conn, sql.INCREMENT_QUOTA, {"user_id": user_id, "day": day, "limit": 2}
+    )["used"]
+    capped = fetch_one(
+        conn, sql.INCREMENT_QUOTA, {"user_id": user_id, "day": day, "limit": 2}
+    )
     # Assert
     assert (first, second) == (1, 2)
     # The WHERE on the conflict target decides affordability: no row at the cap.
@@ -199,20 +206,16 @@ def test_increment_quota_upserts_increments_and_caps(
 def test_deleting_a_user_cascades_into_the_checkpointer_tables(
     conn: Connection[dict[str, Any]], checkpointer: PostgresSaver, user_id: int
 ) -> None:
-    """Q19: no FK reaches the checkpointer tables; the signal's DELETEs must.
+    """No FK reaches the checkpointer tables; the signal's DELETEs must.
 
     Mirrors Django's delete order honestly: Django emulates FK cascades in the
     ORM, so the sequence the production delete follows is the signal's
     checkpointer DELETEs (pre_delete), then the ORM's chat_threads/quota
     cascade, then the user row.
     """
-    # Arrange
     thread_id = "drift-3"
-    with conn.cursor() as cursor:
-        cursor.execute(
-            sql.UPSERT_THREAD,
-            {"thread_id": thread_id, "user_id": user_id, "title": ""},
-        )
+    # Arrange: a Django thread plus rows written by langgraph's own saver.
+    make_thread(conn, thread_id, user_id, "")
     config = {"configurable": {"thread_id": thread_id, "checkpoint_ns": ""}}
     checkpoint = _empty_checkpoint()
     saved_config = checkpointer.put(
@@ -220,24 +223,23 @@ def test_deleting_a_user_cascades_into_the_checkpointer_tables(
     )
     checkpointer.put_writes(saved_config, [("channel", "value")], "task-1")
 
-    # Act
+    # Act: the signal fires on pre_delete, inside the user-delete transaction.
     with conn.cursor() as cursor:
-        # The signal fires on pre_delete, inside the user-delete transaction.
         for statement in CASCADE_SQL:
             cursor.execute(statement, ([thread_id],))
         cursor.execute("DELETE FROM chat_threads WHERE user_id = %s", (user_id,))
         cursor.execute("DELETE FROM quota WHERE user_id = %s", (user_id,))
         cursor.execute("DELETE FROM users_user WHERE id = %s", (user_id,))
-
     # Assert
     with conn.cursor() as cursor:
         cursor.execute(
             "SELECT COUNT(*) AS n FROM chat_threads WHERE id = %s", (thread_id,)
         )
         assert cast(Any, cursor.fetchone())["n"] == 0
-        for table in ("checkpoints", "checkpoint_blobs", "checkpoint_writes"):
+        for table in CASCADE_TABLES:
             cursor.execute(
-                f"SELECT COUNT(*) AS n FROM {table} WHERE thread_id = %s", (thread_id,)
+                f"SELECT COUNT(*) AS n FROM {table} WHERE thread_id = %s",
+                (thread_id,),
             )
             assert cast(Any, cursor.fetchone())["n"] == 0, table
 
@@ -252,11 +254,13 @@ def test_the_site_wide_sentinel_can_be_incremented(
     the `quota.user_id` foreign key. The counter's prior value is restored, so
     the test never resets a shared database's site-wide ceiling.
     """
+    # Arrange
     day = date.today()
     with conn.cursor() as cursor:
         cursor.execute("SELECT used FROM quota WHERE user_id = 0 AND day = %s", (day,))
         prior = cast(Any, cursor.fetchone())
     prior_used = prior["used"] if prior else None
+    # Act
     try:
         with conn.cursor() as cursor:
             cursor.execute(
@@ -264,8 +268,10 @@ def test_the_site_wide_sentinel_can_be_incremented(
                 {"user_id": 0, "day": day, "limit": 10**9},
             )
             spent = cast(Any, cursor.fetchone())
+        # Assert
         assert spent is not None and spent["used"] >= 1
     finally:
+        # Restore: never reset a shared database's site-wide ceiling.
         with conn.cursor() as cursor:
             if prior_used is None:
                 cursor.execute(
@@ -276,6 +282,7 @@ def test_the_site_wide_sentinel_can_be_incremented(
                     "UPDATE quota SET used = %s WHERE user_id = 0 AND day = %s",
                     (prior_used, day),
                 )
+        # Assert: the restore left the counter exactly as it was found.
         with conn.cursor() as cursor:
             cursor.execute(
                 "SELECT used FROM quota WHERE user_id = 0 AND day = %s", (day,)
@@ -297,18 +304,11 @@ def test_orphan_query_reports_a_checkpointed_id_and_purges_cleanly(
     config = {"configurable": {"thread_id": thread_id, "checkpoint_ns": ""}}
     checkpoint = _empty_checkpoint()
     checkpointer.put(cast(Any, config), checkpoint, CheckpointMetadata(), {})
-
-    # Act
+    # Act + Assert: the query reports it, then a purge makes it vanish.
     with conn.cursor() as cursor:
         cursor.execute(ORPHAN_THREAD_SQL)
-        orphans = {row["thread_id"] for row in cursor.fetchall()}
-    cursor = conn.cursor()
-    cursor.execute("DELETE FROM checkpoints WHERE thread_id = %s", (thread_id,))
-    cursor.close()
+        assert thread_id in {row["thread_id"] for row in cursor.fetchall()}
     with conn.cursor() as cursor:
+        cursor.execute("DELETE FROM checkpoints WHERE thread_id = %s", (thread_id,))
         cursor.execute(ORPHAN_THREAD_SQL)
-        remaining = {row["thread_id"] for row in cursor.fetchall()}
-
-    # Assert
-    assert thread_id in orphans
-    assert thread_id not in remaining
+        assert thread_id not in {row["thread_id"] for row in cursor.fetchall()}

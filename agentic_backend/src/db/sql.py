@@ -1,9 +1,8 @@
 """Raw-psycopg access to the Django-owned `chat_threads`, `quota`, and `users_user` tables.
 
 `agentic_backend/` owns no schema and runs no migrations: Django's `manage.py migrate`
-creates every table named here (Q3c). The coupling is real and accepted (Q10,
-brainstorm §4.1); `tests/integration_tests/test_schema_drift.py` is what makes
-it safe.
+creates every table named here. The coupling is real and accepted;
+`tests/integration_tests/test_schema_drift.py` is what makes it safe.
 """
 
 from __future__ import annotations
