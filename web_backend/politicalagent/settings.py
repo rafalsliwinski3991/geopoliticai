@@ -36,7 +36,8 @@ INSTALLED_APPS = [
     # and without that import the `pre_delete` receiver is never connected —
     # deleting a user would silently leave every one of their messages in the
     # checkpointer tables. A dead GDPR path that raises nothing and logs
-    # nothing. Added with the chat app itself.
+    # nothing.
+    "chat.apps.ChatConfig",
 ]
 
 MIDDLEWARE = [

@@ -1,4 +1,4 @@
-"""Smoke tests for the identity service's public surfaces."""
+"""Smoke tests for the identity service's public surfaces (units 1-3)."""
 
 from django.contrib.auth import get_user_model
 from django.core import mail
@@ -18,7 +18,11 @@ class AuthScreensTest(TestCase):
     STYLESHEET = "site/style."
 
     def assert_branded(self, url_name: str) -> None:
+        # Arrange
+        # Act
         response = self.client.get(reverse(url_name))
+
+        # Assert
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, self.WORDMARK)
         self.assertContains(response, self.STYLESHEET)
@@ -36,7 +40,11 @@ class AuthScreensTest(TestCase):
         self.assert_branded("account_email_verification_sent")
 
     def test_admin_redirects_anonymous_users_to_login(self) -> None:
+        # Arrange
+        # Act
         response = self.client.get("/admin/")
+
+        # Assert
         self.assertEqual(response.status_code, 302)
         self.assertIn("/admin/login/", response["Location"])
 
@@ -45,6 +53,8 @@ class SignupRequiresVerificationTest(TestCase):
     """Email-only signup with mandatory verification (Q16)."""
 
     def test_signup_sends_verification_mail_and_blocks_login(self) -> None:
+        # Arrange
+        # Act
         response = self.client.post(
             reverse("account_signup"),
             {
@@ -53,6 +63,8 @@ class SignupRequiresVerificationTest(TestCase):
                 "password2": SIGNUP_PASSWORD,
             },
         )
+
+        # Assert
         # Mandatory verification: no session is opened after signup; the flow
         # lands on the verification-sent screen instead.
         self.assertEqual(response.status_code, 302)
@@ -64,11 +76,17 @@ class SignupRequiresVerificationTest(TestCase):
 
         # An unverified account cannot log in: allauth refuses to open a
         # session and redirects to the email-verification screen instead.
+        # Arrange
+        # Act
         response = self.client.post(
             reverse("account_login"),
             {"login": "patient@example.com", "password": SIGNUP_PASSWORD},
         )
+
+        # Assert
         self.assertEqual(
             response["Location"], reverse("account_email_verification_sent")
         )
         self.assertNotIn("_auth_user_id", self.client.session)
+        response = self.client.get(reverse("token"))
+        self.assertEqual(response.status_code, 401)
