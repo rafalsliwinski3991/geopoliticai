@@ -16,6 +16,9 @@ services:
       retries: 3
       start_period: 30s
 
+  web-backend:
+    restart: unless-stopped
+
   frontend:
     profiles: []
     ports:

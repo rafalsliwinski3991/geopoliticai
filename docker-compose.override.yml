@@ -26,6 +26,14 @@ services:
       - "--reload-dir"
       - "/app/src"
 
+  web-backend:
+    ports:
+      - "${ACCOUNTS_PORT:-8083}:8000"
+    volumes:
+      - ./web_backend/politicalagent:/app/politicalagent
+      - ./web_backend/users:/app/users
+    command: [".venv/bin/python", "manage.py", "runserver", "0.0.0.0:8000"]
+
   postgres:
     ports:
       - "${POSTGRES_PORT:-55432}:5432"

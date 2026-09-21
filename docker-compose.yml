@@ -31,6 +31,19 @@ services:
       phoenix:
         condition: service_started
 
+  web-backend:
+    build: ./web_backend
+    env_file: .env
+    environment:
+      POSTGRES_DB: geopoliticai
+      POSTGRES_USER: geopoliticai
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      DJANGO_DEBUG: ${DJANGO_DEBUG:-false}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   frontend:
     build: ./frontend
     depends_on:
