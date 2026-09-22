@@ -31,7 +31,9 @@ Do not assume every coding agent discovers the same project skill directory.
 Inspect the active agent, its current documentation or configuration, and the
 repository's existing conventions. Good landing spots include:
 
-- `.github/skills/<project>-world/SKILL.md` for GitHub Copilot project skills.
+- `.agents/skills/<project>-world/SKILL.md` for agents and repositories that
+  discover project skills under `.agents/skills/`; and
+- `.claude/skills/<project>-world/SKILL.md` for Claude Code project skills.
 
 Use the native project location that the active agent will discover. If the
 repository has no established convention, or the intended agent is unclear,

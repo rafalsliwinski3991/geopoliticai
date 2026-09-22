@@ -7,9 +7,9 @@ deliberate absence, a launch incantation.
 
 ## Guidance files
 
-`CLAUDE.md` is the single source of truth. `AGENTS.md` points at it.
-`.github/copilot-instructions.md` is still an independent copy and drifts;
-collapsing it into a pointer is outstanding work.
+`CLAUDE.md` is the single source of truth. `AGENTS.md` and
+`.github/copilot-instructions.md` are pointers at it, so no harness reads a
+second, drifting copy of the repository map.
 
 ## Skills
 
@@ -39,9 +39,11 @@ two commands existed in both with different bodies and undefined precedence.
 `rs-implement-plan-as-codex` and `rs-implement-plan-as-opencode` are Claude
 Code only. They dispatch through Claude Code plugins that no other harness has.
 
-OpenCode command copies keep `agent: build` and
-`model: opencode-go/glm-5.3-flash`; their bodies otherwise match the Claude
-originals.
+OpenCode command copies are the Claude originals with `argument-hint` and
+`allowed-tools` (neither of which OpenCode reads) replaced by `agent: build`
+and `model: opencode-go/glm-5.3-flash`; the bodies match byte for byte. They
+still name Claude tools such as `AskUserQuestion` in prose, which OpenCode
+performs in its own way, exactly as the Copilot ports do.
 
 ## Session artifacts
 
@@ -65,5 +67,11 @@ those roles itself, because it cannot spawn them.
 They delegate every worker call through Claude Code plugins, so a port would be
 a command that cannot run.
 
-Copilot also reads root `CLAUDE.md` directly, which is why
-`.github/copilot-instructions.md` can eventually become a pointer or be dropped.
+`make sync-copilot` and `make link-skills` both rebuild their destination
+directory from scratch rather than copying over it, so a skill deleted from
+`.claude/skills/` disappears downstream too. `link-skills` prunes only
+symlinks, leaving OpenCode-only real directories in place.
+
+`ai_tools_inventory.md` is committed, not generated on demand: drift is only
+catchable in review if the table is visible on GitHub. Regenerate it with
+`make inventory` in the same commit as any harness change.

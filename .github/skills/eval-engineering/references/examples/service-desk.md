@@ -18,7 +18,7 @@ The audit proves reusable project facts:
 - reset rebuilds SQLite from a fixed structured fixture; and
 - the Verifier can compare raw case and event state without exposing it.
 
-Create `.github/skills/service-desk-world/SKILL.md`. Add only these proven
+Create `.agents/skills/service-desk-world/SKILL.md`. Add only these proven
 facts, their source paths, and routes to any reusable script.
 
 ## After Task 2
@@ -43,7 +43,7 @@ route agents to those items.
 ## Resulting project skill
 
 ```text
-.github/skills/service-desk-world/
+.agents/skills/service-desk-world/
 ├── SKILL.md
 ├── references/
 │   └── data-and-verification.md

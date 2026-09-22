@@ -1,6 +1,6 @@
 ---
 name: ecosystem-primer
-description: "INVOKE FIRST for any LangChain / LangGraph / Deep Agents agent building project before consulting other skills or writing any agent code. Required starting point for up to date info on framework selection (LangChain vs LangGraph vs Deep Agents vs hybrid composition), agent patterns, install, environment setup, and which skill to load next."
+description: "INVOKE FIRST for any LangChain / LangGraph / Deep Agents work, before other skills or agent code: framework selection, agent patterns, and which skill to load next."
 ---
 
 <overview>
@@ -166,9 +166,9 @@ rg -il "checkpointer" /oss/python/langgraph/ # search by keyword
 
 If the user only wants a minimal local working agent (new project, stub tool, provider key), load the matching quickstart first:
 
-- LangChain → `langchain-python-quickstart` or `langchain-typescript-quickstart`
-- LangGraph → `langgraph-python-quickstart` or `langgraph-typescript-quickstart`
-- Deep Agents → `deepagents-python-quickstart` or `deepagents-typescript-quickstart`
+- LangChain → `langchain-python-quickstart`
+- LangGraph → `langgraph-python-quickstart`
+- Deep Agents → `deepagents-python-quickstart`
 
 Otherwise load the skill below that matches your layer from Step 1. This is required — the layer-specific skill carries the current API; the primer alone does not.
 

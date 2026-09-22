@@ -1,4 +1,5 @@
-.PHONY: up down restart logs services ps config help migrate createsuperuser test-web-backend
+.PHONY: up down restart logs services ps config help migrate createsuperuser test-web-backend \
+	sync-copilot inventory link-skills
 
 COMPOSE ?= docker compose
 FRONTEND_PORT ?= 8082
@@ -56,6 +57,38 @@ test-web-backend:
 	$(DJANGO_HOST_ENV) uv run --directory web_backend python manage.py collectstatic --noinput
 	$(DJANGO_HOST_ENV) uv run --directory web_backend python manage.py test
 
+# Skills needing a Claude-only runtime; OpenCode and Copilot load them but
+# cannot run them.
+OPENCODE_SKIP_SKILLS := swarm
+
+# Both sync targets rebuild their destination from scratch: copying in place
+# leaves a skill that was deleted from the canonical tree behind forever, and a
+# stale copy is exactly the drift `make inventory` exists to catch. `set -e`
+# keeps a failed cp/ln from being masked by the closing echo.
+sync-copilot:
+	@set -e; rm -rf .github/skills; mkdir -p .github/skills; \
+		for d in .claude/skills/*/; do n=$$(basename $$d); \
+			case ' $(OPENCODE_SKIP_SKILLS) ' in *" $$n "*) continue;; esac; \
+			cp -r $$d .github/skills/$$n; \
+			done; \
+		find .github/skills -name __pycache__ -type d -prune -exec rm -rf {} +; \
+		echo 'copied .claude/skills -> .github/skills (skipped: $(OPENCODE_SKIP_SKILLS))'
+
+inventory:
+	python3 scripts/ai_tools_inventory.py
+
+# Only the symlinks are pruned: OpenCode-only skills live here as real
+# directories and must survive. git cannot track an empty directory, so a fresh
+# checkout has no .opencode/skills at all until mkdir creates it.
+link-skills:
+	@set -e; mkdir -p .opencode/skills; \
+		find .opencode/skills -maxdepth 1 -type l -delete; \
+		for d in .claude/skills/*/; do n=$$(basename $$d); \
+			case ' $(OPENCODE_SKIP_SKILLS) ' in *" $$n "*) continue;; esac; \
+			ln -s ../../.claude/skills/$$n .opencode/skills/$$n; \
+			done; \
+		echo 'linked .claude/skills -> .opencode/skills (skipped: $(OPENCODE_SKIP_SKILLS))'
+
 help:
 	@printf '%s\n' \
 		'up        Build and start frontend, agentic-backend, and PostgreSQL' \
@@ -68,6 +101,9 @@ help:
 		'config    Render the effective Compose configuration' \
 		'migrate   Run Django migrations and create the cache table' \
 		'createsuperuser Create a Django admin user' \
+		'sync-copilot Copy .claude/skills into .github/skills (Copilot keeps real copies, not symlinks)' \
+		'inventory Regenerate ai_tools_inventory.md from the harness directories on disk' \
+		'link-skills Symlink .claude/skills into .opencode/skills (Claude Code is canonical; OpenCode-only skills stay untouched)' \
 		'test-web-backend Run the Django service test suite' \
 		'' \
 		'Ports can be overridden, for example:' \

@@ -38,7 +38,10 @@ def entries(provider: str, dirnames: tuple[str, ...]) -> dict[str, Path]:
         for child in sorted(base.iterdir()):
             if child.name.startswith("."):
                 continue
-            if child.is_dir():
+            if child.is_dir() or child.is_symlink():
+                # A symlink is kept even when it dangles: a broken link is the
+                # drift most worth reporting, and dropping it would show the
+                # artifact as merely absent.
                 found.setdefault(child.name, child)
             elif child.suffix in {".md", ".toml"}:
                 # Copilot names agents "<name>.agent.md" and prompts
@@ -55,7 +58,9 @@ def cell(provider: str, name: str, found: dict[str, Path]) -> str:
         return "no"
     # A symlink means the provider shares another harness's copy rather than
     # keeping its own, which is the difference between "in sync" and "drifting".
-    return "link" if path.is_symlink() else "yes"
+    if not path.is_symlink():
+        return "yes"
+    return "link" if path.exists() else "broken link"
 
 
 def table(present: list[str], kind: str, dirnames: tuple[str, ...]) -> list[str]:
@@ -90,7 +95,8 @@ def main() -> None:
         "than editing this file. Durable notes live in `ai_tools_notes.md`.",
         "",
         "`yes` means the provider keeps its own copy, `link` means it symlinks",
-        "another harness's copy, `no` means absent.",
+        "another harness's copy, `broken link` means that symlink points at nothing,",
+        "and `no` means absent.",
         "",
         f"Provider trees present: {', '.join(f'`{p}`' for p in present)}.",
     ]

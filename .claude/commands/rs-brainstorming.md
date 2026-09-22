@@ -100,16 +100,16 @@ Always give both the lean and the case against it. A recommendation offered alon
 
 ### When the user says they don't understand
 
-That is your failure, not theirs. Do not treat it as a reason to move on to an easier question.
+That is your failure, not theirs. Stay on the same question.
 
 1. **Re-pose the same question.** Same decision, same options. Dropping an option to make it simpler silently narrows their choice.
-2. **Rebuild it as a worked example**, in their domain — a transcript of what happens under each answer. Do not merely shorten what you already wrote; shortening an abstract question leaves it abstract.
+2. **Rebuild it as a worked example**, in their domain — a transcript of what happens under each answer. Rewrite it concretely; shortening an abstract question leaves it abstract.
 3. **Strip every term that is not plain English**, including ones you introduced earlier in the session.
 4. **If they misunderstand a second time, the question is two questions welded together.** Split it and ask the smaller half first.
 
 ### When an answer is ambiguous
 
-A bare "B" to a two-part question, or an answer that addresses something adjacent to what you asked, is **not** an answer. Do not guess and record. Say in one line what each reading would commit them to, and ask which they meant. Recording a decision the user did not make is the most expensive failure in this skill — it propagates into the plan and the code.
+A bare "B" to a two-part question, or an answer that addresses something adjacent to what you asked, is **not** an answer. Say what you are unsure of and ask. Say in one line what each reading would commit them to, and ask which they meant. Recording a decision the user did not make is the most expensive failure in this skill — it propagates into the plan and the code.
 
 ## The challenge step
 
