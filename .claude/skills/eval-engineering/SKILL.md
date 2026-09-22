@@ -1,6 +1,6 @@
 ---
 name: eval-engineering
-description: Inspect an agent repository and optional traces, interview the user, write reviewed Task Specs, build and audit Harbor tasks, and bootstrap reusable project World Knowledge Skills. Use for agent evals, benchmark design, Task generation, controlled Environments, synthetic data, Verifiers, Harbor runs, calibration, or continuous benchmark maintenance.
+description: "INVOKE THIS SKILL for agent evals, benchmark design, Task specs, Harbor tasks, Verifiers, synthetic data, or calibration."
 ---
 
 # Eval Engineering
@@ -127,8 +127,10 @@ Copy [the Task template](assets/task/Task.md.template) to
 one file. At the same time, create or update the project World Skill by
 following [World knowledge](references/world-knowledge.md). Determine the
 project skill location supported by the active agent and repository.
-`.agents/skills/<project>-world/SKILL.md` and
-`.claude/skills/<project>-world/SKILL.md` are common landing spots. Follow an
+`.agents/skills/<project>-world/SKILL.md`,
+`.claude/skills/<project>-world/SKILL.md`,
+`.opencode/skills/<project>-world/SKILL.md` and
+`.github/skills/<project>-world/SKILL.md` are common landing spots. Follow an
 established project convention when one exists. Otherwise, explain the proposed
 location and get user confirmation before creating the skill. Start from
 [the World Skill template](assets/world-skill/SKILL.md.template) when needed.

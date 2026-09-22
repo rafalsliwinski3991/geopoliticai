@@ -1,6 +1,6 @@
 ---
 name: django-service
-description: "INVOKE THIS SKILL when working on a Django service — auth with django-allauth (login, signup, email verification, password reset), the admin panel, models and migrations, settings, URLs, templates, or issuing JWTs for a separate API. Use it before adding any Django app, model, migration, or setting."
+description: "INVOKE THIS SKILL when working on web_backend/ — django-allauth auth, the admin panel, models and migrations, settings, URLs, templates, or issuing JWTs for agentic_backend. Use it before adding any Django app, model, migration, or setting."
 ---
 
 Django's value is what you do not write: auth, admin, migrations and templates are

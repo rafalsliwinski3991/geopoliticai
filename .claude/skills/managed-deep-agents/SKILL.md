@@ -1,6 +1,6 @@
 ---
 name: managed-deep-agents
-description: "INVOKE THIS SKILL when building, testing, or deploying Managed Deep Agents in LangSmith with the mda CLI. Walks a user through their first agent end to end — interviewing them about what they want to build, mapping it onto what MDA can actually do, then scaffolding and deploying it. Covers the file-based project layout; define_deep_agent / defineDeepAgent; instructions, skills, memory, identity, tools, middleware, sandboxes, schedules, channels, and evals; mda init/build/dev/deploy/logs/delete; and Context Hub."
+description: "INVOKE THIS SKILL when building, testing, or deploying Managed Deep Agents in LangSmith, or using the mda CLI."
 ---
 
 # Managed Deep Agents

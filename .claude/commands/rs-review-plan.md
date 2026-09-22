@@ -86,9 +86,9 @@ Once the target is clear:
 - Verify material external API claims against the version used by this repo.
   Prefer Context7 when available, otherwise use official documentation. If neither
   is accessible, label the claim unverified and continue with independent issues.
-  Do not ask the user to research facts available in the repository.
+  Research facts available in the repository yourself.
 - Investigate enough to ground the first decision, then continue focused reads
-  between rounds. Do not silently audit the entire repository before speaking.
+  between rounds. Speak between rounds rather than auditing the whole repository first.
 
 Give a short opening summary: the intended outcome, relevant constraints, the
 plan tier, and the most consequential issue found so far. State assumptions as
@@ -107,8 +107,7 @@ suitable tier. Detailed conversation does not require a larger implementation.
 
 Use a **thorough review within the existing scope** by default. If requested,
 focus on blockers, one area, or possible scope expansion. Ask about review depth
-only when the answer materially changes the work. Do not add a mode questionnaire
-when the user has already made their preference clear.
+only when the answer materially changes the work. Ask about mode only when the user's preference is still unclear.
 
 ## 2. Start a durable review record
 
@@ -154,7 +153,7 @@ For each meaningful issue:
    optional improvement. Show just enough evidence to support the concern.
 2. **Compare real alternatives.** Usually offer two or three viable choices.
    Name them by their outcome. Include keeping the current plan when that is a
-   valid choice, and explain its cost. Do not manufacture a weak alternative.
+   valid choice, and explain its cost. Offer only alternatives you would genuinely defend.
 3. **Recommend one and explain why.** Include the strongest relevant downside of
    your recommendation. Prefer “small change” or “adds another service to operate”
    over unsupported time estimates or arbitrary quality scores.
@@ -169,7 +168,7 @@ For each meaningful issue:
    accept an informed preference without repeating the same objection.
 6. **Record the decision and its consequences.** Update dependent issues and
    plan changes. If this answer contradicts an earlier choice, identify the
-   conflict and resolve it as the next decision. Do not store incompatible choices.
+   conflict and resolve it as the next decision. Store only choices that remain mutually compatible.
 
 There must be only **one active unanswered question** at a time. Deferred items
 stay in the record but are not active prompts. Never answer a question on the
@@ -183,7 +182,7 @@ Handle the user's direction naturally:
 | --- | --- |
 | “Explain”, “why?”, “show me”, or a counterexample | Stay on the same decision; clarify before asking for a choice again. |
 | A clear choice | Record it and continue from its consequences. |
-| “You decide” | Choose within the scope they delegated, explain why, and record that delegation. Do not infer broader permission. |
+| “You decide” | Choose within the scope they delegated, explain why, and record that delegation. Keep the delegation to the scope they named. |
 | “I don't know” or “skip this” | Defer it, record what would resolve it and whether it blocks implementation, then move to an independent issue. |
 | “Keep it as planned” | Record the choice and any understood risk; do not keep campaigning against it. |
 | “Go back” | Reopen the named decision and inspect affected later choices. |
@@ -215,8 +214,7 @@ This is a hypothetical example of the communication style, not a finding to reus
 >
 > Which behavior do you want this plan to specify?
 
-After presenting a turn like this, wait. Do not generate the user's answer or
-start discussing D4 in the same response.
+After presenting a turn like this, wait. Let the user answer, and hold D4 for a later response.
 
 ## 4. Use visuals when they help the decision
 
@@ -279,7 +277,7 @@ they serve the actual plan and the user accepts the relevant decision.
 When the relevant discussions are complete, or the user closes the review:
 
 1. Briefly summarize agreed changes, accepted risks, unresolved blockers, and
-   areas left unreviewed. Do not turn deferred choices into assumed requirements.
+   areas left unreviewed. Keep deferred choices listed as deferred.
 2. Write a **new, complete plan version** beside the original. For a filename
    ending `_v<N>.md`, use the same stem with the next unused version number.
    For an unversioned file, treat it as v1 and append `_v2.md`, incrementing if
@@ -293,7 +291,7 @@ When the relevant discussions are complete, or the user closes the review:
    and tasks, account for work already applied, and explain the remaining order.
    Apply agreed substantive changes. You may correct verified stale references
    and improve wording without another vote when intent and scope stay the same;
-   record those corrections. Do not silently resolve an open design choice.
+   record those corrections. Leave an open design choice open, and say that it is open.
 5. Add a **Review changes** section after the title. Link the source plan and
    review record; map each substantive change to its decision ID and rationale.
    Include rejected recommendations and accepted risks when they affect how the
@@ -326,7 +324,7 @@ for confirmation.
 
 After explicit approval, update the approval status in the plan and review
 record. If readiness is `Ready for implementation`, identify
-`/rs-implement-plan <reviewed-plan-path>` as the next command. Do not invoke it.
+`/rs-implement-plan <reviewed-plan-path>` as the next command, and leave the invoking to the user.
 If blockers remain, state the next unresolved decision instead. This command
 ends with the reviewed plan and an accurate record of what the user decided.
 

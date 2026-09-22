@@ -1,5 +1,7 @@
 ---
 description: Turn a brainstorming doc into a right-sized implementation plan, using full multi-agent review only when the change warrants it
+agent: build
+model: opencode-go/glm-5.3-flash
 ---
 
 Brainstorm doc: $1
@@ -15,7 +17,7 @@ already exists, increment `<N>` instead of overwriting it.
 ## Step 1 — Read and right-size the plan
 
 Read the brainstorm doc in full, then read every file, module, config, and test it
-names. Do not plan against the brainstorm's description of the code. Plan against the
+names. Plan against the
 code. Where the two disagree, the code wins and the disagreement goes in the plan.
 
 The brainstorm records settled decisions. Treat them as decided, not as options to
@@ -26,6 +28,16 @@ resolve its exact library and version through Context7's `resolve-library-id`,
 then verify the relevant behavior with `query-docs`. Plan against the verified
 documentation and the installed version, not memory. Do not query Context7 for
 repository-local behavior that the checked-out code or guidance already answers.
+
+Use Context7 for library documentation only. For implementation patterns, prior
+art, and API guidance outside library docs -- vendor guides, tech blogs, GitHub
+repositories or issues -- use `WebSearch` to find sources and `WebFetch` to read
+them. Cite every web source the plan relies on, and prefer official sources when
+they conflict with others.
+
+When a question blocks a safe plan and neither the code nor the brainstorm answers
+it, ask the user with `AskUserQuestion` instead of guessing. Leave settled
+decisions this way; ask only about genuine gaps.
 
 Before drafting, choose the smallest planning depth that makes implementation safe:
 
@@ -40,7 +52,7 @@ Before drafting, choose the smallest planning depth that makes implementation sa
   data or configuration migration, deletion with unknown callers, security or
   reliability risk, or a change whose parts must land in a specific order.
 
-When uncertain, choose the full plan. Do not choose it solely because several
+When uncertain, choose the full plan. Choose it for real risk, not merely because several
 files change: a tightly coupled test and implementation update can still be
 lightweight. If the brainstorm spans independent subsystems, split it into
 separate plans that each produce independently testable software.
@@ -163,7 +175,7 @@ any self-review finding inline and add only genuine unresolved questions. For a
 standard plan, correct supported reviewer findings inline and record only genuine
 unresolved questions or rejected objections.
 
-Do not start implementing. Ask the user to review and explicitly approve the written
+Stop before implementing. Ask the user to review and explicitly approve the written
 plan before handing it to `$rs-implement-plan`.
 
 Report back: the plan path, whether it was lightweight, standard, or full, the task

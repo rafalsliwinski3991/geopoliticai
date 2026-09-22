@@ -54,8 +54,9 @@ is the capability.
 
 Copy `assets/task/Task.md.template` into the runnable Task directory beside
 `task.toml`. Keep it outside the agent-visible image and workspace. Create or
-update `.github/skills/<project>-world/SKILL.md` in the same design loop by
-following [World knowledge](world-knowledge.md).
+update `<project>-world/SKILL.md` in the same design loop, under the project
+skill directory the active agent discovers, by following
+[World knowledge](world-knowledge.md).
 
 ### Purpose and evidence
 

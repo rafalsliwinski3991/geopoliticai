@@ -32,7 +32,7 @@ implemented as a GitHub stacked pull-request chain without rewriting history:
   the repository default branch unless the user specifies another base.
 - Keep a lightweight plan as one unit when it is genuinely contained. For
   standard and full plans, every ordered task or commit must be one independently
-  reviewable stack unit. Do not add artificial units solely to create branches.
+  reviewable stack unit. Let each unit be one genuinely reviewable change.
 - Each revised unit must name its proposed branch (for example,
   `<stack-slug>/01-<short-slug>`), parent branch, files, dependencies on earlier
   units, focused validation, and gate command. Units must work bottom-to-top
@@ -160,7 +160,7 @@ finished work). If a finding was surfaced but you rejected it, say so here with 
 way `rs-plan-from-brainstorm`'s "Open questions and rejected objections" section works — do not silently
 drop a reviewer's finding.
 
-Do not start implementing. Beyond the scout and the tier's lenses, the only remaining agent is the
+Stop before implementing. Beyond the scout and the tier's lenses, the only remaining agent is the
 Step 6 Codex critic.
 
 ## Step 5 — Ask the user to approve the draft

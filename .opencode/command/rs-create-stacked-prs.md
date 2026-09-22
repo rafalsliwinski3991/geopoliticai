@@ -1,5 +1,7 @@
 ---
 description: Create linked stacked pull requests from the current branch's linear commits using GitHub's gh-stack workflow
+agent: build
+model: opencode-go/glm-5.3-flash
 ---
 
 # Create stacked pull requests
@@ -31,7 +33,7 @@ default branch and derive a slug from the current branch.
 For each commit from oldest to newest, create a cumulative branch pointer named
 `<stack-slug>/<ordinal>-<short-slug>` where the ordinal is zero-padded and the
 short slug is derived from the commit subject using lowercase letters, numbers,
-and hyphens. Do not rename or delete the current branch.
+ and hyphens. Do not rename or delete the current branch.
 
 - Before `gh stack init`, ensure every proposed branch is local at its expected
    SHA. Check any local ref and the push remote (normally `origin`) with

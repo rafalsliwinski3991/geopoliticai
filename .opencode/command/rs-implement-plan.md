@@ -1,6 +1,14 @@
 ---
 description: Implement a written plan with TDD at every tier and review proportional to its lightweight, standard, or full scope
+agent: build
+model: opencode-go/glm-5.3-flash
 ---
+> **Harness note.** This workflow was written for Claude Code, which can spawn named read-only
+> subagents (`preflight-scout`, `commit-auditor`, `correctness-lens`, `framework-lens`,
+> `guidance-compliance-lens`). OpenCode has a subagent mechanism but none of those agents, so a
+> literal dispatch errors on an unknown name. Wherever the steps below say to spawn one, perform
+> that role yourself, in a separate pass, and report its findings under that agent's name. Every
+> other rule applies unchanged.
 
 Plan: $1
 
@@ -22,8 +30,7 @@ code exposes a concrete major, cross-component, interface, migration, or reliabi
 add process merely because several related files change.
 
 For a **lightweight plan**, verify the named files, current behavior, and focused validation command
-yourself, then write a short status and staleness note to the run log. Do not spawn a scout for one
-contained change.
+yourself, then write a short status and staleness note to the run log. One contained change needs no scout.
 
 When implementation or review depends on current external framework or library
 behavior, use Context7 before changing code: call `resolve-library-id` for the
@@ -59,20 +66,19 @@ Write the scout's table and blockers into the run log verbatim.
 
 For a **lightweight plan**, show the direct pre-flight note and ask whether to proceed. For a
 **standard or full plan**, show the scout's table and blockers, then ask which task or commit the
-run should start from and whether to proceed. Do not begin implementing until the user answers. If
+run should start from and whether to proceed. Begin implementing only after the user answers. If
 the user does not respond, the run does not start.
 
 ## Step 3 — Implementation
 
 Walk the plan's ordered change steps, tasks, or commits **in order**, starting where the user said.
-Never work on two at once, and never reorder them — the ordering is the plan's safety property.
+Work on one at a time, in the plan's order — the ordering is the plan's safety property.
 
 Lightweight and standard plans are implemented directly by the lead. The standard plan receives exactly
 one final `correctness-lens` review. For a full plan, delegate a unit only when it has no unresolved
 dependency on another unfinished unit; give the fresh implementer only that unit's requirements,
 relevant established interfaces, and the run-log contract. It must use this command's TDD rule, run
-the planned validation, commit only while green, and report its evidence to the lead. Never delegate
-two implementation units in parallel.
+the planned validation, commit only while green, and report its evidence to the lead. Delegate one implementation unit at a time.
 
 ### Stacked pull-request compatibility
 
@@ -94,7 +100,7 @@ red-green-refactor:
 3. Write the smallest production change that makes it pass.
 4. Re-run the focused test and the plan's relevant gate. Refactor only while both remain green.
 
-Do not write production behavior code before its failing test. Documentation-only, configuration-only,
+Write production behavior code only after its test fails. Documentation-only, configuration-only,
 generated-code, and explicitly approved throwaway-prototype work are exceptions; record the exception
 and the validation used in the run log. A test that passes before the change does not establish the
 needed behavior; revise it until it fails correctly.
@@ -145,7 +151,7 @@ After the last plan unit, review the result against the branch diff
 (`git diff <base>...HEAD`, base being the commit the run started from) according to its tier:
 
 - **Lightweight plan** -- review the final diff yourself against its scope and focused validation.
-  Do not spawn a lens unless a concrete finding escalates the work.
+  Spawn a lens only when a concrete finding escalates the work.
 - **Standard plan** -- spawn exactly one `correctness-lens` using the correctness brief below.
 - **Full plan** -- **you** spawn all three lenses in parallel. A teammate cannot spawn teammates, so
   this fan-out has to come from here.
@@ -180,19 +186,19 @@ Report to the user: the plan path and tier, tasks or commits made, units audited
 found, what was fix-forwarded, any `HALT` you hit, the outstanding applicable review findings you did
 **not** act on, and the run log path.
 
-Do not push. Do not open a pull request.
+Stop at the last commit; `rs-create-stacked-prs` pushes and opens the pull requests.
 
 ---
 
 ## Standing rules
 
 - Every spawned subagent (`scout`, `auditor`, implementer, and all three lenses) runs on Sonnet 5 at
-  high effort; no other model or effort level.
+  medium effort; no other model or effort level.
 - You are the only writer. If you catch yourself asking a review agent to change something, stop —
   they have no write tools and the request will fail.
 - Reviewers must be told to message their findings. An idle notification tells you a teammate
   stopped; it does not carry its output.
-- Never mark a commit done on a gate you did not run.
-- Never mark a behavior change done without recording the failing focused test, green validation, and
-  applicable gate.
+- Mark a commit done only on a gate you actually ran.
+- Mark a behavior change done only once the failing focused test, green validation, and applicable
+  gate are recorded.
 - Where the plan and the code disagree, the code wins, and the disagreement goes in the run log.

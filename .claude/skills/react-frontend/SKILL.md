@@ -1,6 +1,6 @@
 ---
 name: react-frontend
-description: "INVOKE THIS SKILL when writing or changing a React + Vite frontend — components, state, data fetching, streaming responses, auth tokens in the browser, rendering untrusted Markdown or HTML, the Vite build and static serving, or frontend tests. Use it before adding any component or frontend dependency."
+description: "INVOKE THIS SKILL when changing frontend/chat/ — components, streaming responses, auth tokens in the browser, rendering untrusted Markdown, the Vite build, or Vitest tests. Use it before adding any component or frontend dependency."
 ---
 
 Keep React narrow: it earns its place on interactive surfaces. Server-rendered pages

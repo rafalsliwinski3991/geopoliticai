@@ -230,4 +230,4 @@ List anything you did not act on, and say plainly what remains unverified.
 - One line for the problem, one line for the fix. No preamble, no praise, no summary of the diff.
 - Where the plan, the pull request body, and the code disagree, the code wins, and the disagreement
   goes in the run log.
-- Do not commit, push, or open a pull request. That is not this command's job.
+- Stop at the report; committing, pushing, and opening pull requests belong to other commands.

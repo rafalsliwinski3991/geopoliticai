@@ -1,6 +1,0 @@
-interface:
-  display_name: "Improve Plan"
-  short_description: "Review and version an existing implementation plan"
-  default_prompt: "Use $improve-plan to review an existing plan and write its next version."
-policy:
-  allow_implicit_invocation: false
