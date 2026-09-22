@@ -14,11 +14,15 @@ Pure computation, in-memory state, no I/O. Always deepenable: merge the modules 
 
 Dependencies that have local test stand-ins (the dev Postgres behind `make test-integration`, a `MemorySaver` in place of `AsyncPostgresSaver`, `tmp_path`). Deepenable if the stand-in exists. The deepened module is tested with the stand-in running in the test suite. The seam is internal; no port at the module's external interface.
 
+`web_backend` as seen from `agentic_backend` belongs here, not in category 3: the two services never import or call each other, they share one Postgres, and `agentic_backend` reaches the Django-owned `chat_threads`/`quota` tables only through `db/sql.py` against `web_backend`-migrated schema.
+
 ### 3. Remote but owned (Ports & Adapters)
 
-Your own services across a network boundary — here, `web_backend` as seen from `agentic_backend`, reached only through `db/sql.py` and Django-migrated schema. Define a **port** (interface) at the seam. The deep module owns the logic; the transport is injected as an **adapter**. Tests use an in-memory adapter. Production uses an HTTP/gRPC/queue adapter.
+Your own services across a network boundary. Define a **port** (interface) at the seam. The deep module owns the logic; the transport is injected as an **adapter**. Tests use an in-memory adapter. Production uses an HTTP/gRPC/queue adapter.
 
 Recommendation shape: *"Define a port at the seam, implement an HTTP adapter for production and an in-memory adapter for testing, so the logic sits in one deep module even though it's deployed across a network."*
+
+This repository has no such seam. Proposing an HTTP, gRPC, or queue adapter between `agentic_backend` and `web_backend` invents a transport that is not deployed and breaks the thread and quota paths.
 
 ### 4. True external (Mock)
 

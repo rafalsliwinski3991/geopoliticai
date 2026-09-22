@@ -3,6 +3,17 @@ description: Audit a written plan against the current repo and rewrite it as a n
 agent: build
 model: opencode-go/glm-5.3-flash
 ---
+> **Harness note.** This workflow was written for Claude Code, which can spawn named read-only
+> subagents (`preflight-scout`, `commit-auditor`, `correctness-lens`, `framework-lens`,
+> `guidance-compliance-lens`). OpenCode has a subagent mechanism but none of those agents, so a
+> literal dispatch errors on an unknown name. Wherever the steps below say to spawn one, perform
+> that role yourself, in a separate pass, and report its findings under that agent's name. Every
+> other rule applies unchanged.
+>
+> Step 6 dispatches `/codex:rescue`, a Claude Code plugin command. OpenCode has no equivalent, so
+> run that critique yourself instead: a separate, fresh read-only pass over the new plan and the
+> repository files, briefed and reported exactly as Step 6 describes. It stays mandatory at every
+> tier; only the dispatch changes.
 
 Plan: $1
 

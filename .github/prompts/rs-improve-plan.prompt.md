@@ -12,6 +12,12 @@ tools: ["edit", "execute", "read", "search"]
 > perform that role yourself, in a separate pass over the diff, and report its
 > findings under that agent's name. Every other rule — the ordering, the TDD
 > rule, the gate-before-commit rule, the run log — applies unchanged.
+>
+> Step 6 dispatches `/codex:rescue`, a Claude Code plugin command. Copilot has
+> no equivalent, so run that critique yourself instead: a separate, fresh
+> read-only pass over the new plan and the repository files, briefed and
+> reported exactly as Step 6 describes. It stays mandatory at every tier; only
+> the dispatch changes.
 
 Plan: $1
 

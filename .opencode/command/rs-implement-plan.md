@@ -3,6 +3,12 @@ description: Implement a written plan with TDD at every tier and review proporti
 agent: build
 model: opencode-go/glm-5.3-flash
 ---
+> **Harness note.** This workflow was written for Claude Code, which can spawn named read-only
+> subagents (`preflight-scout`, `commit-auditor`, `correctness-lens`, `framework-lens`,
+> `guidance-compliance-lens`). OpenCode has a subagent mechanism but none of those agents, so a
+> literal dispatch errors on an unknown name. Wherever the steps below say to spawn one, perform
+> that role yourself, in a separate pass, and report its findings under that agent's name. Every
+> other rule applies unchanged.
 
 Plan: $1
 

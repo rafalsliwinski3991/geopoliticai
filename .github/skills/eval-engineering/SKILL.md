@@ -128,8 +128,9 @@ one file. At the same time, create or update the project World Skill by
 following [World knowledge](references/world-knowledge.md). Determine the
 project skill location supported by the active agent and repository.
 `.agents/skills/<project>-world/SKILL.md`,
-`.claude/skills/<project>-world/SKILL.md` and
-`.opencode/skills/<project>-world/SKILL.md` are common landing spots. Follow an
+`.claude/skills/<project>-world/SKILL.md`,
+`.opencode/skills/<project>-world/SKILL.md` and
+`.github/skills/<project>-world/SKILL.md` are common landing spots. Follow an
 established project convention when one exists. Otherwise, explain the proposed
 location and get user confirmation before creating the skill. Start from
 [the World Skill template](assets/world-skill/SKILL.md.template) when needed.

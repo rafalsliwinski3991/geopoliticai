@@ -3,7 +3,7 @@ name: writing-for-agents
 description: "INVOKE THIS SKILL when writing or editing anything an agent reads: a SKILL.md, a subagent or agent definition, a slash command, or CLAUDE.md / AGENTS.md itself. Use it before adding or rewording any skill description."
 ---
 
-Reference for writing any document an agent consumes: a `SKILL.md`, an agent or subagent definition, a slash command, `CLAUDE.md`, or a doc reached by a pointer. In this repo those live under `.claude/` for Claude Code and `.opencode/` for OpenCode; the levers are the same in both. The packaging differs; the writing does not: the same levers make each one predictable, since the agent takes the same _process_ every run rather than producing the same output.
+Reference for writing any document an agent consumes: a `SKILL.md`, an agent or subagent definition, a slash command, `CLAUDE.md`, or a doc reached by a pointer. In this repo those live under `.claude/` for Claude Code, `.opencode/` for OpenCode, and `.github/` for GitHub Copilot; the levers are the same in all three. The packaging differs; the writing does not: the same levers make each one predictable, since the agent takes the same _process_ every run rather than producing the same output.
 
 When the document you're writing is a skill, read [`SKILL-MECHANICS.md`](SKILL-MECHANICS.md) for frontmatter, invocation choice, and router skills.
 

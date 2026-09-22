@@ -18,10 +18,10 @@ symlinks into it, created by `make link-skills`, so the two cannot drift.
 OpenCode-only skills may be added there as real directories and are left
 untouched by that target.
 
-`swarm` is excluded from OpenCode (`OPENCODE_SKIP_SKILLS` in the `Makefile`).
-It needs the `@langchain/quickjs` code interpreter and a `swarm_task` PTC tool,
-which OpenCode does not provide; loading it there would offer the model tools
-that do not exist.
+`swarm` is excluded from both non-Claude harnesses (`SKIP_SKILLS` in the
+`Makefile`, read by `sync-copilot` and `link-skills` alike). It needs the
+`@langchain/quickjs` code interpreter and a `swarm_task` PTC tool, which neither
+provides; loading it there would offer the model tools that do not exist.
 
 `disable-model-invocation: true` is honoured by Claude Code only. OpenCode
 loads every skill it finds and keeps no invocation flag, so the three Python
@@ -34,16 +34,34 @@ Python, and `frontend/chat/` is React without LangChain.
 
 OpenCode loads both `.opencode/command/` and `.opencode/commands/`. This
 repository uses the singular form only; the plural directory was removed after
-two commands existed in both with different bodies and undefined precedence.
+two commands existed in both with different bodies and undefined precedence. The
+two generic review commands it also held (`review`, `plan-review`) are replaced
+by the `rs-code-review` and `rs-review-plan` ports, not dropped.
 
 `rs-implement-plan-as-codex` and `rs-implement-plan-as-opencode` are Claude
 Code only. They dispatch through Claude Code plugins that no other harness has.
 
 OpenCode command copies are the Claude originals with `argument-hint` and
 `allowed-tools` (neither of which OpenCode reads) replaced by `agent: build`
-and `model: opencode-go/glm-5.3-flash`; the bodies match byte for byte. They
-still name Claude tools such as `AskUserQuestion` in prose, which OpenCode
-performs in its own way, exactly as the Copilot ports do.
+and `model: opencode-go/glm-5.3-flash`; the bodies match byte for byte apart
+from a harness note some ports carry above the body. They still name Claude
+tools such as `AskUserQuestion` in prose, which OpenCode performs in its own
+way, exactly as the Copilot ports do.
+
+A port carries a harness note only where a step dispatches something the
+harness cannot reach at all, and the note sits above the body so the body itself
+stays byte-identical. Two things qualify. Naming one of Claude's read-only
+subagents does: `.opencode/agent/` holds only `plan-auditor`, so OpenCode has
+the mechanism but not the agent and errors on the unknown name, and Copilot has
+no mechanism at all — `rs-code-review`, `rs-implement-plan` and `rs-improve-plan`
+are noted in both harnesses for this. `rs-improve-plan` Step 6's `/codex:rescue`
+does too, being a Claude Code plugin command; its note is the second paragraph.
+Naming an ordinary Claude tool such as `AskUserQuestion` in prose gets no note,
+because every harness has some way to ask the user.
+
+`make inventory` reports whether a command exists under each harness, never
+whether the ported body still matches the Claude original. That match is
+verified by hand; a `yes` cell is not evidence of it.
 
 ## Session artifacts
 
@@ -59,18 +77,23 @@ the same runtime reason as OpenCode.
 
 Claude commands are ported to `.github/prompts/<name>.prompt.md`, Copilot's
 slash-command format: `allowed-tools` becomes `tools` with Copilot tool names,
-and `agent: agent` replaces Claude's implicit write access. Ports that reference
-Claude's read-only subagents carry a harness note telling Copilot to perform
-those roles itself, because it cannot spawn them.
+and `agent: agent` replaces Claude's implicit write access. Harness notes follow
+the rule in Commands above.
 
 `rs-implement-plan-as-codex` and `rs-implement-plan-as-opencode` are not ported.
 They delegate every worker call through Claude Code plugins, so a port would be
 a command that cannot run.
 
-`make sync-copilot` and `make link-skills` both rebuild their destination
-directory from scratch rather than copying over it, so a skill deleted from
-`.claude/skills/` disappears downstream too. `link-skills` prunes only
-symlinks, leaving OpenCode-only real directories in place.
+`make sync-copilot` rebuilds `.github/skills/` from scratch rather than copying
+over it, so a skill deleted from `.claude/skills/` disappears downstream too.
+Anything hand-written under `.github/skills/` is destroyed with it: edit
+`.claude/skills/` and re-run the target. `.github/prompts/` is not synced and is
+maintained by hand, which is where the Copilot harness notes live.
+
+`make link-skills` prunes only symlinks, leaving OpenCode-only real directories
+in place, and refuses to link a canonical skill whose name is already taken by
+one of them. Linking over it would put the symlink inside that directory, where
+it dangles while the inventory still reports the skill as present.
 
 `ai_tools_inventory.md` is committed, not generated on demand: drift is only
 catchable in review if the table is visible on GitHub. Regenerate it with
