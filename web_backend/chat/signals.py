@@ -14,10 +14,29 @@ from django.dispatch import receiver
 
 from .models import Thread
 
+# LangGraph creates these tables and owns their DDL; this service only deletes
+# from them. The schema is a separate constant so relocating them is one edit
+# here and nothing downstream.
+CHECKPOINT_SCHEMA = "public"
 # Child rows first: `checkpoint_writes` and `checkpoint_blobs` before
 # `checkpoints`. There are no foreign keys between them, so the order is for
 # readability, not integrity.
 CHECKPOINT_TABLES = ("checkpoint_writes", "checkpoint_blobs", "checkpoints")
+
+
+def qualified(table: str) -> str:
+    """Return `table` prefixed with the schema the checkpointer lives in."""
+    return f"{CHECKPOINT_SCHEMA}.{table}"
+
+
+def purge_statements(where: str) -> tuple[str, ...]:
+    """Return the DELETE statements that clear one thread selection.
+
+    Built here rather than inline so the integration suite executes these exact
+    statements instead of a copy of them. A copy is what let the old guard pass
+    while production was broken.
+    """
+    return tuple(f"DELETE FROM {qualified(t)} WHERE {where}" for t in CHECKPOINT_TABLES)
 
 
 @receiver(pre_delete, sender=settings.AUTH_USER_MODEL)
@@ -42,5 +61,5 @@ def delete_thread_checkpoints(sender, instance, **kwargs) -> None:
 
 def _purge_checkpoints(where: str, params: list) -> None:
     with connection.cursor() as cursor:
-        for table in CHECKPOINT_TABLES:
-            cursor.execute(f"DELETE FROM {table} WHERE {where}", params)
+        for statement in purge_statements(where):
+            cursor.execute(statement, params)

@@ -69,7 +69,10 @@ createsuperuser:
 
 test-web-backend:
 	$(DJANGO_HOST_ENV) uv run --directory web_backend python manage.py collectstatic --noinput
-	$(DJANGO_HOST_ENV) uv run --directory web_backend python manage.py test
+	$(DJANGO_HOST_ENV) uv run --directory web_backend python manage.py test --exclude-tag=integration
+
+test-web-integration:
+	$(DJANGO_HOST_ENV) uv run --directory web_backend python manage.py test tests.integration_tests
 
 # Skills excluded from both non-Claude harnesses: they need a Claude-only
 # runtime, so neither `sync-copilot` nor `link-skills` propagates them.
@@ -132,7 +135,8 @@ help:
 		'sync-copilot Copy .claude/skills into .github/skills (Copilot keeps real copies, not symlinks)' \
 		'inventory Regenerate ai_tools_inventory.md from the harness directories on disk' \
 		'link-skills Symlink .claude/skills into .opencode/skills (Claude Code is canonical; OpenCode-only skills stay untouched)' \
-		'test-web-backend Run the Django service test suite' \
+		'test-web-backend Run the Django service test suite (unit tests; integration excluded)' \
+		'test-web-integration Run the Django integration suite against the dev Postgres' \
 		'' \
 		'Ports can be overridden, for example:' \
 		'  make up FRONTEND_PORT=8083 BACKEND_PORT=3002 POSTGRES_PORT=55433'
