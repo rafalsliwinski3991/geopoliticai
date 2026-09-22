@@ -37,7 +37,7 @@ from config import (
     init_environment,
     require_env,
 )
-from db.sql import (
+from db.web.sql import (
     claim_thread,
     increment_quota,
     is_staff,
@@ -445,7 +445,6 @@ async def run_pipeline_stream_endpoint(
     _enforce_rate_limit(request, identity)
     # No checkpoint read happens here: see `_turn_input`. The rate limit stays
     # pre-stream because it is the one failure that must not commit a 200.
-    pool: AsyncConnectionPool[AsyncConnection[DictRow]] = request.app.state.pool
     pool: AsyncConnectionPool[AsyncConnection[DictRow]] = request.app.state.pool
     # A resume can never be a thread's first turn: it belongs to a report the
     # endpoint already created, so it only verifies ownership — never upsert-

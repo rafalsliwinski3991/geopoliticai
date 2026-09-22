@@ -63,24 +63,27 @@ resumes it.
 A second service, `web_backend/`, hosts the Django identity service: accounts
 (allauth, email-only with mandatory verification), the admin, and the
 application tables. Its dev port is `ACCOUNTS_PORT` (default 8083). From the
-host, `make migrate` runs its migrations (always before starting
-`agentic-backend`, which runs the checkpointer's own schema setup at startup),
-`make createsuperuser` creates an admin user, and `make test-web-backend` runs
-its suite against the dev Postgres. The two services share the database and the
-root `.env` but never each other's code.
+host, `make migrate-web` runs its migrations (always first, before anything in
+`agentic_backend` touches the database), `make createsuperuser` creates an
+admin user, and `make test-web-backend` runs its suite against the dev
+Postgres. The two services share the database and the root `.env` but never
+each other's code.
 
-## Deploy order (two migration systems share one database)
+## Deploy order (three migration systems share one database)
 
-Django's `migrate` and the checkpointer's `setup()` touch disjoint tables, but
-the checkpointer uses `CREATE INDEX CONCURRENTLY`, which cannot run inside a
-transaction — so the order is explicit and not incidental:
+Django's `migrate`, Alembic, and the checkpointer's `setup()` touch disjoint
+parts of the schema, but the checkpointer uses `CREATE INDEX CONCURRENTLY`,
+which cannot run inside a transaction — so the order is explicit and not
+incidental:
 
 1. `docker compose run --rm web-backend python manage.py migrate`, then
    `docker compose run --rm web-backend python manage.py createcachetable` —
    the `DatabaseCache` table allauth's rate limiter reads on the first login
-   (the root `make migrate` target runs both)
-2. start `agentic-backend` (its lifespan runs `checkpointer.setup()`)
-3. start `frontend`
+   (the root `make migrate-web` target runs both)
+2. `make migrate-agentic` — Alembic creates the `agentic` schema and, once the
+   checkpointer's tables exist in `public`, relocates them into it
+3. start `agentic-backend` (its lifespan runs `checkpointer.setup()`)
+4. start `frontend`
 
 Do not add a migrate-on-start hook to the `web-backend` container: two
 replicas would race. Before the Basic Auth cutover (`users-auth/07`), run the

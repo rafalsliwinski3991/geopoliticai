@@ -27,7 +27,7 @@ from config import (
     DAILY_RESEARCH_TURNS_ALL_USERS,
     SITE_WIDE_QUOTA_USER_ID,
 )
-from db.sql import ThreadRow
+from db.web.sql import ThreadRow
 from models import (
     LLMInvocationError,
     NoSourcesError,
@@ -1109,7 +1109,11 @@ async def test_get_threads_returns_only_the_callers_rows(
     async def list_threads(pool: Any, *, user_id: int) -> list[ThreadRow]:
         seen_kwargs["user_id"] = user_id
         return [
-            ThreadRow(id="t1", title="NATO", created_at="2026-09-18T10:00:00Z"),
+            ThreadRow(
+                id="t1",
+                title="NATO",
+                created_at=datetime.fromisoformat("2026-09-18T10:00:00Z"),
+            ),
         ]
 
     monkeypatch.setattr(api, "list_threads", list_threads)
