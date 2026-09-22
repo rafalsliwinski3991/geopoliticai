@@ -25,7 +25,9 @@ from the root with `make test-web-backend` (they need the dev Postgres) and its 
 `web_backend/politicalagent/settings.py`. Django owns every user-keyed
 application table in `public`; LangGraph's checkpointer tables live in the
 `agentic` schema and are migrated by Alembic (`make migrate-agentic`), never by
-Django. `agentic_backend/` reads Django's tables only through
+Django. The checkpointer reaches them through the pool's `search_path`
+(`agentic,public`), and a startup assertion fails the service if they are not
+there. `agentic_backend/` reads Django's tables only through
 `web_backend`-migrated schema.
 
 Agents live in `agentic_backend/src/agents/<name>/` with graph, state, config, prompts,

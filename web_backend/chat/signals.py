@@ -17,7 +17,7 @@ from .models import Thread
 # LangGraph creates these tables and owns their DDL; this service only deletes
 # from them. The schema is a separate constant so relocating them is one edit
 # here and nothing downstream.
-CHECKPOINT_SCHEMA = "public"
+CHECKPOINT_SCHEMA = "agentic"
 # Child rows first: `checkpoint_writes` and `checkpoint_blobs` before
 # `checkpoints`. There are no foreign keys between them, so the order is for
 # readability, not integrity.

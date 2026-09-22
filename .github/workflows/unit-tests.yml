@@ -122,6 +122,17 @@ jobs:
           uv sync --locked --dev
           uv run python manage.py migrate
 
+      # Alembic creates the `agentic` schema and relocates the checkpointer
+      # tables BEFORE anything runs setup(); a fresh CI database has nothing to
+      # move, so this is a schema create plus four no-ops.
+      - name: Migrate the agentic-owned schema
+        working-directory: agentic_backend
+        run: |
+          uv sync --locked --dev
+          uv run alembic upgrade head
+        env:
+          DATABASE_URL: postgresql://drift:testpassword@127.0.0.1:5432/drift_test
+
       # The order is the point: Django's migrate runs before the drift suite,
       # whose fixture then runs the checkpointer's idempotent setup() itself.
       - name: Run the agentic web-schema suite
