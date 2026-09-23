@@ -94,4 +94,15 @@ if run rollback "$(sha 4)" "$confirm" 2>/dev/null; then fail "accepted a corrupt
 if grep -q 'RENAME TO geopoliticai_failed' "$DOCKER_LOG"; then fail "touched the databases over a corrupt snapshot"; fi
 [ "$(readlink "$VPS_ROOT/current")" = "$VPS_ROOT/releases/$(sha 5)" ] || fail "current moved on a corrupt snapshot"
 
+# Nightly backup uploads a complete local dump to the bucket, and a failed
+# pg_dump never reaches the upload.
+: > "$DOCKER_LOG"
+: > "$VPS_ROOT/backup.env"
+"$HERE/../backup.sh"
+grep -q "amazon/aws-cli:2.22.35@sha256:.* s3 cp .*s3://dramatic-wieman/nightly/" \
+  "$DOCKER_LOG" || fail "backup not uploaded"
+: > "$DOCKER_LOG"
+if FAIL_ON=pg_dump "$HERE/../backup.sh"; then fail "backup should fail when pg_dump fails"; fi
+if grep -q "s3 cp" "$DOCKER_LOG"; then fail "uploaded a truncated dump"; fi
+
 echo "deploy script tests passed"
