@@ -38,6 +38,7 @@ from config import (
     require_env,
 )
 from db.web.sql import (
+    MAX_THREAD_ID_LENGTH,
     claim_thread,
     increment_quota,
     is_staff,
@@ -60,7 +61,6 @@ ALLOWED_ORIGINS = [
     "http://localhost:3001",
 ]
 MAX_QUERY_LENGTH = 2_000
-MAX_THREAD_ID_LENGTH = 100
 MAX_ANSWER_CHARS = 50_000
 RATE_LIMIT_REQUESTS = 20
 RATE_LIMIT_WINDOW_SECONDS = 60
