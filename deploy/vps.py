@@ -26,39 +26,33 @@ SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 _state: dict = {"cwd": None, "env": os.environ.copy()}
 
 
-def compose(*args: str) -> None:
+def compose_prefix() -> list[str]:
+    """The docker compose invocation every command shares."""
+    return [
+        "docker",
+        "compose",
+        "-f",
+        "docker-compose.yml",
+        "-f",
+        "docker-compose.prod.yml",
+    ]
+
+
+def compose(*args: str, check: bool = True, **kwargs) -> subprocess.CompletedProcess:
     """Run a compose command in the pinned release; abort on failure."""
-    subprocess.run(
-        [
-            "docker",
-            "compose",
-            "-f",
-            "docker-compose.yml",
-            "-f",
-            "docker-compose.prod.yml",
-            *args,
-        ],
+    return subprocess.run(
+        [*compose_prefix(), *args],
         cwd=_state["cwd"],
         env=_state["env"],
-        check=True,
+        check=check,
+        **kwargs,
     )
 
 
-def compose_stdout(*args: str) -> subprocess.Popen:
-    """Start a compose command whose stdout is streamed by the caller."""
+def compose_popen(*args: str, **kwargs) -> subprocess.Popen:
+    """Start a compose command the caller streams to or from."""
     return subprocess.Popen(
-        [
-            "docker",
-            "compose",
-            "-f",
-            "docker-compose.yml",
-            "-f",
-            "docker-compose.prod.yml",
-            *args,
-        ],
-        cwd=_state["cwd"],
-        env=_state["env"],
-        stdout=subprocess.PIPE,
+        [*compose_prefix(), *args], cwd=_state["cwd"], env=_state["env"], **kwargs
     )
 
 
@@ -98,9 +92,9 @@ def confirmation(snapshot: str) -> str:
 
 
 # Keep the newest $KEEP releases, their directories, the one snapshot each
-# release's .snapshot names (retried deploys leave older ones behind), and the
-# :<sha> image tag each recorded release can still restart; everything else
-# goes, or every deploy's three pulled images would fill the disk.
+# release's .snapshot names, and the :<sha> image tag each recorded release
+# can still restart; everything else goes, or every deploy's three pulled
+# images would fill the disk one release at a time.
 def prune() -> None:
     keep = log_lines()[-KEEP:]
     write_log(keep)
@@ -139,10 +133,20 @@ def prune() -> None:
 # serving until the final `up` (`run agentic-backend` does start the new
 # phoenix early, through depends_on); a failure leaves them running for
 # `abort`. The old `agentic-backend` is stopped before Alembic: on the
-# 0002_checkpointer_to_agentic cutover its image has no search_path and, if it
-# restarts, its setup() recreates an empty `public` copy of the checkpointer
-# tables the new image then refuses to boot over.
+# 0002_checkpointer_to_agentic cutover its image has no search_path and, if
+# it restarts, its setup() recreates an empty `public` copy of the
+# checkpointer tables the new image then refuses to boot over.
 def deploy(sha: str) -> None:
+    # A retried deploy would overwrite the recorded release's .snapshot with
+    # a post-release dump and turn rollback into a data-destroying trap;
+    # redeploys go through the Rollback workflow instead.
+    if sha in log_lines():
+        print(
+            f"{sha} is already recorded; deploy a new commit or use the "
+            "rollback workflow",
+            file=sys.stderr,
+        )
+        raise SystemExit(2)
     enter(sha)
     release = _state["cwd"]
     (release / ".snapshot").unlink(missing_ok=True)
@@ -153,8 +157,15 @@ def deploy(sha: str) -> None:
     snapshot = BACKUPS / f"pre-{sha}-{stamp}.sql.gz"
     # Stream pg_dump through gzip instead of buffering the whole dump in
     # memory; a failed dump leaves no snapshot file behind to be trusted.
-    dump = compose_stdout(
-        "exec", "-T", "postgres", "pg_dump", "-U", "geopoliticai", "geopoliticai"
+    dump = compose_popen(
+        "exec",
+        "-T",
+        "postgres",
+        "pg_dump",
+        "-U",
+        "geopoliticai",
+        "geopoliticai",
+        stdout=subprocess.PIPE,
     )
     stdout = dump.stdout
     try:
@@ -209,12 +220,247 @@ def finish(sha: str) -> None:
         print("No earlier release to roll back to.")
 
 
+# Load a snapshot into a side database, then swap it in. ALTER DATABASE ...
+# RENAME cannot run inside a transaction block, so the swap is two
+# autocommit renames: if the second fails, the first is renamed back, so a
+# failed load or swap never leaves production without a database. The
+# replaced one stays as geopoliticai_failed until the next restore. The
+# users id sequence is moved past every id the replaced database handed out
+# (its last_value, not max(id): an id issued to a user deleted later would
+# otherwise be reused by the next signup, and a stale JWT could match that
+# new account), so a JWT issued to a user the restore deleted cannot match a
+# later signup that would otherwise reuse the id.
+def restore(snapshot: Path) -> None:
+    # gzip -t walks the whole file checking its CRC before anything is touched.
+    with gzip.open(snapshot, "rb") as dump:
+        while dump.read(1 << 20):
+            pass
+    compose(
+        "exec",
+        "-T",
+        "postgres",
+        "dropdb",
+        "-U",
+        "geopoliticai",
+        "--if-exists",
+        "geopoliticai_restore",
+    )
+    compose(
+        "exec",
+        "-T",
+        "postgres",
+        "createdb",
+        "-U",
+        "geopoliticai",
+        "-O",
+        "geopoliticai",
+        "geopoliticai_restore",
+    )
+    with gzip.open(snapshot, "rb") as dump:
+        load = compose_popen(
+            "exec",
+            "-T",
+            "postgres",
+            "psql",
+            "-q",
+            "-v",
+            "ON_ERROR_STOP=1",
+            "-U",
+            "geopoliticai",
+            "geopoliticai_restore",
+            stdin=subprocess.PIPE,
+        )
+        stdin = load.stdin
+        assert stdin is not None
+        shutil.copyfileobj(dump, stdin)
+        stdin.close()
+        if load.wait() != 0:
+            raise subprocess.CalledProcessError(load.returncode, load.args)
+    compose("stop", "agentic-backend", "web-backend", "frontend")
+    compose(
+        "exec",
+        "-T",
+        "postgres",
+        "dropdb",
+        "-U",
+        "geopoliticai",
+        "--if-exists",
+        "geopoliticai_failed",
+    )
+    swap_databases()
+    move_users_sequence()
+
+
+# A pg_dump in the 03:15 backup or a manual psql session would make the
+# renames fail with "database is being accessed by other users"; the app
+# containers are already stopped, so whoever is left is terminated first.
+SWAP_SQL = (
+    "SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
+    "WHERE datname IN ('geopoliticai', 'geopoliticai_restore', "
+    "'geopoliticai_failed') AND pid <> pg_backend_pid()"
+)
+
+
+def swap_databases() -> None:
+    args = [
+        "exec",
+        "-T",
+        "postgres",
+        "psql",
+        "-q",
+        "-v",
+        "ON_ERROR_STOP=1",
+        "-U",
+        "geopoliticai",
+        "-d",
+        "postgres",
+        "-c",
+    ]
+    compose(*args, SWAP_SQL)
+    try:
+        compose(*args, "ALTER DATABASE geopoliticai RENAME TO geopoliticai_failed")
+        compose(*args, "ALTER DATABASE geopoliticai_restore RENAME TO geopoliticai")
+    except subprocess.CalledProcessError:
+        # The first rename already removed production, so put it back before
+        # the error propagates: the old app containers restart against it.
+        compose(
+            *args,
+            "ALTER DATABASE geopoliticai_failed RENAME TO geopoliticai",
+            check=False,
+        )
+        raise
+
+
+def move_users_sequence() -> None:
+    last_value = compose(
+        "exec",
+        "-T",
+        "postgres",
+        "psql",
+        "-At",
+        "-U",
+        "geopoliticai",
+        "geopoliticai_failed",
+        "-c",
+        "SELECT coalesce(last_value, 0) FROM pg_sequences "
+        "WHERE sequencename = 'users_user_id_seq'",
+        stdout=subprocess.PIPE,
+        text=True,
+    ).stdout.strip()
+    try:
+        issued = int(last_value)
+    except ValueError:
+        # Only an absent sequence (a fresh database before any signup) reads
+        # as empty; anything else fails the restore.
+        raise OSError(f"could not read the users id sequence: {last_value!r}") from None
+    if issued <= 0:
+        return
+    result = compose(
+        "exec",
+        "-T",
+        "postgres",
+        "psql",
+        "-q",
+        "-v",
+        "ON_ERROR_STOP=1",
+        "-U",
+        "geopoliticai",
+        "geopoliticai",
+        "-c",
+        f"SELECT setval(pg_get_serial_sequence('users_user', 'id'), {issued})",
+        check=False,
+    )
+    if result.returncode != 0:
+        print(
+            "warning: the users id sequence was not moved past the replaced "
+            "database; a deleted user's JWT could match a later signup",
+            file=sys.stderr,
+        )
+
+
+# Best effort: something is already broken; the original error propagates.
+def restart(sha: str) -> None:
+    if not sha:
+        return
+    enter(sha)
+    compose("up", "-d", "--no-build", "--wait", "--remove-orphans", check=False)
+
+
+# Undo a failed deploy: restore its snapshot, restart the previous release.
+# The restore stops the app containers partway through, so a failure inside
+# it must not leave the site down: the release that was serving is restarted
+# best-effort before the error propagates.
+def abort(sha: str) -> None:
+    if sha in log_lines():
+        print(f"{sha} is already recorded; use the rollback workflow", file=sys.stderr)
+        raise SystemExit(2)
+    prev = previous()
+    try:
+        enter(sha)
+        marker = _state["cwd"] / ".snapshot"
+        if marker.exists() and marker.stat().st_size > 0:
+            restore(Path(marker.read_text().strip()))
+        if prev:
+            enter(prev)
+            compose("up", "-d", "--no-build", "--wait", "--remove-orphans")
+        else:
+            compose("stop", "agentic-backend", "web-backend", "frontend")
+    except subprocess.CalledProcessError:
+        restart(prev)
+        raise
+
+
+# Go back to an earlier recorded release, restoring the snapshot taken just
+# before the release that followed it. Everything written since is lost.
+def rollback(target: str, confirm: str) -> None:
+    if not SHA_RE.fullmatch(target):
+        print(f"not a release sha: {target}", file=sys.stderr)
+        raise SystemExit(2)
+    next_sha = ""
+    lines = log_lines()
+    for index, line in enumerate(lines):
+        if line == target and index + 1 < len(lines):
+            next_sha = lines[index + 1]
+            break
+    if not next_sha:
+        print(f"{target} is not an earlier release in {LOG}", file=sys.stderr)
+        raise SystemExit(2)
+    marker = ROOT / "releases" / next_sha / ".snapshot"
+    snapshot = marker.read_text().strip()
+    # Never print the expected value: the confirmation must come from the
+    # deploy summary.
+    if confirm != confirmation(snapshot):
+        print(
+            "confirmation does not match; copy it from the deploy summary",
+            file=sys.stderr,
+        )
+        raise SystemExit(2)
+    serve = previous()
+    try:
+        enter(next_sha)
+        restore(Path(snapshot))
+        # Record the undo before the target starts: if its `up` fails,
+        # releases.log and current already describe reality and the workflows
+        # can run again against the state on disk.
+        write_log(lines[: lines.index(target) + 1])
+        current = ROOT / "current"
+        if current.is_symlink() or current.exists():
+            current.unlink()
+        current.symlink_to(ROOT / "releases" / target)
+        enter(target)
+        compose("up", "-d", "--no-build", "--wait", "--remove-orphans")
+        prune()
+    except subprocess.CalledProcessError:
+        restart(serve)
+        raise
+
+
 def main(argv: list[str]) -> int:
     """Dispatch one command; anything else prints usage and exits 2."""
     # Snapshots and logs may hold every user row; nothing this script writes
     # is world-readable.
     os.umask(0o077)
-    commands = {"deploy": deploy, "finish": finish}
+    commands = {"deploy": deploy, "finish": finish, "abort": abort}
     command = argv[1] if len(argv) > 1 else ""
     name = Path(argv[0]).name
     if command in commands:
@@ -224,7 +470,13 @@ def main(argv: list[str]) -> int:
             return 2
         commands[command](sha)
         return 0
-    print(f"usage: {name} deploy|finish <sha>", file=sys.stderr)
+    if command == "rollback":
+        rollback(argv[2] if len(argv) > 2 else "", argv[3] if len(argv) > 3 else "")
+        return 0
+    print(
+        f"usage: {name} deploy|finish|abort <sha> | rollback <sha> <confirmation>",
+        file=sys.stderr,
+    )
     return 2
 
 
