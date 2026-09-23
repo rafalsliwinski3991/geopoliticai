@@ -8,7 +8,8 @@ TEST_FILE ?= tests/unit_tests/
 
 # Needs a real Postgres migrated by both `make migrate-web` and
 # `make migrate-agentic` at the root; the tests run the checkpointer's setup()
-# themselves and skip without DATABASE_URL. CI's cross-service-schema job encodes that order.
+# themselves and fail without DATABASE_URL. CI's cross-service-schema job
+# encodes that order.
 test-integration:
 	python -m pytest tests/integration_tests/
 

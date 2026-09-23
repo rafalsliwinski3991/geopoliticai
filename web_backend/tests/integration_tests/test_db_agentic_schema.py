@@ -86,7 +86,7 @@ def _connection_string() -> str:
 @unittest.skipUnless(
     _checkpointer_tables_present(), "needs a Postgres with the checkpointer tables"
 )
-class CheckpointerScheduleTest(TestCase):
+class CheckpointerDeleteTest(TestCase):
     """The delete path this service runs against LangGraph's tables."""
 
     def setUp(self) -> None:

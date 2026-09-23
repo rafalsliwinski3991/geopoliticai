@@ -98,7 +98,7 @@ ceiling on the same `quota` table behind a reserved sentinel user id; the
 cross-service schema guards run with both integration suites
 (`agentic_backend/tests/integration_tests/test_db_web_schema.py`, and the
 root `make test-web-integration`; the first needs a Postgres migrated by both
-`make migrate-web` and `make migrate-agentic` and skips without `DATABASE_URL`;
+`make migrate-web` and `make migrate-agentic` and fails without `DATABASE_URL`;
 the second skips when the checkpointer tables are absent).
 
 Run application commands from `agentic_backend/`: `uv sync --locked --dev`, `make test`,
