@@ -1,0 +1,52 @@
+{% extends "admin/base_site.html" %}
+
+{% block breadcrumbs %}
+  <div class="breadcrumbs">
+    <a href="{% url 'admin:index' %}">Home</a> ›
+    Checkpointer ›
+    {{ title }}
+  </div>
+{% endblock %}
+
+{% block content %}
+  <div id="content-main">
+    <p><a href="{% url 'admin:index' %}">Back to admin</a></p>
+    <p>Read-only SQL view.</p>
+
+    {% if searchable %}
+      <form method="get" role="search">
+        <label for="checkpointer-search">Thread ID</label>
+        <input id="checkpointer-search" type="search" name="q" value="{{ search }}" maxlength="100">
+        <button type="submit">Search</button>
+        {% if search %}<a href="?">Clear</a>{% endif %}
+      </form>
+    {% endif %}
+
+    <p>{{ row_count }} row{{ row_count|pluralize }} · page {{ current_page }} of {{ page_count }}</p>
+    <div class="results">
+      <table>
+        <thead>
+          <tr>{% for column in columns %}<th scope="col">{{ column }}</th>{% endfor %}</tr>
+        </thead>
+        <tbody>
+          {% for row in rows %}
+            <tr>{% for value in row %}<td>{{ value|default_if_none:"—" }}</td>{% endfor %}</tr>
+          {% empty %}
+            <tr><td colspan="{{ columns|length }}">No rows found.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    {% if page_count > 1 %}
+      <nav aria-label="Pagination">
+        {% if previous_url %}<a href="{{ previous_url }}" rel="prev">Previous</a>{% endif %}
+        {% for link in page_links %}
+          {% if link.current %}<strong aria-current="page">{{ link.number }}</strong>
+          {% else %}<a href="{{ link.url }}">{{ link.number }}</a>{% endif %}
+        {% endfor %}
+        {% if next_url %}<a href="{{ next_url }}" rel="next">Next</a>{% endif %}
+      </nav>
+    {% endif %}
+  </div>
+{% endblock %}

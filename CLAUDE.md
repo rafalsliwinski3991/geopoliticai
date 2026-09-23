@@ -28,7 +28,10 @@ application table in `public`; LangGraph's checkpointer tables live in the
 Django. The checkpointer reaches them through the pool's `search_path`
 (`agentic,public`), and a startup assertion fails the service if they are not
 there. `agentic_backend/` reads Django's tables only through
-`web_backend`-migrated schema.
+`web_backend`-migrated schema. `web_backend`'s `checkpointer` app browses those
+four tables with staff-only, read-only raw-SQL admin pages — it defines no
+Django models and issues no writes; the only SQL that deletes from them stays
+in `chat`.
 
 Agents live in `agentic_backend/src/agents/<name>/` with graph, state, config, prompts,
 `consts/`, and node modules. Put fixed editorial data in `consts/`, prompts in

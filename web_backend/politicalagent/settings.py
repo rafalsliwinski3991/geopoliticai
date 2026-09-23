@@ -42,6 +42,10 @@ INSTALLED_APPS = [
     # checkpointer tables. A dead GDPR path that raises nothing and logs
     # nothing.
     "chat.apps.ChatConfig",
+    # Raw-SQL, read-only admin browse pages over the four tables LangGraph's
+    # checkpointer owns in `agentic`. Django defines no models for them; the
+    # schema is Alembic's business, the deletes are `chat`'s signals.
+    "checkpointer.apps.CheckpointerConfig",
 ]
 
 MIDDLEWARE = [
