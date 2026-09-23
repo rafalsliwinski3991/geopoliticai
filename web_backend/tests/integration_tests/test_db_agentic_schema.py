@@ -22,6 +22,7 @@ Django itself reads. They clean up after themselves.
 
 import os
 import unittest
+import uuid
 
 import psycopg
 from django.test import TestCase, tag
@@ -29,7 +30,10 @@ from django.test import TestCase, tag
 from chat.signals import CHECKPOINT_SCHEMA, CHECKPOINT_TABLES, purge_statements
 from chat.management.commands.purge_prelaunch_threads import ORPHAN_IDS_SQL
 
-THREAD_ID = "web-drift-probe"
+# Unique per run: this suite writes to the shared development database, and
+# `Thread.id` accepts any string, so a fixed id could name a real conversation
+# whose checkpoints `_purge()` would then delete.
+THREAD_ID = f"web-drift-probe-{uuid.uuid4().hex}"
 
 # Minimal well-formed rows. Written out column by column on purpose: if an
 # upstream version adds a NOT NULL column, these inserts fail here rather than
@@ -57,20 +61,19 @@ def _checkpointer_tables_present() -> bool:
     discriminate between the database that has had `setup()` run against it and
     the one that has not. Asking the database directly means a runner without
     the tables skips these tests instead of erroring on a missing relation.
+    Only an absent table skips: a connection or authentication failure raises,
+    so a misconfigured CI job fails instead of going green with zero tests.
     """
-    try:
-        with psycopg.connect(_dsn(), autocommit=True) as conn:
-            with conn.cursor() as cursor:
-                cursor.execute(
-                    "SELECT to_regclass(%s)", [f"{CHECKPOINT_SCHEMA}.checkpoints"]
-                )
-                return cursor.fetchone()[0] is not None
-    except psycopg.Error:
-        return False
+    with psycopg.connect(_connection_string(), autocommit=True) as conn:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                "SELECT to_regclass(%s)", [f"{CHECKPOINT_SCHEMA}.checkpoints"]
+            )
+            return cursor.fetchone()[0] is not None
 
 
-def _dsn() -> str:
-    """Build the DSN from the same variables Django's settings read."""
+def _connection_string() -> str:
+    """Build the connection string from the same variables Django's settings read."""
     return (
         f"dbname={os.environ['POSTGRES_DB']} user={os.environ['POSTGRES_USER']}"
         f" password={os.environ['POSTGRES_PASSWORD']}"
@@ -87,7 +90,7 @@ class CheckpointerScheduleTest(TestCase):
     """The delete path this service runs against LangGraph's tables."""
 
     def setUp(self) -> None:
-        self.conn = psycopg.connect(_dsn(), autocommit=True)
+        self.conn = psycopg.connect(_connection_string(), autocommit=True)
         self.addCleanup(self.conn.close)
         self.addCleanup(self._purge)
         self._purge()

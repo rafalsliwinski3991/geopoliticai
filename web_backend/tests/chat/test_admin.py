@@ -4,7 +4,8 @@ from django.contrib.auth import get_user_model
 from django.db import connection
 from django.test import TransactionTestCase
 
-from chat.admin import orphan_threads_admin_action
+from chat.management.commands.purge_prelaunch_threads import orphan_thread_ids
+from chat.signals import CHECKPOINT_SCHEMA
 
 User = get_user_model()
 
@@ -24,9 +25,14 @@ class OrphanQueryTest(TransactionTestCase):
 
         # Act
         with connection.cursor() as cursor:
-            cursor.execute("CREATE TABLE checkpoints (thread_id TEXT NOT NULL)")
-            cursor.execute("INSERT INTO checkpoints (thread_id) VALUES ('ghost')")
-        orphans = orphan_threads_admin_action()
+            cursor.execute(f"CREATE SCHEMA IF NOT EXISTS {CHECKPOINT_SCHEMA}")
+            cursor.execute(
+                f"CREATE TABLE {CHECKPOINT_SCHEMA}.checkpoints (thread_id TEXT NOT NULL)"
+            )
+            cursor.execute(
+                f"INSERT INTO {CHECKPOINT_SCHEMA}.checkpoints (thread_id) VALUES ('ghost')"
+            )
+        orphans = orphan_thread_ids()
 
         # Assert
         self.assertEqual(orphans, ["ghost"])
@@ -35,7 +41,7 @@ class OrphanQueryTest(TransactionTestCase):
         # Act
         # A test database has no checkpointer tables; the admin action must
         # degrade to a warning, not a 500.
-        orphans = orphan_threads_admin_action()
+        orphans = orphan_thread_ids()
 
         # Assert
         self.assertEqual(orphans, None)

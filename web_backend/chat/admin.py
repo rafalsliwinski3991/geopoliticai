@@ -1,35 +1,9 @@
 """Admin for the Django-owned chat_threads and quota tables."""
 
 from django.contrib import admin, messages
-from django.db import connection
-from django.db.utils import ProgrammingError
 
+from chat.management.commands.purge_prelaunch_threads import orphan_thread_ids
 from chat.models import Quota, Thread
-
-# The orphan-check query the brainstorm specifies verbatim (flag 5). It reads
-# the LangGraph checkpointer's tables, which Django owns no migration for —
-# they exist because `agentic_backend`'s checkpointer ran its `setup()`.
-ORPHAN_THREAD_SQL = """
-SELECT DISTINCT thread_id
-FROM checkpoints
-WHERE thread_id NOT IN (SELECT id FROM chat_threads)
-"""
-
-
-def orphan_threads_admin_action() -> list[str] | None:
-    """Return thread ids checkpointed but missing from chat_threads.
-
-    Returns None when the checkpointer tables do not exist yet (a fresh
-    database): the action is a safety net, not a cleaner, and must not turn
-    the admin into a 500.
-    """
-    try:
-        with connection.cursor() as cursor:
-            cursor.execute(ORPHAN_THREAD_SQL)
-            return [row[0] for row in cursor.fetchall()]
-    except ProgrammingError:
-        return None
-
 
 CHECKPOINTER_TABLES_MISSING = (
     "The checkpointer tables are missing; run the checkpointer's setup() first."
@@ -48,7 +22,7 @@ class ThreadAdmin(admin.ModelAdmin):
     @admin.display(description="Check for orphaned checkpointer threads")
     @admin.action(description="Check for orphaned checkpointer threads")
     def check_orphaned_threads(self, request, queryset) -> None:
-        orphans = orphan_threads_admin_action()
+        orphans = orphan_thread_ids()
         if orphans is None:
             messages.warning(request, CHECKPOINTER_TABLES_MISSING)
         else:
