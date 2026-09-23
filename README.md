@@ -47,7 +47,7 @@ The app declares `psycopg[binary]` directly for the checkpointer; no system
 
 The stream caps emitted answers at 50,000 characters, but `_generate` continues
 draining an over-limit upstream stream before emitting the capped result so the
-checkpoint can complete. Production nginx applies Basic Auth to `/admin/` only; the
+checkpoint can complete. Production nginx applies Basic Auth to `/admin/` and `/phoenix/`; the
 API is guarded by bearer JWTs verified by `auth.py`; `AUTH_REQUIRED=true` fails closed when credentials are missing, while
 the local development configuration remains unauthenticated.
 
@@ -158,6 +158,9 @@ release (`releases.log`, `current`). The last five releases and their snapshots 
    and confirm with `sudo certbot renew --dry-run`.
 8. After the first deploy, open github.com → your profile → Packages and confirm the three
    `geopoliticai-*` packages are **private** and linked to this repository.
+
+Phoenix is at `https://politicalagent.eu/phoenix/`, behind the same
+`AUTH_USER`/`AUTH_PASSWORD` as `/admin/`.
 
 ### Rolling back
 

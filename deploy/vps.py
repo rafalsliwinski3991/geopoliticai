@@ -228,8 +228,7 @@ def finish(sha: str) -> None:
 # users id sequence is moved past every id the replaced database handed out
 # (its last_value, not max(id): an id issued to a user deleted later would
 # otherwise be reused by the next signup, and a stale JWT could match that
-# new account), so a JWT issued to a user the restore deleted cannot match a
-# later signup that would otherwise reuse the id.
+# new account).
 def restore(snapshot: Path) -> None:
     # gzip -t walks the whole file checking its CRC before anything is touched.
     with gzip.open(snapshot, "rb") as dump:

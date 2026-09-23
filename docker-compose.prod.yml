@@ -4,6 +4,11 @@ services:
 
   phoenix:
     restart: unless-stopped
+    # Served at https://politicalagent.eu/phoenix/ behind nginx Basic Auth;
+    # nginx strips the prefix, as Phoenix's reverse-proxy example does.
+    environment:
+      PHOENIX_HOST_ROOT_PATH: /phoenix
+      PHOENIX_ROOT_URL: https://politicalagent.eu/phoenix
 
   agentic-backend:
     restart: unless-stopped
