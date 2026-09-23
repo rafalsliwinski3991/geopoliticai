@@ -14,7 +14,7 @@ Pure computation, in-memory state, no I/O. Always deepenable: merge the modules 
 
 Dependencies that have local test stand-ins (the dev Postgres behind `make test-integration`, a `MemorySaver` in place of `AsyncPostgresSaver`, `tmp_path`). Deepenable if the stand-in exists. The deepened module is tested with the stand-in running in the test suite. The seam is internal; no port at the module's external interface.
 
-`web_backend` as seen from `agentic_backend` belongs here, not in category 3: the two services never import or call each other, they share one Postgres, and `agentic_backend` reaches the Django-owned `chat_threads`/`quota` tables only through `db/sql.py` against `web_backend`-migrated schema.
+`web_backend` as seen from `agentic_backend` belongs here, not in category 3: the two services never import or call each other, they share one Postgres, and `agentic_backend` reaches the Django-owned `chat_threads`/`quota` tables only through `db/web/sql.py` against `web_backend`-migrated schema.
 
 ### 3. Remote but owned (Ports & Adapters)
 
