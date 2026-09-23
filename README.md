@@ -71,6 +71,10 @@ each other's code.
 
 ## Deploy order (three migration systems share one database)
 
+Production runs these steps automatically, in this order, in `deploy/vps.sh deploy`
+(called by `.github/workflows/deploy.yml`); the list below is why the order matters
+and what to run by hand in development.
+
 Django's `migrate`, Alembic, and the checkpointer's `setup()` touch disjoint
 parts of the schema, but the checkpointer uses `CREATE INDEX CONCURRENTLY`,
 which cannot run inside a transaction — so the order is explicit and not
@@ -81,8 +85,8 @@ incidental:
    the old image has no `search_path`, so once the tables move it fails every
    query, and if it restarts its `setup()` recreates an empty set in `public`
    that the new image then refuses to boot over
-1. `docker compose run --rm web-backend python manage.py migrate`, then
-   `docker compose run --rm web-backend python manage.py createcachetable` —
+1. `docker compose run --rm web-backend .venv/bin/python manage.py migrate`, then
+   `docker compose run --rm web-backend .venv/bin/python manage.py createcachetable` —
    the `DatabaseCache` table allauth's rate limiter reads on the first login
    (the root `make migrate-web` target runs both)
 2. `make migrate-agentic` — Alembic creates the `agentic` schema and relocates
@@ -114,3 +118,41 @@ today's `COPY index.html` build never did. A registry outage, a yanked
 transitive dependency or a Node EOL bump breaks only that stage — the
 mitigation is not in the Dockerfile: **the previous image stays in the
 registry, and a rollback is a tag change to the last good frontend tag.**
+
+## Production deploy (OVH VPS)
+
+Deploys are manual: Actions → **Deploy** → Run workflow on `main`. The workflow runs
+every test job, pushes `ghcr.io/rafalsliwinski3991/geopoliticai-<service>:<sha>` and
+`:latest`, copies the compose files and `deploy/*.sh` into
+`/srv/geopoliticai/releases/<sha>/`, and runs `deploy/vps.sh deploy`: `pg_dump` to
+`/srv/backups/pre-<sha>-<UTC>.sql.gz`, Django `migrate` + `createcachetable`, Alembic,
+`up --wait`; then it curls `https://politicalagent.eu/api/health` and records the
+release (`releases.log`, `current`). The last five releases and their snapshots are kept.
+
+### One-time VPS bootstrap (manual, in this order)
+
+1. Install Docker Engine and the Compose plugin
+   (https://docs.docker.com/engine/install/ubuntu/).
+2. `sudo adduser --disabled-password --gecos '' deploy && sudo usermod -aG docker deploy`;
+   `sudo install -d -o deploy -g deploy /srv/geopoliticai /srv/backups`;
+   `sudo install -d /var/www/certbot`.
+3. On your machine: `ssh-keygen -t ed25519 -N '' -C github-actions-deploy -f vps_deploy`.
+   Append `vps_deploy.pub` to `/home/deploy/.ssh/authorized_keys`. In GitHub → Settings →
+   Secrets → Actions add `VPS_HOST` (`politicalagent.eu`), `VPS_USER` (`deploy`),
+   `VPS_SSH_KEY` (the contents of `vps_deploy`) and `VPS_KNOWN_HOSTS`
+   (`ssh-keyscan -H politicalagent.eu`). Delete the local private key afterwards.
+4. As `deploy`: `docker login ghcr.io -u rafalsliwinski3991` with a classic token that
+   has only `read:packages`.
+5. Write `/srv/geopoliticai/.env` by hand (`chmod 600`), from `.env.example`, with
+   production values: `DJANGO_ALLOWED_HOSTS=politicalagent.eu,www.politicalagent.eu`,
+   `DJANGO_CSRF_TRUSTED_ORIGINS=https://politicalagent.eu,https://www.politicalagent.eu`,
+   `AUTH_USER`, `AUTH_PASSWORD`, and every key the API requires.
+6. Before the first deploy (nginx cannot start without a certificate):
+   `sudo snap install --classic certbot && sudo ln -sf /snap/bin/certbot /usr/bin/certbot`
+   (the snap is certbot's recommended install and has `reconfigure`, added in 2.3.0),
+   then `sudo certbot certonly --standalone -d politicalagent.eu -d www.politicalagent.eu`.
+7. Run the first deploy. Then switch renewals to the nginx webroot, with no downtime:
+   `sudo certbot reconfigure --cert-name politicalagent.eu --webroot -w /var/www/certbot --deploy-hook "docker exec geopoliticai-frontend-1 nginx -s reload"`,
+   and confirm with `sudo certbot renew --dry-run`.
+8. After the first deploy, open github.com → your profile → Packages and confirm the three
+   `geopoliticai-*` packages are **private** and linked to this repository.

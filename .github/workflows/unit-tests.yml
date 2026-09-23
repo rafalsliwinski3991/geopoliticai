@@ -2,6 +2,8 @@ name: Unit Tests
 
 on:
   pull_request:
+  # deploy.yml calls this file so a deploy ships only a commit whose tests pass.
+  workflow_call:
 
 jobs:
   unit-tests:
@@ -167,4 +169,14 @@ jobs:
         # Vitest transpiles without type-checking; `tsc -b && vite build` is
         # what catches type errors the test run would miss.
         run: npm ci && npm test && npm run build
+
+  deploy-scripts:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # shellcheck ships on ubuntu-latest runners.
+      - name: Lint and test the VPS scripts
+        run: shellcheck deploy/*.sh deploy/tests/*.sh && bash deploy/tests/test_vps.sh
 
