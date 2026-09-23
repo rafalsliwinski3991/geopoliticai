@@ -1,10 +1,13 @@
-"""The mandatory schema-drift guard.
+"""The mandatory schema-drift guard on `db/web/sql.py`.
 
-Django owns every table in `public` these statements touch; `agentic_backend/` addresses
-them by name with raw psycopg and runs no migrations of its own. This suite
-executes *every* statement in `db/web/sql.py` against a database migrated by
-Django and set up by the checkpointer, so a renamed or dropped column fails in
-CI instead of in production.
+Django owns every table in `public` these statements touch; `agentic_backend/`
+addresses them by name with raw psycopg and runs no migrations of its own. This
+suite executes *every* statement in `db/web/sql.py` against a database migrated
+by Django and set up by the checkpointer, so a renamed or dropped column fails
+in CI instead of in production. It is one of a symmetric pair: the other side
+is `web_backend/tests/integration_tests/test_db_agentic_schema.py`, which runs
+the statements `web_backend` itself owns against the checkpointer's tables in
+`agentic`.
 
 Requires a real Postgres: `DATABASE_URL` pointing at a database that
 (1) has been migrated by Django (`make migrate-web`) and (2) has the checkpointer
@@ -20,6 +23,7 @@ statements actually match the shape langgraph's writer produces.
 """
 
 import os
+import re
 import time
 from datetime import date, datetime, timezone
 from typing import Any, Generator, cast
@@ -27,6 +31,7 @@ from typing import Any, Generator, cast
 import pytest
 from langgraph.checkpoint.base import CheckpointMetadata
 from langgraph.checkpoint.postgres import PostgresSaver
+from langgraph.checkpoint.postgres.base import MIGRATIONS
 from psycopg import Connection, connect
 from psycopg.rows import dict_row
 
@@ -48,7 +53,18 @@ NO_MATCH_PROBES: tuple[tuple[str, dict[str, Any]], ...] = (
     (sql.SELECT_IS_STAFF, {"user_id": 0}),
 )
 
-CASCADE_TABLES = ("checkpoint_writes", "checkpoint_blobs", "checkpoints")
+# Derived, never copied: the checkpointer tables keyed by thread_id, read out
+# of the DDL langgraph itself ships. A rename or a new thread-keyed table in a
+# version bump changes this automatically, which a typed-out tuple could not.
+# `checkpoint_migrations` has no thread_id and is correctly excluded.
+CASCADE_TABLES = tuple(
+    name
+    for name, body in re.findall(
+        r"CREATE TABLE IF NOT EXISTS (\w+) \((.*?)\);", "\n".join(MIGRATIONS), re.S
+    )
+    if "thread_id" in body
+)
+assert CASCADE_TABLES, "derived no cascade tables — langgraph's DDL shape changed"
 # The DELETE statements `web_backend/chat/signals.py` runs, mirrored here so a
 # rename on either side fails the other side's guard.
 CASCADE_SQL = tuple(
@@ -190,16 +206,44 @@ def test_every_drift_probe_executes(conn: Connection[dict[str, Any]]) -> None:
             cursor.fetchall()
 
 
-def test_every_read_statement_has_a_probe() -> None:
-    """A new SELECT_ in db/sql.py without a probe fails here, not in production."""
-    # Arrange
-    read_statements = {
-        value for name, value in vars(sql).items() if name.startswith("SELECT_")
+SQL_KEYWORDS = ("SELECT", "INSERT", "UPDATE", "DELETE")
+
+# Write statements cannot use a no-match probe: executing a DELETE against
+# nothing proves nothing. Each is named here with the test that exercises it,
+# so the registry is checkable by a reader rather than a bare promise.
+EXERCISED_WRITES = {
+    "UPSERT_THREAD": "test_upsert_thread_creates_once_and_the_owner_is_read_back",
+    "INCREMENT_QUOTA": "test_increment_quota_upserts_increments_and_caps",
+}
+
+
+def _sql_constants() -> dict[str, str]:
+    """Every module-level SQL statement in db/web/sql.py, by name.
+
+    Keyed on content, not on a name prefix: the prefix filter is what let write
+    statements sit outside the guard entirely.
+    """
+    return {
+        name: value
+        for name, value in vars(sql).items()
+        if name.isupper()
+        and isinstance(value, str)
+        and any(keyword in value.upper() for keyword in SQL_KEYWORDS)
     }
+
+
+def test_every_statement_is_covered() -> None:
+    """Any new statement in db/web/sql.py without a test fails here."""
+    # Arrange
+    statements = _sql_constants()
+    assert statements, "no SQL constants found — the detector is broken"
     # Act
     probed = {statement for statement, _ in NO_MATCH_PROBES}
+    covered = {name for name, value in statements.items() if value in probed} | set(
+        EXERCISED_WRITES
+    )
     # Assert
-    assert read_statements == probed
+    assert set(statements) == covered
 
 
 def test_upsert_thread_creates_once_and_the_owner_is_read_back(
@@ -293,6 +337,29 @@ def test_deleting_a_user_cascades_into_the_checkpointer_tables(
                 (thread_id,),
             )
             assert cast(Any, cursor.fetchone())["n"] == 0, table
+
+
+def test_columns_are_wide_enough_for_the_constants_that_assume_them(
+    conn: Connection[dict[str, Any]], user_id: int
+) -> None:
+    """A narrowed Django column fails here, not mid-stream in claim_thread.
+
+    Every other probe uses a short value, so a narrowed column passes all of
+    them. This one writes exactly what the constants promise the columns hold.
+    """
+    # Arrange
+    thread_id = "d" * sql.MAX_THREAD_ID_LENGTH
+    title = "t" * sql.MAX_TITLE_LENGTH
+    # Act
+    make_thread(conn, thread_id, user_id, title)
+    row = fetch_one(
+        conn,
+        "SELECT id, title FROM chat_threads WHERE id = %(id)s",
+        {"id": thread_id},
+    )
+    # Assert: round-tripped intact, not silently truncated.
+    assert row["id"] == thread_id
+    assert row["title"] == title
 
 
 def test_the_site_wide_sentinel_can_be_incremented(
