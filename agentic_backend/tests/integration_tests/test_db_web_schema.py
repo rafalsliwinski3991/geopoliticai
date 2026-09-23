@@ -66,15 +66,16 @@ CASCADE_TABLES = tuple(
 )
 assert CASCADE_TABLES, "derived no cascade tables — langgraph's DDL shape changed"
 # The DELETE statements `web_backend/chat/signals.py` runs, mirrored here so a
-# rename on either side fails the other side's guard.
+# rename on either side fails the other side's guard. Schema-qualified exactly
+# as `purge_statements()` emits them, so they resolve without search_path.
 CASCADE_SQL = tuple(
-    f"DELETE FROM {table} WHERE thread_id = ANY(%s)" for table in CASCADE_TABLES
+    f"DELETE FROM agentic.{table} WHERE thread_id = ANY(%s)" for table in CASCADE_TABLES
 )
 # The orphan-check query `web_backend/chat/management/commands/purge_prelaunch_threads.py`
 # runs verbatim before purging the checkpointer rows.
 ORPHAN_THREAD_SQL = """
 SELECT DISTINCT thread_id
-FROM checkpoints
+FROM agentic.checkpoints
 WHERE thread_id NOT IN (SELECT id FROM chat_threads)
 """
 
@@ -210,7 +211,7 @@ SQL_KEYWORDS = ("SELECT", "INSERT", "UPDATE", "DELETE")
 
 # Write statements cannot use a no-match probe: executing a DELETE against
 # nothing proves nothing. Each is named here with the test that exercises it,
-# so the registry is checkable by a reader rather than a bare promise.
+# and `test_every_statement_is_covered` fails if that test no longer exists.
 EXERCISED_WRITES = {
     "UPSERT_THREAD": "test_upsert_thread_creates_once_and_the_owner_is_read_back",
     "INCREMENT_QUOTA": "test_increment_quota_upserts_increments_and_caps",
@@ -244,6 +245,8 @@ def test_every_statement_is_covered() -> None:
     )
     # Assert
     assert set(statements) == covered
+    # Each registry entry must name a test that exists in this module.
+    assert all(callable(globals().get(test)) for test in EXERCISED_WRITES.values())
 
 
 def test_upsert_thread_creates_once_and_the_owner_is_read_back(
