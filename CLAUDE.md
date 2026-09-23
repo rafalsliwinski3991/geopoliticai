@@ -96,9 +96,10 @@ by bearer JWTs (verified in `auth.py`). The daily research quota is
 `DAILY_RESEARCH_TURNS` in `agentic_backend/src/config.py`, with a site-wide
 ceiling on the same `quota` table behind a reserved sentinel user id; the
 cross-service schema guards run with both integration suites
-(`agentic_backend/tests/integration_tests/test_db_web_schema.py`, and
-`web_backend`'s `make test-web-integration`; the first needs a Django-migrated
-Postgres and skips without `DATABASE_URL`).
+(`agentic_backend/tests/integration_tests/test_db_web_schema.py`, and the
+root `make test-web-integration`; the first needs a Postgres migrated by both
+`make migrate-web` and `make migrate-agentic` and skips without `DATABASE_URL`;
+the second skips when the checkpointer tables are absent).
 
 Run application commands from `agentic_backend/`: `uv sync --locked --dev`, `make test`,
 `make lint`, `make format`, and `langgraph dev`.

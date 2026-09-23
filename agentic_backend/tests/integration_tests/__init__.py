@@ -12,11 +12,11 @@ the checkpointer's tables, or a query whose correctness is a property of the
 database rather than of the code. Everything else belongs in `tests/unit_tests/`,
 which must stay hermetic and fast.
 
-Requires `DATABASE_URL` pointing at a database that Django has migrated
-(`make migrate-web` from the repository root). The checkpointer's own tables are
-created by the tests, idempotently. Without `DATABASE_URL` every test here
-skips, so a green run proves nothing at all — check for the skip count before
-believing one.
+Requires `DATABASE_URL` pointing at a database migrated by both `make migrate-web`
+and `make migrate-agentic` (from the repository root). The checkpointer's own
+tables are created by the tests, idempotently, in the `agentic` schema. Without
+`DATABASE_URL` every test here skips, so a green run proves nothing at all —
+check for the skip count before believing one.
 
     cd agentic_backend && make test-integration
 
