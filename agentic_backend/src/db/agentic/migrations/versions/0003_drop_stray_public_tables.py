@@ -31,11 +31,12 @@ def upgrade() -> None:
     """Drop the public checkpointer tables when they are an empty duplicate."""
     checks = "\n".join(
         f"""
-            IF to_regclass('public.{table}') IS NOT NULL
-               AND EXISTS (SELECT 1 FROM public.{table}) THEN
-                RAISE EXCEPTION
-                    'public.{table} holds rows, so it is not an empty duplicate. '
-                    'Inspect it against agentic.{table} before dropping anything.';
+            IF to_regclass('public.{table}') IS NOT NULL THEN
+                IF EXISTS (SELECT 1 FROM public.{table}) THEN
+                    RAISE EXCEPTION
+                        'public.{table} holds rows, so it is not an empty duplicate. '
+                        'Inspect it against agentic.{table} before dropping anything.';
+                END IF;
             END IF;"""
         for table in DATA_TABLES
     )
