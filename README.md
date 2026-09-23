@@ -116,8 +116,8 @@ configured figures here next to the deploy order.
 The chat SPA's build stage (`npm ci`) reaches a registry at deploy time, which
 today's `COPY index.html` build never did. A registry outage, a yanked
 transitive dependency or a Node EOL bump breaks only that stage — the
-mitigation is not in the Dockerfile: **the previous image stays in the
-registry, and a rollback is a tag change to the last good frontend tag.**
+mitigation is not in the Dockerfile: **every release's `:<sha>` image stays in
+the registry, and `rollback.yml` restarts the last good one.**
 
 ## Production deploy (OVH VPS)
 
@@ -158,3 +158,15 @@ release (`releases.log`, `current`). The last five releases and their snapshots 
    and confirm with `sudo certbot renew --dry-run`.
 8. After the first deploy, open github.com → your profile → Packages and confirm the three
    `geopoliticai-*` packages are **private** and linked to this repository.
+
+### Rolling back
+
+A deploy that fails after its files reach the VPS rolls itself back: it restores that
+deploy's snapshot and restarts the previous release. For a bug found later, run
+Actions → **Rollback** with the `target=` and `confirm=` values printed in the summary
+of the deploy you want to undo. It restores the database to just before that deploy:
+**everything written since is deleted**. Code and data go back together; there are no
+reverse migrations.
+
+Rehearse this once on purpose before real users arrive: deploy a commit whose
+`/api/health` fails and watch the automatic rollback.
