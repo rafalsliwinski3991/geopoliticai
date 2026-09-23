@@ -95,9 +95,10 @@ and fail-closed Basic Auth for `/admin/` only — `/api/*` is guarded
 by bearer JWTs (verified in `auth.py`). The daily research quota is
 `DAILY_RESEARCH_TURNS` in `agentic_backend/src/config.py`, with a site-wide
 ceiling on the same `quota` table behind a reserved sentinel user id; the
-schema-drift guard lives in `agentic_backend/tests/integration_tests/` and
-runs with `make test-integration` (needs Django-migrated Postgres; skips
-without `DATABASE_URL`).
+cross-service schema guards run with both integration suites
+(`agentic_backend/tests/integration_tests/test_db_web_schema.py`, and
+`web_backend`'s `make test-web-integration`; the first needs a Django-migrated
+Postgres and skips without `DATABASE_URL`).
 
 Run application commands from `agentic_backend/`: `uv sync --locked --dev`, `make test`,
 `make lint`, `make format`, and `langgraph dev`.
