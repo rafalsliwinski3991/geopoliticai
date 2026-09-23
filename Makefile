@@ -57,9 +57,11 @@ migrate-web:
 # service host (`@postgres:5432`), which does not resolve from the host —
 # `DJANGO_HOST_ENV` rewrites POSTGRES_HOST/PORT but never DATABASE_URL, and
 # python-dotenv will not override an already-exported value. Build the
-# host-flavoured DSN here, from the same variables settings.py uses.
+# host-flavoured DSN here, from the same variables settings.py uses. The
+# password is percent-encoded: settings.py reads it as a separate field, so it
+# may hold `@`, `:`, `/`, `#` or `%`, which a raw URL would misparse.
 migrate-agentic:
-	$(DJANGO_HOST_ENV) DATABASE_URL="postgresql://$${POSTGRES_USER}:$${POSTGRES_PASSWORD}@$${POSTGRES_HOST}:$${POSTGRES_PORT}/$${POSTGRES_DB}" \
+	$(DJANGO_HOST_ENV) DATABASE_URL="postgresql://$${POSTGRES_USER}:$$(python3 -c 'import os, urllib.parse; print(urllib.parse.quote(os.environ["POSTGRES_PASSWORD"], safe=""))')@$${POSTGRES_HOST}:$${POSTGRES_PORT}/$${POSTGRES_DB}" \
 		uv run --directory agentic_backend alembic upgrade head
 
 createsuperuser:
