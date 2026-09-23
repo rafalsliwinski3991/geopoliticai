@@ -94,10 +94,21 @@ ANSWER_NODES = frozenset({"answer", "chat", "write"})
 # was requested, and the reporter's own revision cap bounds the rounds.
 RESEARCH_DESTINATIONS = frozenset({"geopolitical", "report"})
 
+# The checkpointer names its tables unqualified in both its DDL and its
+# queries, so search_path is the only way to put them anywhere but `public`.
+# `agentic` first means setup() creates there; `public` second means
+# db/web/sql.py still resolves Django's tables. Verified against
+# langgraph-checkpoint-postgres 3.0.5, whose package contains no schema support.
+POSTGRES_SEARCH_PATH = "agentic,public"
 POSTGRES_CONNECTION_KWARGS: dict[str, Any] = {
     "autocommit": True,
     "prepare_threshold": 0,
     "row_factory": dict_row,
+    # Spaced form: libpq documents `options=-c name=value`. The concatenated
+    # `-cname=value` happens to work because the backend arg parser is
+    # getopt-based, but that is incidental, and this setting is the single
+    # lever the whole schema design rests on.
+    "options": f"-c search_path={POSTGRES_SEARCH_PATH}",
 }
 POSTGRES_POOL_MIN_SIZE = 1
 POSTGRES_POOL_MAX_SIZE = 10
@@ -106,6 +117,71 @@ graph: Any = _default_graph
 
 _rate_limit_store: dict[str, deque[float]] = {}
 _rate_limit_lock = Lock()
+
+
+async def _require_migrated_checkpointer_schema(
+    pool: AsyncConnectionPool[AsyncConnection[DictRow]],
+) -> None:
+    """Refuse to start when the checkpointer tables have not been migrated yet.
+
+    This runs BEFORE `setup()`, and the ordering is the entire point.
+    `CREATE TABLE IF NOT EXISTS` resolves to the first schema in `search_path`
+    and checks existence only THERE — it does not check visibility. So calling
+    `setup()` while the tables are still in `public` does not find them: it
+    builds a complete second, empty set in `agentic`, every thread's history
+    becomes invisible to unqualified reads, and
+    `0002_checkpointer_to_agentic` then refuses to move anything because both
+    copies exist. Verified by execution against Postgres 16.
+
+    Checking first costs one query and makes that state unreachable. On a fresh
+    database neither table exists and this passes.
+
+    The same query also requires `current_schema()` to be `agentic`, which is
+    where `setup()`'s unqualified `CREATE TABLE` lands. It is not when the
+    `agentic` schema does not exist yet (Postgres skips missing schemas in
+    `search_path`) or when the pool's `options` do not reach the connection;
+    either way `setup()` would build a fresh set in `public`.
+    """
+    async with pool.connection() as conn:
+        cursor = await conn.execute(
+            "SELECT to_regclass('public.checkpoints') AS stray,"
+            " current_schema() AS target"
+        )
+        row = await cursor.fetchone() or {}
+    if row.get("stray") is not None:
+        raise RuntimeError(
+            "public.checkpoints still exists, so the checkpointer schema has "
+            "not been migrated. Run `make migrate-agentic` BEFORE starting "
+            "this service. Starting first creates an empty second set of "
+            "tables in `agentic` and hides the real history."
+        )
+    if row.get("target") != "agentic":
+        raise RuntimeError(
+            f"setup() would create the checkpointer tables in {row.get('target')!r}, "
+            "not `agentic`: either the schema does not exist yet (run "
+            "`make migrate-agentic`) or the pool's search_path is not reaching "
+            "the connection."
+        )
+
+
+async def _assert_checkpointer_schema(
+    pool: AsyncConnectionPool[AsyncConnection[DictRow]],
+) -> None:
+    """Confirm `setup()` put the tables where `search_path` should have.
+
+    Cheap second assertion. If this fires, the pool's `options` are not
+    reaching the connection.
+    """
+    async with pool.connection() as conn:
+        cursor = await conn.execute(
+            "SELECT to_regclass('agentic.checkpoints') AS expected"
+        )
+        row = await cursor.fetchone() or {}
+    if row.get("expected") is None:
+        raise RuntimeError(
+            "agentic.checkpoints does not exist after setup(): the pool's "
+            "search_path is not reaching the connection."
+        )
 
 
 @asynccontextmanager
@@ -130,7 +206,9 @@ async def lifespan(_app: FastAPI) -> AsyncGenerator[None, None]:
     await pool.open()
     try:
         checkpointer = AsyncPostgresSaver(pool)
+        await _require_migrated_checkpointer_schema(pool)
         await checkpointer.setup()
+        await _assert_checkpointer_schema(pool)
         graph = build_graph(checkpointer=checkpointer)
         # The thread/quota endpoints and the identity dependencies reach the
         # pool the checkpointer already shares; no second pool is opened.

@@ -76,13 +76,25 @@ parts of the schema, but the checkpointer uses `CREATE INDEX CONCURRENTLY`,
 which cannot run inside a transaction — so the order is explicit and not
 incidental:
 
+0. on the deploy that first ships `0002_checkpointer_to_agentic`, stop the
+   running `agentic-backend` first (`docker compose stop agentic-backend`):
+   the old image has no `search_path`, so once the tables move it fails every
+   query, and if it restarts its `setup()` recreates an empty set in `public`
+   that the new image then refuses to boot over
 1. `docker compose run --rm web-backend python manage.py migrate`, then
    `docker compose run --rm web-backend python manage.py createcachetable` —
    the `DatabaseCache` table allauth's rate limiter reads on the first login
    (the root `make migrate-web` target runs both)
-2. `make migrate-agentic` — Alembic creates the `agentic` schema and, once the
-   checkpointer's tables exist in `public`, relocates them into it
-3. start `agentic-backend` (its lifespan runs `checkpointer.setup()`)
+2. `make migrate-agentic` — Alembic creates the `agentic` schema and relocates
+   LangGraph's four checkpointer tables out of `public` into it (guarded both
+   ways: on a fresh database it is all no-ops; when both copies exist it
+   `RAISE`s instead of guessing)
+3. start `agentic-backend` (its lifespan runs `checkpointer.setup()`; a startup
+   assertion first refuses to boot if `public.checkpoints` still exists, with
+   the message: "`public.checkpoints still exists, so the checkpointer schema
+   has not been migrated. Run 'make migrate-agentic' BEFORE starting this
+   service.`" — starting first builds an empty second set of tables in
+   `agentic` and hides the real history)
 4. start `frontend`
 
 Do not add a migrate-on-start hook to the `web-backend` container: two

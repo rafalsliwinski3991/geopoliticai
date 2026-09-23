@@ -94,17 +94,44 @@ def url() -> str:
     return os.environ["DATABASE_URL"]
 
 
+# These fixtures open their own connections and inherit nothing from api.py's
+# pool, so they must set the same search_path or setup() will create a second
+# set of checkpointer tables in `public` and the tripwire will fire on the next
+# real boot.
+SEARCH_PATH_OPTION = "-c search_path=agentic,public"
+
+
 @pytest.fixture(scope="module")
 def conn(url: str) -> Generator[Connection[dict[str, Any]], None, None]:
     """One autocommit connection per module; tests clean up after themselves."""
-    with connect(url, autocommit=True, row_factory=dict_row) as connection:
+    with connect(
+        url, autocommit=True, row_factory=dict_row, options=SEARCH_PATH_OPTION
+    ) as connection:
         yield connection
 
 
 @pytest.fixture(scope="module")
 def checkpointer(url: str) -> Generator[PostgresSaver, None, None]:
-    """The checkpointer's tables, created by its own `setup()` if missing."""
-    with PostgresSaver.from_conn_string(url) as saver:
+    """The checkpointer's tables, created by its own `setup()` if missing.
+
+    Same kwargs `PostgresSaver.from_conn_string` sets
+    (`langgraph/checkpoint/postgres/__init__.py:68-70`). `setup()` does not
+    depend on `row_factory` — every branch of `_cursor()` sets `dict_row`
+    per-cursor — but a fixture standing in for `from_conn_string` should not
+    silently diverge from it, and `prepare_threshold=0` matters.
+    """
+    with connect(
+        url,
+        autocommit=True,
+        prepare_threshold=0,
+        row_factory=dict_row,
+        options=SEARCH_PATH_OPTION,
+    ) as raw:
+        # Without the `agentic` schema, setup() would plant its tables in
+        # `public` and the next real boot of agentic-backend would refuse.
+        row = fetch_one(raw, "SELECT current_schema() AS target")
+        assert row["target"] == "agentic", "run `make migrate-agentic` first"
+        saver = PostgresSaver(raw)
         saver.setup()
         yield saver
 

@@ -1560,3 +1560,139 @@ async def test_a_resume_run_counts_nothing_new(
     assert response.status_code == 200
     assert _events(response.text)[-1]["type"] == "result"
     assert increments == []
+
+
+class _FakeCursor:
+    """One scripted row for one execute call."""
+
+    def __init__(self, row: dict[str, Any] | None) -> None:
+        self._row = row
+
+    async def fetchone(self) -> dict[str, Any] | None:
+        return self._row
+
+
+class _FakeConn:
+    """The single connection the guard helpers ask the pool for."""
+
+    def __init__(self, row: dict[str, Any] | None) -> None:
+        self._row = row
+
+    async def execute(self, statement: str, params: Any = None) -> _FakeCursor:
+        return _FakeCursor(self._row)
+
+    async def __aenter__(self) -> "_FakeConn":
+        return self
+
+    async def __aexit__(self, *args: Any) -> bool:
+        return False
+
+
+class _FakeGuardPool:
+    """Stands in for AsyncConnectionPool where the guards use it."""
+
+    def __init__(self, row: dict[str, Any] | None) -> None:
+        self._row = row
+
+    def connection(self) -> _FakeConn:
+        return _FakeConn(self._row)
+
+    async def open(self) -> None:
+        pass
+
+    async def close(self) -> None:
+        pass
+
+
+@pytest.mark.anyio
+async def test_require_migrated_checkpointer_schema_passes_when_public_is_clean() -> (
+    None
+):
+    # Arrange: a fresh or already-migrated database — no public.checkpoints.
+    pool: Any = _FakeGuardPool({"stray": None, "target": "agentic"})
+    # Act + Assert
+    await api._require_migrated_checkpointer_schema(pool)
+
+
+@pytest.mark.anyio
+async def test_require_migrated_checkpointer_schema_refuses_a_public_target() -> None:
+    # Arrange: no `agentic` schema yet, or search_path never reached the
+    # connection — setup() would build its tables in `public`.
+    pool: Any = _FakeGuardPool({"stray": None, "target": "public"})
+    # Act + Assert
+    with pytest.raises(RuntimeError, match="make migrate-agentic"):
+        await api._require_migrated_checkpointer_schema(pool)
+
+
+@pytest.mark.anyio
+async def test_require_migrated_checkpointer_schema_refuses_a_stray_table() -> None:
+    # Arrange: the pre-migration state — public.checkpoints still exists.
+    pool: Any = _FakeGuardPool({"stray": {"oid": 16384}})
+    # Act + Assert
+    with pytest.raises(RuntimeError, match="make migrate-agentic"):
+        await api._require_migrated_checkpointer_schema(pool)
+
+
+@pytest.mark.anyio
+async def test_assert_checkpointer_schema_passes_when_setup_created_it() -> None:
+    # Arrange: setup() did its job where search_path should have put it.
+    pool: Any = _FakeGuardPool({"expected": {"oid": 16385}})
+    # Act + Assert
+    await api._assert_checkpointer_schema(pool)
+
+
+@pytest.mark.anyio
+async def test_assert_checkpointer_schema_refuses_a_missing_table() -> None:
+    # Arrange: the pool's options did not reach the connection.
+    pool: Any = _FakeGuardPool({"expected": None})
+    # Act + Assert
+    with pytest.raises(RuntimeError, match="search_path"):
+        await api._assert_checkpointer_schema(pool)
+
+
+@pytest.mark.anyio
+async def test_lifespan_checks_the_migration_before_the_checkpointer_setup(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The ordering is the entire safety property: setup() must not run while
+    the checkpointer's tables are still in `public`, or it builds an empty
+    second set. A refactor that reorders these calls silently restores the
+    history-loss bug."""
+    # Arrange
+    calls: list[str] = []
+    monkeypatch.setattr(api, "init_environment", lambda: None)
+    monkeypatch.setattr(api, "init_tracing", lambda: None)
+    monkeypatch.setattr(api, "require_env", lambda: None)
+    monkeypatch.setenv("DATABASE_URL", "postgresql://guard:guard@127.0.0.1:5432/g")
+    pool: Any = _FakeGuardPool({"stray": None})
+
+    async def require(pool_arg: Any) -> None:
+        calls.append("require")
+
+    async def setup() -> None:
+        calls.append("setup")
+
+    async def assert_schema(pool_arg: Any) -> None:
+        calls.append("assert_schema")
+
+    def build_graph(checkpointer: Any) -> Any:
+        calls.append("graph")
+        return object()
+
+    monkeypatch.setattr(api, "AsyncConnectionPool", lambda *a, **k: pool)
+    monkeypatch.setattr(
+        api,
+        "AsyncPostgresSaver",
+        lambda pool_arg: type("S", (), {"setup": staticmethod(setup)})(),
+    )
+    monkeypatch.setattr(api, "_require_migrated_checkpointer_schema", require)
+    monkeypatch.setattr(api, "_assert_checkpointer_schema", assert_schema)
+    monkeypatch.setattr(api, "build_graph", build_graph)
+
+    # Act
+    async with api.lifespan(api.app):
+        pass
+
+    # Assert
+    assert calls.index("require") < calls.index("setup")
+    assert calls.index("setup") < calls.index("assert_schema")
