@@ -127,6 +127,10 @@ def checkpointer(url: str) -> Generator[PostgresSaver, None, None]:
         row_factory=dict_row,
         options=SEARCH_PATH_OPTION,
     ) as raw:
+        # Without the `agentic` schema, setup() would plant its tables in
+        # `public` and the next real boot of agentic-backend would refuse.
+        row = fetch_one(raw, "SELECT current_schema() AS target")
+        assert row["target"] == "agentic", "run `make migrate-agentic` first"
         saver = PostgresSaver(raw)
         saver.setup()
         yield saver

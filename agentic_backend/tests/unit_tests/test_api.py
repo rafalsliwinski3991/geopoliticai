@@ -1609,9 +1609,19 @@ async def test_require_migrated_checkpointer_schema_passes_when_public_is_clean(
     None
 ):
     # Arrange: a fresh or already-migrated database — no public.checkpoints.
-    pool: Any = _FakeGuardPool({"stray": None})
+    pool: Any = _FakeGuardPool({"stray": None, "target": "agentic"})
     # Act + Assert
     await api._require_migrated_checkpointer_schema(pool)
+
+
+@pytest.mark.anyio
+async def test_require_migrated_checkpointer_schema_refuses_a_public_target() -> None:
+    # Arrange: no `agentic` schema yet, or search_path never reached the
+    # connection — setup() would build its tables in `public`.
+    pool: Any = _FakeGuardPool({"stray": None, "target": "public"})
+    # Act + Assert
+    with pytest.raises(RuntimeError, match="make migrate-agentic"):
+        await api._require_migrated_checkpointer_schema(pool)
 
 
 @pytest.mark.anyio

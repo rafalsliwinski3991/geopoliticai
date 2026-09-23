@@ -135,9 +135,18 @@ async def _require_migrated_checkpointer_schema(
 
     Checking first costs one query and makes that state unreachable. On a fresh
     database neither table exists and this passes.
+
+    The same query also requires `current_schema()` to be `agentic`, which is
+    where `setup()`'s unqualified `CREATE TABLE` lands. It is not when the
+    `agentic` schema does not exist yet (Postgres skips missing schemas in
+    `search_path`) or when the pool's `options` do not reach the connection;
+    either way `setup()` would build a fresh set in `public`.
     """
     async with pool.connection() as conn:
-        cursor = await conn.execute("SELECT to_regclass('public.checkpoints') AS stray")
+        cursor = await conn.execute(
+            "SELECT to_regclass('public.checkpoints') AS stray,"
+            " current_schema() AS target"
+        )
         row = await cursor.fetchone() or {}
     if row.get("stray") is not None:
         raise RuntimeError(
@@ -145,6 +154,13 @@ async def _require_migrated_checkpointer_schema(
             "not been migrated. Run `make migrate-agentic` BEFORE starting "
             "this service. Starting first creates an empty second set of "
             "tables in `agentic` and hides the real history."
+        )
+    if row.get("target") != "agentic":
+        raise RuntimeError(
+            f"setup() would create the checkpointer tables in {row.get('target')!r}, "
+            "not `agentic`: either the schema does not exist yet (run "
+            "`make migrate-agentic`) or the pool's search_path is not reaching "
+            "the connection."
         )
 
 

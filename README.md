@@ -76,6 +76,11 @@ parts of the schema, but the checkpointer uses `CREATE INDEX CONCURRENTLY`,
 which cannot run inside a transaction — so the order is explicit and not
 incidental:
 
+0. on the deploy that first ships `0002_checkpointer_to_agentic`, stop the
+   running `agentic-backend` first (`docker compose stop agentic-backend`):
+   the old image has no `search_path`, so once the tables move it fails every
+   query, and if it restarts its `setup()` recreates an empty set in `public`
+   that the new image then refuses to boot over
 1. `docker compose run --rm web-backend python manage.py migrate`, then
    `docker compose run --rm web-backend python manage.py createcachetable` —
    the `DatabaseCache` table allauth's rate limiter reads on the first login
