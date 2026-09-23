@@ -1,12 +1,13 @@
-"""Unit tests for the raw-psycopg db/sql.py module (units 5, 6)."""
+"""Unit tests for the raw-psycopg db/web/sql.py module (units 5, 6)."""
 
 import datetime
+from datetime import datetime as dt
 from typing import Any, cast
 
 import pytest
 
-from db import sql
-from db.sql import (
+from db.web import sql
+from db.web.sql import (
     ThreadRow,
     claim_thread,
     is_staff,
@@ -132,11 +133,21 @@ async def test_owns_thread_reads_the_owner_without_upserting(
 async def test_list_threads_maps_rows_for_the_sidebar(_fake_pool: _FakePool) -> None:
     _fake_pool.conn.scripted_rows = {
         sql.SELECT_THREADS: [
-            {"id": "t1", "title": "NATO", "created_at": "2026-09-18T10:00:00Z"}
+            {
+                "id": "t1",
+                "title": "NATO",
+                "created_at": dt.fromisoformat("2026-09-18T10:00:00Z"),
+            }
         ]
     }
     rows = await list_threads(pool(_fake_pool), user_id=7)
-    assert rows == [ThreadRow(id="t1", title="NATO", created_at="2026-09-18T10:00:00Z")]
+    assert rows == [
+        ThreadRow(
+            id="t1",
+            title="NATO",
+            created_at=dt.fromisoformat("2026-09-18T10:00:00Z"),
+        )
+    ]
 
 
 @pytest.mark.anyio

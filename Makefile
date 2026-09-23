@@ -1,5 +1,5 @@
-.PHONY: up down restart logs services ps config help migrate createsuperuser test-web-backend \
-	sync-copilot inventory link-skills
+.PHONY: up down restart logs services ps config help migrate-web migrate-agentic \
+	createsuperuser test-web-backend test-web-integration sync-copilot inventory link-skills
 
 COMPOSE ?= docker compose
 FRONTEND_PORT ?= 8082
@@ -46,9 +46,23 @@ DJANGO_HOST_ENV = set -a && . ./.env && set +a; \
 	JWT_SIGNING_KEY=$${JWT_SIGNING_KEY:-django-host-dev-only-secret} \
 	DJANGO_SECRET_KEY=$${DJANGO_SECRET_KEY:-django-host-dev-only-secret}
 
-migrate:
+# Two migration systems, and the order is load-bearing: Django owns `public`,
+# Alembic owns `agentic`, and `agentic-backend`'s lifespan runs the
+# checkpointer's setup() only after both have run.
+migrate-web:
 	$(DJANGO_HOST_ENV) uv run --directory web_backend python manage.py migrate
 	$(DJANGO_HOST_ENV) uv run --directory web_backend python manage.py createcachetable
+
+# Alembic's env.py reads DATABASE_URL, and `.env`'s copy names the Compose
+# service host (`@postgres:5432`), which does not resolve from the host —
+# `DJANGO_HOST_ENV` rewrites POSTGRES_HOST/PORT but never DATABASE_URL, and
+# python-dotenv will not override an already-exported value. Build the
+# host-flavoured DSN here, from the same variables settings.py uses. The
+# password is percent-encoded: settings.py reads it as a separate field, so it
+# may hold `@`, `:`, `/`, `#` or `%`, which a raw URL would misparse.
+migrate-agentic:
+	$(DJANGO_HOST_ENV) DATABASE_URL="postgresql://$${POSTGRES_USER}:$$(python3 -c 'import os, urllib.parse; print(urllib.parse.quote(os.environ["POSTGRES_PASSWORD"], safe=""))')@$${POSTGRES_HOST}:$${POSTGRES_PORT}/$${POSTGRES_DB}" \
+		uv run --directory agentic_backend alembic upgrade head
 
 createsuperuser:
 	$(DJANGO_HOST_ENV) uv run --directory web_backend python manage.py createsuperuser
@@ -112,7 +126,8 @@ help:
 		'services  List all Compose services' \
 		'ps        Show container status' \
 		'config    Render the effective Compose configuration' \
-		'migrate   Run Django migrations and create the cache table' \
+		'migrate-web   Run Django migrations and create the cache table (owns `public`)' \
+		'migrate-agentic Run Alembic migrations for the agentic-owned schema (runs after migrate-web)' \
 		'createsuperuser Create a Django admin user' \
 		'sync-copilot Copy .claude/skills into .github/skills (Copilot keeps real copies, not symlinks)' \
 		'inventory Regenerate ai_tools_inventory.md from the harness directories on disk' \

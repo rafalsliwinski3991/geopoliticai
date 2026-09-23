@@ -1,15 +1,15 @@
 """The mandatory schema-drift guard.
 
-Django owns every table these statements touch; `agentic_backend/` addresses
+Django owns every table in `public` these statements touch; `agentic_backend/` addresses
 them by name with raw psycopg and runs no migrations of its own. This suite
-executes *every* statement in `db/sql.py` against a database migrated by
+executes *every* statement in `db/web/sql.py` against a database migrated by
 Django and set up by the checkpointer, so a renamed or dropped column fails in
 CI instead of in production.
 
 Requires a real Postgres: `DATABASE_URL` pointing at a database that
-(1) has been migrated by Django (`make migrate`) and (2) has the checkpointer
+(1) has been migrated by Django (`make migrate-web`) and (2) has the checkpointer
 tables (`AsyncPostgresSaver.setup()` — the tests here run it themselves,
-idempotently). The CI `schema-drift` job encodes that order; without
+idempotently). The CI `cross-service-schema` job encodes that order; without
 `DATABASE_URL` the suite skips so the ordinary unit run stays hermetic.
 
 The deletion cascade is asserted against rows written by langgraph's own
@@ -30,14 +30,14 @@ from langgraph.checkpoint.postgres import PostgresSaver
 from psycopg import Connection, connect
 from psycopg.rows import dict_row
 
-from db import sql
+from db.web import sql
 
 pytestmark = pytest.mark.skipif(
     not os.getenv("DATABASE_URL"),
     reason="needs a real Postgres (make test-integration)",
 )
 
-# Every read statement in `db/sql.py`, with parameters that are valid but match
+# Every read statement in `db/web/sql.py`, with parameters that are valid but match
 # nothing, so executing them against a real database proves the columns exist
 # without depending on any row. Kept in lockstep by
 # `test_every_read_statement_has_a_probe`.
