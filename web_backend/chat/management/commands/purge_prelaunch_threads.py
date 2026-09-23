@@ -12,13 +12,11 @@ only *automatic* claiming was the vulnerability.
 from django.core.management.base import BaseCommand
 from django.db import connection
 
-# Child rows first, for readability rather than integrity — there are no
-# foreign keys between them.
-CHECKPOINT_TABLES = ("checkpoint_writes", "checkpoint_blobs", "checkpoints")
+from chat.signals import CHECKPOINT_TABLES, qualified
 
-ORPHAN_IDS_SQL = """
+ORPHAN_IDS_SQL = f"""
 SELECT DISTINCT thread_id
-FROM checkpoints
+FROM {qualified("checkpoints")}
 WHERE thread_id NOT IN (SELECT id FROM chat_threads)
 """
 
@@ -39,7 +37,8 @@ def orphan_thread_ids() -> list[str] | None:
     """Return orphaned thread ids, or None when the checkpointer tables are missing."""
     with connection.cursor() as cursor:
         if not (
-            _table_exists(cursor, "checkpoints") and _table_exists(cursor, "chat_threads")
+            _table_exists(cursor, qualified("checkpoints"))
+            and _table_exists(cursor, "chat_threads")
         ):
             return None
         cursor.execute(ORPHAN_IDS_SQL)
@@ -55,9 +54,9 @@ def purge_orphans(orphans: list[str]) -> None:
     """
     with connection.cursor() as cursor:
         for table in CHECKPOINT_TABLES:
-            if not _table_exists(cursor, table):
+            if not _table_exists(cursor, qualified(table)):
                 continue
-            cursor.execute(f"DELETE FROM {table} WHERE thread_id = ANY(%s)", [orphans])
+            cursor.execute(f"DELETE FROM {qualified(table)} WHERE thread_id = ANY(%s)", [orphans])
 
 
 class Command(BaseCommand):

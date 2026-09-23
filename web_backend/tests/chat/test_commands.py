@@ -1,4 +1,9 @@
-"""Tests for the pre-launch purge management command (unit 7)."""
+"""Tests for the pre-launch purge management command (unit 7).
+
+The `CREATE TABLE checkpoints` stub below exists only to exercise the
+command's dry-run/apply branching; schema fidelity — the real columns and the
+real schema — is `tests/integration_tests/test_db_agentic_schema.py`'s job.
+"""
 
 from django.db import connection
 from django.test import TransactionTestCase

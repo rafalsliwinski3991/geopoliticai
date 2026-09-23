@@ -76,9 +76,9 @@ jobs:
 
       - name: Run web-backend tests
         working-directory: web_backend
-        run: uv run python manage.py test
+        run: uv run python manage.py test --exclude-tag=integration
 
-  schema-drift:
+  cross-service-schema:
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -124,13 +124,21 @@ jobs:
 
       # The order is the point: Django's migrate runs before the drift suite,
       # whose fixture then runs the checkpointer's idempotent setup() itself.
-      - name: Run the schema-drift suite
+      - name: Run the agentic web-schema suite
         working-directory: agentic_backend
         run: |
           uv sync --locked --dev
           uv run python -m pytest tests/integration_tests/
         env:
           DATABASE_URL: postgresql://drift:testpassword@127.0.0.1:5432/drift_test
+
+      # The web suite's fixtures need the checkpointer tables, which the
+      # agentic suite above just created; it must run after it.
+      - name: Run the web-backend cross-schema suite
+        working-directory: web_backend
+        run: |
+          uv sync --locked --dev
+          uv run python manage.py test tests.integration_tests
 
   spa-tests:
     runs-on: ubuntu-latest
