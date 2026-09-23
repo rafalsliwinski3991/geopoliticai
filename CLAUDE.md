@@ -94,7 +94,7 @@ tests, Studio, and Compose. API startup requires `OPENAI_API_KEY`,
 `BRAVE_SEARCH_KEY`, `DATABASE_URL`, and `JWT_SIGNING_KEY`; tracing is optional, idempotent, and
 unredacted when enabled. Compose has Postgres, agentic-backend, web-backend, frontend, and Phoenix;
 development ports are 8082, 8083, 3001, 55432, and loopback 6006. Production uses TLS
-and fail-closed Basic Auth for `/admin/` only — `/api/*` is guarded
+and fail-closed Basic Auth for `/admin/` and `/phoenix/` — `/api/*` is guarded
 by bearer JWTs (verified in `auth.py`). Production deploys only through the
 dispatch-only `deploy.yml`, from `main`. It runs `unit-tests.yml` (via
 `workflow_call`), pushes the three images to GHCR as `:<sha>` and `:latest`, and

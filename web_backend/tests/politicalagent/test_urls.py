@@ -112,9 +112,9 @@ class NginxAdminGuardTest(TestCase):
             locations[name.strip().split()[0]] = body.split("}")[0]
         return locations
 
-    def test_auth_snippet_guards_only_the_admin_surface(self) -> None:
+    def test_auth_snippet_guards_the_admin_and_phoenix_surfaces(self) -> None:
         for name, body in self.locations().items():
-            if name == "/admin/":
+            if name in ("/admin/", "/phoenix/"):
                 self.assertIn("auth_snippet.conf", body)
             else:
                 self.assertNotIn("auth_snippet.conf", body)
