@@ -183,7 +183,7 @@ jobs:
       # the ruff that lints deploy/vps.py, floating like shellcheck:stable.
       - name: Lint and test the VPS scripts
         run: |
-          shellcheck deploy/tests/*.sh
+          shellcheck deploy/*.sh deploy/tests/*.sh
           uvx ruff check deploy/vps.py
           bash deploy/tests/test_vps.sh
 

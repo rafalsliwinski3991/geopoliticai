@@ -63,7 +63,7 @@ jobs:
         id: ship
         run: |
           ssh "$SSH_TARGET" "mkdir -p $RELEASE"
-          scp docker-compose.yml docker-compose.prod.yml deploy/vps.py "$SSH_TARGET:$RELEASE/"
+          scp docker-compose.yml docker-compose.prod.yml deploy/vps.py deploy/backup.sh "$SSH_TARGET:$RELEASE/"
 
       - name: Snapshot, migrate and start
         id: deploy
