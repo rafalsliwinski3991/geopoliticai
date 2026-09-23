@@ -8,6 +8,8 @@ urlpatterns = [
     path("", include("pages.urls")),
     # Unit 12: the public notes section under its own app.
     path("blog/", include("blog.urls")),
+    # This route must precede the admin's permissive model/object URL patterns.
+    path("admin/checkpointer/", include("checkpointer.urls")),
     path("admin/", admin.site.urls),
     # Listed first so `token/` is matched before allauth's catch-all patterns.
     path("accounts/", include("accounts_api.urls")),

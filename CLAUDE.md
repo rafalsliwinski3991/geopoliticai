@@ -28,7 +28,10 @@ application table in `public`; LangGraph's checkpointer tables live in the
 Django. The checkpointer reaches them through the pool's `search_path`
 (`agentic,public`), and a startup assertion fails the service if they are not
 there. `agentic_backend/` reads Django's tables only through
-`web_backend`-migrated schema.
+`web_backend`-migrated schema. `web_backend`'s `checkpointer` app browses those
+four tables with staff-only, read-only raw-SQL admin pages — it defines no
+Django models and issues no writes; the only SQL that deletes from them stays
+in `chat`.
 
 Agents live in `agentic_backend/src/agents/<name>/` with graph, state, config, prompts,
 `consts/`, and node modules. Put fixed editorial data in `consts/`, prompts in
@@ -95,9 +98,11 @@ and fail-closed Basic Auth for `/admin/` only — `/api/*` is guarded
 by bearer JWTs (verified in `auth.py`). The daily research quota is
 `DAILY_RESEARCH_TURNS` in `agentic_backend/src/config.py`, with a site-wide
 ceiling on the same `quota` table behind a reserved sentinel user id; the
-schema-drift guard lives in `agentic_backend/tests/integration_tests/` and
-runs with `make test-integration` (needs Django-migrated Postgres; skips
-without `DATABASE_URL`).
+cross-service schema guards run with both integration suites
+(`agentic_backend/tests/integration_tests/test_db_web_schema.py`, and the
+root `make test-web-integration`; the first needs a Postgres migrated by both
+`make migrate-web` and `make migrate-agentic` and fails without `DATABASE_URL`;
+the second skips when the checkpointer tables are absent).
 
 Run application commands from `agentic_backend/`: `uv sync --locked --dev`, `make test`,
 `make lint`, `make format`, and `langgraph dev`.

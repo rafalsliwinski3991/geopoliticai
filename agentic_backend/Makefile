@@ -6,9 +6,10 @@ all: help
 # Define a variable for the test file path.
 TEST_FILE ?= tests/unit_tests/
 
-# Needs a real Postgres that Django has migrated (`make migrate-web` at the
-# root) and that the checkpointer has set up; the test skips itself without
-# DATABASE_URL. CI's cross-service-schema job encodes that order.
+# Needs a real Postgres migrated by both `make migrate-web` and
+# `make migrate-agentic` at the root; the tests run the checkpointer's setup()
+# themselves and fail without DATABASE_URL. CI's cross-service-schema job
+# encodes that order.
 test-integration:
 	python -m pytest tests/integration_tests/
 

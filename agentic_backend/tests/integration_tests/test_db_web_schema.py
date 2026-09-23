@@ -13,7 +13,7 @@ Requires a real Postgres: `DATABASE_URL` pointing at a database that
 (1) has been migrated by Django (`make migrate-web`) and (2) has the checkpointer
 tables (`AsyncPostgresSaver.setup()` — the tests here run it themselves,
 idempotently). The CI `cross-service-schema` job encodes that order; without
-`DATABASE_URL` the suite skips so the ordinary unit run stays hermetic.
+`DATABASE_URL` the suite fails; the ordinary unit run never collects it.
 
 The deletion cascade is asserted against rows written by langgraph's own
 `PostgresSaver`, using the exact DELETE statements the Django signal
@@ -37,10 +37,10 @@ from psycopg.rows import dict_row
 
 from db.web import sql
 
-pytestmark = pytest.mark.skipif(
-    not os.getenv("DATABASE_URL"),
-    reason="needs a real Postgres (make test-integration)",
-)
+# Fail, never skip: a skipped guard is a green CI job that tested nothing. The
+# plain `pytest` run stays hermetic because `testpaths` excludes this suite.
+if not os.getenv("DATABASE_URL"):
+    raise RuntimeError("DATABASE_URL must be set for integration tests")
 
 # Every read statement in `db/web/sql.py`, with parameters that are valid but match
 # nothing, so executing them against a real database proves the columns exist
