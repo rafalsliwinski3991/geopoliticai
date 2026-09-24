@@ -1,0 +1,14 @@
+{% autoescape off %}# PoliticalAgent
+
+> PoliticalAgent is an English-language AI research assistant for geopolitical questions. It searches a fixed list of {{ total_domains }} news publications and policy institutes, reads the pages it finds, and answers only from that text, linking every source. When search or reading fails, it returns an error instead of guessing.
+
+## Pages
+
+- [Home]({{ SITE_ORIGIN }}/): how it works, the full source list, and its limits
+- [Blog]({{ SITE_ORIGIN }}/blog/): AI-generated analysis of geopolitics, with every claim linked to a source
+
+## Blog posts
+{% for post in posts %}
+- [{{ post.title }}]({{ SITE_ORIGIN }}{{ post.get_absolute_url }}): {{ post.description }}{% empty %}
+- No posts yet.{% endfor %}
+{% endautoescape %}

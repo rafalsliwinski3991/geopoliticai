@@ -1,0 +1,8 @@
+User-agent: *
+Allow: /
+Disallow: /admin/
+Disallow: /accounts/
+Disallow: /api/
+Disallow: /phoenix/
+
+Sitemap: {{ SITE_ORIGIN }}/sitemap.xml
