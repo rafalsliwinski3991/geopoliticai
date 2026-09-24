@@ -1,4 +1,9 @@
 {
+  "permissions": {
+    "allow": [
+      "mcp__context7__query-docs"
+    ]
+  },
   "enableAllProjectMcpServers": true,
   "enabledMcpjsonServers": [],
   "skillOverrides": {
@@ -14,11 +19,7 @@
     "ponytail@ponytail": true,
     "opencode@tasict-opencode-plugin-cc": true,
     "frontend-design@claude-plugins-official": true,
-    "claude-mem-cowork@thedotmack": true
-  },
-  "permissions": {
-    "allow": [
-      "mcp__context7__query-docs"
-    ]
+    "claude-mem-cowork@thedotmack": true,
+    "claude-seo@agricidaniel-claude-seo": true
   }
 }
