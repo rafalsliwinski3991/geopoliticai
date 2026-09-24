@@ -16,3 +16,4 @@ docs/brainstorming/
 docs/audits/
 node_modules/
 
+deploy/tests/certs/

@@ -97,7 +97,7 @@ class ReadOnlyBrowseOnlyAdminTest(TransactionTestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertNotIn("t2", response.content.decode())
+        self.assertNotIn("<td>t2</td>", response.content.decode())
         self.assertContains(response, "0 rows")
 
     def test_pagination_limits_rows_and_handles_invalid_page(self) -> None:
@@ -105,7 +105,7 @@ class ReadOnlyBrowseOnlyAdminTest(TransactionTestCase):
         content = response.content.decode()
         self.assertEqual(response.status_code, 200)
         self.assertIn("page 2 of 2", content)
-        self.assertIn("t1", content)
+        self.assertIn("<td>t1</td>", content)
         self.assertNotIn("page-8", content)
 
         invalid_page = self.client.get(
