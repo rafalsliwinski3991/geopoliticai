@@ -79,3 +79,22 @@ jobs:
 
       - name: Record release
         run: ssh "$SSH_TARGET" "python3 $RELEASE/vps.py finish $SHA" | tee -a "$GITHUB_STEP_SUMMARY"
+
+      # Only a deploy or public health check that did not finish green
+      # triggers a restore; a failure while recording the release (finish)
+      # never destroys a deploy that already passed its checks. cancelled()
+      # matters as much as failure(): a run cancelled or timed out mid-migrate
+      # leaves the old containers on a partly migrated schema, and abort is
+      # what restores its snapshot. The run stays red either way.
+      - name: Roll back
+        if: >-
+          ${{
+            (failure() || cancelled()) &&
+            (
+              steps.deploy.outcome == 'failure' ||
+              steps.deploy.outcome == 'cancelled' ||
+              steps.health.outcome == 'failure' ||
+              steps.health.outcome == 'cancelled'
+            )
+          }}
+        run: ssh "$SSH_TARGET" "python3 $RELEASE/vps.py abort $SHA"

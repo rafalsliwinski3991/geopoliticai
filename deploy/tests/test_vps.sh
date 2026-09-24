@@ -12,8 +12,11 @@ mkdir -p "$VPS_ROOT" "$T/bin"
 cat > "$T/bin/docker" <<'EOF'
 #!/usr/bin/env bash
 echo "IMAGE_TAG=${IMAGE_TAG:-} $*" >> "$DOCKER_LOG"
+# Only the snapshot load and the S3 upload read stdin; `psql -c` calls do not.
+if [[ ( "$*" == *psql* && "$*" != *" -c "* ) || "$*" == *"s3 cp"* ]]; then cat > /dev/null; fi
 if [ -n "${FAIL_ON:-}" ] && [[ "$*" == *"$FAIL_ON"* ]]; then exit 1; fi
 if [[ "$*" == *pg_dump* ]]; then echo "-- dump"; fi
+if [[ "$*" == *pg_sequences* ]]; then echo 7; fi
 if [[ "$*" == *"images --format"* ]]; then
   printf '%s\n' \
     "ghcr.io/rafalsliwinski3991/geopoliticai-frontend:$(printf '%040d' 0)" \
@@ -54,5 +57,41 @@ ship "$(sha 7)"
 if FAIL_ON=pg_dump run deploy "$(sha 7)"; then fail "deploy should fail on a failed pg_dump"; fi
 [ "$(find "$VPS_BACKUPS" -name 'pre-*' | wc -l)" -eq 5 ] || fail "a failed pg_dump left a snapshot"
 [ ! -e "$VPS_ROOT/releases/$(sha 7)/.snapshot" ] || fail "marker written for a failed dump"
+
+# A failed migration: abort restores the snapshot and restarts release 6.
+: > "$DOCKER_LOG"
+ship "$(sha 7)"
+if FAIL_ON="alembic upgrade" run deploy "$(sha 7)"; then fail "deploy should fail"; fi
+run abort "$(sha 7)"
+grep -q 'RENAME TO geopoliticai_failed' "$DOCKER_LOG" || fail "abort did not restore the snapshot"
+grep -q "IMAGE_TAG=$(sha 6) .* up -d --no-build --wait" "$DOCKER_LOG" || fail "release 6 not restarted"
+setval="setval(pg_get_serial_sequence('users_user', 'id'), 7)"
+grep -qF "$setval" "$DOCKER_LOG" || fail "users id sequence not moved past the replaced database"
+[ "$(tail -n 1 "$VPS_ROOT/releases.log")" = "$(sha 6)" ] || fail "failed release was recorded"
+
+# A failure before the snapshot: abort must not restore anything.
+: > "$DOCKER_LOG"
+ship "$(sha 8)"
+if FAIL_ON=" pull" run deploy "$(sha 8)"; then fail "deploy should fail"; fi
+run abort "$(sha 8)"
+if grep -q 'RENAME TO geopoliticai_failed' "$DOCKER_LOG"; then fail "restored without a fresh snapshot"; fi
+
+# Manual rollback: a wrong confirmation changes nothing; the right one goes back.
+: > "$DOCKER_LOG"
+if run rollback "$(sha 5)" delete-data-since-19700101T0000Z 2>/dev/null; then fail "accepted a wrong confirmation"; fi
+if grep -q 'RENAME TO geopoliticai_failed' "$DOCKER_LOG"; then fail "restored on a wrong confirmation"; fi
+confirm=$(grep -o 'delete-data-since-[0-9TZ]*' "$T/summary")
+run rollback "$(sha 5)" "$confirm"
+grep -q 'RENAME TO geopoliticai_failed' "$DOCKER_LOG" || fail "rollback did not restore"
+[ "$(tail -n 1 "$VPS_ROOT/releases.log")" = "$(sha 5)" ] || fail "releases.log not cut back to 5"
+[ "$(readlink "$VPS_ROOT/current")" = "$VPS_ROOT/releases/$(sha 5)" ] || fail "current is not release 5"
+
+# A corrupt snapshot is rejected before anything is touched: no rename, no
+# restart, releases.log and current unchanged.
+: > "$DOCKER_LOG"
+truncate -s 1 "$VPS_BACKUPS"/pre-"$(sha 5)"-*.sql.gz
+if run rollback "$(sha 4)" "$confirm" 2>/dev/null; then fail "accepted a corrupt snapshot"; fi
+if grep -q 'RENAME TO geopoliticai_failed' "$DOCKER_LOG"; then fail "touched the databases over a corrupt snapshot"; fi
+[ "$(readlink "$VPS_ROOT/current")" = "$VPS_ROOT/releases/$(sha 5)" ] || fail "current moved on a corrupt snapshot"
 
 echo "deploy script tests passed"
