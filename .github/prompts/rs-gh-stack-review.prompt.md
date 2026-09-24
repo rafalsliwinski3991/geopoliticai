@@ -2,7 +2,7 @@
 name: rs-gh-stack-review
 description: "Review every pull request in a gh-stack chain layer by layer and post findings as inline PR line comments"
 agent: agent
-tools: ["execute", "read", "search"]
+tools: ["context7/*", "execute", "read", "search"]
 ---
 > **Harness note.** This workflow was written for Claude Code, which can spawn
 > the named read-only lens subagents of `rs-code-review` (`correctness-lens`,
