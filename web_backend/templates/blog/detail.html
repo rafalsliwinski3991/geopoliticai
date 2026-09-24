@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% load static blog_tags %}
 
-{% block title %}{{ post.title }} — Notes — PoliticalAgent{% endblock %}
+{% block title %}{{ post.title }} — PoliticalAgent Blog{% endblock %}
 
 {% block head %}
 <link rel="stylesheet" href="{% static 'site/blog.css' %}">
@@ -11,8 +11,14 @@
   <article class="archive">
     <p class="post-date">{{ post.published_at|date:"j F Y" }} · {{ post.kicker }}</p>
     <h1>{{ post.title }}</h1>
+    {# EU AI Act Art. 50(4): disclosure at first exposure, directly under the headline. #}
+    <p class="ai-label">AI-generated text</p>
+    <p class="byline">PoliticalAgent editorial</p>
     {# The body is author-only Markdown rendered by `render_markdown` (blog_tags). #}
     <div class="post-body">{{ post.body|render_markdown }}</div>
+    <aside class="ask">
+      <p>Have a follow-up question? <a href="/chat">Ask PoliticalAgent</a>. It answers from a fixed list of named newsrooms and institutes and links every source it read.</p>
+    </aside>
   </article>
-  <p class="lead-meta"><a href="{% url 'blog:index' %}">← All notes</a></p>
+  <p class="lead-meta"><a href="{% url 'blog:index' %}">← All posts</a></p>
 {% endblock %}

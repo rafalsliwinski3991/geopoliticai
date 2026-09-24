@@ -8,8 +8,13 @@ second one, the model above must grow a sanitizing filter (plan §3 unit 12).
 
 from __future__ import annotations
 
+import html
+import markdown
+
 from django.db import models
 from django.utils import timezone
+from django.utils.html import strip_tags
+from django.utils.text import Truncator
 
 
 class PostQuerySet(models.QuerySet):
@@ -40,3 +45,10 @@ class Post(models.Model):
 
     def __str__(self) -> str:
         return self.title
+
+    def description(self) -> str:
+        """The summary, or the body's first 30 words as plain text."""
+        if self.summary:
+            return self.summary
+        # Markdown emits entities (`&amp;`); unescape so templates escape once.
+        return Truncator(html.unescape(strip_tags(markdown.markdown(self.body)))).words(30)
