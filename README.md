@@ -71,7 +71,7 @@ each other's code.
 
 ## Deploy order (three migration systems share one database)
 
-Production runs these steps automatically, in this order, in `deploy/vps.sh deploy`
+Production runs these steps automatically, in this order, in `deploy/vps.py deploy`
 (called by `.github/workflows/deploy.yml`); the list below is why the order matters
 and what to run by hand in development.
 
@@ -123,8 +123,8 @@ registry, and a rollback is a tag change to the last good frontend tag.**
 
 Deploys are manual: Actions → **Deploy** → Run workflow on `main`. The workflow runs
 every test job, pushes `ghcr.io/rafalsliwinski3991/geopoliticai-<service>:<sha>` and
-`:latest`, copies the compose files and `deploy/*.sh` into
-`/srv/geopoliticai/releases/<sha>/`, and runs `deploy/vps.sh deploy`: `pg_dump` to
+`:latest`, copies the compose files and `deploy/vps.py` into
+`/srv/geopoliticai/releases/<sha>/`, and runs `deploy/vps.py deploy`: `pg_dump` to
 `/srv/backups/pre-<sha>-<UTC>.sql.gz`, Django `migrate` + `createcachetable`, Alembic,
 `up --wait`; then it curls `https://politicalagent.eu/api/health` and records the
 release (`releases.log`, `current`). The last five releases and their snapshots are kept.
@@ -132,7 +132,9 @@ release (`releases.log`, `current`). The last five releases and their snapshots 
 ### One-time VPS bootstrap (manual, in this order)
 
 1. Install Docker Engine and the Compose plugin
-   (https://docs.docker.com/engine/install/ubuntu/).
+   (https://docs.docker.com/engine/install/ubuntu/); the deploy script runs on
+   the VPS's preinstalled `python3` — 3.9 or newer (the script uses
+   `list[str]` annotations and `str.removesuffix`).
 2. `sudo adduser --disabled-password --gecos '' deploy && sudo usermod -aG docker deploy`;
    `sudo install -d -o deploy -g deploy /srv/geopoliticai /srv/backups`;
    `sudo install -d /var/www/certbot`.

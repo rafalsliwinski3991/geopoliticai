@@ -176,7 +176,14 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # shellcheck ships on ubuntu-latest runners.
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v3
+
+      # shellcheck (preinstalled on the runner) guards the .sh files; uvx runs
+      # the ruff that lints deploy/vps.py, floating like shellcheck:stable.
       - name: Lint and test the VPS scripts
-        run: shellcheck deploy/*.sh deploy/tests/*.sh && bash deploy/tests/test_vps.sh
+        run: |
+          shellcheck deploy/tests/*.sh
+          uvx ruff check deploy/vps.py
+          bash deploy/tests/test_vps.sh
 

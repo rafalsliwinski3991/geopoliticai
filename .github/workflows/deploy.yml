@@ -17,6 +17,10 @@ jobs:
   deploy:
     needs: tests
     runs-on: ubuntu-latest
+    # The environment (not the YAML below) enforces main-only deploys: its
+    # deployment branches rule is main, and the VPS_* secrets live there.
+    environment: production
+    timeout-minutes: 30
     permissions:
       contents: read
       packages: write
@@ -35,6 +39,10 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          # Compose validates env_file: .env while loading the project, and
+          # the runner has none (it is gitignored); an empty placeholder only
+          # satisfies that check, real values are only needed at runtime.
+          test -f .env || touch .env
           echo "$GITHUB_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
           for tag in "$SHA" latest; do
             IMAGE_TAG=$tag docker compose -f docker-compose.yml build agentic-backend web-backend frontend
@@ -55,11 +63,11 @@ jobs:
         id: ship
         run: |
           ssh "$SSH_TARGET" "mkdir -p $RELEASE"
-          scp docker-compose.yml docker-compose.prod.yml deploy/vps.sh "$SSH_TARGET:$RELEASE/"
+          scp docker-compose.yml docker-compose.prod.yml deploy/vps.py "$SSH_TARGET:$RELEASE/"
 
       - name: Snapshot, migrate and start
         id: deploy
-        run: ssh "$SSH_TARGET" "bash $RELEASE/vps.sh deploy $SHA"
+        run: ssh "$SSH_TARGET" "python3 $RELEASE/vps.py deploy $SHA"
 
       # /api/health is static (api.py), so also fetch Django's landing page:
       # a broken Django migration shows up there, not in the agentic check.
@@ -70,4 +78,4 @@ jobs:
           curl -fsS --retry 10 --retry-delay 6 --retry-all-errors -o /dev/null https://politicalagent.eu/
 
       - name: Record release
-        run: ssh "$SSH_TARGET" "bash $RELEASE/vps.sh finish $SHA" | tee -a "$GITHUB_STEP_SUMMARY"
+        run: ssh "$SSH_TARGET" "python3 $RELEASE/vps.py finish $SHA" | tee -a "$GITHUB_STEP_SUMMARY"

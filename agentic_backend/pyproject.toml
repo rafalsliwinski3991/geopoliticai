@@ -32,7 +32,7 @@ dependencies = [
     "pyjwt>=2.12,<3.0",
     # Alembic manages only the `agentic` schema this service owns; Django owns
     # `public`. A runtime dependency because production runs
-    # `alembic upgrade head` inside this image (deploy/vps.sh); development
+    # `alembic upgrade head` inside this image (deploy/vps.py); development
     # still runs it from the host (`make migrate-agentic`).
     "alembic>=1.14,<2.0",
 ]

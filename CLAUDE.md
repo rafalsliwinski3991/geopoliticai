@@ -98,11 +98,12 @@ and fail-closed Basic Auth for `/admin/` only — `/api/*` is guarded
 by bearer JWTs (verified in `auth.py`). Production deploys only through the
 dispatch-only `deploy.yml`, from `main`. It runs `unit-tests.yml` (via
 `workflow_call`), pushes the three images to GHCR as `:<sha>` and `:latest`, and
-runs `deploy/vps.sh` on the VPS: a pre-deploy `pg_dump`, Django then Alembic
+runs `deploy/vps.py` on the VPS: a pre-deploy `pg_dump`, Django then Alembic
 migrations inside the containers, and `up --wait`, followed by a public
 `/api/health` check. `docker-compose.yml` pins `name: geopoliticai`, and each
 app service carries both `build:` (dev) and `image:` (prod pulls, never
-builds). Test the scripts with `bash deploy/tests/test_vps.sh`. The daily research quota is
+builds). Test the scripts with `bash deploy/tests/test_vps.sh`; ruff checks
+`deploy/vps.py`. The daily research quota is
 `DAILY_RESEARCH_TURNS` in `agentic_backend/src/config.py`, with a site-wide
 ceiling on the same `quota` table behind a reserved sentinel user id; the
 cross-service schema guards run with both integration suites
