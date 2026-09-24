@@ -102,10 +102,10 @@ runs `deploy/vps.py` on the VPS: a pre-deploy `pg_dump`, Django then Alembic
 migrations inside the containers, and `up --wait`, followed by a public
 `/api/health` check. `docker-compose.yml` pins `name: geopoliticai`, and each
 app service carries both `build:` (dev) and `image:` (prod pulls, never
-builds). Test the scripts with `bash deploy/tests/test_vps.sh`; ruff checks
-`deploy/vps.py`. A failed deploy restores its snapshot and restarts the
+builds). Test the script with `uvx pytest deploy/tests`; ruff checks
+`deploy/`. A failed deploy restores its snapshot and restarts the
 previous release. `rollback.yml` restores an earlier release together with the
-matching snapshot. `deploy/backup.sh` uploads a nightly dump off-site. Its
+matching snapshot. `vps.py backup` uploads a nightly dump off-site. Its
 credentials live in the VPS's `backup.env`, never in `.env`. The daily research quota is
 `DAILY_RESEARCH_TURNS` in `agentic_backend/src/config.py`, with a site-wide
 ceiling on the same `quota` table behind a reserved sentinel user id; the

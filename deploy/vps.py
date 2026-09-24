@@ -12,6 +12,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -20,6 +21,18 @@ BACKUPS = Path(os.environ.get("VPS_BACKUPS", "/srv/backups"))
 LOG = ROOT / "releases.log"
 KEEP = 5
 SHA_RE = re.compile(r"^[0-9a-f]{40}$")
+# The nightly off-site copy. The bucket's 14-day lifecycle rule (README
+# runbook) deletes old copies; backup() only uploads. aws-cli is pinned by
+# digest to 2.22.35, the newest version OVH lists as compatible: later
+# versions send checksum headers OVH Object Storage rejects
+# (ovh/public-cloud-roadmap#781).
+BUCKET = "dramatic-wieman"
+S3_ENDPOINT = "https://s3.eu-west-par.io.cloud.ovh.net"
+S3_REGION = "eu-west-par"
+AWS_CLI = (
+    "amazon/aws-cli:2.22.35"
+    "@sha256:6977c83ae3dc99f28fcf8276b9ea5eec33833cd5be40574b34112e98113ec7a2"
+)
 
 # enter() pins the release directory and image tag for every later compose
 # call, the way the bash original's `cd` and `export IMAGE_TAG` did.
@@ -129,10 +142,37 @@ def prune() -> None:
             subprocess.run(["docker", "image", "rm", image], check=False)
 
 
+# Stream pg_dump through gzip instead of buffering the whole dump in memory.
+# A dump that dies partway through would still gzip into a valid-looking
+# file, so a failed dump leaves no file behind to be trusted.
+def dump(path: Path) -> None:
+    proc = compose_popen(
+        "exec",
+        "-T",
+        "postgres",
+        "pg_dump",
+        "-U",
+        "geopoliticai",
+        "geopoliticai",
+        stdout=subprocess.PIPE,
+    )
+    stdout = proc.stdout
+    try:
+        assert stdout is not None
+        with gzip.open(path, "wb") as zipped:
+            shutil.copyfileobj(stdout, zipped)
+    finally:
+        if stdout is not None:
+            stdout.close()
+    if proc.wait() != 0:
+        path.unlink(missing_ok=True)
+        raise subprocess.CalledProcessError(proc.returncode, proc.args)
+
+
 # Snapshot, migrate in README order, start. The old app containers keep
 # serving until the final `up` (`run agentic-backend` does start the new
 # phoenix early, through depends_on); a failure leaves them running for
-# `abort`. The old `agentic-backend` is stopped before Alembic: on the
+# `discard`. The old `agentic-backend` is stopped before Alembic: on the
 # 0002_checkpointer_to_agentic cutover its image has no search_path and, if
 # it restarts, its setup() recreates an empty `public` copy of the
 # checkpointer tables the new image then refuses to boot over.
@@ -155,29 +195,7 @@ def deploy(sha: str) -> None:
     BACKUPS.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%MZ")
     snapshot = BACKUPS / f"pre-{sha}-{stamp}.sql.gz"
-    # Stream pg_dump through gzip instead of buffering the whole dump in
-    # memory; a failed dump leaves no snapshot file behind to be trusted.
-    dump = compose_popen(
-        "exec",
-        "-T",
-        "postgres",
-        "pg_dump",
-        "-U",
-        "geopoliticai",
-        "geopoliticai",
-        stdout=subprocess.PIPE,
-    )
-    stdout = dump.stdout
-    try:
-        assert stdout is not None
-        with gzip.open(snapshot, "wb") as zipped:
-            shutil.copyfileobj(stdout, zipped)
-    finally:
-        if stdout is not None:
-            stdout.close()
-    if dump.wait() != 0:
-        snapshot.unlink(missing_ok=True)
-        raise subprocess.CalledProcessError(dump.returncode, dump.args)
+    dump(snapshot)
     (release / ".snapshot").write_text(str(snapshot))
     compose(
         "run",
@@ -385,11 +403,11 @@ def restart(sha: str) -> None:
     compose("up", "-d", "--no-build", "--wait", "--remove-orphans", check=False)
 
 
-# Undo a failed deploy: restore its snapshot, restart the previous release.
+# Discard an unrecorded deploy: restore its snapshot, restart the previous release.
 # The restore stops the app containers partway through, so a failure inside
 # it must not leave the site down: the release that was serving is restarted
 # best-effort before the error propagates.
-def abort(sha: str) -> None:
+def discard(sha: str) -> None:
     if sha in log_lines():
         print(f"{sha} is already recorded; use the rollback workflow", file=sys.stderr)
         raise SystemExit(2)
@@ -454,12 +472,48 @@ def rollback(target: str, confirm: str) -> None:
         raise
 
 
+# Nightly off-site copy of the production database, run by the deploy user's
+# crontab against $ROOT/current. The dump lands in a local file first and
+# is mounted into the aws-cli container, so only a complete dump is uploaded.
+def backup() -> None:
+    _state["cwd"] = ROOT / "current"
+    fd, name = tempfile.mkstemp(prefix="nightly-", suffix=".sql.gz")
+    os.close(fd)
+    local = Path(name)
+    try:
+        dump(local)
+        stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%MZ")
+        subprocess.run(
+            [
+                "docker",
+                "run",
+                "--rm",
+                "--env-file",
+                str(ROOT / "backup.env"),
+                "-v",
+                f"{local}:/dump.sql.gz:ro",
+                AWS_CLI,
+                "s3",
+                "cp",
+                "/dump.sql.gz",
+                f"s3://{BUCKET}/nightly/{stamp}.sql.gz",
+                "--endpoint-url",
+                S3_ENDPOINT,
+                "--region",
+                S3_REGION,
+            ],
+            check=True,
+        )
+    finally:
+        local.unlink(missing_ok=True)
+
+
 def main(argv: list[str]) -> int:
     """Dispatch one command; anything else prints usage and exits 2."""
     # Snapshots and logs may hold every user row; nothing this script writes
     # is world-readable.
     os.umask(0o077)
-    commands = {"deploy": deploy, "finish": finish, "abort": abort}
+    commands = {"deploy": deploy, "finish": finish, "discard": discard}
     command = argv[1] if len(argv) > 1 else ""
     name = Path(argv[0]).name
     if command in commands:
@@ -469,11 +523,15 @@ def main(argv: list[str]) -> int:
             return 2
         commands[command](sha)
         return 0
+    if command == "backup":
+        backup()
+        return 0
     if command == "rollback":
         rollback(argv[2] if len(argv) > 2 else "", argv[3] if len(argv) > 3 else "")
         return 0
     print(
-        f"usage: {name} deploy|finish|abort <sha> | rollback <sha> <confirmation>",
+        f"usage: {name} deploy|finish|discard <sha> | rollback <sha> <confirmation>"
+        " | backup",
         file=sys.stderr,
     )
     return 2

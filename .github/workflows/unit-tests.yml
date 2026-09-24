@@ -179,11 +179,9 @@ jobs:
       - name: Set up uv
         uses: astral-sh/setup-uv@v3
 
-      # shellcheck (preinstalled on the runner) guards the .sh files; uvx runs
-      # the ruff that lints deploy/vps.py, floating like shellcheck:stable.
+      # uvx runs a floating ruff and pytest; deploy/ has no lockfile.
       - name: Lint and test the VPS scripts
         run: |
-          shellcheck deploy/*.sh deploy/tests/*.sh
-          uvx ruff check deploy/vps.py
-          bash deploy/tests/test_vps.sh
+          uvx ruff check deploy/
+          uvx pytest deploy/tests
 

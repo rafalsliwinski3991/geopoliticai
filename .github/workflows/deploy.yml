@@ -63,7 +63,7 @@ jobs:
         id: ship
         run: |
           ssh "$SSH_TARGET" "mkdir -p $RELEASE"
-          scp docker-compose.yml docker-compose.prod.yml deploy/vps.py deploy/backup.sh "$SSH_TARGET:$RELEASE/"
+          scp docker-compose.yml docker-compose.prod.yml deploy/vps.py "$SSH_TARGET:$RELEASE/"
 
       - name: Snapshot, migrate and start
         id: deploy
@@ -84,9 +84,9 @@ jobs:
       # triggers a restore; a failure while recording the release (finish)
       # never destroys a deploy that already passed its checks. cancelled()
       # matters as much as failure(): a run cancelled or timed out mid-migrate
-      # leaves the old containers on a partly migrated schema, and abort is
+      # leaves the old containers on a partly migrated schema, and discard is
       # what restores its snapshot. The run stays red either way.
-      - name: Roll back
+      - name: Discard failed deploy
         if: >-
           ${{
             (failure() || cancelled()) &&
@@ -97,4 +97,4 @@ jobs:
               steps.health.outcome == 'cancelled'
             )
           }}
-        run: ssh "$SSH_TARGET" "python3 $RELEASE/vps.py abort $SHA"
+        run: ssh "$SSH_TARGET" "python3 $RELEASE/vps.py discard $SHA"
