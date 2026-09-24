@@ -1,3 +1,8 @@
+# One project name for every checkout and every VPS release directory, so
+# `docker compose` in /srv/geopoliticai/releases/<sha>/ drives the same
+# containers and volumes (the default would be the directory name).
+name: geopoliticai
+
 services:
   postgres:
     image: postgres:16-alpine
@@ -15,6 +20,9 @@ services:
 
   agentic-backend:
     build: ./agentic_backend
+    # CI pushes :<sha> and :latest; the VPS pulls with IMAGE_TAG=<sha> and
+    # never builds (its release directories hold no build context).
+    image: ghcr.io/rafalsliwinski3991/geopoliticai-agentic-backend:${IMAGE_TAG:-latest}
     env_file: .env
     environment:
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
@@ -33,6 +41,7 @@ services:
 
   web-backend:
     build: ./web_backend
+    image: ghcr.io/rafalsliwinski3991/geopoliticai-web-backend:${IMAGE_TAG:-latest}
     env_file: .env
     environment:
       POSTGRES_DB: geopoliticai
@@ -46,6 +55,7 @@ services:
 
   frontend:
     build: ./frontend
+    image: ghcr.io/rafalsliwinski3991/geopoliticai-frontend:${IMAGE_TAG:-latest}
     depends_on:
       agentic-backend:
         condition: service_started
