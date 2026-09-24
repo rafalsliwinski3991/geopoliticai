@@ -1,7 +1,7 @@
 ---
 description: Review every pull request in a gh-stack chain layer by layer and post findings as inline PR line comments
 argument-hint: "[optional PR number or branch in the stack, or --all-lenses]"
-allowed-tools: Read, Glob, Grep, Bash, Agent, AskUserQuestion
+allowed-tools: Read, Glob, Grep, Bash, Agent, AskUserQuestion, mcp__context7__resolve-library-id, mcp__context7__query-docs, mcp__plugin_context7_context7__resolve-library-id, mcp__plugin_context7_context7__query-docs
 ---
 
 Review input: $ARGUMENTS
