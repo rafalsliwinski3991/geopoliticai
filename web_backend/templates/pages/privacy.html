@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+
+{% block title %}Privacy notice — PoliticalAgent{% endblock %}
+{% block description %}What personal data PoliticalAgent processes, why, for how long, who receives it, and your rights under the GDPR.{% endblock %}
+
+{% block content %}
+  <section class="intro">
+    <h1>Privacy notice</h1>
+    <p>Last updated {% now "j F Y" %}.</p>
+  </section>
+
+  <section class="section">
+    <h2>Who is responsible</h2>
+    <p>The controller is {{ OPERATOR.name }}, {{ OPERATOR.address }},
+      <a href="mailto:{{ OPERATOR.email }}">{{ OPERATOR.email }}</a>.
+      Write to this address for any request below.</p>
+  </section>
+
+  <section class="section">
+    <h2>What we process and why</h2>
+    <ul>
+      <li><strong>Account</strong>: your email address and a hashed password, to create and secure your account and send verification and password-reset emails (GDPR Art. 6(1)(b), contract).</li>
+      <li><strong>Questions and answers</strong>: what you type into the chat, the answers, the reports, and the sources read, stored in your conversation threads so you can return to them (Art. 6(1)(b)).</li>
+      <li><strong>Daily usage count</strong>: how many research turns you used today, to enforce the free daily limit (Art. 6(1)(b)).</li>
+      <li><strong>Technical traces</strong>: a record of each conversation turn (your message, the sources read, the answer) kept on our server to find and fix errors (Art. 6(1)(f), legitimate interest in a working service). Traces are not linked to your account.</li>
+      <li><strong>Server logs and backups</strong>: IP address and request details in web-server logs, and database backups, for security and to recover from failures (Art. 6(1)(f)).</li>
+      <li><strong>Blog subscription</strong>: if you write to blog@politicalagent.eu to subscribe, your email address, to send you new posts (Art. 6(1)(a), consent, which you can withdraw by writing to the same address).</li>
+    </ul>
+    <p>We do not use analytics, advertising or tracking cookies, and we load no fonts or scripts from third parties.</p>
+    <p>Blog posts are AI-generated. When you use the chat, an AI system writes the answers.</p>
+  </section>
+
+  <section class="section">
+    <h2>Cookies and browser storage</h2>
+    <p>We set only cookies that the service needs: a session cookie that keeps you signed in and a CSRF cookie that protects forms. The chat stores the id of your current conversation in your browser's local storage. None of these is used for tracking.</p>
+  </section>
+
+  <section class="section">
+    <h2>Who receives data</h2>
+    <ul>
+      <li><strong>OpenAI</strong> (language model provider) receives your message, the earlier messages of the same conversation, and the text of the sources read, to write the answer. Data may be processed in the United States.</li>
+      <li><strong>Brave Software</strong> (search provider) receives the text of your question, shortened if long, together with the list of sites to search. Data may be processed in the United States.</li>
+      <li><strong>OVHcloud</strong> hosts the server, stores off-site backups in its Paris region, and delivers our email.</li>
+    </ul>
+    <p>Transfers outside the EEA rely on the EU–US Data Privacy Framework where the recipient is certified, and otherwise on the European Commission's Standard Contractual Clauses.</p>
+  </section>
+
+  <section class="section">
+    <h2>How long we keep it</h2>
+    <ul>
+      <li>Your account, conversation threads and usage counts: until your account is deleted. To delete your account and every conversation in it, email us.</li>
+      <li>Database backups: off-site copies are deleted after 14 days. A copy is also taken on the server before each software release, and the copies of the five most recent releases are kept; data you deleted can remain in these copies until they are replaced.</li>
+      <li>Technical traces: until they are cleared manually. Because they are not linked to accounts, tell us the date and wording of a question if you want its trace removed.</li>
+      <li>Server logs: until the next software release, when the server's containers are replaced.</li>
+      <li>Blog subscription: until you unsubscribe.</li>
+    </ul>
+  </section>
+
+  <section class="section">
+    <h2>Your rights</h2>
+    <p>You can ask for access to your data, correction, deletion, restriction of processing, a portable copy, and you can object to processing based on legitimate interest. You can also complain to the Polish supervisory authority, the President of the Personal Data Protection Office (Prezes Urzędu Ochrony Danych Osobowych, ul. Stawki 2, 00-193 Warszawa, <a href="https://uodo.gov.pl">uodo.gov.pl</a>).</p>
+  </section>
+{% endblock %}

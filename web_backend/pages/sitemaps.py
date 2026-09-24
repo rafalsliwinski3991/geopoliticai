@@ -22,7 +22,7 @@ class OriginSitemap(Sitemap):
 class StaticSitemap(OriginSitemap):
 
     def items(self):
-        return ["pages:landing", "blog:index"]
+        return ["pages:landing", "blog:index", "pages:about", "pages:privacy"]
 
     def location(self, item):
         return reverse(item)
