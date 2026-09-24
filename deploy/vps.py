@@ -6,6 +6,7 @@ $ROOT/releases/<sha>/ before calling it. The shared .env, releases.log and
 every snapshot live outside the release directories.
 """
 
+import argparse
 import gzip
 import os
 import re
@@ -508,33 +509,51 @@ def backup() -> None:
         local.unlink(missing_ok=True)
 
 
+def release_sha(value: str) -> str:
+    """argparse type: a full 40-character commit sha."""
+    if not SHA_RE.fullmatch(value):
+        raise argparse.ArgumentTypeError(f"not a release sha: {value}")
+    return value
+
+
 def main(argv: list[str]) -> int:
-    """Dispatch one command; anything else prints usage and exits 2."""
+    """Run one command; bad arguments print usage and exit 2."""
     # Snapshots and logs may hold every user row; nothing this script writes
     # is world-readable.
     os.umask(0o077)
-    commands = {"deploy": deploy, "finish": finish, "discard": discard}
-    command = argv[1] if len(argv) > 1 else ""
-    name = Path(argv[0]).name
-    if command in commands:
-        sha = argv[2] if len(argv) > 2 else ""
-        if not SHA_RE.fullmatch(sha):
-            print(f"usage: {name} {command} <sha>", file=sys.stderr)
-            return 2
-        commands[command](sha)
-        return 0
-    if command == "backup":
-        backup()
-        return 0
-    if command == "rollback":
-        rollback(argv[2] if len(argv) > 2 else "", argv[3] if len(argv) > 3 else "")
-        return 0
-    print(
-        f"usage: {name} deploy|finish|discard <sha> | rollback <sha> <confirmation>"
-        " | backup",
-        file=sys.stderr,
+
+    parser = argparse.ArgumentParser(prog=Path(argv[0]).name)
+    commands = parser.add_subparsers(dest="command", required=True)
+
+    deploy_cmd = commands.add_parser("deploy", help="snapshot, migrate, start")
+    deploy_cmd.add_argument("sha", type=release_sha)
+
+    finish_cmd = commands.add_parser("finish", help="record a healthy release")
+    finish_cmd.add_argument("sha", type=release_sha)
+
+    discard_cmd = commands.add_parser("discard", help="undo a failed deploy")
+    discard_cmd.add_argument("sha", type=release_sha)
+
+    rollback_cmd = commands.add_parser(
+        "rollback", help="go back to an earlier release, deleting newer data"
     )
-    return 2
+    rollback_cmd.add_argument("target")
+    rollback_cmd.add_argument("confirmation")
+
+    commands.add_parser("backup", help="upload a nightly dump off-site")
+
+    args = parser.parse_args(argv[1:])
+    if args.command == "deploy":
+        deploy(args.sha)
+    elif args.command == "finish":
+        finish(args.sha)
+    elif args.command == "discard":
+        discard(args.sha)
+    elif args.command == "rollback":
+        rollback(args.target, args.confirmation)
+    elif args.command == "backup":
+        backup()
+    return 0
 
 
 if __name__ == "__main__":
