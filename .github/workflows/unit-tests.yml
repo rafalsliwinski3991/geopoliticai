@@ -2,6 +2,8 @@ name: Unit Tests
 
 on:
   pull_request:
+  # deploy.yml calls this file so a deploy ships only a commit whose tests pass.
+  workflow_call:
 
 jobs:
   unit-tests:
@@ -167,4 +169,21 @@ jobs:
         # Vitest transpiles without type-checking; `tsc -b && vite build` is
         # what catches type errors the test run would miss.
         run: npm ci && npm test && npm run build
+
+  deploy-scripts:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v3
+
+      # shellcheck (preinstalled on the runner) guards the .sh files; uvx runs
+      # the ruff that lints deploy/vps.py, floating like shellcheck:stable.
+      - name: Lint and test the VPS scripts
+        run: |
+          shellcheck deploy/tests/*.sh
+          uvx ruff check deploy/vps.py
+          bash deploy/tests/test_vps.sh
 

@@ -26,6 +26,8 @@ services:
       - "443:443"
     volumes:
       - /etc/letsencrypt:/etc/letsencrypt:ro
+      # certbot on the host writes renewal challenges here (README runbook).
+      - /var/www/certbot:/var/www/certbot:ro
     environment:
       AUTH_REQUIRED: "true"
       AUTH_USER: ${AUTH_USER:?AUTH_USER must be set in production}

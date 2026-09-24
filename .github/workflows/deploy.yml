@@ -1,0 +1,81 @@
+name: Deploy
+
+# Manual only (brainstorm Q6): switch to deploy-on-merge once a rollback has
+# succeeded against the real VPS.
+on:
+  workflow_dispatch:
+
+# One deploy or rollback at a time; never cancel one halfway through.
+concurrency:
+  group: production
+  cancel-in-progress: false
+
+jobs:
+  tests:
+    uses: ./.github/workflows/unit-tests.yml
+
+  deploy:
+    needs: tests
+    runs-on: ubuntu-latest
+    # The environment (not the YAML below) enforces main-only deploys: its
+    # deployment branches rule is main, and the VPS_* secrets live there.
+    environment: production
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    env:
+      SHA: ${{ github.sha }}
+      SSH_TARGET: ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}
+      RELEASE: /srv/geopoliticai/releases/${{ github.sha }}
+    steps:
+      - name: Refuse anything but main
+        run: test "$GITHUB_REF" = refs/heads/main
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Build and push images
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Compose validates env_file: .env while loading the project, and
+          # the runner has none (it is gitignored); an empty placeholder only
+          # satisfies that check, real values are only needed at runtime.
+          test -f .env || touch .env
+          echo "$GITHUB_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          for tag in "$SHA" latest; do
+            IMAGE_TAG=$tag docker compose -f docker-compose.yml build agentic-backend web-backend frontend
+            IMAGE_TAG=$tag docker compose -f docker-compose.yml push agentic-backend web-backend frontend
+          done
+
+      - name: Configure SSH
+        env:
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$VPS_SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          printf '%s\n' "$VPS_KNOWN_HOSTS" > ~/.ssh/known_hosts
+
+      - name: Ship release files
+        id: ship
+        run: |
+          ssh "$SSH_TARGET" "mkdir -p $RELEASE"
+          scp docker-compose.yml docker-compose.prod.yml deploy/vps.py "$SSH_TARGET:$RELEASE/"
+
+      - name: Snapshot, migrate and start
+        id: deploy
+        run: ssh "$SSH_TARGET" "python3 $RELEASE/vps.py deploy $SHA"
+
+      # /api/health is static (api.py), so also fetch Django's landing page:
+      # a broken Django migration shows up there, not in the agentic check.
+      - name: Public health check
+        id: health
+        run: |
+          curl -fsS --retry 10 --retry-delay 6 --retry-all-errors https://politicalagent.eu/api/health
+          curl -fsS --retry 10 --retry-delay 6 --retry-all-errors -o /dev/null https://politicalagent.eu/
+
+      - name: Record release
+        run: ssh "$SSH_TARGET" "python3 $RELEASE/vps.py finish $SHA" | tee -a "$GITHUB_STEP_SUMMARY"

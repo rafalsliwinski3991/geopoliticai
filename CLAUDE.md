@@ -95,7 +95,15 @@ tests, Studio, and Compose. API startup requires `OPENAI_API_KEY`,
 unredacted when enabled. Compose has Postgres, agentic-backend, web-backend, frontend, and Phoenix;
 development ports are 8082, 8083, 3001, 55432, and loopback 6006. Production uses TLS
 and fail-closed Basic Auth for `/admin/` only — `/api/*` is guarded
-by bearer JWTs (verified in `auth.py`). The daily research quota is
+by bearer JWTs (verified in `auth.py`). Production deploys only through the
+dispatch-only `deploy.yml`, from `main`. It runs `unit-tests.yml` (via
+`workflow_call`), pushes the three images to GHCR as `:<sha>` and `:latest`, and
+runs `deploy/vps.py` on the VPS: a pre-deploy `pg_dump`, Django then Alembic
+migrations inside the containers, and `up --wait`, followed by a public
+`/api/health` check. `docker-compose.yml` pins `name: geopoliticai`, and each
+app service carries both `build:` (dev) and `image:` (prod pulls, never
+builds). Test the scripts with `bash deploy/tests/test_vps.sh`; ruff checks
+`deploy/vps.py`. The daily research quota is
 `DAILY_RESEARCH_TURNS` in `agentic_backend/src/config.py`, with a site-wide
 ceiling on the same `quota` table behind a reserved sentinel user id; the
 cross-service schema guards run with both integration suites
