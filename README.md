@@ -176,19 +176,19 @@ Rehearse this once on purpose before real users arrive: deploy a commit whose
 
 ### Nightly off-site backup
 
-`deploy/backup.sh` streams `pg_dump` to OVH Object Storage bucket `dramatic-wieman`
+`python3 deploy/vps.py backup` uploads a `pg_dump` to OVH Object Storage bucket `dramatic-wieman`
 (Paris 3-AZ, `https://s3.eu-west-par.io.cloud.ovh.net`). One-time setup, as `deploy`:
 
 1. Confirm in the OVH panel that the VPS is **not** in the Paris region.
 2. Create an S3 user for the bucket and write `/srv/geopoliticai/backup.env` (`chmod 600`):
    `AWS_ACCESS_KEY_ID=…` and `AWS_SECRET_ACCESS_KEY=…` (the image is pinned by
-   digest to aws-cli 2.22.35 for OVH compatibility; see `backup.sh`).
+   digest to aws-cli 2.22.35 for OVH compatibility; see `AWS_CLI` in `vps.py`).
 3. Expire copies after 14 days: save
    `{"Rules":[{"ID":"expire-nightly","Status":"Enabled","Filter":{"Prefix":"nightly/"},"Expiration":{"Days":14}}]}`
    as `lifecycle.json` and run
    `docker run --rm --env-file /srv/geopoliticai/backup.env -v "$PWD:/w" amazon/aws-cli:2.22.35@sha256:6977c83ae3dc99f28fcf8276b9ea5eec33833cd5be40574b34112e98113ec7a2 s3api put-bucket-lifecycle-configuration --bucket dramatic-wieman --lifecycle-configuration file:///w/lifecycle.json --endpoint-url https://s3.eu-west-par.io.cloud.ovh.net --region eu-west-par`.
 4. `crontab -e`:
-   `15 3 * * * /srv/geopoliticai/current/backup.sh >> /srv/backups/nightly.log 2>&1 || curl -fsS https://hc-ping.com/<uuid>/fail`,
+   `15 3 * * * python3 /srv/geopoliticai/current/vps.py backup >> /srv/backups/nightly.log 2>&1 || curl -fsS https://hc-ping.com/<uuid>/fail`,
    replacing the URL with a dead-man's-switch ping you create on healthchecks.io (or
    similar). Without it, a backup that stops working — an expired S3 key, a full
    disk — goes unnoticed until a restore is needed.
