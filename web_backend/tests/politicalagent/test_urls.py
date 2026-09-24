@@ -10,6 +10,14 @@ User = get_user_model()
 SIGNUP_PASSWORD = "resolute-amber-8"
 
 
+def nginx_servers() -> list[str]:
+    """Return each top-level `server { ... }` block of frontend/nginx.conf as text."""
+    from pathlib import Path
+
+    path = Path(__file__).resolve().parents[3] / "frontend" / "nginx.conf"
+    return ["server {" + part for part in path.read_text().split("server {")[1:]]
+
+
 class AuthScreensTest(TestCase):
     """The allauth screens and the admin login gate respond as routes, not 500s."""
 
@@ -129,3 +137,64 @@ class NginxAdminGuardTest(TestCase):
         self.assertIn("rewrite ^/phoenix/(.*)$ /$1 break;", body)
         self.assertIn("proxy_set_header Upgrade $http_upgrade;", body)
         self.assertIn("proxy_set_header Connection $http_connection;", body)
+
+
+class NginxSeoTest(TestCase):
+    """Search engines must see one host and an indexable-free chat shell.
+
+    Unit 08 restructures nginx.conf into three server blocks; these
+    assertions use the server-block parser, which the `locations()` parser
+    below lacks server-awareness for.
+    """
+
+    def test_exactly_one_www_tls_block_redirects_to_the_apex(self) -> None:
+        # Arrange
+        # Act
+        blocks = [b for b in nginx_servers() if "server_name www.politicalagent.eu;" in b]
+
+        # Assert
+        self.assertEqual(len(blocks), 1)
+        self.assertIn("listen 443 ssl;", blocks[0])
+        self.assertIn("return 301 https://politicalagent.eu$request_uri;", blocks[0])
+
+    def test_the_port_80_block_redirects_to_the_apex_and_keeps_certbot(self) -> None:
+        # Arrange
+        # Act
+        blocks = [b for b in nginx_servers() if "listen 80;" in b]
+
+        # Assert
+        self.assertEqual(len(blocks), 1)
+        self.assertIn("return 301 https://politicalagent.eu$request_uri;", blocks[0])
+        self.assertIn("/.well-known/acme-challenge/", blocks[0])
+
+    def test_the_apex_tls_block_serves_only_the_apex_name(self) -> None:
+        # Arrange
+        # Act
+        blocks = [
+            b
+            for b in nginx_servers()
+            if "listen 443 ssl;" in b and "server_name politicalagent.eu;" in b
+        ]
+
+        # Assert
+        self.assertEqual(len(blocks), 1)
+        self.assertNotIn("www", blocks[0])
+
+    def test_the_chat_location_carries_the_noindex_header(self) -> None:
+        # Arrange
+        # Act
+        body = NginxAdminGuardTest().locations()["/chat"]
+
+        # Assert
+        self.assertIn('X-Robots-Tag "noindex"', body)
+        self.assertIn("try_files", body)
+
+
+class HstsSettingsTest(TestCase):
+    def test_hsts_is_a_year_in_production_and_off_in_debug(self) -> None:
+        # Arrange
+        from django.conf import settings
+
+        # Act
+        # Assert
+        self.assertEqual(settings.SECURE_HSTS_SECONDS, 0 if settings.DEBUG else 31536000)

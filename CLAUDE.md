@@ -22,7 +22,11 @@ and `manage.py`) that owns accounts, admin, and the `chat_threads`/`quota` table
 services never import each other and share only the database and the root `.env`. Run its tests
 from the root with `make test-web-backend` (they need the dev Postgres) and its migrations with
 `make migrate-web`; its apps live under `web_backend/<app>/` with the settings module at
-`web_backend/politicalagent/settings.py`. Django owns every user-keyed
+`web_backend/politicalagent/settings.py`. `web_backend/` also serves the public SEO surface:
+`/robots.txt`, `/sitemap.xml`, and `/llms.txt` (the `pages` app), `/about/` and `/privacy/`, and
+every page's canonical, Open Graph, and JSON-LD built from `settings.SITE_ORIGIN`. Fonts are
+self-hosted under `/static/site/fonts/`; nothing is loaded from Google. nginx 301s `www` to the
+apex and marks `/chat` `noindex`. Django owns every user-keyed
 application table in `public`; LangGraph's checkpointer tables live in the
 `agentic` schema and are migrated by Alembic (`make migrate-agentic`), never by
 Django. The checkpointer reaches them through the pool's `search_path`

@@ -182,6 +182,10 @@ SESSION_COOKIE_SECURE = not DEBUG
 CSRF_COOKIE_SECURE = not DEBUG
 SESSION_COOKIE_SAMESITE = "Lax"
 
+# Sent on HTTPS responses only (SecurityMiddleware); host-wide once a browser
+# sees it. No includeSubDomains or preload: both are hard to undo.
+SECURE_HSTS_SECONDS = 0 if DEBUG else 31536000
+
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 LANGUAGE_CODE = "en-us"
 TIME_ZONE = "UTC"
