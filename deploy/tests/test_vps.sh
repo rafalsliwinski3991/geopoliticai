@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Exercises vps.sh against a stub `docker` in a temp root:
+# Exercises vps.py against a stub `docker` in a temp root:
 # no Docker daemon, no VPS. Run: bash deploy/tests/test_vps.sh
 set -euo pipefail
 
@@ -14,6 +14,11 @@ cat > "$T/bin/docker" <<'EOF'
 echo "IMAGE_TAG=${IMAGE_TAG:-} $*" >> "$DOCKER_LOG"
 if [ -n "${FAIL_ON:-}" ] && [[ "$*" == *"$FAIL_ON"* ]]; then exit 1; fi
 if [[ "$*" == *pg_dump* ]]; then echo "-- dump"; fi
+if [[ "$*" == *"images --format"* ]]; then
+  printf '%s\n' \
+    "ghcr.io/rafalsliwinski3991/geopoliticai-frontend:$(printf '%040d' 0)" \
+    "ghcr.io/rafalsliwinski3991/geopoliticai-frontend:latest"
+fi
 EOF
 chmod +x "$T/bin/docker"
 export PATH="$T/bin:$PATH"
@@ -21,7 +26,7 @@ export PATH="$T/bin:$PATH"
 fail() { echo "FAIL: $*" >&2; exit 1; }
 sha() { printf '%040d' "$1"; }
 ship() { mkdir -p "$VPS_ROOT/releases/$1"; }
-run() { bash "$HERE/../vps.sh" "$@"; }
+run() { python3 "$HERE/../vps.py" "$@"; }
 
 # Six good releases: the newest five survive, with their snapshots.
 for n in 1 2 3 4 5 6; do
@@ -36,5 +41,18 @@ done
 [ "$(find "$VPS_BACKUPS" -name 'pre-*' | wc -l)" -eq 5 ] || fail "snapshots not pruned to 5"
 [ "$(readlink "$VPS_ROOT/current")" = "$VPS_ROOT/releases/$(sha 6)" ] || fail "current is not release 6"
 grep -q "target=$(sha 5) confirm=delete-data-since-" "$T/summary" || fail "summary lacks the rollback line"
+
+# Pruning also drops the :<sha> image tags of unrecorded releases, and never
+# the :latest tag a rollback may need.
+grep -q "image rm ghcr.io/rafalsliwinski3991/geopoliticai-frontend:$(printf '%040d' 0)" \
+  "$DOCKER_LOG" || fail "stale image tag not pruned"
+if grep -q "image rm.*latest" "$DOCKER_LOG"; then fail "pruned the latest tag"; fi
+
+# A failed pg_dump leaves no snapshot behind to be trusted.
+: > "$DOCKER_LOG"
+ship "$(sha 7)"
+if FAIL_ON=pg_dump run deploy "$(sha 7)"; then fail "deploy should fail on a failed pg_dump"; fi
+[ "$(find "$VPS_BACKUPS" -name 'pre-*' | wc -l)" -eq 5 ] || fail "a failed pg_dump left a snapshot"
+[ ! -e "$VPS_ROOT/releases/$(sha 7)/.snapshot" ] || fail "marker written for a failed dump"
 
 echo "deploy script tests passed"

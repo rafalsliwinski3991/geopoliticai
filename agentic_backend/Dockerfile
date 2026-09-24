@@ -13,7 +13,7 @@ RUN uv sync --frozen --no-dev --no-install-project
 
 # Copy source and install the project itself
 COPY src/ src/
-# deploy/vps.sh runs `alembic upgrade head` from /app; alembic.ini resolves
+# deploy/vps.py runs `alembic upgrade head` from /app; alembic.ini resolves
 # script_location and prepend_sys_path relative to itself (%(here)s/src).
 COPY alembic.ini ./
 RUN uv sync --frozen --no-dev
