@@ -3,9 +3,16 @@
 
 {% block title %}{{ post.title }} — PoliticalAgent Blog{% endblock %}
 
+{% block description %}{{ post.description }}{% endblock %}
+
 {% block head %}
 <link rel="stylesheet" href="{% static 'site/blog.css' %}">
 {% endblock %}
+
+{% block og_type %}article{% endblock %}
+{% block og_title %}{{ post.title }}{% endblock %}
+{% block og_description %}{{ post.description }}{% endblock %}
+{% block structured_data %}{{ structured_data|jsonld }}{% endblock %}
 
 {% block content %}
   <article class="archive">

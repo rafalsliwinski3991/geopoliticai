@@ -5,6 +5,9 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from unittest import mock
 
+import json
+import re
+
 from django.test import TestCase
 from django.urls import reverse
 
@@ -221,6 +224,57 @@ class BlogDetailTests(TestCase):
         # Assert
         self.assertContains(response, "PoliticalAgent editorial")
         self.assertContains(response, 'href="/chat"')
+
+
+def _jsonld_payload(html: str) -> dict:
+    match = re.search(r'<script type="application/ld\+json">(.*?)</script>', html, re.S)
+    assert match is not None, "no application/ld+json block found"
+    return json.loads(match.group(1))
+
+
+class BlogDetailMetadataTests(TestCase):
+    def test_canonical_og_type_and_description_come_from_the_post(self) -> None:
+        # Arrange
+        make_post("meta", "Meta post", 1, summary="A hand-written summary under 160 characters.")
+
+        # Act
+        response = self.client.get(reverse("blog:detail", args=["meta"]))
+        html = response.content.decode()
+
+        # Assert
+        self.assertIn(
+            '<link rel="canonical" href="https://politicalagent.eu/blog/meta/">', html
+        )
+        self.assertIn('<meta property="og:type" content="article">', html)
+        self.assertIn(
+            '<meta name="description" content="A hand-written summary under 160 characters.">',
+            html,
+        )
+
+    def test_the_jsonld_block_parses_as_a_blogposting(self) -> None:
+        # Arrange
+        make_post("ld", "Linked data post", 1)
+
+        # Act
+        response = self.client.get(reverse("blog:detail", args=["ld"]))
+
+        # Assert
+        payload = _jsonld_payload(response.content.decode())
+        self.assertEqual(payload["@type"], "BlogPosting")
+        self.assertEqual(payload["headline"], "Linked data post")
+        self.assertIn("dateModified", payload)
+
+    def test_a_script_closing_in_a_title_cannot_break_out_of_the_jsonld_block(self) -> None:
+        # Arrange
+        make_post("script", "Ends with </script>", 1)
+
+        # Act
+        response = self.client.get(reverse("blog:detail", args=["script"]))
+        html = response.content.decode()
+
+        # Assert
+        self.assertIn("\\u003C/script\\u003E", html)
+        self.assertEqual(html.count("</script>"), 1)
 
 
 class BlogRoutingTests(TestCase):

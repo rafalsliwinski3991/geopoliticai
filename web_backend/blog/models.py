@@ -12,6 +12,7 @@ import html
 import markdown
 
 from django.db import models
+from django.urls import reverse
 from django.utils import timezone
 from django.utils.html import strip_tags
 from django.utils.text import Truncator
@@ -45,6 +46,9 @@ class Post(models.Model):
 
     def __str__(self) -> str:
         return self.title
+
+    def get_absolute_url(self) -> str:
+        return reverse("blog:detail", args=[self.slug])
 
     def description(self) -> str:
         """The summary, or the body's first 30 words as plain text."""

@@ -7,6 +7,31 @@
 <link rel="stylesheet" href="{% static 'site/landing.css' %}">
 {% endblock %}
 
+{% block structured_data %}
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "Organization",
+      "@id": "{{ SITE_ORIGIN }}/#organization",
+      "name": "PoliticalAgent",
+      "url": "{{ SITE_ORIGIN }}/",
+      "logo": "{{ SITE_ORIGIN }}{% static 'site/logo-512.png' %}",
+      "email": "contact@politicalagent.eu"
+    },
+    {
+      "@type": "WebSite",
+      "@id": "{{ SITE_ORIGIN }}/#website",
+      "name": "PoliticalAgent",
+      "url": "{{ SITE_ORIGIN }}/",
+      "publisher": {"@id": "{{ SITE_ORIGIN }}/#organization"}
+    }
+  ]
+}
+</script>
+{% endblock %}
+
 {% block content %}
   <section class="hero">
     <p class="annot hero-kicker">Geopolitical research, English, one question at a time</p>

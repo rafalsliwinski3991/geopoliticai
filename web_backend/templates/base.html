@@ -4,10 +4,22 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{% block title %}PoliticalAgent{% endblock %}</title>
+<meta name="description" content="{% block description %}PoliticalAgent answers geopolitical questions from a fixed list of named newsrooms and policy institutes, and links every source it read.{% endblock %}">
+<link rel="canonical" href="{{ SITE_ORIGIN }}{{ request.path }}">
+<meta property="og:site_name" content="PoliticalAgent">
+<meta property="og:type" content="{% block og_type %}website{% endblock %}">
+<meta property="og:title" content="{% block og_title %}PoliticalAgent — geopolitical research with named sources{% endblock %}">
+<meta property="og:description" content="{% block og_description %}Ask a geopolitical question; the answer comes only from named newsrooms and institutes, with every source linked.{% endblock %}">
+<meta property="og:url" content="{{ SITE_ORIGIN }}{{ request.path }}">
+<meta property="og:image" content="{{ SITE_ORIGIN }}{% static 'site/og-card.png' %}">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
 <link rel="icon" href="{% static 'site/logo-mark-small.svg' %}">
 <link rel="stylesheet" href="{% static 'site/fonts.css' %}">
 <link rel="stylesheet" href="{% static 'site/style.css' %}">
 {% block head %}{% endblock %}
+{% block structured_data %}{% endblock %}
 </head>
 <body class="graticule">
 <header class="shell">
