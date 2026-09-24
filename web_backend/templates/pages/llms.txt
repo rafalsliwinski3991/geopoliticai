@@ -6,6 +6,7 @@
 
 - [Home]({{ SITE_ORIGIN }}/): how it works, the full source list, and its limits
 - [Blog]({{ SITE_ORIGIN }}/blog/): AI-generated analysis of geopolitics, with every claim linked to a source
+- [About]({{ SITE_ORIGIN }}/about/): who runs PoliticalAgent, contact, and the editorial policy
 
 ## Blog posts
 {% for post in posts %}
