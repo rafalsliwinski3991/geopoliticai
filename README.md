@@ -47,7 +47,7 @@ The app declares `psycopg[binary]` directly for the checkpointer; no system
 
 The stream caps emitted answers at 50,000 characters, but `_generate` continues
 draining an over-limit upstream stream before emitting the capped result so the
-checkpoint can complete. Production nginx applies Basic Auth to `/admin/` and `/phoenix/`; the
+checkpoint can complete. Production nginx applies Basic Auth to `/admin/` only; the
 API is guarded by bearer JWTs verified by `auth.py`; `AUTH_REQUIRED=true` fails closed when credentials are missing, while
 the local development configuration remains unauthenticated.
 
@@ -71,10 +71,6 @@ each other's code.
 
 ## Deploy order (three migration systems share one database)
 
-Production runs these steps automatically, in this order, in `deploy/vps.py deploy`
-(called by `.github/workflows/deploy.yml`); the list below is why the order matters
-and what to run by hand in development.
-
 Django's `migrate`, Alembic, and the checkpointer's `setup()` touch disjoint
 parts of the schema, but the checkpointer uses `CREATE INDEX CONCURRENTLY`,
 which cannot run inside a transaction — so the order is explicit and not
@@ -85,8 +81,8 @@ incidental:
    the old image has no `search_path`, so once the tables move it fails every
    query, and if it restarts its `setup()` recreates an empty set in `public`
    that the new image then refuses to boot over
-1. `docker compose run --rm web-backend .venv/bin/python manage.py migrate`, then
-   `docker compose run --rm web-backend .venv/bin/python manage.py createcachetable` —
+1. `docker compose run --rm web-backend python manage.py migrate`, then
+   `docker compose run --rm web-backend python manage.py createcachetable` —
    the `DatabaseCache` table allauth's rate limiter reads on the first login
    (the root `make migrate-web` target runs both)
 2. `make migrate-agentic` — Alembic creates the `agentic` schema and relocates
@@ -116,81 +112,5 @@ configured figures here next to the deploy order.
 The chat SPA's build stage (`npm ci`) reaches a registry at deploy time, which
 today's `COPY index.html` build never did. A registry outage, a yanked
 transitive dependency or a Node EOL bump breaks only that stage — the
-mitigation is not in the Dockerfile: **every release's `:<sha>` image stays in
-the registry, and `rollback.yml` restarts the last good one.**
-
-## Production deploy (OVH VPS)
-
-Deploys are manual: Actions → **Deploy** → Run workflow on `main`. The workflow runs
-every test job, pushes `ghcr.io/rafalsliwinski3991/geopoliticai-<service>:<sha>` and
-`:latest`, copies the compose files and `deploy/vps.py` into
-`/srv/geopoliticai/releases/<sha>/`, and runs `deploy/vps.py deploy`: `pg_dump` to
-`/srv/backups/pre-<sha>-<UTC>.sql.gz`, Django `migrate` + `createcachetable`, Alembic,
-`up --wait`; then it curls `https://politicalagent.eu/api/health` and records the
-release (`releases.log`, `current`). The last five releases and their snapshots are kept.
-
-### One-time VPS bootstrap (manual, in this order)
-
-1. Install Docker Engine and the Compose plugin
-   (https://docs.docker.com/engine/install/ubuntu/); the deploy script runs on
-   the VPS's preinstalled `python3` — 3.9 or newer (the script uses
-   `list[str]` annotations and `str.removesuffix`).
-2. `sudo adduser --disabled-password --gecos '' deploy && sudo usermod -aG docker deploy`;
-   `sudo install -d -o deploy -g deploy /srv/geopoliticai /srv/backups`;
-   `sudo install -d /var/www/certbot`.
-3. On your machine: `ssh-keygen -t ed25519 -N '' -C github-actions-deploy -f vps_deploy`.
-   Append `vps_deploy.pub` to `/home/deploy/.ssh/authorized_keys`. In GitHub → Settings →
-   Secrets → Actions add `VPS_HOST` (`politicalagent.eu`), `VPS_USER` (`deploy`),
-   `VPS_SSH_KEY` (the contents of `vps_deploy`) and `VPS_KNOWN_HOSTS`
-   (`ssh-keyscan -H politicalagent.eu`). Delete the local private key afterwards.
-4. As `deploy`: `docker login ghcr.io -u rafalsliwinski3991` with a classic token that
-   has only `read:packages`.
-5. Write `/srv/geopoliticai/.env` by hand (`chmod 600`), from `.env.example`, with
-   production values: `DJANGO_ALLOWED_HOSTS=politicalagent.eu,www.politicalagent.eu`,
-   `DJANGO_CSRF_TRUSTED_ORIGINS=https://politicalagent.eu,https://www.politicalagent.eu`,
-   `AUTH_USER`, `AUTH_PASSWORD`, and every key the API requires.
-6. Before the first deploy (nginx cannot start without a certificate):
-   `sudo snap install --classic certbot && sudo ln -sf /snap/bin/certbot /usr/bin/certbot`
-   (the snap is certbot's recommended install and has `reconfigure`, added in 2.3.0),
-   then `sudo certbot certonly --standalone -d politicalagent.eu -d www.politicalagent.eu`.
-7. Run the first deploy. Then switch renewals to the nginx webroot, with no downtime:
-   `sudo certbot reconfigure --cert-name politicalagent.eu --webroot -w /var/www/certbot --deploy-hook "docker exec geopoliticai-frontend-1 nginx -s reload"`,
-   and confirm with `sudo certbot renew --dry-run`.
-8. After the first deploy, open github.com → your profile → Packages and confirm the three
-   `geopoliticai-*` packages are **private** and linked to this repository.
-
-Phoenix is at `https://politicalagent.eu/phoenix/`, behind the same
-`AUTH_USER`/`AUTH_PASSWORD` as `/admin/`.
-
-### Rolling back
-
-A deploy that fails after its files reach the VPS rolls itself back: it restores that
-deploy's snapshot and restarts the previous release. For a bug found later, run
-Actions → **Rollback** with the `target=` and `confirm=` values printed in the summary
-of the deploy you want to undo. It restores the database to just before that deploy:
-**everything written since is deleted**. Code and data go back together; there are no
-reverse migrations.
-
-Rehearse this once on purpose before real users arrive: deploy a commit whose
-`/api/health` fails and watch the automatic rollback.
-
-### Nightly off-site backup
-
-`python3 deploy/vps.py backup` uploads a `pg_dump` to OVH Object Storage bucket `dramatic-wieman`
-(Paris 3-AZ, `https://s3.eu-west-par.io.cloud.ovh.net`). One-time setup, as `deploy`:
-
-1. Confirm in the OVH panel that the VPS is **not** in the Paris region.
-2. Create an S3 user for the bucket and write `/srv/geopoliticai/backup.env` (`chmod 600`):
-   `AWS_ACCESS_KEY_ID=…` and `AWS_SECRET_ACCESS_KEY=…` (the image is pinned by
-   digest to aws-cli 2.22.35 for OVH compatibility; see `AWS_CLI` in `vps.py`).
-3. Expire copies after 14 days: save
-   `{"Rules":[{"ID":"expire-nightly","Status":"Enabled","Filter":{"Prefix":"nightly/"},"Expiration":{"Days":14}}]}`
-   as `lifecycle.json` and run
-   `docker run --rm --env-file /srv/geopoliticai/backup.env -v "$PWD:/w" amazon/aws-cli:2.22.35@sha256:6977c83ae3dc99f28fcf8276b9ea5eec33833cd5be40574b34112e98113ec7a2 s3api put-bucket-lifecycle-configuration --bucket dramatic-wieman --lifecycle-configuration file:///w/lifecycle.json --endpoint-url https://s3.eu-west-par.io.cloud.ovh.net --region eu-west-par`.
-4. `crontab -e`:
-   `15 3 * * * python3 /srv/geopoliticai/current/vps.py backup >> /srv/backups/nightly.log 2>&1 || curl -fsS https://hc-ping.com/<uuid>/fail`,
-   replacing the URL with a dead-man's-switch ping you create on healthchecks.io (or
-   similar). Without it, a backup that stops working — an expired S3 key, a full
-   disk — goes unnoticed until a restore is needed.
-5. After the first night, restore the newest copy into a scratch database once to
-   prove it works.
+mitigation is not in the Dockerfile: **the previous image stays in the
+registry, and a rollback is a tag change to the last good frontend tag.**

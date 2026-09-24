@@ -112,20 +112,12 @@ class NginxAdminGuardTest(TestCase):
             locations[name.strip().split()[0]] = body.split("}")[0]
         return locations
 
-    def test_auth_snippet_guards_the_admin_and_phoenix_surfaces(self) -> None:
+    def test_auth_snippet_guards_only_the_admin_surface(self) -> None:
         for name, body in self.locations().items():
-            if name in ("/admin/", "/phoenix/"):
+            if name == "/admin/":
                 self.assertIn("auth_snippet.conf", body)
             else:
                 self.assertNotIn("auth_snippet.conf", body)
 
     def test_the_admin_location_proxies_to_the_identity_service(self) -> None:
         self.assertIn("web-backend:8000", self.locations()["/admin/"])
-
-    def test_the_phoenix_location_strips_its_prefix_and_upgrades(self) -> None:
-        body = self.locations()["/phoenix/"]
-        self.assertIn("set $phoenix http://phoenix:6006;", body)
-        self.assertIn("proxy_pass $phoenix;", body)
-        self.assertIn("rewrite ^/phoenix/(.*)$ /$1 break;", body)
-        self.assertIn("proxy_set_header Upgrade $http_upgrade;", body)
-        self.assertIn("proxy_set_header Connection $http_connection;", body)

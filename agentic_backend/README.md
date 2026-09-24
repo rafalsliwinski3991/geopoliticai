@@ -41,7 +41,7 @@ a `truncated` flag on the `result`, while `_generate` drains the upstream
 stream after reaching the cap, before emitting the result, so checkpoint
 writes can complete; the reporter's separate `MAX_REPORT_CHARS = 50_000`
 bounds what is stored in the thread, not what is delivered. Production nginx
-applies Basic Auth to `/admin/` and `/phoenix/`; `AUTH_REQUIRED=true` fails closed
+applies Basic Auth to `/admin/`; `AUTH_REQUIRED=true` fails closed
 without credentials, while local development remains unauthenticated.
 
 ## Getting started

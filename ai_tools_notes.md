@@ -53,8 +53,8 @@ harness cannot reach at all, and the note sits above the body so the body itself
 stays byte-identical. Two things qualify. Naming one of Claude's read-only
 subagents does: `.opencode/agent/` holds only `plan-auditor`, so OpenCode has
 the mechanism but not the agent and errors on the unknown name, and Copilot has
-no mechanism at all — `rs-code-review`, `rs-gh-stack-review`, `rs-implement-plan`
-and `rs-improve-plan` are noted in both harnesses for this. `rs-improve-plan` Step 6's `/codex:rescue`
+no mechanism at all — `rs-code-review`, `rs-implement-plan` and `rs-improve-plan`
+are noted in both harnesses for this. `rs-improve-plan` Step 6's `/codex:rescue`
 does too, being a Claude Code plugin command; its note is the second paragraph.
 Naming an ordinary Claude tool such as `AskUserQuestion` in prose gets no note,
 because every harness has some way to ask the user.

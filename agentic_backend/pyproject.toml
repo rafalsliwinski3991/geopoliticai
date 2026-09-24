@@ -30,11 +30,6 @@ dependencies = [
     # 2.12.0 fixed the `crit` header vulnerability; this promotes what was a
     # dev-only transitive of langgraph-api to a runtime dependency.
     "pyjwt>=2.12,<3.0",
-    # Alembic manages only the `agentic` schema this service owns; Django owns
-    # `public`. A runtime dependency because production runs
-    # `alembic upgrade head` inside this image (deploy/vps.py); development
-    # still runs it from the host (`make migrate-agentic`).
-    "alembic>=1.14,<2.0",
 ]
 
 
@@ -104,6 +99,14 @@ testpaths = ["tests/unit_tests"]
 [dependency-groups]
 dev = [
     "anyio>=4.7.0",
+    # Alembic manages only the `agentic` schema this service owns; Django owns
+    # `public` and runs its own migrations. Dev-only on purpose: `Dockerfile:12`
+    # and `:16` run `uv sync --frozen --no-dev`, so listing it as a runtime
+    # dependency would ship SQLAlchemy, Mako and greenlet into the production
+    # image for code nothing under `src/` imports. Migrations are run from the
+    # host (`make migrate-agentic`). If a deployment ever needs to run them
+    # inside the container, move this to `[project] dependencies` then.
+    "alembic>=1.14,<2.0",
     "langgraph-cli[inmem]>=0.4.14",
     "mypy>=1.13.0",
     "pytest>=8.3.5",

@@ -1,6 +1,6 @@
 # Pin by digest: today's build could not fail; `npm ci` reaches a registry at
 # deploy time, so a bad or yanked resolution must not be able to change what
-# this image is. Every release keeps its :<sha> image; rollback.yml restarts one (README).
+# this image is. Rollback is a tag change to the last good image (README).
 FROM node:22-alpine@sha256:b6f26b36c8ff49624cfdac716b8ea1138d606df02586a77d364bb5536a634f85 AS build
 
 WORKDIR /build
