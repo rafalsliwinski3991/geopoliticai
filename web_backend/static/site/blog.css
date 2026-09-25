@@ -68,3 +68,25 @@
     .post-sources span { display: inline; }
     .post-sources span + span::before { content: " · "; }
   }
+
+.ai-label {
+  font-family: var(--label);
+  font-size: var(--s-xs);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--annot);
+  margin: 0 0 8px;
+}
+
+.byline {
+  font-family: var(--label);
+  font-size: var(--s-sm);
+  color: var(--ink-soft);
+  margin: 0 0 24px;
+}
+
+.ask {
+  border-top: 1px solid var(--rule);
+  margin-top: 40px;
+  padding-top: 16px;
+}

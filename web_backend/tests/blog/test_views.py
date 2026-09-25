@@ -18,12 +18,14 @@ def make_post(
     *,
     is_published: bool = True,
     body: str = "Body **text**.",
+    summary: str = "",
 ) -> Post:
     return Post.objects.create(
         slug=slug,
         title=title,
         kicker="Method",
         body=body,
+        summary=summary,
         published_at=datetime(2026, 9, 18, 12, 0, tzinfo=UTC) - timedelta(days=days_ago),
         is_published=is_published,
     )
@@ -111,7 +113,7 @@ class BlogListTests(TestCase):
 
         # Assert
         self.assertContains(response, "Lone note")
-        self.assertNotContains(response, "No notes yet")
+        self.assertNotContains(response, "No posts yet")
 
     def test_teasers_do_not_leak_markdown_syntax(self) -> None:
         # Arrange
@@ -134,6 +136,50 @@ class BlogListTests(TestCase):
         # Assert
         self.assertEqual(response.status_code, 404)
 
+    def test_the_index_labels_each_post_as_ai_generated(self) -> None:
+        # Arrange
+        make_post("one", "First post", 2)
+        make_post("two", "Second post", 1)
+
+        # Act
+        response = self.client.get(reverse("blog:index"))
+
+        # Assert
+        # One `.ai-label` paragraph per card: the lead and the one archive
+        # entry. (The intro sentence also says "AI-generated text", so the
+        # plan's literal-string count of two cannot hold against the plan's
+        # own template; the label markup is what unit 04's CSS targets.)
+        self.assertEqual(response.content.count(b'<p class="ai-label">'), 2)
+
+    def test_the_index_shows_the_summary_text_when_set(self) -> None:
+        # Arrange
+        make_post("sum", "Summary post", 1, summary="A custom summary line.")
+
+        # Act
+        response = self.client.get(reverse("blog:index"))
+
+        # Assert
+        self.assertContains(response, "A custom summary line.")
+
+    def test_the_navigation_and_footer_say_blog(self) -> None:
+        # Arrange
+        # Act
+        response = self.client.get(reverse("blog:index"))
+
+        # Assert
+        self.assertContains(response, ">Blog<")
+        self.assertNotContains(response, ">Notes<")
+
+    def test_the_subscribe_paragraph_has_no_orphaned_period(self) -> None:
+        # Arrange
+        make_post("sub", "Subscribe post", 1)
+
+        # Act
+        response = self.client.get(reverse("blog:index"))
+
+        # Assert
+        self.assertNotContains(response, "</a>.")
+
 
 class BlogDetailTests(TestCase):
     def test_the_detail_page_renders_the_post_title_as_its_headline(self) -> None:
@@ -147,6 +193,34 @@ class BlogDetailTests(TestCase):
 
         # Assert
         self.assertContains(response, "The headlined note")
+
+    def test_the_detail_label_sits_between_the_headline_and_the_body(self) -> None:
+        """EU AI Act Art. 50(4): the disclosure is at first exposure, directly
+        under the headline and before the body starts."""
+        # Arrange
+        make_post("label", "Labelled post", 1)
+
+        # Act
+        response = self.client.get(reverse("blog:detail", args=["label"]))
+        html = response.content.decode()
+
+        # Assert
+        self.assertIn("<h1>Labelled post</h1>", html)
+        self.assertIn('<p class="ai-label">AI-generated text</p>', html)
+        self.assertIn('<div class="post-body">', html)
+        self.assertLess(html.index("<h1>"), html.index("AI-generated text"))
+        self.assertLess(html.index("AI-generated text"), html.index('<div class="post-body">'))
+
+    def test_the_detail_names_the_editorial_byline_and_links_the_chat(self) -> None:
+        # Arrange
+        make_post("byline", "Byline post", 1)
+
+        # Act
+        response = self.client.get(reverse("blog:detail", args=["byline"]))
+
+        # Assert
+        self.assertContains(response, "PoliticalAgent editorial")
+        self.assertContains(response, 'href="/chat"')
 
 
 class BlogRoutingTests(TestCase):

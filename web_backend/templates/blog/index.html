@@ -1,19 +1,20 @@
 {% extends "base.html" %}
 {% load static blog_tags %}
 
-{% block title %}Notes — PoliticalAgent{% endblock %}
+{% block title %}Blog — PoliticalAgent{% endblock %}
 
 {% block head %}
-<meta name="description" content="Notes on how PoliticalAgent reads the news: source policy, method, and what the answers can and cannot carry.">
+<meta name="description" content="Analysis of the forces shaping international politics, written by AI and linked to the reporting and documents it rests on.">
 <link rel="stylesheet" href="{% static 'site/blog.css' %}">
 {% endblock %}
 
 {% block content %}
   <section class="intro">
-    <h1>Notes on reading the news</h1>
+    <h1>Geopolitics, argued with sources</h1>
     <p>
-      How the source list was drawn, what the machine gets wrong, and what
-      happened when we asked it the same question three weeks apart.
+      Analysis of the forces that shape international politics. Every post is
+      AI-generated text, and every claim links to the reporting or document it
+      rests on.
     </p>
   </section>
 
@@ -22,11 +23,12 @@
     <div>
       <p class="annot">{{ lead.kicker }}</p>
       <h2><a href="{% url 'blog:detail' lead.slug %}">{{ lead.title }}</a></h2>
-      <p>{{ lead.body|render_markdown|striptags|truncatewords:60 }}</p>
+      <p class="ai-label">AI-generated text</p>
+      <p>{{ lead.description }}</p>
     </div>
     <div class="lead-meta">
       <p class="label">{{ lead.published_at|date:"j F Y" }}</p>
-      <p class="label">By the PoliticalAgent team</p>
+      <p class="label">PoliticalAgent editorial</p>
     </div>
   </article>
   {% endif %}
@@ -37,28 +39,28 @@
       <p class="post-date">{{ post.published_at|date:"j M Y" }}</p>
       <div>
         <h3><a href="{% url 'blog:detail' post.slug %}">{{ post.title }}</a></h3>
-        <p>{{ post.body|render_markdown|striptags|truncatewords:40 }}</p>
+        <p class="ai-label">AI-generated text</p>
+        <p>{{ post.description }}</p>
       </div>
       <p class="post-sources"><span>{{ post.kicker }}</span></p>
     </article>
     {% endfor %}
 
     {% if not lead and not archive_posts %}
-    <p>No notes yet. The first one will appear here.</p>
+    <p>No posts yet. The first one will appear here.</p>
     {% endif %}
   </section>
 
   <section class="subscribe">
     <div>
-      <h2>One note a month, when there is something to report</h2>
-      <p>No digest, no product news you did not ask for. Unsubscribe in one click.</p>
+      <h2>One post a month, when there is something to say</h2>
+      <p>No digest, no product news you did not ask for.</p>
     </div>
     {% comment %}
       The mockup's subscribe form (blog.html:229-241) has no backend, so per
       the unit 12 decision it renders as a mailto link instead of a form that
       would silently discard input.
     {% endcomment %}
-    <p class="lead-meta">Subscribe by writing to
-      <a href="mailto:blog@politicalagent.eu">blog@politicalagent.eu</a>.</p>
+    <p class="lead-meta">Subscribe: <a href="mailto:blog@politicalagent.eu">blog@politicalagent.eu</a></p>
   </section>
 {% endblock %}
