@@ -1,7 +1,7 @@
 /* PoliticalAgent — design mockups. Shared tokens and primitives.
    Static only: no build step, no framework, no JS beyond one toggle in chat.html. */
 
-@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Condensed:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&family=Spectral:ital,wght@0,300;0,400;1,300&display=swap");
+@import "./fonts.css";
 
 :root {
   color-scheme: light;
