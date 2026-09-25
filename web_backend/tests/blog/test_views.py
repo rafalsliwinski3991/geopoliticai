@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from unittest import mock
 
 from django.test import TestCase
 from django.urls import reverse
@@ -68,6 +69,26 @@ class BlogListTests(TestCase):
         # Assert
         self.assertNotContains(response, scheduled.title)
         self.assertEqual(list(response.context["posts"]), [])
+
+    def test_a_post_becomes_visible_once_its_timestamp_passes(self) -> None:
+        """A post dated after the process started must appear once its
+        timestamp passes: the queryset's cutoff cannot stay frozen at import."""
+        # Arrange
+        make_post("scheduled", "Scheduled reveal", 1)
+        Post.objects.filter(slug="scheduled").update(
+            published_at=_now_utc() + timedelta(hours=1)
+        )
+
+        # Act
+        with mock.patch(
+            "django.utils.timezone.now",
+            return_value=_now_utc() + timedelta(hours=2),
+        ):
+            response = self.client.get(reverse("blog:index"))
+
+        # Assert
+        self.assertContains(response, "Scheduled reveal")
+
 
     def test_detail_renders_markdown(self) -> None:
         # Arrange
