@@ -226,10 +226,14 @@ class BlogDetailTests(TestCase):
         self.assertContains(response, 'href="/chat"')
 
 
-def _jsonld_payload(html: str) -> dict:
+def _jsonld_block(html: str) -> str:
     match = re.search(r'<script type="application/ld\+json">(.*?)</script>', html, re.S)
     assert match is not None, "no application/ld+json block found"
-    return json.loads(match.group(1))
+    return match.group(1)
+
+
+def _jsonld_payload(html: str) -> dict:
+    return json.loads(_jsonld_block(html))
 
 
 class BlogDetailMetadataTests(TestCase):
@@ -273,8 +277,9 @@ class BlogDetailMetadataTests(TestCase):
         html = response.content.decode()
 
         # Assert
-        self.assertIn("\\u003C/script\\u003E", html)
-        self.assertEqual(html.count("</script>"), 1)
+        block = _jsonld_block(html)
+        self.assertIn("\\u003C/script\\u003E", block)
+        self.assertEqual(_jsonld_payload(html)["headline"], "Ends with </script>")
 
 
 class BlogRoutingTests(TestCase):
