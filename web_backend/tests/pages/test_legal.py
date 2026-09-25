@@ -21,6 +21,12 @@ class AboutPageTests(TestCase):
         self.assertContains(response, "Rafal Sliwinski")
         self.assertContains(response, "21-040 Swidnik")
         self.assertContains(response, "contact@politicalagent.eu")
+        self.assertContains(
+            response,
+            '<meta name="description" content="Who runs PoliticalAgent, how to contact us, '
+            'and how the AI-generated blog is published and corrected.">',
+            html=True,
+        )
 
 
 class PrivacyPageTests(TestCase):
@@ -38,6 +44,13 @@ class PrivacyPageTests(TestCase):
         self.assertContains(response, "Brave")
         self.assertContains(response, "OVHcloud")
         self.assertContains(response, "blog@politicalagent.eu")
+        self.assertContains(
+            response,
+            '<meta name="description" content="What personal data PoliticalAgent processes, '
+            'why, for how long, who receives it, and your rights under the GDPR.">',
+            html=True,
+        )
+        self.assertContains(response, "Last updated 24 September 2026.")
         self.assertContains(response, "uodo.gov.pl")
 
 
