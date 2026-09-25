@@ -1,24 +1,29 @@
 ---
-description: Implement a written plan with TDD at every tier and review proportional to its lightweight, standard, or full scope
-argument-hint: <plan-path>
+description: Implement one or more written plans with TDD and tiered review, then open one sourced stacked PR chain per plan
+argument-hint: <plan-path>...
 allowed-tools: Read, Write, Edit, Glob, Grep, Bash, Agent
 ---
 
-Plan: $1
+Plans: $ARGUMENTS
+
+Every argument is a plan path; run them all, in the order given. Each plan is its own run: its own
+tier, run log, pre-flight, stack of unit branches cut from the base branch, final review, and
+stacked PR chain. Steps 1 and 2 cover every plan up front; Steps 3–6 then run for one plan at a time,
+and the next plan starts from a fresh checkout of the base branch. Step 7 reports on all of them.
 
 You are the **implementer** and the team lead. For lightweight and standard plans, you are the only
 writer in this run. For a full plan, you may delegate one genuinely independent task at a time to a
 fresh implementer agent; otherwise you remain the writer. Every review agent is read-only and exists
 to check the work.
 
-Run log: `docs/cc_logs/<plan-filename-stem>_run.md` (create `docs/cc_logs/` if missing; it is
+Run log, one per plan: `docs/cc_logs/<plan-filename-stem>_run.md` (create `docs/cc_logs/` if missing; it is
 gitignored). If that file already exists, append a new dated section rather than overwriting it.
 
 ---
 
 ## Step 1 — Pre-flight
 
-Read the plan in full. Identify its stated tier: **lightweight**, **standard**, or **full**. If the
+Run this step for every plan. Read the plan in full. Identify its stated tier: **lightweight**, **standard**, or **full**. If the
 plan does not name one, infer the smallest safe tier from its actual scope. Escalate only when live
 code exposes a concrete major, cross-component, interface, migration, or reliability risk; do not
 add process merely because several related files change.
@@ -54,14 +59,21 @@ type, and give it the plan path and this brief:
 
 Write the scout's table and blockers into the run log verbatim.
 
+Then map every plan unit to its **sources**: the Asana tasks, GitHub issues, and Aikido issues it
+delivers. Take them from the unit itself (plans made by `rs-plan-from-asana` and
+`rs-plan-from-gh-issues` name them per unit); a unit that names none inherits the sources in the
+plan's Scope. Record the map in the run log. A unit left with no source is a checkpoint question.
+
 ## Step 2 — The checkpoint
 
 **Stop here.** This is the only scheduled stop in the run.
 
-For a **lightweight plan**, show the direct pre-flight note and ask whether to proceed. For a
-**standard or full plan**, show the scout's table and blockers, then ask which task or commit the
-run should start from and whether to proceed. Begin implementing only after the user answers. If
-the user does not respond, the run does not start.
+Present every plan in one checkpoint. For a **lightweight plan**, show the direct pre-flight note;
+for a **standard or full plan**, show the scout's table and blockers and ask which task or commit
+its run should start from. For every plan, show the unit-to-source map and ask for the source of
+any unit that has none. Then ask once, for all plans, whether to proceed and whether the stacked
+PRs of Step 6 open as **drafts** or **ready for review**. Begin implementing only after the user
+answers. If the user does not respond, the run does not start.
 
 ## Step 3 — Implementation
 
@@ -81,8 +93,8 @@ Keep every ordered plan unit independently reviewable and compatible with GitHub
 - At pre-flight, record the trunk/base branch and a stable stack slug. The default base is the repository's default branch from `gh repo view --json defaultBranchRef --jq .defaultBranchRef.name` unless the user specifies another one.
 - Each ordered plan unit must have its own linear branch. Create the unit branch from the previous branch before editing, use names such as `<stack-slug>/01-<short-slug>`, and keep the implementation and any reviewer-fix commits on that branch. Never squash, merge, reorder, or rewrite those commits.
 - Record each unit branch, its parent branch, commits, focused validation, gate output, and run-log entry. Reviewers and auditors compare a unit branch with its immediate parent, not only with the cumulative top branch.
-- Do not push or create pull requests in this command. The separate `rs-create-stacked-prs` workflow adopts the ordered branches with `gh stack init ... --base <base>`, previews them with `gh stack view`, and submits them with `gh stack submit --auto` or `--auto --open`.
-- If existing work is not already split into linear unit branches, leave history unchanged and let `rs-create-stacked-prs` create cumulative branch pointers. Never force-push or silently rewrite history here.
+- Each plan gets its own stack slug and its own chain, whose bottom branch is cut from the base branch. Plans never stack on one another.
+- If existing work is not already split into linear unit branches, leave history unchanged and stop that plan at Step 6: report that `rs-create-stacked-prs` must build its chain from cumulative branch pointers. Never force-push or silently rewrite history here.
 
 ### TDD rule
 
@@ -142,7 +154,7 @@ Then:
 ## Step 5 — Final review
 
 After the last plan unit, review the result against the branch diff
-(`git diff <base>...HEAD`, base being the commit the run started from) according to its tier:
+(`git diff <base>...HEAD`, base being the plan's base branch) according to its tier:
 
 - **Lightweight plan** -- review the final diff yourself against its scope and focused validation.
   Spawn a lens only when a concrete finding escalates the work.
@@ -170,17 +182,48 @@ cases rerun the focused validation and applicable gate. Then rerun the same lens
 finding that contradicts the approved plan is a `HALT`; stop and ask the user rather than silently
 expanding scope.
 
-## Step 6 — Report
+## Step 6 — Stacked pull requests
 
-Write any lens findings into the run log, then **also print them to the terminal**. The run log is
-gitignored, so anything that exists only there is invisible to any later reader. For lightweight
-plans, record the lead's final self-review instead.
+Once the plan's final review is clean, open its chain. The user's checkpoint answer is the
+authorization; ask again only when something below stops the step.
 
-Report to the user: the plan path and tier, tasks or commits made, units audited and what the audits
-found, what was fix-forwarded, any `HALT` you hit, the outstanding applicable review findings you did
-**not** act on, and the run log path.
+1. Confirm `gh auth status` succeeds and `gh stack --help` is available. If the extension is
+   missing, stop and report `gh extension install github/gh-stack`; never install it.
+2. Adopt the plan's unit branches, bottom to top, without touching their commits:
+   `gh stack init --base <base> <unit-01-branch> ... <top-branch>`, then `gh stack view`. Every
+   branch must have its intended parent; if one does not, stop and report rather than submit.
+3. Submit with `gh stack submit --auto` for drafts, or `gh stack submit --auto --open` for ready
+   for review, as the checkpoint decided.
+4. Rewrite every layer's description with `gh pr edit <branch> --body-file <file>` (write the file
+   in the scratchpad). The body is a short summary of the unit from the plan, then a `## Source`
+   section listing every source mapped to that unit, one per line, in exactly this form:
 
-Stop at the last commit; `rs-create-stacked-prs` pushes and opens the pull requests.
+   ```text
+   ## Source
+
+   - Asana: <task URL>
+   - GitHub: Closes #<n>
+   - GitHub: Refs #<n>
+   - Aikido: <issue id> <issue link>
+   ```
+
+   A GitHub issue is `Closes` on the last unit that delivers it and `Refs` on every earlier one.
+   `rs-gh-stack-merge` parses these lines to close the sources, so keep the prefixes verbatim.
+   End the body with the repository's pull-request attribution line.
+5. Record in the run log, and show, every PR URL with its sources and the final `gh stack view`.
+
+The step is done when every layer has a PR whose body carries a non-empty `## Source` section. Never
+merge a PR, force-push, or rewrite commits here; `rs-gh-stack-merge` merges the chain.
+
+## Step 7 — Report
+
+Write any lens findings into each plan's run log, then **also print them to the terminal**. The run
+log is gitignored, so anything that exists only there is invisible to any later reader. For
+lightweight plans, record the lead's final self-review instead.
+
+Report to the user, per plan: the plan path and tier, tasks or commits made, units audited and what
+the audits found, what was fix-forwarded, any `HALT` you hit, the outstanding applicable review
+findings you did **not** act on, the PR URLs with their sources, and the run log path.
 
 ---
 
