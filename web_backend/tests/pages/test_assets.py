@@ -8,6 +8,7 @@ dimension guards.
 from __future__ import annotations
 
 import re
+import struct
 from pathlib import Path
 
 from django.test import TestCase
@@ -78,3 +79,29 @@ class SelfHostedFontsTests(TestCase):
         # Assert
         for name in licences:
             self.assertTrue((_FONTS_DIR / name).is_file(), name)
+
+
+def png_dimensions(relative: str) -> tuple[int, int]:
+    """Width and height from the PNG IHDR, stdlib only."""
+    data = (_REPO_ROOT / relative).read_bytes()
+    assert data[:8] == b"\x89PNG\r\n\x1a\n", relative
+    width, height = struct.unpack(">II", data[16:24])
+    return width, height
+
+
+class ShareImageTests(TestCase):
+    def test_the_og_card_is_1200x630(self) -> None:
+        # Arrange
+        # Act
+        # Assert
+        self.assertEqual(
+            png_dimensions("web_backend/static/site/og-card.png"), (1200, 630)
+        )
+
+    def test_the_structured_data_logo_is_512x512(self) -> None:
+        # Arrange
+        # Act
+        # Assert
+        self.assertEqual(
+            png_dimensions("web_backend/static/site/logo-512.png"), (512, 512)
+        )

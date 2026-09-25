@@ -1,6 +1,8 @@
 """Tests for the public landing page at `/` (unit 11)."""
 
 import ast
+import json
+import re
 from pathlib import Path
 
 from django.test import SimpleTestCase
@@ -133,3 +135,54 @@ class LandingRoutingTests(SimpleTestCase):
         resolved = reverse("pages:landing")
         # Assert
         self.assertEqual(resolved, "/")
+
+
+class LandingMetadataTests(SimpleTestCase):
+    """The head is built from settings, not the DB — this file stays
+    SimpleTestCase to guard that (plan §1, code-wins note 1)."""
+
+    def test_the_canonical_link_is_the_production_origin(self) -> None:
+        # Arrange
+        # Act
+        response = self.client.get("/")
+
+        # Assert
+        self.assertContains(
+            response, '<link rel="canonical" href="https://politicalagent.eu/">'
+        )
+
+    def test_the_default_description_is_within_160_characters(self) -> None:
+        # Arrange
+        # Act
+        response = self.client.get("/")
+        html = response.content.decode()
+        match = re.search(r'<meta name="description" content="([^"]*)"', html)
+
+        # Assert
+        self.assertIsNotNone(match)
+        self.assertLessEqual(len(match.group(1)), 160)
+
+    def test_the_og_image_is_the_share_card(self) -> None:
+        # Arrange
+        # Act
+        response = self.client.get("/")
+        html = response.content.decode()
+        match = re.search(r'<meta property="og:image" content="([^"]*)"', html)
+
+        # Assert
+        self.assertIsNotNone(match)
+        self.assertTrue(match.group(1).endswith(".png"), match.group(1))
+
+    def test_the_landing_jsonld_graph_names_the_organization_and_website(self) -> None:
+        # Arrange
+        # Act
+        response = self.client.get("/")
+        html = response.content.decode()
+        match = re.search(r'<script type="application/ld\+json">(.*?)</script>', html, re.S)
+
+        # Assert
+        self.assertIsNotNone(match)
+        payload = json.loads(match.group(1))
+        self.assertEqual(
+            {node["@type"] for node in payload["@graph"]}, {"Organization", "WebSite"}
+        )

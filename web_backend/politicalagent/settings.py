@@ -21,6 +21,12 @@ CSRF_TRUSTED_ORIGINS = [
     o for o in os.getenv("DJANGO_CSRF_TRUSTED_ORIGINS", "").split(",") if o
 ]
 
+# The one public origin: canonical links, Open Graph URLs, JSON-LD and the
+# sitemap are built from it. Templates read this, not the `sites` row: that
+# costs a DB query per page and the landing tests render without a database.
+# `pages` migration 0001 copies it into the `sites` row for the sitemap and allauth.
+SITE_ORIGIN = "https://politicalagent.eu"
+
 INSTALLED_APPS = [
     "django.contrib.admin",
     "django.contrib.auth",
@@ -76,6 +82,7 @@ TEMPLATES = [
                 "django.template.context_processors.request",
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
+                "pages.context_processors.site_origin",
             ],
         },
     },

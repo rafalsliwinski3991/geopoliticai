@@ -85,3 +85,13 @@ class DescriptionTests(TestCase):
         self.assertNotIn("&amp;", description)
         self.assertEqual(len(description.split()), 30)
         self.assertTrue(description.endswith("…"))
+
+
+class AbsoluteUrlTests(TestCase):
+    def test_get_absolute_url_is_the_blog_detail_path(self) -> None:
+        # Arrange
+        post = _post("slugged")
+
+        # Act
+        # Assert
+        self.assertEqual(post.get_absolute_url(), "/blog/slugged/")
