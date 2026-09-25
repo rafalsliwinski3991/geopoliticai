@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
+from django.contrib.sites.models import Site
 from django.test import TestCase
 from django.urls import reverse
 
@@ -70,11 +71,27 @@ class SitemapTests(TestCase):
         self.assertNotIn("example.com", body)
 
 
+    def test_sitemap_hosts_urls_from_site_origin_not_the_editable_site_row(self) -> None:
+        # Arrange
+        Site.objects.update(domain="edited.example")
+        Site.objects.clear_cache()
+        self.addCleanup(Site.objects.clear_cache)
+
+        # Act
+        response = self.client.get("/sitemap.xml", secure=True)
+        body = response.content.decode()
+
+        # Assert
+        self.assertIn("https://politicalagent.eu/blog/", body)
+        self.assertNotIn("edited.example", body)
+
+
 class LlmsTests(TestCase):
     def test_llms_txt_lists_published_post_titles_verbatim(self) -> None:
         # Arrange
         published = make_post("peers-rivals", "Peers & Rivals", days_ago=2)
         make_post("a-draft", "Draft & hidden", is_published=False)
+        make_post("a-future-post", "Future & hidden", days_ago=-1)
 
         # Act
         response = self.client.get("/llms.txt")
@@ -86,3 +103,4 @@ class LlmsTests(TestCase):
         self.assertIn(published.title, body)
         self.assertNotIn("&amp;", body)
         self.assertNotIn("Draft &", body)
+        self.assertNotIn("Future", body)
