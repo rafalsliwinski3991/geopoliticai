@@ -51,6 +51,21 @@ class SelfHostedFontsTests(TestCase):
                 (_REPO_ROOT / "web_backend" / "static" / "site" / url).is_file(), url
             )
 
+    def test_the_spa_fonts_css_mirrors_the_site_one_with_absolute_urls(self) -> None:
+        # Arrange
+        site = read_repo_file("web_backend/static/site/fonts.css")
+        spa = read_repo_file("frontend/chat/src/fonts.css")
+
+        # Act
+        urls = re.findall(r'url\("([^"]+)"\)', spa)
+
+        # Assert
+        self.assertTrue(urls)
+        for url in urls:
+            self.assertTrue(url.startswith("/static/site/fonts/"), url)
+            self.assertTrue((_REPO_ROOT / "web_backend" / url.lstrip("/")).is_file(), url)
+        self.assertEqual(spa, site.replace('url("fonts/', 'url("/static/site/fonts/'))
+
     def test_the_three_font_licences_ship_with_the_fonts(self) -> None:
         # Arrange
         licences = (
