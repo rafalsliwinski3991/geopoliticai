@@ -10,6 +10,13 @@ from __future__ import annotations
 
 from pages.roster_types import Band, _Roster
 
+# The service provider and GDPR controller named on /about/ and /privacy/.
+OPERATOR = {
+    "name": "Rafal Sliwinski",
+    "address": "ul. Modrzewiowa 16/10, 21-040 Swidnik, Poland",
+    "email": "contact@politicalagent.eu",
+}
+
 LANDING_SECTIONS = _Roster(
     bands=(
         Band(

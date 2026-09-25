@@ -5,7 +5,7 @@ from __future__ import annotations
 from django.views import generic
 
 from blog.models import Post
-from pages.consts import LANDING_SECTIONS
+from pages.consts import LANDING_SECTIONS, OPERATOR
 
 
 class LandingView(generic.TemplateView):
@@ -32,3 +32,13 @@ class LlmsView(generic.TemplateView):
         context["posts"] = Post.objects.published()
         context["total_domains"] = LANDING_SECTIONS.total
         return context
+
+
+class AboutView(generic.TemplateView):
+    template_name = "pages/about.html"
+    extra_context = {"OPERATOR": OPERATOR}
+
+
+class PrivacyView(generic.TemplateView):
+    template_name = "pages/privacy.html"
+    extra_context = {"OPERATOR": OPERATOR}

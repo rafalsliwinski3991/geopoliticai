@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+
+{% block title %}About — PoliticalAgent{% endblock %}
+{% block description %}Who runs PoliticalAgent, how to contact us, and how the AI-generated blog is published and corrected.{% endblock %}
+
+{% block content %}
+  <section class="intro">
+    <h1>About PoliticalAgent</h1>
+    <p>
+      PoliticalAgent is an English-language AI research assistant for
+      geopolitical questions. It searches a fixed list of named newsrooms and
+      policy institutes, reads the pages it finds, and answers only from that
+      text, linking every source. It is a non-commercial project run by
+      {{ OPERATOR.name }}.
+    </p>
+  </section>
+
+  <section class="section">
+    <h2>Service provider</h2>
+    <p>{{ OPERATOR.name }}<br>{{ OPERATOR.address }}<br>
+      <a href="mailto:{{ OPERATOR.email }}">{{ OPERATOR.email }}</a></p>
+  </section>
+
+  <section class="section">
+    <h2>The blog</h2>
+    <p>
+      Blog posts are AI-generated text published under the name
+      "PoliticalAgent editorial" and labelled as such under every headline.
+      Each factual claim links to the source it rests on. To report an error,
+      write to <a href="mailto:{{ OPERATOR.email }}">{{ OPERATOR.email }}</a>;
+      corrections are made in the post and the "last updated" date changes.
+    </p>
+  </section>
+
+  <section class="section">
+    <h2>Privacy</h2>
+    <p>How your data is handled is described in the <a href="/privacy/">privacy notice</a>.</p>
+  </section>
+{% endblock %}
