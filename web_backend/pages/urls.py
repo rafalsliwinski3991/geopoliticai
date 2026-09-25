@@ -6,4 +6,8 @@ from pages import views
 
 app_name = "pages"
 
-urlpatterns = [path("", views.LandingView.as_view(), name="landing")]
+urlpatterns = [
+    path("", views.LandingView.as_view(), name="landing"),
+    path("robots.txt", views.RobotsView.as_view(), name="robots"),
+    path("llms.txt", views.LlmsView.as_view(), name="llms"),
+]
