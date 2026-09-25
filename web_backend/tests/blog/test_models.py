@@ -69,7 +69,11 @@ class DescriptionTests(TestCase):
 
     def test_description_falls_back_to_plain_body_text_within_30_words(self) -> None:
         # Arrange
-        post = _post("fallback", body="# Heading\n\nBody *mark* with <b>html</b> entities & more.")
+        post = _post(
+            "fallback",
+            body="# Heading\n\nBody *mark* with <b>html</b> entities & more. "
+            + " ".join(f"word{i}" for i in range(40)),
+        )
 
         # Act
         description = post.description()
@@ -79,4 +83,5 @@ class DescriptionTests(TestCase):
         self.assertNotIn("*", description)
         self.assertNotIn("<", description)
         self.assertNotIn("&amp;", description)
-        self.assertLessEqual(len(description.split()), 30)
+        self.assertEqual(len(description.split()), 30)
+        self.assertTrue(description.endswith("…"))
