@@ -194,3 +194,23 @@ Rehearse this once on purpose before real users arrive: deploy a commit whose
    disk — goes unnoticed until a restore is needed.
 5. After the first night, restore the newest copy into a scratch database once to
    prove it works.
+
+### After the SEO launch (one-time, then upkeep)
+
+User actions after the `seo-blog` deploy:
+
+1. Create the `contact@politicalagent.eu` alias and confirm `blog@politicalagent.eu`
+   exists — the blog's subscribe link and the privacy notice both name these addresses.
+2. Paste the three post drafts from `docs/blog/` into `/admin/`: fill `summary`
+   (≤160 characters), set `published_at`, and tick `is_published`.
+3. Verify the domain in Google Search Console with a DNS TXT record and submit
+   `https://politicalagent.eu/sitemap.xml`; import the property into Bing Webmaster
+   Tools from Search Console.
+4. Re-run the manual checks below after each nginx or settings change:
+
+   - `curl -sI https://www.politicalagent.eu/x` → `301` to `https://politicalagent.eu/x`
+   - `curl -sI https://politicalagent.eu/` shows `Strict-Transport-Security: max-age=31536000`
+   - `curl -sI https://politicalagent.eu/chat` shows `X-Robots-Tag: noindex`
+   - `https://politicalagent.eu/sitemap.xml` uses only `politicalagent.eu` URLs
+   - Google Rich Results Test on one post after pasting it
+   - Lighthouse shows no request to `fonts.googleapis.com`
