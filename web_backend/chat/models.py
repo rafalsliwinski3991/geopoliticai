@@ -2,7 +2,7 @@
 
 `agentic_backend/` addresses these tables by name with raw psycopg (Q10). A rename here is
 a runtime break there that neither an import nor Django's own tests can catch,
-which is why `agentic_backend/tests/integration_tests/test_schema_drift.py` is mandatory
+which is why `agentic_backend/tests/integration_tests/test_db_web_schema.py` is mandatory
 (brainstorm flag 4). Change a column name here and that test must change with
 it, in the same stack.
 """
