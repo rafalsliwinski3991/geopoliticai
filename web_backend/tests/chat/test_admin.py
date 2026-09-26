@@ -1,8 +1,14 @@
 """Tests for the admin actions over the chat_threads table (unit 4)."""
 
+from datetime import date
+
+from django.contrib import admin
 from django.contrib.auth import get_user_model
 from django.db import connection
-from django.test import TransactionTestCase
+from django.test import RequestFactory, TestCase, TransactionTestCase
+from django.urls import reverse
+
+from chat.models import SiteQuota
 
 from chat.management.commands.purge_prelaunch_threads import orphan_thread_ids
 from chat.signals import CHECKPOINT_SCHEMA
@@ -45,3 +51,34 @@ class OrphanQueryTest(TransactionTestCase):
 
         # Assert
         self.assertEqual(orphans, None)
+
+
+class SiteQuotaAdminTest(TestCase):
+    """The site counter is visible to staff and never editable by hand."""
+
+    def test_changelist_renders_for_a_superuser(self) -> None:
+        # Arrange
+        admin_user = User.objects.create_superuser(
+            email="root@example.com", password="x-not-used-1"
+        )
+        SiteQuota.objects.create(day=date(2026, 9, 18), used=4)
+        self.client.force_login(admin_user)
+
+        # Act
+        response = self.client.get(reverse("admin:chat_sitequota_changelist"))
+
+        # Assert
+        self.assertEqual(response.status_code, 200)
+
+    def test_add_change_and_delete_are_denied(self) -> None:
+        # Arrange
+        model_admin = admin.site._registry[SiteQuota]
+        request = RequestFactory().get("/")
+        request.user = User.objects.create_superuser(
+            email="root2@example.com", password="x-not-used-1"
+        )
+
+        # Act / Assert
+        self.assertFalse(model_admin.has_add_permission(request))
+        self.assertFalse(model_admin.has_change_permission(request))
+        self.assertFalse(model_admin.has_delete_permission(request))

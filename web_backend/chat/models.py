@@ -49,3 +49,24 @@ class Quota(models.Model):
         # this constraint to exist. A composite primary key would also work,
         # but this keeps an ordinary `id` for the admin.
         unique_together = (("user", "day"),)
+
+
+class SiteQuota(models.Model):
+    """The whole site's research-turn count for one UTC day (#66).
+
+    Not a `Quota` row: the site ceiling is nobody's allowance, so it has no
+    user, and no user delete in the admin can take the ceiling down with it
+    (the sentinel user 0 it replaces could). `day` is the primary key, which
+    is exactly the one-counter-per-day constraint `agentic_backend`'s
+    `ON CONFLICT (day)` upsert needs. Written only by that SQL.
+    """
+
+    day = models.DateField(primary_key=True)
+    used = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        db_table = "site_quota"
+        ordering = ["-day"]
+
+    def __str__(self) -> str:
+        return f"{self.day}: {self.used}"
