@@ -112,7 +112,7 @@ export function Sidebar({
     );
 
   return (
-    <aside id="chat-sidebar" className={open ? "side open" : "side"}>
+    <aside id="chat-sidebar" tabIndex={-1} className={open ? "side open" : "side"}>
       <div className="side-top">
         <a className="wordmark" href="/">
           Political<em>Agent</em>

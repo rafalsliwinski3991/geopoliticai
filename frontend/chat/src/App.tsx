@@ -37,7 +37,15 @@ export default function App() {
       return;
     }
     drawerWasOpenRef.current = true;
-    document.querySelector<HTMLElement>("#chat-sidebar .new-thread")?.focus();
+    // "New conversation" is disabled while a turn streams; the drawer itself
+    // takes focus then, so it never stays on the inert <main>.
+    const newThread = document.querySelector<HTMLButtonElement>(
+      "#chat-sidebar .new-thread",
+    );
+    (newThread && !newThread.disabled
+      ? newThread
+      : document.getElementById("chat-sidebar")
+    )?.focus();
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") setDrawerOpen(false);
     };

@@ -231,6 +231,60 @@ describe("the app shell", () => {
       expect(toggle.getAttribute("aria-expanded")).toBe("false");
     });
 
+    it("opening the drawer mid-turn still moves focus into it", async () => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn((url: string) => {
+          if (url === "/accounts/token/") return Promise.resolve(tokenOk);
+          if (url === "/api/threads") {
+            return Promise.resolve({
+              ok: true,
+              status: 200,
+              json: async () => ({ threads: [], quota: { used: 0, limit: 20 } }),
+            } as unknown as Response);
+          }
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            body: new ReadableStream({ start() {} }),
+          } as unknown as Response);
+        }),
+      );
+      const App = await importApp();
+      render(<App />);
+      await screen.findByRole("button", { name: "Send" });
+      const input = screen.getByLabelText("Ask a question") as HTMLTextAreaElement;
+      fireEvent.change(input, { target: { value: "long turn" } });
+      fireEvent.submit(input.closest("form")!);
+      await vi.waitFor(() =>
+        expect(
+          (screen.getByRole("button", { name: "New conversation" }) as HTMLButtonElement)
+            .disabled,
+        ).toBe(true),
+      );
+      fireEvent.click(screen.getByRole("button", { name: "Chats" }));
+      expect(document.activeElement).toBe(drawer());
+    });
+
+    it("leaving the mobile breakpoint closes the drawer", async () => {
+      let notify: (event: { matches: boolean }) => void = () => {};
+      vi.stubGlobal(
+        "matchMedia",
+        vi.fn(() => ({
+          matches: true,
+          addEventListener: (_: string, listener: typeof notify) => {
+            notify = listener;
+          },
+          removeEventListener: () => {},
+        })),
+      );
+      const toggle = await openDrawer();
+      expect(toggle.getAttribute("aria-expanded")).toBe("true");
+      act(() => notify({ matches: false }));
+      expect(toggle.getAttribute("aria-expanded")).toBe("false");
+      vi.unstubAllGlobals();
+    });
+
     it("Escape and the backdrop close the drawer", async () => {
       const toggle = await openDrawer();
       fireEvent.keyDown(document, { key: "Escape" });
