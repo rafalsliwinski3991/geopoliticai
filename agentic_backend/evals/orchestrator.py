@@ -37,7 +37,7 @@ async def run_orchestrator(input: dict[str, Any]) -> dict[str, Any]:
     return {
         "destination": destination,
         "standalone_query": result["standalone_query"],
-        "answer": result["messages"][-1].text() if destination == "other" else None,
+        "answer": result["messages"][-1].text if destination == "other" else None,
     }
 
 

@@ -1,5 +1,6 @@
 import json
 import os
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any, AsyncIterator, cast
 from unittest.mock import patch
@@ -33,6 +34,7 @@ from models import (
     NoSourcesError,
     PipelineError,
     SearchUnavailableError,
+    Source,
 )
 
 
@@ -538,7 +540,7 @@ async def test_a_new_question_resume_starts_a_fresh_turn(
     # Assert
     assert response.status_code == 200
     assert not isinstance(seen[0], Command)
-    assert seen[0]["messages"][-1].text() == "What changed on the eastern flank?"
+    assert seen[0]["messages"][-1].text == "What changed on the eastern flank?"
     events = _events(response.text)
     assert events[-1]["type"] == "result"
     assert events[-1]["kind"] == "answer"
@@ -878,7 +880,7 @@ async def test_astream_answer_streams_the_answer_of_either_branch(
 
     Covers `subgraphs=True`, the three-tuple unpacking, the custom-mode
     forwarding, the `langgraph_node` filter across the answer nodes, the
-    `AIMessage` narrowing, and `message.text()` together; every other test
+    `AIMessage` narrowing, and `message.text` together; every other test
     here patches it out. The geopolitical case is the regression guard for
     nested-subgraph streaming: without `subgraphs=True` it yields nothing at
     all. The report case drives the real graph with a checkpointer and
@@ -1680,11 +1682,13 @@ async def test_lifespan_checks_the_migration_before_the_checkpointer_setup(
         return object()
 
     monkeypatch.setattr(api, "AsyncConnectionPool", lambda *a, **k: pool)
-    monkeypatch.setattr(
-        api,
-        "AsyncPostgresSaver",
-        lambda pool_arg: type("S", (), {"setup": staticmethod(setup)})(),
-    )
+    serdes: list[Any] = []
+
+    def make_saver(pool_arg: Any, serde: Any = None) -> Any:
+        serdes.append(serde)
+        return type("S", (), {"setup": staticmethod(setup)})()
+
+    monkeypatch.setattr(api, "AsyncPostgresSaver", make_saver)
     monkeypatch.setattr(api, "_require_migrated_checkpointer_schema", require)
     monkeypatch.setattr(api, "_assert_checkpointer_schema", assert_schema)
     monkeypatch.setattr(api, "build_graph", build_graph)
@@ -1696,3 +1700,33 @@ async def test_lifespan_checks_the_migration_before_the_checkpointer_setup(
     # Assert
     assert calls.index("require") < calls.index("setup")
     assert calls.index("setup") < calls.index("assert_schema")
+    assert serdes == [api.CHECKPOINT_SERDE]
+
+
+@dataclass(frozen=True)
+class _Stranger:
+    """A custom type that is not on the checkpoint allow-list."""
+
+    value: str
+
+
+def test_checkpoint_serde_allows_source_and_blocks_other_types(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    # Arrange
+    source = Source(title="T", url="https://example.org/a", text="body")
+    stranger = _Stranger(value="x")
+
+    # Act
+    with caplog.at_level("DEBUG"):
+        restored = api.CHECKPOINT_SERDE.loads_typed(
+            api.CHECKPOINT_SERDE.dumps_typed(source)
+        )
+        blocked = api.CHECKPOINT_SERDE.loads_typed(
+            api.CHECKPOINT_SERDE.dumps_typed(stranger)
+        )
+
+    # Assert
+    assert restored == source
+    assert not isinstance(blocked, _Stranger)
+    assert "unregistered" not in caplog.text.lower()

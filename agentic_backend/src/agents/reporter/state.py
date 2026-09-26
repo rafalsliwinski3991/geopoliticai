@@ -79,7 +79,7 @@ def build_transcript(messages: Sequence[AnyMessage]) -> str:
     blocks: list[str] = []
     used = 0
     for message in reversed(list(messages)):
-        text = message.text().strip()
+        text = message.text.strip()
         if not text:
             continue
         speaker = "User" if isinstance(message, HumanMessage) else "Assistant"
@@ -120,7 +120,7 @@ def has_researched_material(messages: Sequence[AnyMessage]) -> bool:
     holds at least that turn.
     """
     return any(
-        isinstance(message, AIMessage) and "](http" in message.text()
+        isinstance(message, AIMessage) and "](http" in message.text
         for message in messages
     )
 

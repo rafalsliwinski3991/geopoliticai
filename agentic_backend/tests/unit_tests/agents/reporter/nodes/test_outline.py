@@ -216,9 +216,9 @@ async def test_human_prompt_carries_transcript_outline_and_revision_instruction(
         _state(outline=["Old one", "Old two"], revisions=1, instruction="add Poland"),
         writer=events.append,
     )
-    revision_prompt = received["messages"][0].text()
+    revision_prompt = received["messages"][0].text
     await node_module.outline(_state(), writer=events.append)
-    fresh_prompt = received["messages"][0].text()
+    fresh_prompt = received["messages"][0].text
 
     # Assert
     assert isinstance(received["messages"][0], HumanMessage)
