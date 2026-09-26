@@ -21,6 +21,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       # The make targets are the sync mechanisms themselves, so drift is
       # checked by re-running them and diffing: they are idempotent, and a
