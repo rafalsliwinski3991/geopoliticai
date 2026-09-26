@@ -34,7 +34,6 @@ from auth import Identity, require_identity
 from config import (
     DAILY_RESEARCH_TURNS,
     DAILY_RESEARCH_TURNS_ALL_USERS,
-    SITE_WIDE_QUOTA_USER_ID,
     bind_log_context,
     init_environment,
     require_env,
@@ -43,6 +42,7 @@ from db.web.sql import (
     MAX_THREAD_ID_LENGTH,
     claim_thread,
     increment_quota,
+    increment_site_quota,
     is_staff,
     list_threads,
     owns_thread,
@@ -600,10 +600,8 @@ async def run_pipeline_stream_endpoint(
                     # the conditional upsert cannot be raced open — the
                     # database decides, so no concurrent turn can still
                     # take the last slot between a read and this write.
-                    if not await increment_quota(
-                        pool,
-                        user_id=SITE_WIDE_QUOTA_USER_ID,
-                        limit=DAILY_RESEARCH_TURNS_ALL_USERS,
+                    if not await increment_site_quota(
+                        pool, limit=DAILY_RESEARCH_TURNS_ALL_USERS
                     ):
                         # The site-wide ceiling: the operator's bill has a
                         # second, coarser bound no single account controls.

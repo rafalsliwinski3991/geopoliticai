@@ -14,11 +14,11 @@ compatibility files. `agentic_backend/src/` is the Python import root. Shared mo
 the compiled orchestrator graph and the reporter's resume classifier. There is
 no `database.py` or `prompt_logs` path; `agentic_backend/` reaches Postgres
 only through the LangGraph checkpointer and the Django-owned `chat_threads`/
-`quota` statements in `db/web/sql.py` (schema owned by `web_backend`'s
+`quota`/`site_quota` statements in `db/web/sql.py` (schema owned by `web_backend`'s
 migrations; guarded by `agentic_backend/tests/integration_tests/`).
 
 `web_backend/` is a second Python service (its own `pyproject.toml`, `uv.lock`, `Dockerfile`,
-and `manage.py`) that owns accounts, admin, and the `chat_threads`/`quota` tables. The two
+and `manage.py`) that owns accounts, admin, and the `chat_threads`/`quota`/`site_quota` tables. The two
 services never import each other and share only the database and the root `.env`. Run its tests
 from the root with `make test-web-backend` (they need the dev Postgres) and its migrations with
 `make migrate-web`; its apps live under `web_backend/<app>/` with the settings module at
@@ -112,7 +112,7 @@ previous release. `rollback.yml` restores an earlier release together with the
 matching snapshot. `vps.py backup` uploads a nightly dump off-site. Its
 credentials live in the VPS's `backup.env`, never in `.env`. The daily research quota is
 `DAILY_RESEARCH_TURNS` in `agentic_backend/src/config.py`, with a site-wide
-ceiling on the same `quota` table behind a reserved sentinel user id; the
+ceiling in its own Django-owned `site_quota` table (one row per UTC day); the
 cross-service schema guards run with both integration suites
 (`agentic_backend/tests/integration_tests/test_db_web_schema.py`, and the
 root `make test-web-integration`; the first needs a Postgres migrated by both
