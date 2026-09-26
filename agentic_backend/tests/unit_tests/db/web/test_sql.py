@@ -195,3 +195,18 @@ async def test_increment_quota_sends_the_conditional_upsert() -> None:
 async def test_increment_quota_returns_falsy_at_the_cap() -> None:
     fake = _FakePool({sql.INCREMENT_QUOTA: []})
     assert not await sql.increment_quota(pool(fake), user_id=1, limit=20)
+
+
+@pytest.mark.anyio
+async def test_increment_site_quota_sends_the_conditional_upsert() -> None:
+    fake = _FakePool({sql.INCREMENT_SITE_QUOTA: [{"used": 1}]})
+    assert await sql.increment_site_quota(pool(fake), limit=500) == 1
+    statement, params = fake.conn.executed[0]
+    assert statement == sql.INCREMENT_SITE_QUOTA
+    assert params == {"day": datetime.date.today(), "limit": 500}
+
+
+@pytest.mark.anyio
+async def test_increment_site_quota_returns_none_at_the_ceiling() -> None:
+    fake = _FakePool({sql.INCREMENT_SITE_QUOTA: []})
+    assert await sql.increment_site_quota(pool(fake), limit=500) is None

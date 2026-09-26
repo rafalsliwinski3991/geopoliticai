@@ -217,6 +217,7 @@ SQL_KEYWORDS = ("SELECT", "INSERT", "UPDATE", "DELETE")
 EXERCISED_WRITES = {
     "UPSERT_THREAD": "test_upsert_thread_creates_once_and_the_owner_is_read_back",
     "INCREMENT_QUOTA": "test_increment_quota_upserts_increments_and_caps",
+    "INCREMENT_SITE_QUOTA": "test_increment_site_quota_upserts_increments_and_caps",
 }
 
 
@@ -301,6 +302,36 @@ def test_increment_quota_upserts_increments_and_caps(
     assert (first, second) == (1, 2)
     # The WHERE on the conflict target decides affordability: no row at the cap.
     assert capped is None
+
+
+def test_increment_site_quota_upserts_increments_and_caps(
+    conn: Connection[dict[str, Any]],
+) -> None:
+    """The site-wide conditional upsert, both ON CONFLICT branches, for real.
+
+    Runs the raw statement on a fixed past day, never today's live counter.
+    """
+    # Arrange
+    day = date(1971, 1, 1)
+    # Act
+    try:
+        first = fetch_one(conn, sql.INCREMENT_SITE_QUOTA, {"day": day, "limit": 2})[
+            "used"
+        ]
+        second = fetch_one(conn, sql.INCREMENT_SITE_QUOTA, {"day": day, "limit": 2})[
+            "used"
+        ]
+        capped = fetch_one(conn, sql.INCREMENT_SITE_QUOTA, {"day": day, "limit": 2})
+        used = fetch_one(conn, "SELECT used FROM site_quota WHERE day = %s", (day,))[
+            "used"
+        ]
+    finally:
+        with conn.cursor() as cursor:
+            cursor.execute("DELETE FROM site_quota WHERE day = %s", (day,))
+    # Assert
+    assert (first, second) == (1, 2)
+    assert capped is None
+    assert used == 2
 
 
 def test_deleting_a_user_cascades_into_the_checkpointer_tables(

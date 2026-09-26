@@ -1,4 +1,4 @@
-"""Raw-psycopg access to the Django-owned `chat_threads`, `quota`, and `users_user` tables.
+"""Raw-psycopg access to the Django-owned `chat_threads`, `quota`, `site_quota`, and `users_user` tables.
 
 `agentic_backend/` owns no schema and runs no migrations: Django's `manage.py migrate`
 creates every table named here. The coupling is real and accepted;
@@ -45,6 +45,16 @@ INSERT INTO quota (user_id, day, used)
 VALUES (%(user_id)s, %(day)s, 1)
 ON CONFLICT (user_id, day) DO UPDATE SET used = quota.used + 1
 WHERE quota.used < %(limit)s
+RETURNING used
+"""
+
+# The same conditional upsert against the site-wide counter: `day` is the
+# primary key, so one row per UTC day, and no row comes back at the ceiling.
+INCREMENT_SITE_QUOTA = """
+INSERT INTO site_quota (day, used)
+VALUES (%(day)s, 1)
+ON CONFLICT (day) DO UPDATE SET used = site_quota.used + 1
+WHERE site_quota.used < %(limit)s
 RETURNING used
 """
 
@@ -153,6 +163,20 @@ async def increment_quota(
     async with pool.connection() as conn:
         cursor = await conn.execute(
             INCREMENT_QUOTA, {"user_id": user_id, "day": _today(), "limit": limit}
+        )
+        row = await cursor.fetchone()
+    if row is None:
+        return None
+    return int(row["used"])
+
+
+async def increment_site_quota(
+    pool: AsyncConnectionPool[AsyncConnection[DictRow]], *, limit: int
+) -> int | None:
+    """Spend one research turn from the site-wide ceiling; None when it is reached."""
+    async with pool.connection() as conn:
+        cursor = await conn.execute(
+            INCREMENT_SITE_QUOTA, {"day": _today(), "limit": limit}
         )
         row = await cursor.fetchone()
     if row is None:
