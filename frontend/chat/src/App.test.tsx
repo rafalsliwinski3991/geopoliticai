@@ -282,7 +282,6 @@ describe("the app shell", () => {
       expect(toggle.getAttribute("aria-expanded")).toBe("true");
       act(() => notify({ matches: false }));
       expect(toggle.getAttribute("aria-expanded")).toBe("false");
-      vi.unstubAllGlobals();
     });
 
     it("Escape and the backdrop close the drawer", async () => {
