@@ -1,3 +1,7 @@
+import contextvars
+import io
+import logging
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
@@ -6,8 +10,11 @@ from config import (
     _REPO_ROOT_ENV,
     DEFAULT_LLM_SETTINGS,
     LLMSettings,
+    LogContextFilter,
+    bind_log_context,
     get_arize_platform,
     get_trace_endpoint,
+    init_environment,
 )
 
 
@@ -72,3 +79,72 @@ def test_repo_root_env_resolves_to_the_repo_root() -> None:
     break every entrypoint's environment loading silently.
     """
     assert _REPO_ROOT_ENV == Path(__file__).resolve().parents[3] / ".env"
+
+
+def _record() -> logging.LogRecord:
+    return logging.LogRecord("t", logging.INFO, __file__, 1, "msg", None, None)
+
+
+def test_log_filter_uses_placeholders_when_unbound() -> None:
+    # Arrange
+    record = _record()
+
+    # Act
+    kept = contextvars.copy_context().run(LogContextFilter().filter, record)
+
+    # Assert
+    assert kept is True
+    assert record.thread_id == "-"  # type: ignore[attr-defined]
+    assert record.user_id == "-"  # type: ignore[attr-defined]
+
+
+def test_log_filter_stamps_bound_ids() -> None:
+    # Arrange
+    record = _record()
+
+    def run() -> None:
+        bind_log_context(thread_id="t-1", user_id=7)
+        LogContextFilter().filter(record)
+
+    # Act
+    contextvars.copy_context().run(run)
+
+    # Assert
+    assert record.thread_id == "t-1"  # type: ignore[attr-defined]
+    assert record.user_id == 7  # type: ignore[attr-defined]
+
+
+@pytest.fixture
+def restore_root_logging() -> Iterator[None]:
+    root = logging.getLogger()
+    handlers, level = root.handlers[:], root.level
+    yield
+    for handler in root.handlers:
+        if handler not in handlers:
+            handler.close()
+    root.handlers[:] = handlers
+    root.setLevel(level)
+
+
+def test_init_environment_formats_every_line_with_the_context(
+    restore_root_logging: None,
+) -> None:
+    # Arrange
+    init_environment()
+    stream = io.StringIO()
+    handler = logging.getLogger().handlers[0]
+    assert isinstance(handler, logging.StreamHandler)
+    handler.setStream(stream)
+
+    def run() -> None:
+        bind_log_context(thread_id="t-1", user_id=7)
+        logging.getLogger("search").warning("hello there")
+
+    # Act
+    contextvars.copy_context().run(run)
+
+    # Assert
+    line = stream.getvalue()
+    assert "search" in line
+    assert "[thread=t-1 user=7]" in line
+    assert "hello there" in line
