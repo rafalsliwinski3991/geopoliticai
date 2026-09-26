@@ -159,7 +159,8 @@ def dump(path: Path) -> None:
     )
     stdout = proc.stdout
     try:
-        assert stdout is not None
+        if stdout is None:
+            raise RuntimeError("pg_dump produced no stdout pipe")
         with gzip.open(path, "wb") as zipped:
             shutil.copyfileobj(stdout, zipped)
     finally:
@@ -289,7 +290,8 @@ def restore(snapshot: Path) -> None:
             stdin=subprocess.PIPE,
         )
         stdin = load.stdin
-        assert stdin is not None
+        if stdin is None:
+            raise RuntimeError("psql produced no stdin pipe")
         shutil.copyfileobj(dump, stdin)
         stdin.close()
         if load.wait() != 0:
