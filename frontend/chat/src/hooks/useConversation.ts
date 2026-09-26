@@ -119,6 +119,8 @@ export function useConversation() {
               : message,
           ),
         );
+        // The Pipeline log belongs to the running turn only.
+        setProgress([]);
         setIsLoading(false);
       }
     },

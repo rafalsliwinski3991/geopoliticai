@@ -327,7 +327,7 @@ describe("turn boundaries", () => {
     expect(assistants[0]!.text).toBe("Fresh.");
   });
 
-  it("progress resets at the start of each turn", async () => {
+  it("progress never carries a finished turn's steps", async () => {
     stubStreaming([
       [
         { type: "progress", node: "a", label: "Turn one step" },
@@ -338,15 +338,72 @@ describe("turn boundaries", () => {
         { type: "result", output: "B", kind: "answer", truncated: false },
       ],
     ]);
+    const seen: string[][] = [];
+    let latest: unknown;
+    vi.resetModules();
+    const { useConversation } = await import("./useConversation");
+    function Probe() {
+      const state = useConversation();
+      latest = state;
+      seen.push(state.progress.map((step) => step.label));
+      return <div />;
+    }
+    render(<Probe />);
+    const send = (text: string) =>
+      (latest as ReturnType<typeof useConversation>).send(text);
+    await act(async () => {
+      await send("one");
+    });
+    expect((latest as ReturnType<typeof useConversation>).progress).toEqual([]);
+    const turnOneRenders = seen.length;
+    await act(async () => {
+      await send("two");
+    });
+    expect((latest as ReturnType<typeof useConversation>).progress).toEqual([]);
+    expect(seen.slice(turnOneRenders).flat()).not.toContain("Turn one step");
+  });
+
+  it("progress clears when the turn's answer arrives", async () => {
+    stubStreaming([
+      [
+        { type: "progress", node: "a", label: "Step" },
+        { type: "result", output: "A", kind: "answer", truncated: false },
+      ],
+    ]);
     const getLatest = await renderHookProbe();
     await act(async () => {
-      await (getLatest() as { send: (t: string) => Promise<void> }).send("one");
+      await getLatest().send("one");
     });
+    expect(getLatest().progress).toEqual([]);
+  });
+
+  it("progress clears when a turn ends in an error frame", async () => {
+    stubStreaming([
+      [
+        { type: "progress", node: "a", label: "Step" },
+        { type: "error", status: 502, message: "bad" },
+      ],
+    ]);
+    const getLatest = await renderHookProbe();
     await act(async () => {
-      await (getLatest() as { send: (t: string) => Promise<void> }).send("two");
+      await getLatest().send("one");
     });
-    const { progress } = getLatest() as { progress: { node: string; label: string }[] };
-    expect(progress).toEqual([{ node: "b", label: "Turn two step" }]);
+    expect(getLatest().progress).toEqual([]);
+  });
+
+  it("progress clears when a turn pauses", async () => {
+    stubStreaming([
+      [
+        { type: "progress", node: "a", label: "Step" },
+        { type: "pause", outline: ["One"], notice: "" },
+      ],
+    ]);
+    const getLatest = await renderHookProbe();
+    await act(async () => {
+      await getLatest().send("one");
+    });
+    expect(getLatest().progress).toEqual([]);
+    expect(getLatest().paused).toBe(true);
   });
 
   it("a 429 error frame keeps the backend's own message", async () => {
