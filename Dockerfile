@@ -10,6 +10,10 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
+# Serve as an unprivileged user: the app only reads /app and talks to Postgres.
+RUN useradd --system --uid 10001 --no-create-home app
+USER app
+
 EXPOSE 8000
 
 WORKDIR /app/agentic_backend/src
