@@ -209,7 +209,7 @@ authorization; ask again only when something below stops the step.
 
    A GitHub issue is `Closes` on the last unit that delivers it and `Refs` on every earlier one.
    `rs-gh-stack-merge` parses these lines to close the sources, so keep the prefixes verbatim.
-   End the body with the repository's pull-request attribution line.
+   End the body with the pull-request attribution line the harness supplies, if it supplies one.
 5. Record in the run log, and show, every PR URL with its sources and the final `gh stack view`.
 
 The step is done when every layer has a PR whose body carries a non-empty `## Source` section. Never

@@ -46,10 +46,14 @@ gh pr view <number> --json reviewThreads 2>/dev/null || \
   gh api graphql -f query='query($owner:String!,$repo:String!,$num:Int!){
     repository(owner:$owner,name:$repo){ pullRequest(number:$num){
       reviewThreads(first:100){
+        pageInfo{ hasNextPage endCursor }
         nodes{ id isResolved isOutdated path line
-          comments(first:50){ nodes{ id databaseId author{login} body createdAt } } }
+          comments(first:50){ pageInfo{ hasNextPage endCursor } nodes{ id databaseId author{login} body createdAt } } }
         } } } }' -f owner=<owner> -F repo=<repo> -F num=<number>
 ```
+
+If either `pageInfo.hasNextPage` is true, re-run with `after:<endCursor>` (threads) or fetch that
+thread's remaining comments by node id, until both are exhausted; only then call collection complete.
 
 If the repository blocks GraphQL, fall back to REST only and treat every top-level review comment
 without a reply as a thread to answer. A thread counts as unresolved when `isResolved` is false.
@@ -133,7 +137,7 @@ gh api repos/{owner}/{repo}/pulls/<number>/comments/<comment_id>/replies \
   --method POST -f body="<reply body>"
 ```
 
-If the thread came from a review-summmary body or an issue comment with no comment id, post a
+If the thread came from a review-summary body or an issue comment with no comment id, post a
 regular PR comment instead:
 
 ```bash

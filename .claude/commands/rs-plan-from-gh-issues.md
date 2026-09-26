@@ -17,6 +17,9 @@ ending in `.md`):
 - `@<login>` (or `@me`) -> open issues assigned to that person:
   `gh issue list --state open --assignee <login> --limit 500 --json number,title,labels,assignees,url`
 
+If a listing returns exactly 500 issues it is capped: say so and ask the user to narrow the
+selector rather than presenting it as complete.
+
 Then read every selected issue in full, comments included:
 `gh issue view <n> --comments --json number,title,body,state,labels,assignees,comments,url`.
 Collecting is done when every selected issue's body and every comment has been read. If
@@ -24,7 +27,8 @@ a named issue is closed, or the selection is empty, tell the user and stop. If `
 authenticated, ask the user to run `! gh auth login`.
 
 The issues are the input set. Group them by the subsystem they touch; issues that touch
-independent subsystems become separate plans, one per group.
+independent subsystems become separate plans, one per group. When there is more than one group and the arguments give
+an output path, use it as a prefix: write `<path without .md>-<group-slug>.md` per group.
 
 ## Steps 1–4 — Plan
 

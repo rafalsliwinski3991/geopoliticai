@@ -27,7 +27,8 @@ every selected task and its comments have been read. If a named task is complete
 selection is empty, tell the user and stop.
 
 The tasks are the input set. Group them by the subsystem they touch; tasks that touch
-independent subsystems become separate plans, one per group.
+independent subsystems become separate plans, one per group. When there is more than one group and the arguments give
+an output path, use it as a prefix: write `<path without .md>-<group-slug>.md` per group.
 
 ## Steps 1–4 — Plan
 
