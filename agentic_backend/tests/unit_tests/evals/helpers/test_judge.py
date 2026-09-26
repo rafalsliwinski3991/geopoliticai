@@ -7,9 +7,12 @@ from collections.abc import Callable
 from types import SimpleNamespace
 from typing import Any
 
+import httpx
+import openai
 import pytest
 
 from evals.helpers.judge import (
+    JUDGE_BACKOFF_MAX_SECONDS,
     JUDGE_ERROR,
     JUDGE_RETRIES,
     NOT_APPLICABLE,
@@ -28,6 +31,10 @@ def _view(
     input: dict[str, Any], output: dict[str, Any], expected: dict[str, Any]
 ) -> dict[str, Any]:
     return {"x": "y"}
+
+
+def _transient() -> Exception:
+    return openai.APIConnectionError(request=httpx.Request("POST", "https://x"))
 
 
 def _never_called_view(
@@ -150,7 +157,7 @@ def test_score_retries_then_records_judge_error(
 
     def _boom(prepared: Any) -> list[Any]:
         calls.append(prepared)
-        raise RuntimeError("judge down")
+        raise _transient()
 
     def _sleep(seconds: float) -> None:
         sleeps.append(seconds)
@@ -163,14 +170,45 @@ def test_score_retries_then_records_judge_error(
 
     # Assert
     assert len(calls) == JUDGE_RETRIES
-    assert sleeps == [1.0, 2.0, 4.0]
+    assert len(sleeps) == JUDGE_RETRIES - 1
+    assert all(0 < s <= JUDGE_BACKOFF_MAX_SECONDS for s in sleeps)
     assert verdict.label == JUDGE_ERROR
     assert f"after {JUDGE_RETRIES} attempts" in verdict.explanation
 
 
-def test_score_accepts_valid_label_on_retry() -> None:
+def test_score_does_not_retry_a_non_transient_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     # Arrange
     judge = Judge("j", "numeric", _view, prompt="{x}")
+    calls: list[Any] = []
+    sleeps: list[float] = []
+
+    def _boom(prepared: Any) -> list[Any]:
+        calls.append(prepared)
+        raise ValueError("bad request")
+
+    monkeypatch.setattr("time.sleep", sleeps.append)
+    classifier = SimpleNamespace(evaluate=_boom)
+
+    # Act
+    verdict = score(judge, classifier, {}, {"answer": "x"}, {})
+
+    # Assert
+    assert len(calls) == 1
+    assert sleeps == []
+    assert verdict.label == JUDGE_ERROR
+    assert "after 1 attempt:" in verdict.explanation
+    assert "ValueError" in verdict.explanation
+
+
+def test_score_backs_off_on_an_invalid_label(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Arrange
+    judge = Judge("j", "numeric", _view, prompt="{x}")
+    sleeps: list[float] = []
+    monkeypatch.setattr("time.sleep", sleeps.append)
     outcomes = iter(
         [
             SimpleNamespace(label="9", explanation=""),
@@ -184,6 +222,7 @@ def test_score_accepts_valid_label_on_retry() -> None:
 
     # Assert
     assert verdict == Verdict("4", 0.75, "ok")
+    assert len(sleeps) == 1
 
 
 @pytest.mark.anyio
@@ -215,7 +254,7 @@ async def test_async_score_retries_then_records_judge_error(
 
     async def _boom(prepared: Any) -> list[Any]:
         calls.append(prepared)
-        raise RuntimeError("judge down")
+        raise _transient()
 
     async def _sleep(seconds: float) -> None:
         sleeps.append(seconds)
@@ -228,14 +267,52 @@ async def test_async_score_retries_then_records_judge_error(
 
     # Assert
     assert len(calls) == JUDGE_RETRIES
-    assert sleeps == [1.0, 2.0, 4.0]
+    assert len(sleeps) == JUDGE_RETRIES - 1
+    assert all(0 < s <= JUDGE_BACKOFF_MAX_SECONDS for s in sleeps)
     assert verdict.label == JUDGE_ERROR
 
 
 @pytest.mark.anyio
-async def test_async_score_accepts_valid_label_on_retry() -> None:
+async def test_async_score_does_not_retry_a_non_transient_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     # Arrange
     judge = Judge("j", "numeric", _view, prompt="{x}")
+    calls: list[Any] = []
+    sleeps: list[float] = []
+
+    async def _boom(prepared: Any) -> list[Any]:
+        calls.append(prepared)
+        raise ValueError("bad request")
+
+    async def _sleep(seconds: float) -> None:
+        sleeps.append(seconds)
+
+    monkeypatch.setattr("asyncio.sleep", _sleep)
+    classifier = SimpleNamespace(async_evaluate=_boom)
+
+    # Act
+    verdict = await async_score(judge, classifier, {}, {"answer": "x"}, {})
+
+    # Assert
+    assert len(calls) == 1
+    assert sleeps == []
+    assert verdict.label == JUDGE_ERROR
+    assert "after 1 attempt:" in verdict.explanation
+
+
+@pytest.mark.anyio
+async def test_async_score_backs_off_on_an_invalid_label(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Arrange
+    judge = Judge("j", "numeric", _view, prompt="{x}")
+    sleeps: list[float] = []
+
+    async def _sleep(seconds: float) -> None:
+        sleeps.append(seconds)
+
+    monkeypatch.setattr("asyncio.sleep", _sleep)
     outcomes = iter(
         [
             SimpleNamespace(label="9", explanation=""),
@@ -253,6 +330,7 @@ async def test_async_score_accepts_valid_label_on_retry() -> None:
 
     # Assert
     assert verdict == Verdict("4", 0.75, "ok")
+    assert len(sleeps) == 1
 
 
 @pytest.mark.anyio
