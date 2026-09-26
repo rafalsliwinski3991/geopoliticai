@@ -13,8 +13,9 @@ dependencies = [
     # 1.2.22 fixed prompt-loading path traversal (POLI-11).
     "langchain-core>=1.2.22,<2.0",
     "langchain-openai>=1.0,<2.0",
-    # 1.0.10 fixed unsafe msgpack reconstruction (POLI-16); it needs langchain-core 1.x.
-    "langgraph>=1.0.10,<1.1",
+    # 1.2 is the first line compatible with langgraph-sdk>=0.4.4 (POLI-10);
+    # it also raises the langchain-core floor to 1.4.7 through its own metadata.
+    "langgraph>=1.2,<1.3",
     # 3.1.1 fixed the store namespace LIKE-prefix leak (POLI-26); its MIGRATIONS
     # are identical to 3.0.5's. Brings psycopg 3 and psycopg-pool, the only
     # Postgres driver in this app.
