@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -27,6 +28,7 @@ from config import (
     DAILY_RESEARCH_TURNS,
     DAILY_RESEARCH_TURNS_ALL_USERS,
     SITE_WIDE_QUOTA_USER_ID,
+    LogContextFilter,
 )
 from db.web.sql import ThreadRow
 from models import (
@@ -1730,3 +1732,44 @@ def test_checkpoint_serde_allows_source_and_blocks_other_types(
     assert restored == source
     assert not isinstance(blocked, _Stranger)
     assert "unregistered" not in caplog.text.lower()
+
+
+@pytest.mark.anyio
+async def test_unexpected_stream_failure_log_names_the_thread_and_user(
+    client: httpx.AsyncClient,
+) -> None:
+    # Arrange: a handler with the production filter, so the assertion runs on
+    # the same path a real log line takes.
+    records: list[logging.LogRecord] = []
+
+    class _Collect(logging.Handler):
+        def emit(self, record: logging.LogRecord) -> None:
+            records.append(record)
+
+    handler = _Collect()
+    handler.addFilter(LogContextFilter())
+    api_logger = logging.getLogger("api")
+    api_logger.addHandler(handler)
+
+    async def boom(graph_input: Any, thread_id: str) -> AsyncIterator[tuple[str, str]]:
+        raise RuntimeError("graph exploded")
+        yield ("token", "never")
+
+    # Act
+    try:
+        with patch("api._astream_answer", boom):
+            await client.post(
+                "/api/run_pipeline/stream",
+                json={"query": "x", "thread_id": "thread-corr-1"},
+            )
+    finally:
+        api_logger.removeHandler(handler)
+
+    # Assert
+    failure = next(
+        r
+        for r in records
+        if r.getMessage() == "Streaming pipeline failed unexpectedly."
+    )
+    assert failure.thread_id == "thread-corr-1"  # type: ignore[attr-defined]
+    assert failure.user_id == 1  # type: ignore[attr-defined]

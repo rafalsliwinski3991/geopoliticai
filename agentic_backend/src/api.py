@@ -35,6 +35,7 @@ from config import (
     DAILY_RESEARCH_TURNS,
     DAILY_RESEARCH_TURNS_ALL_USERS,
     SITE_WIDE_QUOTA_USER_ID,
+    bind_log_context,
     init_environment,
     require_env,
 )
@@ -526,6 +527,7 @@ async def run_pipeline_stream_endpoint(
     identity: Identity = Depends(require_identity),
 ) -> StreamingResponse:
     """Run the pipeline and stream progress, pause, and answer frames over SSE."""
+    bind_log_context(thread_id=payload.thread_id, user_id=identity.user_id)
     _enforce_rate_limit(request, identity)
     # No checkpoint read happens here: see `_turn_input`. The rate limit stays
     # pre-stream because it is the one failure that must not commit a 200.
@@ -732,6 +734,7 @@ async def list_threads_endpoint(
     request: Request, identity: Identity = Depends(require_identity)
 ) -> dict[str, Any]:
     """Return the caller's conversations and today's quota, for the sidebar."""
+    bind_log_context(user_id=identity.user_id)
     pool = request.app.state.pool
     return {
         "threads": [
@@ -749,6 +752,7 @@ async def read_thread_endpoint(
     thread_id: str, request: Request, identity: Identity = Depends(require_identity)
 ) -> dict[str, Any]:
     """Return one of the caller's own conversations."""
+    bind_log_context(thread_id=thread_id, user_id=identity.user_id)
     # Rate-limited like the streaming route: this reads a checkpoint and
     # deserializes an entire conversation, so it is not free. The daily quota
     # (unit 6) deliberately does not cover it: reading your own history must
@@ -765,6 +769,7 @@ async def admin_read_thread_endpoint(
     thread_id: str, request: Request, identity: Identity = Depends(require_identity)
 ) -> dict[str, Any]:
     """Return any conversation, for a staff user (Q6, Q17b)."""
+    bind_log_context(thread_id=thread_id, user_id=identity.user_id)
     _enforce_rate_limit(request, identity)
     # Re-read from Postgres rather than trusting a claim: a token minted before
     # staff was revoked stays valid for its full 15 minutes otherwise.
