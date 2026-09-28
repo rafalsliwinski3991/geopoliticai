@@ -327,9 +327,11 @@ p { margin: 0 0 1em; max-width: 68ch; }
       z-index: 20;
       transform: translateX(-100%);
       visibility: hidden; /* keeps the off-screen links out of the tab order */
-      transition: transform 0.2s ease, visibility 0.2s;
+      /* Hide only after the slide-out; a transitioning visibility is still
+         hidden at its start, which would block focusing the opening drawer. */
+      transition: transform 0.2s ease, visibility 0s linear 0.2s;
     }
-    .side.open { transform: none; visibility: visible; }
+    .side.open { transform: none; visibility: visible; transition: transform 0.2s ease, visibility 0s; }
     .side-backdrop { position: fixed; inset: 0; z-index: 19; background: rgba(22, 50, 63, 0.35); }
     .scroll, .main-top, .composer { padding-inline: 18px; }
     /* The only new-conversation control that survives the hidden sidebar. */
