@@ -26,6 +26,10 @@ RUN DJANGO_SECRET_KEY=build-only-placeholder \
     POSTGRES_PASSWORD=build-only-placeholder \
     .venv/bin/python manage.py collectstatic --noinput
 
+# Serve as an unprivileged user: the app only reads /app and talks to Postgres.
+RUN useradd --system --uid 10001 --no-create-home app
+USER app
+
 EXPOSE 8000
 
 CMD [".venv/bin/gunicorn", "politicalagent.wsgi:application", "--bind", "0.0.0.0:8000", "--workers", "2"]

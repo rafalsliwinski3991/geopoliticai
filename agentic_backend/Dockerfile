@@ -18,6 +18,10 @@ COPY src/ src/
 COPY alembic.ini ./
 RUN uv sync --frozen --no-dev
 
+# Serve as an unprivileged user: the app only reads /app and talks to Postgres.
+RUN useradd --system --uid 10001 --no-create-home app
+USER app
+
 EXPOSE 8000
 
 CMD [".venv/bin/uvicorn", "api:app", "--host", "0.0.0.0", "--port", "8000"]
