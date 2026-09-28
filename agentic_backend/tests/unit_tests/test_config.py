@@ -17,6 +17,8 @@ from config import (
     init_environment,
 )
 
+NOISY_LOGGERS = ("httpx", "httpcore", "openai", "urllib3")
+
 
 def test_arize_platform_defaults_to_phoenix(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("ARIZE_PLATFORM", raising=False)
@@ -115,10 +117,14 @@ def test_log_filter_stamps_bound_ids() -> None:
 
 
 @pytest.fixture
-def restore_root_logging() -> Iterator[None]:
+def restore_root_logging(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    monkeypatch.setattr("config.load_dotenv", lambda *args, **kwargs: None)
     root = logging.getLogger()
     handlers, level = root.handlers[:], root.level
+    noisy = {name: logging.getLogger(name).level for name in NOISY_LOGGERS}
     yield
+    for name, noisy_level in noisy.items():
+        logging.getLogger(name).setLevel(noisy_level)
     for handler in root.handlers:
         if handler not in handlers:
             handler.close()
