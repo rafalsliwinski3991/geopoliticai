@@ -320,15 +320,31 @@ p { margin: 0 0 1em; max-width: 68ch; }
   }
   @media (max-width: 760px) {
     .app { grid-template-columns: 1fr; }
-    .side { display: none; }
+    .side {
+      position: fixed;
+      inset: 0 auto 0 0;
+      width: min(85vw, 17rem);
+      z-index: 20;
+      transform: translateX(-100%);
+      visibility: hidden; /* keeps the off-screen links out of the tab order */
+      /* Hide only after the slide-out; a transitioning visibility is still
+         hidden at its start, which would block focusing the opening drawer. */
+      transition: transform 0.2s ease, visibility 0s linear 0.2s;
+    }
+    .side.open { transform: none; visibility: visible; transition: transform 0.2s ease, visibility 0s; }
+    .side-backdrop { position: fixed; inset: 0; z-index: 19; background: rgba(22, 50, 63, 0.35); }
     .scroll, .main-top, .composer { padding-inline: 18px; }
-    /* The only new-conversation control that survives the hidden sidebar. */
+    /* A shortcut alongside the drawer's "New conversation" button. */
     .main-top { display: flex; align-items: baseline; gap: 12px; }
     .new-thread-mobile { margin-left: auto; }
   }
   .new-thread-mobile { display: none; }
+  .chats-toggle { display: none; }
+  .side-backdrop { display: none; }
   @media (max-width: 760px) {
     .new-thread-mobile { display: inline-flex; }
+    .chats-toggle { display: inline-flex; }
+    .side-backdrop { display: block; }
   }
 
   /* SPA: the sidebar arrives in unit 10; until then the main column owns the full width. */

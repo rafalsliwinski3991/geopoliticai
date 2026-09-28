@@ -192,4 +192,117 @@ describe("the app shell", () => {
       expect(fetchMock.mock.calls.filter(([url]) => url === "/api/threads").length).toBe(2);
     });
   });
+
+  describe("mobile conversation drawer", () => {
+    const openDrawer = async () => {
+      stubFetch(tokenOk);
+      const App = await importApp();
+      render(<App />);
+      await screen.findByRole("link", { name: /Baltic energy/ });
+      const toggle = screen.getByRole("button", { name: "Chats" });
+      fireEvent.click(toggle);
+      return toggle;
+    };
+    const drawer = () => screen.getByRole("complementary");
+
+    it("the Chats toggle opens and closes the conversation drawer", async () => {
+      stubFetch(tokenOk);
+      const App = await importApp();
+      render(<App />);
+      await screen.findByRole("link", { name: /Baltic energy/ });
+      const toggle = screen.getByRole("button", { name: "Chats" });
+      expect(toggle.getAttribute("aria-expanded")).toBe("false");
+      expect(toggle.getAttribute("aria-controls")).toBe("chat-sidebar");
+      fireEvent.click(toggle);
+      expect(toggle.getAttribute("aria-expanded")).toBe("true");
+      expect(drawer().classList.contains("open")).toBe(true);
+      fireEvent.click(toggle);
+      expect(toggle.getAttribute("aria-expanded")).toBe("false");
+      expect(drawer().classList.contains("open")).toBe(false);
+    });
+
+    it("choosing a thread or a new conversation closes the drawer", async () => {
+      const toggle = await openDrawer();
+      fireEvent.click(screen.getByRole("link", { name: /Baltic energy/ }));
+      expect(toggle.getAttribute("aria-expanded")).toBe("false");
+      fireEvent.click(toggle);
+      expect(toggle.getAttribute("aria-expanded")).toBe("true");
+      fireEvent.click(screen.getByRole("button", { name: "New conversation" }));
+      expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    });
+
+    it("opening the drawer mid-turn still moves focus into it", async () => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn((url: string) => {
+          if (url === "/accounts/token/") return Promise.resolve(tokenOk);
+          if (url === "/api/threads") {
+            return Promise.resolve({
+              ok: true,
+              status: 200,
+              json: async () => ({ threads: [], quota: { used: 0, limit: 20 } }),
+            } as unknown as Response);
+          }
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            body: new ReadableStream({ start() {} }),
+          } as unknown as Response);
+        }),
+      );
+      const App = await importApp();
+      render(<App />);
+      await screen.findByRole("button", { name: "Send" });
+      const input = screen.getByLabelText("Ask a question") as HTMLTextAreaElement;
+      fireEvent.change(input, { target: { value: "long turn" } });
+      fireEvent.submit(input.closest("form")!);
+      await vi.waitFor(() =>
+        expect(
+          (screen.getByRole("button", { name: "New conversation" }) as HTMLButtonElement)
+            .disabled,
+        ).toBe(true),
+      );
+      fireEvent.click(screen.getByRole("button", { name: "Chats" }));
+      expect(document.activeElement).toBe(drawer());
+    });
+
+    it("leaving the mobile breakpoint closes the drawer", async () => {
+      let notify: (event: { matches: boolean }) => void = () => {};
+      vi.stubGlobal(
+        "matchMedia",
+        vi.fn(() => ({
+          matches: true,
+          addEventListener: (_: string, listener: typeof notify) => {
+            notify = listener;
+          },
+          removeEventListener: () => {},
+        })),
+      );
+      const toggle = await openDrawer();
+      expect(toggle.getAttribute("aria-expanded")).toBe("true");
+      act(() => notify({ matches: false }));
+      expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    });
+
+    it("Escape and the backdrop close the drawer", async () => {
+      const toggle = await openDrawer();
+      fireEvent.keyDown(document, { key: "Escape" });
+      expect(toggle.getAttribute("aria-expanded")).toBe("false");
+      fireEvent.click(toggle);
+      fireEvent.click(screen.getByTestId("drawer-backdrop"));
+      expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    });
+
+    it("an open drawer makes the conversation inert and takes focus", async () => {
+      const toggle = await openDrawer();
+      const main = document.querySelector("main")!;
+      expect(main.hasAttribute("inert")).toBe(true);
+      expect(document.activeElement).toBe(
+        screen.getByRole("button", { name: "New conversation" }),
+      );
+      fireEvent.keyDown(document, { key: "Escape" });
+      expect(main.hasAttribute("inert")).toBe(false);
+      expect(document.activeElement).toBe(toggle);
+    });
+  });
 });

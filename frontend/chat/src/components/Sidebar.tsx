@@ -67,6 +67,7 @@ export function Sidebar({
   quota,
   activeId,
   busy,
+  open = false,
   onOpen,
   onNewChat,
   now = new Date(),
@@ -79,6 +80,8 @@ export function Sidebar({
   // into the wrong conversation. This restores the guard the old "New chat"
   // button carried as disabled={isLoading}.
   busy: boolean;
+  // Mobile drawer state; the desktop layout ignores it.
+  open?: boolean;
   onOpen: (threadId: string) => void;
   onNewChat: () => void;
   now?: Date;
@@ -109,7 +112,7 @@ export function Sidebar({
     );
 
   return (
-    <aside className="side">
+    <aside id="chat-sidebar" tabIndex={-1} className={open ? "side open" : "side"}>
       <div className="side-top">
         <a className="wordmark" href="/">
           Political<em>Agent</em>

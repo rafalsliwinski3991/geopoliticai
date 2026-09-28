@@ -23,6 +23,47 @@ export default function App() {
   const [threads, setThreads] = useState<ThreadSummary[]>([]);
   const [quota, setQuota] = useState<Quota>({ used: 0, limit: 0 });
   const [activeThread, setActiveThread] = useState<ThreadSummary | null>(null);
+  // Below the mobile breakpoint the sidebar is an off-canvas drawer.
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const chatsToggleRef = useRef<HTMLButtonElement>(null);
+  const drawerWasOpenRef = useRef(false);
+
+  // While the drawer is open: Escape closes it and focus moves into it. When
+  // it closes, focus returns to the toggle that opened it.
+  useEffect(() => {
+    if (!drawerOpen) {
+      if (drawerWasOpenRef.current) chatsToggleRef.current?.focus();
+      drawerWasOpenRef.current = false;
+      return;
+    }
+    drawerWasOpenRef.current = true;
+    // "New conversation" is disabled while a turn streams; the drawer itself
+    // takes focus then, so it never stays on the inert <main>.
+    const newThread = document.querySelector<HTMLButtonElement>(
+      "#chat-sidebar .new-thread",
+    );
+    (newThread && !newThread.disabled
+      ? newThread
+      : document.getElementById("chat-sidebar")
+    )?.focus();
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setDrawerOpen(false);
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [drawerOpen]);
+
+  // Widening past the mobile breakpoint would otherwise leave <main> inert
+  // behind a drawer that is no longer shown.
+  useEffect(() => {
+    const query = window.matchMedia?.("(max-width: 760px)");
+    if (!query) return;
+    const onChange = (event: MediaQueryListEvent) => {
+      if (!event.matches) setDrawerOpen(false);
+    };
+    query.addEventListener("change", onChange);
+    return () => query.removeEventListener("change", onChange);
+  }, []);
 
   // Authenticate on mount, not on the first send: a login redirect that
   // waits for a submitted message would discard that message.
@@ -158,15 +199,39 @@ export default function App() {
         quota={quota}
         activeId={activeThread?.id ?? null}
         busy={isLoading}
-        onOpen={openThread}
-        onNewChat={newChat}
+        open={drawerOpen}
+        onOpen={(id) => {
+          setDrawerOpen(false);
+          openThread(id);
+        }}
+        onNewChat={() => {
+          setDrawerOpen(false);
+          newChat();
+        }}
       />
-      <main className="main">
+      {drawerOpen && (
+        <div
+          className="side-backdrop"
+          data-testid="drawer-backdrop"
+          onClick={() => setDrawerOpen(false)}
+        />
+      )}
+      <main className="main" inert={drawerOpen}>
         <div className="main-top">
+          <button
+            ref={chatsToggleRef}
+            className="btn btn--quiet chats-toggle"
+            type="button"
+            aria-expanded={drawerOpen}
+            aria-controls="chat-sidebar"
+            onClick={() => setDrawerOpen((open) => !open)}
+          >
+            Chats
+          </button>
           <h1>{activeThread?.title ?? "New conversation"}</h1>
-          {/* The sidebar hides below the mobile breakpoint; this is the only
-              new-conversation control that survives there. Without it, a
-              mobile user stays welded to one checkpoint forever. */}
+          {/* Below the mobile breakpoint the sidebar is a drawer; this is a
+              one-tap shortcut alongside the drawer's "New conversation"
+              button. */}
           <button
             className="btn new-thread-mobile"
             type="button"
