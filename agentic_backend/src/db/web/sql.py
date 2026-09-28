@@ -2,7 +2,7 @@
 
 `agentic_backend/` owns no schema and runs no migrations: Django's `manage.py migrate`
 creates every table named here. The coupling is real and accepted;
-`tests/integration_tests/test_schema_drift.py` is what makes it safe.
+`tests/integration_tests/test_db_web_schema.py` is what makes it safe.
 """
 
 from __future__ import annotations

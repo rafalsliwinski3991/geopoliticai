@@ -45,7 +45,7 @@ if not os.getenv("DATABASE_URL"):
 # Every read statement in `db/web/sql.py`, with parameters that are valid but match
 # nothing, so executing them against a real database proves the columns exist
 # without depending on any row. Kept in lockstep by
-# `test_every_read_statement_has_a_probe`.
+# `test_every_statement_is_covered`.
 NO_MATCH_PROBES: tuple[tuple[str, dict[str, Any]], ...] = (
     (sql.SELECT_THREAD_OWNER, {"thread_id": "drift-probe"}),
     (sql.SELECT_THREADS, {"user_id": 0}),
@@ -65,14 +65,16 @@ CASCADE_TABLES = tuple(
     if "thread_id" in body
 )
 assert CASCADE_TABLES, "derived no cascade tables — langgraph's DDL shape changed"
-# The DELETE statements `web_backend/chat/signals.py` runs, mirrored here so a
-# rename on either side fails the other side's guard. Schema-qualified exactly
-# as `purge_statements()` emits them, so they resolve without search_path.
+# A local copy that proves these statements match the shape langgraph's writer
+# produces. The statements `web_backend` actually runs are executed by
+# `web_backend/tests/integration_tests/test_db_agentic_schema.py`, which is the
+# guard against drift between the two. Schema-qualified exactly as
+# `purge_statements()` emits them, so they resolve without search_path.
 CASCADE_SQL = tuple(
     f"DELETE FROM agentic.{table} WHERE thread_id = ANY(%s)" for table in CASCADE_TABLES
 )
-# The orphan-check query `web_backend/chat/management/commands/purge_prelaunch_threads.py`
-# runs verbatim before purging the checkpointer rows.
+# A copy of the purge command's orphan query, for the same shape check; the
+# web-side suite executes the command's own `ORPHAN_IDS_SQL`.
 ORPHAN_THREAD_SQL = """
 SELECT DISTINCT thread_id
 FROM agentic.checkpoints
