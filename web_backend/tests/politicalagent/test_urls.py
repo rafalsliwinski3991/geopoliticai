@@ -195,6 +195,51 @@ class NginxSeoTest(TestCase):
         self.assertIn("try_files", body)
 
 
+class NginxHstsTest(TestCase):
+    """Every HTTPS response carries exactly one HSTS header, set by nginx."""
+
+    HSTS = 'add_header Strict-Transport-Security "max-age=31536000" always;'
+
+    def test_both_tls_server_blocks_set_hsts_at_server_level(self) -> None:
+        # Arrange
+        # Act
+        blocks = [b for b in nginx_servers() if "listen 443 ssl;" in b]
+
+        # Assert
+        self.assertEqual(len(blocks), 2)
+        for block in blocks:
+            self.assertIn(self.HSTS, block.split("location ")[0])
+
+    def test_locations_with_their_own_add_header_repeat_hsts(self) -> None:
+        # Arrange
+        # Act
+        overriding = {
+            name: body
+            for name, body in NginxAdminGuardTest().locations().items()
+            if "add_header" in body
+        }
+
+        # Assert
+        self.assertIn("/chat", overriding)
+        for body in overriding.values():
+            self.assertIn(self.HSTS, body)
+
+    def test_proxied_locations_drop_the_upstream_hsts_header(self) -> None:
+        # Arrange
+        frontend = Path(__file__).resolve().parents[3] / "frontend"
+
+        # Act
+        proxied = [b for b in NginxAdminGuardTest().locations().values() if "proxy_pass" in b]
+
+        # Assert
+        self.assertIn(
+            "proxy_hide_header Strict-Transport-Security;",
+            (frontend / "proxy_common.conf").read_text(),
+        )
+        for body in proxied:
+            self.assertIn("include /etc/nginx/proxy_common.conf;", body)
+
+
 class HstsSettingsTest(TestCase):
     def _hsts_seconds(self, debug: str) -> int:
         web_backend = Path(__file__).resolve().parents[2]
