@@ -285,3 +285,46 @@ def test_backup_never_uploads_a_failed_dump(vps: Vps) -> None:
     assert backed_up.returncode != 0
     assert "s3 cp" not in vps.docker_calls()
     assert list(vps.tmpdir.iterdir()) == []
+
+
+def _load_vps_module():
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("vps_under_test", VPS)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_dump_raises_when_pg_dump_has_no_stdout_pipe(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Arrange
+    module = _load_vps_module()
+    monkeypatch.setattr(
+        module, "compose_popen", lambda *a, **k: subprocess.Popen(["true"])
+    )
+
+    # Act / Assert
+    with pytest.raises(RuntimeError, match="no stdout pipe"):
+        module.dump(tmp_path / "out.sql.gz")
+
+
+def test_restore_raises_when_psql_has_no_stdin_pipe(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Arrange
+    import gzip
+
+    module = _load_vps_module()
+    snapshot = tmp_path / "s.sql.gz"
+    with gzip.open(snapshot, "wb") as handle:
+        handle.write(b"-- dump")
+    monkeypatch.setattr(module, "compose", lambda *a, **k: None)
+    monkeypatch.setattr(
+        module, "compose_popen", lambda *a, **k: subprocess.Popen(["true"])
+    )
+
+    # Act / Assert
+    with pytest.raises(RuntimeError, match="no stdin pipe"):
+        module.restore(snapshot)
