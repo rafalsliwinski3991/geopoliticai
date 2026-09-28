@@ -38,6 +38,21 @@
     }
   },
   {
+    "name": "orchestrator-follow-up-inherits-topic-and-time",
+    "input": {
+      "messages": [
+        {"type": "human", "data": {"type": "human", "content": "What sanctions has the United States imposed on Iran since 2024?"}},
+        {"type": "ai", "data": {"type": "ai", "content": "Washington widened oil and shipping sanctions on Iran, targeting tankers and Chinese refiners."}},
+        {"type": "human", "data": {"type": "human", "content": "and the EU?"}}
+      ]
+    },
+    "output": {
+      "destination": "geopolitical",
+      "standalone_query": "What sanctions has the European Union imposed on Iran since 2024?",
+      "answer": null
+    }
+  },
+  {
     "name": "orchestrator-briefing-request-routes-to-report",
     "input": {
       "messages": [
