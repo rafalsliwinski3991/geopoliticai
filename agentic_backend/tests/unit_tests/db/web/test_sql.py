@@ -203,7 +203,11 @@ async def test_increment_site_quota_sends_the_conditional_upsert() -> None:
     assert await sql.increment_site_quota(pool(fake), limit=500) == 1
     statement, params = fake.conn.executed[0]
     assert statement == sql.INCREMENT_SITE_QUOTA
-    assert params == {"day": datetime.date.today(), "limit": 500}
+    # The quota day is UTC (`sql._today()`), not the test host's local date.
+    assert params == {
+        "day": datetime.datetime.now(datetime.timezone.utc).date(),
+        "limit": 500,
+    }
 
 
 @pytest.mark.anyio

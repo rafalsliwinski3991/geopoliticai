@@ -81,3 +81,11 @@ class SiteQuotaModelTest(TestCase):
             dict(SiteQuota.objects.values_list("day", "used")), {first: 7, second: 2}
         )
         self.assertEqual(Quota.objects.filter(user_id=0).count(), 2)
+
+
+class SentinelRetiredTest(TestCase):
+    """0005 retires the site-wide sentinel user."""
+
+    def test_the_site_wide_sentinel_is_gone(self) -> None:
+        self.assertFalse(User.objects.filter(id=0).exists())
+        self.assertFalse(Quota.objects.filter(user_id=0).exists())

@@ -21,12 +21,10 @@ REQUIRED_ENV_VARS = ("OPENAI_API_KEY", "BRAVE_SEARCH_KEY", "JWT_SIGNING_KEY")
 # The daily research-turn quota (flag 1): a named constant, never a literal.
 # DAILY_RESEARCH_TURNS bounds one account's spending; it does not bound the
 # operator's bill, because signup is public and nothing caps the number of
-# accounts. The site-wide ceiling is the same `quota` table with a reserved
-# sentinel user id (0, which no real identity can have): one extra
-# INCREMENT_QUOTA call on the same code path.
+# accounts. The site-wide ceiling is its own `site_quota` table (one row per
+# UTC day), spent by INCREMENT_SITE_QUOTA just before the caller's own count.
 DAILY_RESEARCH_TURNS = 20
 DAILY_RESEARCH_TURNS_ALL_USERS = 500
-SITE_WIDE_QUOTA_USER_ID = 0
 SUPPORTED_ARIZE_PLATFORMS = frozenset({"AX", "PHOENIX"})
 LOG_FORMAT = (
     "%(asctime)s %(levelname)s %(name)s "

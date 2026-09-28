@@ -27,7 +27,6 @@ from agents.reporter.consts.progress import OUTLINE_PROGRESS, REPORT_PROGRESS
 from config import (
     DAILY_RESEARCH_TURNS,
     DAILY_RESEARCH_TURNS_ALL_USERS,
-    SITE_WIDE_QUOTA_USER_ID,
     LogContextFilter,
 )
 from db.web.sql import ThreadRow
@@ -87,6 +86,16 @@ def _owned_thread_with_quota_headroom(monkeypatch: pytest.MonkeyPatch) -> None:
         return True
 
     monkeypatch.setattr(api, "owns_thread", own)
+
+
+@pytest.fixture(autouse=True)
+def _site_has_headroom(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The site-wide ceiling has room, unless a test says otherwise."""
+
+    async def site(pool: Any, *, limit: int) -> int | None:
+        return 1
+
+    monkeypatch.setattr(api, "increment_site_quota", site)
 
 
 def _events(body: str) -> list[dict[str, Any]]:
@@ -1218,10 +1227,8 @@ async def test_the_21st_research_turn_is_429_mid_stream(
 
     async def increment(pool: Any, *, user_id: int, limit: int) -> int | None:
         # The caller's own cap is the one already reached; the site still has
-        # headroom for the refusal.
-        if user_id != SITE_WIDE_QUOTA_USER_ID:
-            return None
-        return 1
+        # headroom for the refusal (the autouse `_site_has_headroom`).
+        return None
 
     async def stream(
         graph_input: Any, thread_id: str
@@ -1287,10 +1294,13 @@ async def test_a_turn_refused_by_the_site_ceiling_does_not_charge_the_user(
 
     async def increment(pool: Any, *, user_id: int, limit: int) -> int | None:
         increments.append(user_id)
-        # The site is already at its ceiling; the caller still has headroom.
-        if user_id == SITE_WIDE_QUOTA_USER_ID:
-            return None
         return 1
+
+    async def site_full(pool: Any, *, limit: int) -> int | None:
+        # The site is already at its ceiling; the caller still has headroom.
+        return None
+
+    monkeypatch.setattr(api, "increment_site_quota", site_full)
 
     async def stream(
         graph_input: Any, thread_id: str
@@ -1309,7 +1319,7 @@ async def test_a_turn_refused_by_the_site_ceiling_does_not_charge_the_user(
     assert events[-1]["status"] == 429
     assert events[-1]["message"] == "The site has used today's research capacity."
     assert all(event["type"] != "result" for event in events)
-    assert 1 not in increments
+    assert increments == []
 
 
 @pytest.mark.anyio
@@ -1355,13 +1365,18 @@ async def test_a_research_routed_turn_increments_exactly_once(
     """
     from langchain_core.messages import AIMessage
 
-    increments: list[tuple[int, int]] = []
+    calls: list[tuple[Any, ...]] = []
 
     async def increment(pool: Any, *, user_id: int, limit: int) -> int | None:
-        increments.append((user_id, limit))
+        calls.append(("user", user_id, limit))
+        return 1
+
+    async def site(pool: Any, *, limit: int) -> int | None:
+        calls.append(("site", limit))
         return 1
 
     monkeypatch.setattr(api, "increment_quota", increment)
+    monkeypatch.setattr(api, "increment_site_quota", site)
 
     classify_update = {
         "classify": {"destination": destination, "standalone_query": "q"}
@@ -1391,12 +1406,10 @@ async def test_a_research_routed_turn_increments_exactly_once(
     assert response.status_code == 200
     events = _events(response.text)
     assert events[-1]["type"] == "result"
-    # Exactly one count for the caller; the second call on the same code path
-    # is the site-wide sentinel (user 0), not a second user count.
-    assert [user_id for user_id, _ in increments if user_id] == [1]
-    assert [limit for user_id, limit in increments if user_id] == [DAILY_RESEARCH_TURNS]
-    assert [limit for user_id, limit in increments if not user_id] == [
-        DAILY_RESEARCH_TURNS_ALL_USERS
+    # The site entry comes first: a turn the site refuses costs the user nothing.
+    assert calls == [
+        ("site", DAILY_RESEARCH_TURNS_ALL_USERS),
+        ("user", 1, DAILY_RESEARCH_TURNS),
     ]
 
 
