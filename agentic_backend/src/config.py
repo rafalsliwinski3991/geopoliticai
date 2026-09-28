@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextvars
 import logging
 import os
 from collections.abc import Sequence
@@ -27,6 +28,18 @@ DAILY_RESEARCH_TURNS = 20
 DAILY_RESEARCH_TURNS_ALL_USERS = 500
 SITE_WIDE_QUOTA_USER_ID = 0
 SUPPORTED_ARIZE_PLATFORMS = frozenset({"AX", "PHOENIX"})
+LOG_FORMAT = (
+    "%(asctime)s %(levelname)s %(name)s "
+    "[thread=%(thread_id)s user=%(user_id)s] %(message)s"
+)
+LOG_UNBOUND = "-"
+# Set once per request in api.py; read by LogContextFilter on every record.
+LOG_THREAD_ID: contextvars.ContextVar[str | None] = contextvars.ContextVar(
+    "log_thread_id", default=None
+)
+LOG_USER_ID: contextvars.ContextVar[int | None] = contextvars.ContextVar(
+    "log_user_id", default=None
+)
 
 
 @dataclass(frozen=True)
@@ -73,6 +86,28 @@ def get_arize_platform() -> str:
     return platform
 
 
+def bind_log_context(
+    *, thread_id: str | None = None, user_id: int | None = None
+) -> None:
+    """Tag every log line this request produces from here on."""
+    if thread_id is not None:
+        LOG_THREAD_ID.set(thread_id)
+    if user_id is not None:
+        LOG_USER_ID.set(user_id)
+
+
+class LogContextFilter(logging.Filter):
+    """Stamp the request's thread and user onto each record; never drop one."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        """Attach `thread_id` and `user_id` (or the placeholder) to the record."""
+        thread_id = LOG_THREAD_ID.get()
+        user_id = LOG_USER_ID.get()
+        record.thread_id = thread_id if thread_id is not None else LOG_UNBOUND
+        record.user_id = user_id if user_id is not None else LOG_UNBOUND
+        return True
+
+
 def init_environment(log_level: str | None = None) -> logging.Logger:
     """Load environment variables and configure base logging."""
     load_dotenv(_REPO_ROOT_ENV)
@@ -81,9 +116,10 @@ def init_environment(log_level: str | None = None) -> logging.Logger:
     numeric_level = logging.getLevelName(configured_level)
     if not isinstance(numeric_level, int):
         numeric_level = logging.INFO
-    logging.basicConfig(
-        level=numeric_level, format="%(levelname)s %(message)s", force=True
-    )
+    logging.basicConfig(level=numeric_level, format=LOG_FORMAT, force=True)
+    # Handler filters (not logger filters) see every propagated record.
+    for handler in logging.getLogger().handlers:
+        handler.addFilter(LogContextFilter())
     for noisy_logger in ("httpx", "httpcore", "openai", "urllib3"):
         logging.getLogger(noisy_logger).setLevel(logging.WARNING)
     return logging.getLogger("agent")
