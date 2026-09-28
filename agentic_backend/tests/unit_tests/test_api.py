@@ -1773,3 +1773,13 @@ async def test_unexpected_stream_failure_log_names_the_thread_and_user(
     )
     assert failure.thread_id == "thread-corr-1"  # type: ignore[attr-defined]
     assert failure.user_id == 1  # type: ignore[attr-defined]
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("route", ["/api/threads/", "/api/admin/threads/"])
+@pytest.mark.parametrize("thread_id", ["t-1%0Aforged", "t%201", "a" * 101])
+async def test_thread_routes_422_on_a_malformed_thread_id(
+    client: httpx.AsyncClient, route: str, thread_id: str
+) -> None:
+    response = await client.get(route + thread_id)
+    assert response.status_code == 422
