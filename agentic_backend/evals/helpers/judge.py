@@ -12,6 +12,7 @@ from typing import Any, Literal
 from tenacity import (
     AsyncRetrying,
     Retrying,
+    retry_if_exception,
     retry_if_exception_type,
     stop_after_attempt,
     wait_exponential_jitter,
@@ -40,6 +41,14 @@ JUDGE_RETRIES = 3
 JUDGE_BACKOFF_INITIAL_SECONDS = 1.0
 JUDGE_BACKOFF_MAX_SECONDS = 8.0
 JUDGE_BACKOFF_JITTER_SECONDS = 1.0
+# phoenix-evals raises a bare ValueError for a bad answer (invalid label, no
+# tool call, no content) and for deterministic misuse alike; only these
+# messages are worth another attempt.
+PHOENIX_BAD_ANSWER_MARKERS = (
+    "received invalid label",
+    "No tool calls in response",
+    "OpenAI returned None content",
+)
 # Pinned, not `openrouter/free`; see git history.
 JUDGE_MODEL = "nvidia/nemotron-3-super-120b-a12b:free"
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
@@ -173,6 +182,12 @@ class _InvalidLabel(Exception):
     """The judge answered, but with a label outside its choices."""
 
 
+def _is_phoenix_bad_answer(exc: BaseException) -> bool:
+    return isinstance(exc, ValueError) and any(
+        marker in str(exc) for marker in PHOENIX_BAD_ANSWER_MARKERS
+    )
+
+
 def _retry_policy() -> dict[str, Any]:
     """The one backoff policy both scorers share."""
     import openai
@@ -183,8 +198,6 @@ def _retry_policy() -> dict[str, Any]:
         openai.APIConnectionError,
         openai.InternalServerError,
         PhoenixRateLimitError,
-        # Phoenix raises ValueError for a bad answer: invalid label, no content.
-        ValueError,
         _InvalidLabel,
     )
     return {
@@ -194,7 +207,8 @@ def _retry_policy() -> dict[str, Any]:
             max=JUDGE_BACKOFF_MAX_SECONDS,
             jitter=JUDGE_BACKOFF_JITTER_SECONDS,
         ),
-        "retry": retry_if_exception_type(transient),
+        "retry": retry_if_exception_type(transient)
+        | retry_if_exception(_is_phoenix_bad_answer),
         "reraise": True,
     }
 

@@ -463,3 +463,26 @@ async def test_async_score_retries_a_phoenix_bad_answer_value_error(
 
     # Assert
     assert verdict.label == "4"
+
+
+def test_score_does_not_retry_a_phoenix_misuse_value_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Arrange
+    judge = Judge("j", "numeric", _view, prompt="{x}")
+    calls: list[Any] = []
+    monkeypatch.setattr("time.sleep", lambda seconds: None)
+
+    def _boom(prepared: Any) -> list[Any]:
+        calls.append(prepared)
+        raise ValueError("Input validation failed: missing field")
+
+    classifier = SimpleNamespace(evaluate=_boom)
+
+    # Act
+    verdict = score(judge, classifier, {}, {"answer": "x"}, {})
+
+    # Assert
+    assert len(calls) == 1
+    assert verdict.label == JUDGE_ERROR
+    assert "after 1 attempt:" in verdict.explanation
