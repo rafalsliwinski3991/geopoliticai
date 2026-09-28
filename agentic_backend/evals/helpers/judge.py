@@ -2,14 +2,21 @@
 
 from __future__ import annotations
 
-import asyncio
 import logging
 import os
 import re
-import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, Literal
+
+from tenacity import (
+    AsyncRetrying,
+    Retrying,
+    retry_if_exception,
+    retry_if_exception_type,
+    stop_after_attempt,
+    wait_exponential_jitter,
+)
 
 JudgeKind = Literal["binary", "numeric"]
 # (input, output, expected) -> the variables a prompt or check reads, or None
@@ -31,6 +38,20 @@ MIN_AVERAGE: dict[str, float] = {"binary": 1.0, "numeric": 0.75}
 NOT_APPLICABLE = "not_applicable"
 JUDGE_ERROR = "judge_error"
 JUDGE_RETRIES = 3
+JUDGE_BACKOFF_INITIAL_SECONDS = 1.0
+JUDGE_BACKOFF_MAX_SECONDS = 8.0
+JUDGE_BACKOFF_JITTER_SECONDS = 1.0
+# phoenix-evals raises a bare ValueError for a bad answer (invalid label, no
+# tool call, no content) and for deterministic misuse alike; only these
+# messages are worth another attempt. OpenRouter answers a rate-limited or
+# failed free-model call with HTTP 200 and `choices: null`, which surfaces as
+# a TypeError from `response.choices[0]`.
+PHOENIX_BAD_ANSWER_MARKERS = (
+    "received invalid label",
+    "No tool calls in response",
+    "OpenAI returned None content",
+    "'NoneType' object is not subscriptable",
+)
 # Pinned, not `openrouter/free`; see git history.
 JUDGE_MODEL = "nvidia/nemotron-3-super-120b-a12b:free"
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
@@ -160,11 +181,56 @@ def _classified(judge: Judge, result: Any) -> Verdict | str:
     return f"label {result.label!r} is not one of {sorted(judge.choices)}"
 
 
-def _gave_up(judge: Judge, last_error: str) -> Verdict:
+class _InvalidLabel(Exception):
+    """The judge answered, but with a label outside its choices."""
+
+
+def _is_phoenix_bad_answer(exc: BaseException) -> bool:
+    return isinstance(exc, (ValueError, TypeError)) and any(
+        marker in str(exc) for marker in PHOENIX_BAD_ANSWER_MARKERS
+    )
+
+
+def _retry_policy() -> dict[str, Any]:
+    """The one backoff policy both scorers share."""
+    import openai
+    from phoenix.evals.rate_limiters import RateLimitError as PhoenixRateLimitError
+
+    transient = (
+        openai.RateLimitError,
+        openai.APIConnectionError,
+        openai.InternalServerError,
+        PhoenixRateLimitError,
+        _InvalidLabel,
+    )
+    return {
+        "stop": stop_after_attempt(JUDGE_RETRIES),
+        "wait": wait_exponential_jitter(
+            initial=JUDGE_BACKOFF_INITIAL_SECONDS,
+            max=JUDGE_BACKOFF_MAX_SECONDS,
+            jitter=JUDGE_BACKOFF_JITTER_SECONDS,
+        ),
+        "retry": retry_if_exception_type(transient)
+        | retry_if_exception(_is_phoenix_bad_answer),
+        "reraise": True,
+    }
+
+
+def _verdict_or_raise(judge: Judge, result: Any) -> Verdict:
+    outcome = _classified(judge, result)
+    if isinstance(outcome, Verdict):
+        return outcome
+    raise _InvalidLabel(outcome)
+
+
+def _gave_up(judge: Judge, attempts: int, last_error: str) -> Verdict:
     logger.error("%s judge error: %s", judge.name, last_error)
     return Verdict(
         JUDGE_ERROR,
-        explanation=f"Judge failed after {JUDGE_RETRIES} attempts: {last_error}",
+        explanation=(
+            f"Judge failed after {attempts} attempt{'s' if attempts != 1 else ''}: "
+            f"{last_error}"
+        ),
     )
 
 
@@ -179,19 +245,15 @@ def score(
     prepared = _prepare(judge, input, output, expected)
     if isinstance(prepared, Verdict):
         return prepared
-    last_error = "no attempt was made"
-    for _attempt in range(JUDGE_RETRIES):
-        try:
-            outcome = _classified(judge, classifier.evaluate(prepared)[0])
-        except Exception as exc:
-            last_error = f"{type(exc).__name__}: {exc}"
-            # The free judge model is rate limited: back off between attempts.
-            time.sleep(2**_attempt)
-            continue
-        if isinstance(outcome, Verdict):
-            return outcome
-        last_error = outcome
-    return _gave_up(judge, last_error)
+    attempts = 0
+    try:
+        for attempt in Retrying(**_retry_policy()):
+            with attempt:
+                attempts = attempt.retry_state.attempt_number
+                return _verdict_or_raise(judge, classifier.evaluate(prepared)[0])
+    except Exception as exc:  # noqa: BLE001 - scoring never raises
+        return _gave_up(judge, attempts, f"{type(exc).__name__}: {exc}")
+    raise AssertionError("unreachable: tenacity either returns or reraises")
 
 
 async def async_score(
@@ -209,16 +271,14 @@ async def async_score(
     prepared = _prepare(judge, input, output, expected)
     if isinstance(prepared, Verdict):
         return prepared
-    last_error = "no attempt was made"
-    for _attempt in range(JUDGE_RETRIES):
-        try:
-            outcome = _classified(judge, (await classifier.async_evaluate(prepared))[0])
-        except Exception as exc:
-            last_error = f"{type(exc).__name__}: {exc}"
-            # The free judge model is rate limited: back off between attempts.
-            await asyncio.sleep(2**_attempt)
-            continue
-        if isinstance(outcome, Verdict):
-            return outcome
-        last_error = outcome
-    return _gave_up(judge, last_error)
+    attempts = 0
+    try:
+        async for attempt in AsyncRetrying(**_retry_policy()):
+            with attempt:
+                attempts = attempt.retry_state.attempt_number
+                return _verdict_or_raise(
+                    judge, (await classifier.async_evaluate(prepared))[0]
+                )
+    except Exception as exc:  # noqa: BLE001 - scoring never raises
+        return _gave_up(judge, attempts, f"{type(exc).__name__}: {exc}")
+    raise AssertionError("unreachable: tenacity either returns or reraises")
