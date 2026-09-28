@@ -229,9 +229,9 @@ export default function App() {
             Chats
           </button>
           <h1>{activeThread?.title ?? "New conversation"}</h1>
-          {/* The sidebar hides below the mobile breakpoint; this is the only
-              new-conversation control that survives there. Without it, a
-              mobile user stays welded to one checkpoint forever. */}
+          {/* Below the mobile breakpoint the sidebar is a drawer; this is a
+              one-tap shortcut alongside the drawer's "New conversation"
+              button. */}
           <button
             className="btn new-thread-mobile"
             type="button"

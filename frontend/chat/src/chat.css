@@ -334,7 +334,7 @@ p { margin: 0 0 1em; max-width: 68ch; }
     .side.open { transform: none; visibility: visible; transition: transform 0.2s ease, visibility 0s; }
     .side-backdrop { position: fixed; inset: 0; z-index: 19; background: rgba(22, 50, 63, 0.35); }
     .scroll, .main-top, .composer { padding-inline: 18px; }
-    /* The only new-conversation control that survives the hidden sidebar. */
+    /* A shortcut alongside the drawer's "New conversation" button. */
     .main-top { display: flex; align-items: baseline; gap: 12px; }
     .new-thread-mobile { margin-left: auto; }
   }
