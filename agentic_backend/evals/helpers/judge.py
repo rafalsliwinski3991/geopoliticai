@@ -183,6 +183,8 @@ def _retry_policy() -> dict[str, Any]:
         openai.APIConnectionError,
         openai.InternalServerError,
         PhoenixRateLimitError,
+        # Phoenix raises ValueError for a bad answer: invalid label, no content.
+        ValueError,
         _InvalidLabel,
     )
     return {

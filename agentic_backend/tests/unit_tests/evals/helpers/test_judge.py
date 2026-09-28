@@ -186,7 +186,7 @@ def test_score_does_not_retry_a_non_transient_error(
 
     def _boom(prepared: Any) -> list[Any]:
         calls.append(prepared)
-        raise ValueError("bad request")
+        raise KeyError("bad request")
 
     monkeypatch.setattr("time.sleep", sleeps.append)
     classifier = SimpleNamespace(evaluate=_boom)
@@ -199,7 +199,7 @@ def test_score_does_not_retry_a_non_transient_error(
     assert sleeps == []
     assert verdict.label == JUDGE_ERROR
     assert "after 1 attempt:" in verdict.explanation
-    assert "ValueError" in verdict.explanation
+    assert "KeyError" in verdict.explanation
 
 
 def test_score_backs_off_on_an_invalid_label(
@@ -283,7 +283,7 @@ async def test_async_score_does_not_retry_a_non_transient_error(
 
     async def _boom(prepared: Any) -> list[Any]:
         calls.append(prepared)
-        raise ValueError("bad request")
+        raise KeyError("bad request")
 
     async def _sleep(seconds: float) -> None:
         sleeps.append(seconds)
@@ -402,3 +402,64 @@ def test_numeric_not_a_choice_label() -> None:
 
     # Assert
     assert verdict.label == JUDGE_ERROR
+
+
+def test_score_retries_a_phoenix_bad_answer_value_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Arrange
+    judge = Judge("j", "numeric", _view, prompt="{x}")
+    monkeypatch.setattr("time.sleep", lambda seconds: None)
+    outcomes = iter(
+        [
+            ValueError("received invalid label 'nope'"),
+            [SimpleNamespace(label="4", explanation="ok")],
+        ]
+    )
+
+    def _evaluate(prepared: Any) -> list[Any]:
+        outcome = next(outcomes)
+        if isinstance(outcome, Exception):
+            raise outcome
+        return outcome
+
+    classifier = SimpleNamespace(evaluate=_evaluate)
+
+    # Act
+    verdict = score(judge, classifier, {}, {"answer": "x"}, {})
+
+    # Assert
+    assert verdict.label == "4"
+
+
+@pytest.mark.anyio
+async def test_async_score_retries_a_phoenix_bad_answer_value_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Arrange
+    judge = Judge("j", "numeric", _view, prompt="{x}")
+
+    async def _sleep(seconds: float) -> None:
+        return None
+
+    monkeypatch.setattr("asyncio.sleep", _sleep)
+    outcomes = iter(
+        [
+            ValueError("OpenAI returned None content"),
+            [SimpleNamespace(label="4", explanation="ok")],
+        ]
+    )
+
+    async def _evaluate(prepared: Any) -> list[Any]:
+        outcome = next(outcomes)
+        if isinstance(outcome, Exception):
+            raise outcome
+        return outcome
+
+    classifier = SimpleNamespace(async_evaluate=_evaluate)
+
+    # Act
+    verdict = await async_score(judge, classifier, {}, {"answer": "x"}, {})
+
+    # Assert
+    assert verdict.label == "4"
