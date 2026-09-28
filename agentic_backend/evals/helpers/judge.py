@@ -43,11 +43,14 @@ JUDGE_BACKOFF_MAX_SECONDS = 8.0
 JUDGE_BACKOFF_JITTER_SECONDS = 1.0
 # phoenix-evals raises a bare ValueError for a bad answer (invalid label, no
 # tool call, no content) and for deterministic misuse alike; only these
-# messages are worth another attempt.
+# messages are worth another attempt. OpenRouter answers a rate-limited or
+# failed free-model call with HTTP 200 and `choices: null`, which surfaces as
+# a TypeError from `response.choices[0]`.
 PHOENIX_BAD_ANSWER_MARKERS = (
     "received invalid label",
     "No tool calls in response",
     "OpenAI returned None content",
+    "'NoneType' object is not subscriptable",
 )
 # Pinned, not `openrouter/free`; see git history.
 JUDGE_MODEL = "nvidia/nemotron-3-super-120b-a12b:free"
@@ -183,7 +186,7 @@ class _InvalidLabel(Exception):
 
 
 def _is_phoenix_bad_answer(exc: BaseException) -> bool:
-    return isinstance(exc, ValueError) and any(
+    return isinstance(exc, (ValueError, TypeError)) and any(
         marker in str(exc) for marker in PHOENIX_BAD_ANSWER_MARKERS
     )
 

@@ -486,3 +486,53 @@ def test_score_does_not_retry_a_phoenix_misuse_value_error(
     assert len(calls) == 1
     assert verdict.label == JUDGE_ERROR
     assert "after 1 attempt:" in verdict.explanation
+
+
+def test_score_retries_a_null_choices_type_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Arrange
+    judge = Judge("j", "numeric", _view, prompt="{x}")
+    monkeypatch.setattr("time.sleep", lambda seconds: None)
+    outcomes = iter(
+        [
+            TypeError("'NoneType' object is not subscriptable"),
+            [SimpleNamespace(label="4", explanation="ok")],
+        ]
+    )
+
+    def _evaluate(prepared: Any) -> list[Any]:
+        outcome = next(outcomes)
+        if isinstance(outcome, Exception):
+            raise outcome
+        return outcome
+
+    classifier = SimpleNamespace(evaluate=_evaluate)
+
+    # Act
+    verdict = score(judge, classifier, {}, {"answer": "x"}, {})
+
+    # Assert
+    assert verdict.label == "4"
+
+
+def test_score_does_not_retry_an_unrelated_type_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Arrange
+    judge = Judge("j", "numeric", _view, prompt="{x}")
+    calls: list[Any] = []
+    monkeypatch.setattr("time.sleep", lambda seconds: None)
+
+    def _boom(prepared: Any) -> list[Any]:
+        calls.append(prepared)
+        raise TypeError("unsupported operand type(s)")
+
+    classifier = SimpleNamespace(evaluate=_boom)
+
+    # Act
+    verdict = score(judge, classifier, {}, {"answer": "x"}, {})
+
+    # Assert
+    assert len(calls) == 1
+    assert verdict.label == JUDGE_ERROR
