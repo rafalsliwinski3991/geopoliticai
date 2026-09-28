@@ -17,3 +17,6 @@ docs/audits/
 node_modules/
 
 deploy/tests/certs/
+
+# Claude Code worktrees
+.claude/worktrees/
