@@ -1,9 +1,9 @@
-"""Admin for the Django-owned chat_threads and quota tables."""
+"""Admin for the Django-owned chat_threads, quota, and site_quota tables."""
 
 from django.contrib import admin, messages
 
 from chat.management.commands.purge_prelaunch_threads import orphan_thread_ids
-from chat.models import Quota, Thread
+from chat.models import Quota, SiteQuota, Thread
 
 CHECKPOINTER_TABLES_MISSING = (
     "The checkpointer tables are missing; run the checkpointer's setup() first."
@@ -40,6 +40,23 @@ class QuotaAdmin(admin.ModelAdmin):
     list_filter = ("day",)
     search_fields = ("user__email",)
     readonly_fields = ("user", "day", "used")
+
+    def has_add_permission(self, request) -> bool:
+        return False
+
+    def has_change_permission(self, request, obj=None) -> bool:
+        return False
+
+    def has_delete_permission(self, request, obj=None) -> bool:
+        return False
+
+
+@admin.register(SiteQuota)
+class SiteQuotaAdmin(admin.ModelAdmin):
+    """Read-only: the site counter is written by the API's own SQL, never by hand."""
+
+    list_display = ("day", "used")
+    readonly_fields = ("day", "used")
 
     def has_add_permission(self, request) -> bool:
         return False
