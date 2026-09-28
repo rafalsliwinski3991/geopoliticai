@@ -52,7 +52,7 @@ async def test_a_fresh_request_without_material_refuses_without_invoking_the_chi
     )
 
     # Assert
-    assert result["messages"][0].text() == NO_MATERIAL_NOTICE
+    assert result["messages"][0].text == NO_MATERIAL_NOTICE
     assert events == [{"type": "notice", "text": NO_MATERIAL_NOTICE}]
     assert child.calls == []
 
@@ -72,7 +72,7 @@ async def test_a_chat_only_thread_without_citations_refuses_without_invoking_the
     )
 
     # Assert
-    assert result["messages"][0].text() == NO_MATERIAL_NOTICE
+    assert result["messages"][0].text == NO_MATERIAL_NOTICE
     assert events == [{"type": "notice", "text": NO_MATERIAL_NOTICE}]
     assert child.calls == []
 
@@ -136,7 +136,7 @@ async def test_a_report_result_is_returned_and_emits_nothing(
     )
 
     # Assert
-    assert result["messages"][0].text() == "The report."
+    assert result["messages"][0].text == "The report."
     assert events == []
 
 
@@ -155,7 +155,7 @@ async def test_a_notice_result_is_returned_and_emitted(
     )
 
     # Assert
-    assert result["messages"][0].text() == "Refused."
+    assert result["messages"][0].text == "Refused."
     assert events == [{"type": "notice", "text": "Refused."}]
 
 
@@ -174,5 +174,5 @@ async def test_a_result_with_neither_report_nor_notice_returns_the_cancel_notice
     )
 
     # Assert
-    assert result["messages"][0].text() == CANCELLED_NOTICE
+    assert result["messages"][0].text == CANCELLED_NOTICE
     assert events == [{"type": "notice", "text": CANCELLED_NOTICE}]

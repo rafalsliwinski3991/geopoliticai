@@ -62,7 +62,7 @@ async def run_e2e(input: dict[str, Any]) -> dict[str, Any]:
             if after is not None:
                 record["pause"] = {"outline": list(after.get("outline") or [])}
             else:
-                record["answer"] = result["messages"][-1].text()
+                record["answer"] = result["messages"][-1].text
             turns.append(record)
     return {"turns": turns}
 

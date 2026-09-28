@@ -72,7 +72,7 @@ async def test_execution_streams_answer_tokens(
     ]
 
     # Assert
-    assert "".join(chunk.text() for chunk in chunks) == "Hello world."
+    assert "".join(chunk.text for chunk in chunks) == "Hello world."
 
 
 @pytest.mark.anyio
@@ -132,7 +132,7 @@ async def test_execution_propagates_llm_failure_after_partial_tokens(
             state, config=config, stream_mode="messages"
         ):
             if metadata.get("langgraph_node") == "answer":
-                texts.append(message.text())
+                texts.append(message.text)
 
     # Assert
     # Already-produced chunks are yielded before the exception surfaces, so no

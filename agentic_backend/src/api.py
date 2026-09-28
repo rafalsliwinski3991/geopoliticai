@@ -16,6 +16,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from langchain_core.messages import AIMessage
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
 from langgraph.types import Command
 from psycopg import AsyncConnection
 from psycopg.rows import DictRow, dict_row
@@ -51,6 +52,11 @@ from models import PipelineError, ReportNotPendingError
 from tracing import init_tracing
 
 logger = logging.getLogger(__name__)
+
+# Explicit msgpack allow-list (POLI-16): the expert subgraph checkpoints
+# `models.Source`; every other custom type is refused rather than rebuilt.
+# LangChain messages and primitives are always allowed.
+CHECKPOINT_SERDE = JsonPlusSerializer(allowed_msgpack_modules=[("models", "Source")])
 
 # Hardcoded the way `LLMSettings` is hardcoded: edited here, never read from
 # the environment.
@@ -205,7 +211,7 @@ async def lifespan(_app: FastAPI) -> AsyncGenerator[None, None]:
     )
     await pool.open()
     try:
-        checkpointer = AsyncPostgresSaver(pool)
+        checkpointer = AsyncPostgresSaver(pool, serde=CHECKPOINT_SERDE)
         await _require_migrated_checkpointer_schema(pool)
         await checkpointer.setup()
         await _assert_checkpointer_schema(pool)
@@ -503,7 +509,7 @@ async def _astream_answer(
         # with the parent node and is filtered above.
         if message.__class__ is AIMessage and node in streamed_nodes:
             continue
-        text = message.text()
+        text = message.text
         if text:
             if node == "write" and not streamed_nodes:
                 # Only the reporter's composing node produces a downloadable
@@ -715,7 +721,7 @@ async def _thread_messages(thread_id: str) -> list[dict[str, str]]:
     return [
         {
             "role": "user" if message.type == "human" else "assistant",
-            "text": message.text(),
+            "text": message.text,
         }
         for message in snapshot.values.get("messages", [])
     ]

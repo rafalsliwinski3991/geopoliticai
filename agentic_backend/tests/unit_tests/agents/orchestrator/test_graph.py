@@ -156,7 +156,7 @@ async def test_expert_branch_streams_namespaced_answer_tokens(
     # Assert
     assert answer_events
     assert all(event[0] for event in answer_events)
-    assert "".join(event[1][0].text() for event in answer_events) == "Hello world."
+    assert "".join(event[1][0].text for event in answer_events) == "Hello world."
 
 
 @pytest.mark.anyio
@@ -480,7 +480,7 @@ async def test_report_branch_resumes_and_streams_from_write(
 
     # Assert
     assert write_events
-    assert "".join(event[1][0].text() for event in write_events) == "The report text."
+    assert "".join(event[1][0].text for event in write_events) == "The report text."
 
 
 @pytest.mark.anyio
@@ -505,7 +505,7 @@ async def test_report_branch_does_not_rerun_outline_on_resume(
 
     # Assert
     assert state.next == ()
-    assert state.values["messages"][-1].text() == "The report."
+    assert state.values["messages"][-1].text == "The report."
     assert len(outline_calls) == 1
 
 
