@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import math
 import os
 from collections.abc import Callable, Coroutine, Sequence
 from typing import Any
@@ -37,7 +38,9 @@ def build_evaluator(judge: Judge, classifier: Any) -> Callable[..., Any]:
             decode_ax_value(dataset_output),
         )
         return EvaluationResult(
-            score=verdict.score,
+            # AX Flight also rejects an all-null score column, which a judge
+            # that applies to one example gets when that example errors.
+            score=math.nan if verdict.score is None else verdict.score,
             label=verdict.label,
             # AX Flight rejects an all-null explanation column: code-check
             # verdicts and not-applicable rows carry no reasoning, so give

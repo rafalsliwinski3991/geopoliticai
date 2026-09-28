@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import math
 from types import SimpleNamespace
 from typing import Any
 
@@ -287,3 +288,23 @@ def test_build_evaluator_never_records_an_empty_explanation() -> None:
 
     # Assert
     assert result.explanation == "No explanation recorded."
+
+
+def test_build_evaluator_never_records_a_null_score() -> None:
+    # Arrange: AX Flight rejects an all-null score column, and a judge that
+    # applies to one example and errors on it would otherwise send exactly that.
+    judge = Judge("j", "numeric", _view, prompt="{x}")
+
+    def _boom(prepared: Any) -> list[Any]:
+        raise KeyError("bad request")
+
+    classifier = SimpleNamespace(evaluate=_boom)
+    evaluator = ax_mod.build_evaluator(judge, classifier)
+
+    # Act
+    result = evaluator(input='{"q": 1}', output={"a": 2}, dataset_output='{"e": 3}')
+
+    # Assert
+    assert result.label == "judge_error"
+    assert result.score is not None
+    assert math.isnan(result.score)
