@@ -327,6 +327,49 @@ describe("turn boundaries", () => {
     expect(assistants[0]!.text).toBe("Fresh.");
   });
 
+  it("progress lists the running turn's steps", async () => {
+    const frame = (event: object) =>
+      new TextEncoder().encode(`data: ${JSON.stringify(event)}\n\n`);
+    let stream!: ReadableStreamDefaultController<Uint8Array>;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: string) => {
+        if (url === "/accounts/token/") {
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            json: async () => ({ access: "tok", expires_in: 900 }),
+          } as unknown as Response);
+        }
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          // Stays open after the progress frame: the turn is still running.
+          body: new ReadableStream<Uint8Array>({
+            start(controller) {
+              stream = controller;
+              controller.enqueue(frame({ type: "progress", node: "a", label: "Step" }));
+            },
+          }),
+        } as unknown as Response);
+      }),
+    );
+    const getLatest = await renderHookProbe();
+    let turn!: Promise<void>;
+    act(() => {
+      turn = getLatest().send("one");
+    });
+    await vi.waitFor(() =>
+      expect(getLatest().progress).toEqual([{ node: "a", label: "Step" }]),
+    );
+    await act(async () => {
+      stream.enqueue(frame({ type: "result", output: "A", kind: "answer", truncated: false }));
+      stream.close();
+      await turn;
+    });
+    expect(getLatest().progress).toEqual([]);
+  });
+
   it("progress never carries a finished turn's steps", async () => {
     stubStreaming([
       [
