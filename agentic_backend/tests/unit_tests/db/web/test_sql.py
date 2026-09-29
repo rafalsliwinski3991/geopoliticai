@@ -188,6 +188,7 @@ async def test_increment_quota_sends_the_conditional_upsert() -> None:
         "user_id": 1,
         "day": datetime.date.today(),
         "limit": 20,
+        "cost": 1,
     }
 
 
@@ -207,6 +208,34 @@ async def test_increment_site_quota_sends_the_conditional_upsert() -> None:
     assert params == {
         "day": datetime.datetime.now(datetime.timezone.utc).date(),
         "limit": 500,
+        "cost": 1,
+    }
+
+
+@pytest.mark.anyio
+async def test_increment_quota_sends_the_cost() -> None:
+    fake = _FakePool({sql.INCREMENT_QUOTA: [{"used": 6}]})
+    assert await sql.increment_quota(pool(fake), user_id=1, limit=20, cost=5) == 6
+    statement, params = fake.conn.executed[0]
+    assert statement == sql.INCREMENT_QUOTA
+    assert params == {
+        "user_id": 1,
+        "day": datetime.date.today(),
+        "limit": 20,
+        "cost": 5,
+    }
+
+
+@pytest.mark.anyio
+async def test_increment_site_quota_sends_the_cost() -> None:
+    fake = _FakePool({sql.INCREMENT_SITE_QUOTA: [{"used": 6}]})
+    assert await sql.increment_site_quota(pool(fake), limit=500, cost=5) == 6
+    statement, params = fake.conn.executed[0]
+    assert statement == sql.INCREMENT_SITE_QUOTA
+    assert params == {
+        "day": datetime.datetime.now(datetime.timezone.utc).date(),
+        "limit": 500,
+        "cost": 5,
     }
 
 

@@ -25,6 +25,9 @@ REQUIRED_ENV_VARS = ("OPENAI_API_KEY", "BRAVE_SEARCH_KEY", "JWT_SIGNING_KEY")
 # UTC day), spent by INCREMENT_SITE_QUOTA just before the caller's own count.
 DAILY_RESEARCH_TURNS = 20
 DAILY_RESEARCH_TURNS_ALL_USERS = 500
+# A deep-expert turn costs roughly 10-30x an expert turn, so it spends this many
+# units from both counters (brainstorm 2026Sep28 Q3). Value set at plan time.
+DEEP_RESEARCH_TURN_COST = 5
 SUPPORTED_ARIZE_PLATFORMS = frozenset({"AX", "PHOENIX"})
 LOG_FORMAT = (
     "%(asctime)s %(levelname)s %(name)s "

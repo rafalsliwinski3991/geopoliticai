@@ -40,21 +40,25 @@ SELECT used FROM quota WHERE user_id = %(user_id)s AND day = %(day)s
 # returns no row when the cap is already reached, which is how N concurrent
 # requests that all passed the door check still consume only the turns that
 # remain. A plain `used = quota.used + 1` lets concurrency buy extras.
+# `cost` is how many units this turn spends (1, or DEEP_RESEARCH_TURN_COST); the
+# turn is affordable only when all of it fits, so a partial balance buys nothing.
 INCREMENT_QUOTA = """
 INSERT INTO quota (user_id, day, used)
-VALUES (%(user_id)s, %(day)s, 1)
-ON CONFLICT (user_id, day) DO UPDATE SET used = quota.used + 1
-WHERE quota.used < %(limit)s
+VALUES (%(user_id)s, %(day)s, %(cost)s)
+ON CONFLICT (user_id, day) DO UPDATE SET used = quota.used + %(cost)s
+WHERE quota.used + %(cost)s <= %(limit)s
 RETURNING used
 """
 
 # The same conditional upsert against the site-wide counter: `day` is the
 # primary key, so one row per UTC day, and no row comes back at the ceiling.
+# The same conditional upsert against the site-wide counter: `day` is the
+# primary key, so one row per UTC day, and no row comes back at the ceiling.
 INCREMENT_SITE_QUOTA = """
 INSERT INTO site_quota (day, used)
-VALUES (%(day)s, 1)
-ON CONFLICT (day) DO UPDATE SET used = site_quota.used + 1
-WHERE site_quota.used < %(limit)s
+VALUES (%(day)s, %(cost)s)
+ON CONFLICT (day) DO UPDATE SET used = site_quota.used + %(cost)s
+WHERE site_quota.used + %(cost)s <= %(limit)s
 RETURNING used
 """
 
@@ -153,8 +157,9 @@ async def increment_quota(
     *,
     user_id: int,
     limit: int,
+    cost: int = 1,
 ) -> int | None:
-    """Spend one research turn atomically; None when the cap is already reached.
+    """Spend `cost` research units atomically; None when they do not all fit.
 
     The conditional upsert means N concurrent turns cannot buy extras: the
     database decides affordability, and the door check (`quota_used`) is only
@@ -162,7 +167,8 @@ async def increment_quota(
     """
     async with pool.connection() as conn:
         cursor = await conn.execute(
-            INCREMENT_QUOTA, {"user_id": user_id, "day": _today(), "limit": limit}
+            INCREMENT_QUOTA,
+            {"user_id": user_id, "day": _today(), "limit": limit, "cost": cost},
         )
         row = await cursor.fetchone()
     if row is None:
@@ -171,12 +177,12 @@ async def increment_quota(
 
 
 async def increment_site_quota(
-    pool: AsyncConnectionPool[AsyncConnection[DictRow]], *, limit: int
+    pool: AsyncConnectionPool[AsyncConnection[DictRow]], *, limit: int, cost: int = 1
 ) -> int | None:
-    """Spend one research turn from the site-wide ceiling; None when it is reached."""
+    """Spend `cost` units from the site-wide ceiling; None when they do not all fit."""
     async with pool.connection() as conn:
         cursor = await conn.execute(
-            INCREMENT_SITE_QUOTA, {"day": _today(), "limit": limit}
+            INCREMENT_SITE_QUOTA, {"day": _today(), "limit": limit, "cost": cost}
         )
         row = await cursor.fetchone()
     if row is None:
