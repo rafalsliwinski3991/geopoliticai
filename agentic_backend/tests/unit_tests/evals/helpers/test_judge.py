@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import math
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from types import SimpleNamespace
 from typing import Any
 
@@ -410,7 +410,7 @@ def test_score_retries_a_phoenix_bad_answer_value_error(
     # Arrange
     judge = Judge("j", "numeric", _view, prompt="{x}")
     monkeypatch.setattr("time.sleep", lambda seconds: None)
-    outcomes = iter(
+    outcomes: Iterator[Exception | list[Any]] = iter(
         [
             ValueError("received invalid label 'nope'"),
             [SimpleNamespace(label="4", explanation="ok")],
@@ -443,7 +443,7 @@ async def test_async_score_retries_a_phoenix_bad_answer_value_error(
         return None
 
     monkeypatch.setattr("asyncio.sleep", _sleep)
-    outcomes = iter(
+    outcomes: Iterator[Exception | list[Any]] = iter(
         [
             ValueError("OpenAI returned None content"),
             [SimpleNamespace(label="4", explanation="ok")],
@@ -494,7 +494,7 @@ def test_score_retries_a_null_choices_type_error(
     # Arrange
     judge = Judge("j", "numeric", _view, prompt="{x}")
     monkeypatch.setattr("time.sleep", lambda seconds: None)
-    outcomes = iter(
+    outcomes: Iterator[Exception | list[Any]] = iter(
         [
             TypeError("'NoneType' object is not subscriptable"),
             [SimpleNamespace(label="4", explanation="ok")],
