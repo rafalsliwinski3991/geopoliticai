@@ -46,6 +46,17 @@ class ReportNotPendingError(PipelineError):
     status: ClassVar[int] = 409
 
 
+class ResearchLimitError(PipelineError):
+    """A deep research turn ran past its wall-time cap.
+
+    A hard error, never a degraded answer (brainstorm 2026Sep28). The search
+    cap is a soft stop instead (plan review): it returns a message to the model
+    and never raises.
+    """
+
+    status: ClassVar[int] = 504
+
+
 @dataclass(frozen=True)
 class Candidate:
     """An allow-listed search result, before its page is fetched."""

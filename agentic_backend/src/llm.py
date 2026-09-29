@@ -37,6 +37,8 @@ def _build_structured_client(settings: LLMSettings) -> ChatOpenAI:
     `streaming=True` would make even `ainvoke` stream internally, which puts
     the router's own tool-call chunks into any `stream_mode="messages"`
     consumer. This call is never the user's answer, so it never streams.
+    `reasoning_effort` passes through for the reasoning models that take it;
+    None (every existing call site) leaves the API default untouched.
     """
     return ChatOpenAI(
         model=settings.model,
@@ -45,7 +47,18 @@ def _build_structured_client(settings: LLMSettings) -> ChatOpenAI:
         timeout=settings.timeout_seconds,
         max_retries=DEFAULT_MAX_RETRIES,
         streaming=False,
+        reasoning_effort=settings.reasoning_effort,
     )
+
+
+def build_chat_model(settings: LLMSettings) -> ChatOpenAI:
+    """Return a non-streaming client for an agent that drives its own tool loop.
+
+    Public because `deepagents.create_deep_agent` takes the model object itself
+    rather than a call through this module. Non-streaming for the same reason
+    as `_build_structured_client`: none of these calls is the user's answer.
+    """
+    return _build_structured_client(settings)
 
 
 async def astream_messages(

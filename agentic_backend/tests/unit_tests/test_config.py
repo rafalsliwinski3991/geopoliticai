@@ -62,6 +62,7 @@ def test_default_llm_settings_values() -> None:
     assert DEFAULT_LLM_SETTINGS.temperature == 0.0
     assert DEFAULT_LLM_SETTINGS.timeout_seconds == 60.0
     assert DEFAULT_LLM_SETTINGS.max_output_tokens == 16_384
+    assert DEFAULT_LLM_SETTINGS.reasoning_effort is None
 
 
 def test_llm_settings_is_overridable_per_call_site() -> None:
@@ -75,6 +76,15 @@ def test_llm_settings_is_overridable_per_call_site() -> None:
     assert overridden.timeout_seconds == 30.0
     assert overridden.max_output_tokens == 1024
     assert DEFAULT_LLM_SETTINGS.model == "gpt-4o-mini"
+
+
+def test_reasoning_effort_is_overridable_per_call_site() -> None:
+    # Act
+    overridden = LLMSettings(model="gpt-5-mini", reasoning_effort="low")
+
+    # Assert
+    assert overridden.reasoning_effort == "low"
+    assert DEFAULT_LLM_SETTINGS.reasoning_effort is None
 
 
 def test_repo_root_env_resolves_to_the_repo_root() -> None:

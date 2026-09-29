@@ -5,12 +5,15 @@ import pytest
 from langchain_core.language_models.fake_chat_models import FakeListChatModel
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
 from langchain_core.runnables import RunnableLambda
+from langchain_openai import ChatOpenAI
 from langgraph.constants import END, START, TAG_NOSTREAM
 from langgraph.graph import StateGraph
 from pydantic import BaseModel
 from typing_extensions import TypedDict
 
 import llm
+from config import DEFAULT_LLM_SETTINGS, LLMSettings
+from llm import build_chat_model
 from models import LLMInvocationError
 
 
@@ -170,3 +173,51 @@ async def test_ainvoke_structured_is_tagged_nostream(
     ]
 
     assert control_frames
+
+
+def test_build_chat_model_returns_a_non_streaming_chat_open_ai(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Arrange
+    monkeypatch.setenv("OPENAI_API_KEY", "test")
+    settings = LLMSettings(
+        model="gpt-5-mini",
+        temperature=1.0,
+        timeout_seconds=120.0,
+        max_output_tokens=16_384,
+    )
+
+    # Act
+    client = build_chat_model(settings)
+
+    # Assert
+    assert isinstance(client, ChatOpenAI)
+    assert client.streaming is False
+    assert client.model_name == "gpt-5-mini"
+
+
+def test_build_chat_model_passes_the_reasoning_effort(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Arrange
+    monkeypatch.setenv("OPENAI_API_KEY", "test")
+    settings = LLMSettings(model="gpt-5-mini", reasoning_effort="low")
+
+    # Act
+    client = build_chat_model(settings)
+
+    # Assert
+    assert client.reasoning_effort == "low"
+
+
+def test_build_chat_model_leaves_reasoning_effort_unset_by_default(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Arrange
+    monkeypatch.setenv("OPENAI_API_KEY", "test")
+
+    # Act
+    client = build_chat_model(DEFAULT_LLM_SETTINGS)
+
+    # Assert
+    assert client.reasoning_effort is None
