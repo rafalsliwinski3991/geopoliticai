@@ -1,4 +1,4 @@
-"""Orchestrator eval: routing and the chat path; expert and reporter never run."""
+"""Orchestrator eval: routing and the chat path; expert, deep expert and reporter never run."""
 
 from __future__ import annotations
 
@@ -30,8 +30,8 @@ async def run_orchestrator(input: dict[str, Any]) -> dict[str, Any]:
     result = await graph.ainvoke(
         {"messages": messages_from_dict(input["messages"])},
         config=build_runtime_config(thread_id=f"eval-{uuid4()}"),
-        # Stops after `classify` on these branches: no Brave, no reporter.
-        interrupt_before=["expert", "reporter"],
+        # Stops after classify on these branches: no Brave, no research, no reporter.
+        interrupt_before=["expert", "deep_expert", "reporter"],
     )
     destination = result["destination"]
     return {

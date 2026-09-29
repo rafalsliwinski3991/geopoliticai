@@ -132,8 +132,11 @@ From the root, use `make logs-SERVICE` and `make services`. Manual quality work
 is `agentic_backend/evals/`: one script per eval, run from `agentic_backend/` as
 `uv run python -m evals.<name>`, with judges in `evals/judges/`, shared
 AX/Phoenix code in `evals/helpers/`, and `{name, input, output}` examples in
-`evals/datasets/`. Evals never call Brave; expert and e2e examples carry
-synthetic sources, never fetched article text. Evals are advisory, outside
+`evals/datasets/`. Evals never call Brave; expert, deep_expert, and e2e examples
+carry synthetic sources, never fetched article text. `recorded_sources` patches both the expert's
+retrieval node and the deep expert's tools. The `deep_expert` eval judges its `deep_answer` with
+the expert's three judges and compares it with the expert's `answer` from a live run on the
+same recorded sources. Evals are advisory, outside
 pytest (their helpers, judges, and datasets are unit-tested), and reachable in
 CI only through the dispatch-only `evals.yml` workflow, which gates no merge; a
 run exits non-zero on a task crash, a judge error, or a judge average below its

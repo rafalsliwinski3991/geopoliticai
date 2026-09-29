@@ -4,7 +4,13 @@ from __future__ import annotations
 
 from typing import Any
 
-from evals.judges.orchestrator import _chat_view, chat_no_links, judges, routing_correct
+from evals.judges.orchestrator import (
+    _chat_view,
+    _query_view,
+    chat_no_links,
+    judges,
+    routing_correct,
+)
 
 
 def _variables(actual: object, expected: object) -> dict[str, Any]:
@@ -90,3 +96,17 @@ def test_judges_have_unique_names() -> None:
 
     # Assert
     assert len(names) == len(set(names))
+
+
+def test_query_view_applies_to_deep_and_not_to_report() -> None:
+    # Arrange
+    input: dict[str, Any] = {
+        "messages": [{"type": "human", "data": {"type": "human", "content": "hi"}}]
+    }
+
+    # Act + Assert
+    assert (
+        _query_view(input, {}, {"destination": "deep", "standalone_query": "q"})
+        is not None
+    )
+    assert _query_view(input, {}, {"destination": "report"}) is None

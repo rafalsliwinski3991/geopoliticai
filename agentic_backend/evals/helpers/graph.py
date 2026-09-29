@@ -1,4 +1,4 @@
-"""Graph-running helpers shared by the expert, reporter, and e2e evals."""
+"""Graph-running helpers shared by the expert, deep expert, reporter, and e2e evals."""
 
 from __future__ import annotations
 
@@ -11,6 +11,8 @@ from models import Candidate, Source, SourcePolicy
 
 # The node imports both functions by name, so they are patched where it looks them up.
 SEARCH_NODE_MODULE = "agents.expert.nodes.search_and_fetch"
+# The deep expert's tools import the same two names; patched the same way.
+DEEP_TOOLS_MODULE = "agents.deep_expert.tools"
 
 
 def load_sources(raw: Sequence[dict[str, Any]]) -> list[Source]:
@@ -22,10 +24,12 @@ def load_sources(raw: Sequence[dict[str, Any]]) -> list[Source]:
 
 @contextmanager
 def recorded_sources(current: Callable[[], list[Source] | None]) -> Iterator[None]:
-    """Replace the expert's live retrieval with recorded sources.
+    """Replace the expert's and the deep expert's live retrieval with recorded sources.
 
     `current` is read on every call, so e2e can change sources between turns.
-    Reaching the expert with no recorded sources is an error: evals never call Brave.
+    Every search returns the whole recorded set (brainstorm Q5b), so the deep
+    eval measures synthesis and the grader loop, not search strategy.
+    Reaching either agent with no recorded sources is an error: evals never call Brave.
     """
 
     def sources() -> list[Source]:
@@ -45,11 +49,17 @@ def recorded_sources(current: Callable[[], list[Source] | None]) -> Iterator[Non
     async def fetch_sources(
         candidates: Sequence[Candidate], policy: SourcePolicy
     ) -> list[Source]:
-        return sources()
+        # Only what was asked for: the deep expert reads one URL at a time and
+        # takes the first source back. The expert asks for every recorded URL,
+        # so its result is unchanged.
+        wanted = {candidate.url for candidate in candidates}
+        return [source for source in sources() if source.url in wanted]
 
     with (
         patch(f"{SEARCH_NODE_MODULE}.search_allowlisted", search_allowlisted),
         patch(f"{SEARCH_NODE_MODULE}.fetch_sources", fetch_sources),
+        patch(f"{DEEP_TOOLS_MODULE}.search_allowlisted", search_allowlisted),
+        patch(f"{DEEP_TOOLS_MODULE}.fetch_sources", fetch_sources),
     ):
         yield
 

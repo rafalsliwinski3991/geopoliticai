@@ -11,7 +11,7 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.types import Command, interrupt
 
 from evals.helpers.graph import load_sources, pending_pause, recorded_sources
-from models import Source, SourcePolicy
+from models import Candidate, Source, SourcePolicy
 
 search_node: Any = importlib.import_module("agents.expert.nodes.search_and_fetch")
 
@@ -43,7 +43,7 @@ async def test_recorded_sources_patches_expert_retrieval() -> None:
     # Act
     with recorded_sources(lambda: recorded):
         candidates = await search_node.search_allowlisted("q", POLICY)
-        fetched = await search_node.fetch_sources([], POLICY)
+        fetched = await search_node.fetch_sources(candidates, POLICY)
 
     # Assert
     assert [(c.title, c.url, c.domain) for c in candidates] == [
@@ -126,3 +126,28 @@ async def test_pending_pause_wraps_non_dict_interrupt_value() -> None:
 
     # Assert
     assert pause == {"outline": [], "notice": "paused!"}
+
+
+@pytest.mark.anyio
+async def test_recorded_sources_patches_deep_tools() -> None:
+    # Arrange
+    recorded = [Source(title="t", url="https://news.example/a", text="text")]
+    tools_module: Any = importlib.import_module("agents.deep_expert.tools")
+    original_search = tools_module.search_allowlisted
+    original_fetch = tools_module.fetch_sources
+
+    # Act
+    with recorded_sources(lambda: recorded):
+        candidates = await tools_module.search_allowlisted("q", POLICY)
+        one = await tools_module.fetch_sources(
+            [Candidate(title="t", url="https://news.example/a", domain="recorded")],
+            POLICY,
+        )
+
+    # Assert
+    assert [(c.title, c.url, c.domain) for c in candidates] == [
+        ("t", "https://news.example/a", "recorded")
+    ]
+    assert one == recorded
+    assert tools_module.search_allowlisted is original_search
+    assert tools_module.fetch_sources is original_fetch

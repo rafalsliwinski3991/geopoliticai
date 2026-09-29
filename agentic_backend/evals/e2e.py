@@ -13,8 +13,8 @@ from evals.judges.e2e import judges
 from models import Source
 
 DATASET_PATH = Path(__file__).parent / "datasets" / "e2e.json"
-# Two expert/outline rounds plus classifier calls in one task.
-TIMEOUT_SECONDS = 900
+# 4x the deep wall cap (480 s): two deep turns, an expert turn, and classifier calls. Retune if wall_seconds changes.
+TIMEOUT_SECONDS = 1_920
 
 
 async def run_e2e(input: dict[str, Any]) -> dict[str, Any]:
