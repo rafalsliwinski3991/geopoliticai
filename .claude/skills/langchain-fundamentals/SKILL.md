@@ -248,7 +248,7 @@ const response = await structuredModel.invoke("Extract: John, john@example.com, 
 
 ```python
 from langchain_anthropic import ChatAnthropic
-agent = create_agent(model=ChatAnthropic(model="claude-sonnet-5-5", temperature=0), tools=[...])
+agent = create_agent(model=ChatAnthropic(model="claude-sonnet-5-5"), tools=[...])
 ```
 </model_config>
 

@@ -84,8 +84,8 @@ rewriting history:
 
 ## Step 2 — Write the draft plan
 
-Open every plan, whatever its tier, by naming its tier and the brainstorm path it implements, so
-later commands never have to infer them.
+Open every plan, whatever its tier, by naming its tier and the brainstorm path it implements (or,
+for issue or task input, the source set), so later commands never have to infer them.
 
 Write a **lightweight plan** to the output path with only:
 

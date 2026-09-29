@@ -225,8 +225,9 @@ critic, it must say so and mark such findings as unverified instead of asserting
 
 If the dispatch fails because the plugin or model is unavailable, ask the user the same Step 0
 question: continue without the OpenCode critique, or stop. Never fall back to a Claude agent or
-another model. When the critique is skipped, add a changelog entry saying the new version had no
-OpenCode critique.
+another model. When the user chooses to stop, delete the new version file (never `$1`) and record
+the stop in the run log. When the critique is skipped, add a changelog entry saying the new version
+had no OpenCode critique.
 
 Write the critic's findings into the run log verbatim. Then fix the new version in place: apply
 every finding you accept, and add a changelog entry for each — accepted or rejected, with the reason
