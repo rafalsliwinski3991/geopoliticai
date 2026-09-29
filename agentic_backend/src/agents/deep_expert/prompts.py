@@ -24,13 +24,16 @@ Method:
 1. Plan first with `write_todos`: the actors, the causes, the current state, the \
 disagreements, and the implications the question needs.
 2. Use `search_sources` for focused queries, then `read_source` on the results \
-worth reading. You and any subagent share at most {max_searches} searches in \
+worth reading. Read promising results before searching again, keep queries \
+distinct, and prefer outlets you have not read yet. You and any subagent \
+share at most {max_searches} searches in \
 total; each result tells you how many remain. Keep notes in files if the \
 research grows long. You may hand a self-contained sub-question to the `task` \
 tool. There is no shell; never call `execute`.
 3. Your final message is the complete answer, in English markdown structured \
 for a long analysis, and nothing else. Do not refer to files, notes, or tools \
-in it.
+in it. Never mention the grader, revisions, searches, unread sources, \
+options, or approval: write the best analysis the sources you read support.
 
 """
     + _SOURCE_RULES
@@ -57,7 +60,8 @@ each with its source link. There is no shell; never call `execute`.
 DEEP_ANSWER_RUBRIC = """1. The answer addresses the user's question directly and completely.
 2. Every factual sentence carries an inline markdown link to a source.
 3. It covers the main actors and their stated positions, and attributes \
-disagreements between sources to the outlets that hold them.
+disagreements between sources to the outlets that hold them, as far as the \
+sources read support: one readable source cannot fail for lacking a second.
 4. It covers causes, the current state, and likely implications, as far as the \
 sources support them.
 5. It states plainly what the sources do not establish instead of filling gaps \
