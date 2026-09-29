@@ -54,17 +54,20 @@ own `tests/unit_tests/agents/<name>/test_graph.py`.
 ```text
 START -> classify -> expert -> END
                   \-> chat   -> END
+                  \-> deep_expert -> END
                   \-> reporter -> END
 
 START -> search_and_fetch -> answer -> END
 ```
 
-The orchestrator invokes the expert and the reporter from their own nodes, not
-with `add_node`, because neither child's state schema shares a key with the
-orchestrator's. The expert makes exactly
+The orchestrator invokes the expert, the deep expert, and the reporter from their own nodes, not
+with `add_node`, because no child's state schema matches the orchestrator's: the expert's and the
+reporter's share no key with it, and the deep expert's shares only `messages`. The expert makes exactly
 three Brave batches, extracts allow-listed pages with trafilatura, and makes one
 streamed plain-text model call. Expert search, source, and model failures are
 hard errors; do not add degraded fallbacks.
+
+The deep expert (`agents/deep_expert/`) is a `deepagents` agent (gpt-5-mini, `reasoning_effort="low"`). It plans, searches and reads through the shared `search.py` boundary with the expert's `EXPERT_SOURCES`, and revises under `RubricMiddleware` (gpt-4o-mini grader). The grader reads the question and the whole final draft (`graph.grader_view`), never tool output. The classifier routes to `"deep"` only after an explicit request for depth, and keeps same-topic follow-ups deep. Search is capped at 5 per turn, shared with its subagent, and a spent budget is a message to the model rather than an error. Wall time is capped at 480 s, and passing it is a hard error (`ResearchLimitError`, 504). An unsatisfied grader after 3 rounds ships the last draft. A grader crash, no source read, or no cited source is a hard error. Its graph and tools are built per turn, never at import. `research()` runs the agent with checkpointing off for its whole tree (`NO_CHECKPOINTER_CONFIG`). Its answer reaches the browser once as a `notice`, and its progress labels carry counts only.
 
 The API accepts exactly one of `{query, thread_id}` or `{resume, thread_id}`.
 Every `/api/*` route requires a bearer access token minted by Django at
@@ -80,11 +83,12 @@ and `messages` plus `subgraphs=True`; nodes emit their own progress through a
 `StreamWriter`, and the delivery layer forwards custom payloads without
 filtering them by namespace, because a subgraph's custom events arrive under
 the child namespace while `updates` are filtered to the empty one. Emit
-answer-node AI text, except that the `reporter` node's refusal, cancel, and
-revision-cap paths make no model call: that node emits its own `notice` custom
-event and the delivery layer turns it into answer text. SSE events are
+answer-node AI text, except for two
+nodes that deliver their answer whole: the `reporter` node's refusal, cancel, and revision-cap
+paths, which make no model call, and the `deep_expert` node's finished analysis. Each emits its
+own `notice` custom event and the delivery layer turns it into answer text. SSE events are
 `progress`, `token`, `pause`, `result`, and `error`, with `result` carrying
-`kind` and `truncated`; known pipeline statuses are 422, 503, 502, 409, and 429.
+`kind` and `truncated`; known pipeline statuses are 422, 503, 502, 504, 409, and 429.
 The UI sanitizes Markdown and persists the thread id in
 `localStorage`. `_generate` emits at most 50,000 characters, marked with the
 `truncated` flag, but drains upstream output so checkpoint writes finish; the
@@ -117,7 +121,10 @@ cross-service schema guards run with both integration suites
 (`agentic_backend/tests/integration_tests/test_db_web_schema.py`, and the
 root `make test-web-integration`; the first needs a Postgres migrated by both
 `make migrate-web` and `make migrate-agentic` and fails without `DATABASE_URL`;
-the second skips when the checkpointer tables are absent).
+the second skips when the checkpointer tables are absent). A deep turn spends `DEEP_RESEARCH_TURN_COST` units (same `config.py`) from both counters.
+    An advisory per-user headroom read runs first, so a deep turn it refuses touches neither
+    counter. A deep turn that passes it but then loses a race to a concurrent turn still spends
+    `cost` site units, as a one-unit turn does today.
 
 Run application commands from `agentic_backend/`: `uv sync --locked --dev`, `make test`,
 `make lint`, `make format`, and `langgraph dev`.

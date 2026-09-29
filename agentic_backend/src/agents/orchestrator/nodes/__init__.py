@@ -2,7 +2,8 @@
 
 from agents.orchestrator.nodes.chat import chat
 from agents.orchestrator.nodes.classify import classify
+from agents.orchestrator.nodes.deep_expert import deep_expert
 from agents.orchestrator.nodes.expert import expert
 from agents.orchestrator.nodes.reporter import reporter
 
-__all__ = ["chat", "classify", "expert", "reporter"]
+__all__ = ["chat", "classify", "deep_expert", "expert", "reporter"]
