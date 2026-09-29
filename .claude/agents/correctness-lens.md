@@ -2,7 +2,7 @@
 name: correctness-lens
 description: Read-only final-review lens. Reviews a completed branch diff for correctness defects — broken call sites, changed behaviour, error and state paths. Never writes.
 tools: Read, Grep, Glob, Bash
-model: sonnet
+model: claude-sonnet-5-5
 effort: medium
 ---
 

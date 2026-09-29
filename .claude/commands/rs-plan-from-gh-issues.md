@@ -1,7 +1,7 @@
 ---
 description: Turn GitHub issues (all open, specific numbers, or one assignee's) into a right-sized implementation plan
 argument-hint: [all | <issue#|url>... | @<assignee>] [output-plan-path]
-allowed-tools: Read, Write, Edit, Glob, Grep, Bash, Agent, WebFetch, WebSearch, AskUserQuestion, mcp__context7__resolve-library-id, mcp__context7__query-docs, mcp__plugin_context7_context7__resolve-library-id, mcp__plugin_context7_context7__query-docs
+allowed-tools: Read, Write, Edit, Glob, Grep, Bash, Agent, WebFetch, WebSearch, AskUserQuestion, mcp__context7__resolve-library-id, mcp__context7__query-docs, mcp__plugin_context7_context7__resolve-library-id, mcp__plugin_context7_context7__query-docs, mcp__tavily-remote-mcp__tavily_search, mcp__tavily-remote-mcp__tavily_extract
 ---
 
 Arguments: $ARGUMENTS

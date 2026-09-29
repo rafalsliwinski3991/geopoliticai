@@ -1,7 +1,7 @@
 ---
 description: Review a written implementation plan through a detailed conversation, with clear explanations, one decision at a time, and an agreed new plan version
 argument-hint: "[plan-path] [optional focus or review preferences]"
-allowed-tools: Read, Write, Edit, Glob, Grep, AskUserQuestion
+allowed-tools: Read, Write, Edit, Glob, Grep, AskUserQuestion, mcp__tavily-remote-mcp__tavily_search, mcp__tavily-remote-mcp__tavily_extract
 ---
 
 # Interactive plan review
@@ -84,7 +84,7 @@ Once the target is clear:
   An intentional change is not automatically an error. Distinguish that change
   from a stale assumption or a conflict with a standing repository requirement.
 - Verify material external API claims against the version used by this repo.
-  Prefer Context7 when available, otherwise use official documentation. If neither
+  Prefer Context7 when available, otherwise use Tavily search/extract on official documentation. If neither
   is accessible, label the claim unverified and continue with independent issues.
   Research facts available in the repository yourself.
 - Investigate enough to ground the first decision, then continue focused reads

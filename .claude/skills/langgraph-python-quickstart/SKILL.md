@@ -18,9 +18,9 @@ Apply these on top of the quickstart (they keep setup minimal and model-agnostic
 
 1. **Ask** which provider/model to use. Showcase that LangGraph works with any LangChain chat model. Suggested prompt:
 
-   > Which model should this agent use? Pass a `provider:model` string — e.g. `openai:gpt-5.5`, `anthropic:claude-sonnet-5`, `google_genai:gemini-2.5-flash-lite`. Default if you're unsure: **`anthropic:claude-sonnet-5`**.
+   > Which model should this agent use? Pass a `provider:model` string — e.g. `openai:gpt-5.5`, `anthropic:claude-sonnet-5-5`, `google_genai:gemini-2.5-flash-lite`. Default if you're unsure: **`anthropic:claude-sonnet-5-5`**.
 
-   The docs often hardcode Anthropic — replace with `init_chat_model("<MODEL>")` (or equivalent) using their choice. If using Claude Sonnet 5+, omit `temperature` / `top_p` / `top_k` (unsupported).
+   The docs often hardcode Anthropic — replace with `init_chat_model("<MODEL>")` (or equivalent) using their choice. If using Claude Sonnet 5.5+, omit `temperature` / `top_p` / `top_k` (unsupported).
 
 2. Create a **new** directory (e.g. `langgraph-agent/`) and do all work there — do not pollute the open project.
 

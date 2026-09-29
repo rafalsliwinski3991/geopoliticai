@@ -18,7 +18,7 @@ Apply these on top of the quickstart (they keep setup minimal and model-agnostic
 
 1. **Ask** which provider/model to use. Showcase that LangChain is model-agnostic. Suggested prompt:
 
-   > Which model should this agent use? Pass a `provider:model` string — e.g. `openai:gpt-5.5`, `anthropic:claude-sonnet-5`, `google_genai:gemini-2.5-flash-lite`. Default if you're unsure: **`anthropic:claude-sonnet-5`**.
+   > Which model should this agent use? Pass a `provider:model` string — e.g. `openai:gpt-5.5`, `anthropic:claude-sonnet-5-5`, `google_genai:gemini-2.5-flash-lite`. Default if you're unsure: **`anthropic:claude-sonnet-5-5`**.
 
    Swap the quickstart's model string for their choice (or the default).
 

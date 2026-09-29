@@ -1,7 +1,7 @@
 ---
 description: Check every unresolved review comment on the PRs of a gh-stack chain, then address or reject each one and reply in-thread
 argument-hint: "[optional PR number or branch in the stack]"
-allowed-tools: Read, Edit, Write, Glob, Grep, Bash, AskUserQuestion, mcp__context7__resolve-library-id, mcp__context7__query-docs, mcp__plugin_context7_context7__resolve-library-id, mcp__plugin_context7_context7__query-docs
+allowed-tools: Read, Edit, Write, Glob, Grep, Bash, AskUserQuestion, mcp__context7__resolve-library-id, mcp__context7__query-docs, mcp__plugin_context7_context7__resolve-library-id, mcp__plugin_context7_context7__query-docs, mcp__tavily-remote-mcp__tavily_search, mcp__tavily-remote-mcp__tavily_extract
 ---
 
 Review input: $ARGUMENTS
@@ -102,7 +102,7 @@ and, when useful, what would make you reconsider.>
 ```
 
 `<MODEL_NAME>` is the name of the model running this command as your system prompt states it (for
-example `CC: Sonnet 5 -> applied:`). Every reply starts with this exact prefix and
+example `CC: Sonnet 5.5 -> applied:`). Every reply starts with this exact prefix and
 nothing starts without it. No praise, no thank-you filler, no diff summaries.
 
 The step is done when every unresolved thread has a decision, a drafted reply, and — for applies —

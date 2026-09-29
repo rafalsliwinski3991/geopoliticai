@@ -77,7 +77,7 @@ The common redirect: if they need custom HTTP routes, their own auth, or non-US 
 State the plan back in one short block and get agreement. Name the model, and list only the capabilities you are actually going to create:
 
 ```text
-research-assistant, Python, on anthropic:claude-sonnet-4-6
+research-assistant, Python, on anthropic:claude-sonnet-5-5
   instructions.md   how it researches and cites
   tools/search.py   web search
   schedules/        weekday 8am digest
@@ -89,7 +89,7 @@ research-assistant, Python, on anthropic:claude-sonnet-4-6
 Scaffold with the flags that match the plan, so the project starts correct instead of being edited into shape:
 
 ```bash
-mda init research-assistant --model anthropic:claude-sonnet-4-6
+mda init research-assistant --model anthropic:claude-sonnet-5-5
 cd research-assistant
 uv sync
 ```
@@ -192,7 +192,7 @@ from tools.search import web_search
 
 agent = define_deep_agent(
     name="research-assistant",
-    model="anthropic:claude-sonnet-4-6",
+    model="anthropic:claude-sonnet-5-5",
     tools=[web_search],
 )
 ```
@@ -205,7 +205,7 @@ import { webSearch } from "./tools/search";
 
 export const agent = defineDeepAgent({
   name: "research-assistant",
-  model: "anthropic:claude-sonnet-4-6",
+  model: "anthropic:claude-sonnet-5-5",
   tools: [webSearch],
 });
 ```
@@ -348,7 +348,7 @@ from managed_deepagents import define_deep_agent
 
 agent = define_deep_agent(
     name="support-agent",
-    model="anthropic:claude-sonnet-4-6",
+    model="anthropic:claude-sonnet-5-5",
     middleware=[
         PIIMiddleware("email", strategy="redact", apply_to_input=True),
         ModelCallLimitMiddleware(run_limit=50),
@@ -494,7 +494,7 @@ Pause before sensitive tool calls with `interrupt_on`, and gate filesystem paths
 ```python
 agent = define_deep_agent(
     name="support-agent",
-    model="anthropic:claude-sonnet-4-6",
+    model="anthropic:claude-sonnet-5-5",
     tools=[refund_customer],
     interrupt_on={"refund_customer": True},
 )
@@ -507,7 +507,7 @@ Respond to interrupts in Studio during `mda dev`. On a deployed agent, resume th
 ## Gotchas
 
 - **`name=` is required** in `define_deep_agent` / `defineDeepAgent`. A definition without it fails.
-- **Model IDs need the provider prefix**: `anthropic:claude-sonnet-4-6`, not a bare model name. Python uses `google_genai:`, TypeScript uses `google-genai:`, and Gateway uses `provider/model`.
+- **Model IDs need the provider prefix**: `anthropic:claude-sonnet-5-5`, not a bare model name. Python uses `google_genai:`, TypeScript uses `google-genai:`, and Gateway uses `provider/model`.
 - **Do not set managed fields** (`backend`, `store`, `checkpointer`, `memory`, `skills`, system prompt) in the agent definition.
 - **Memory is opt-in via `memory.py`**, not a constructor argument. `disable_memory` is legacy — declare or delete `memory.py` instead.
 - **MCP connectors do not exist.** `connectors/mcp.*` and `define_mcp_servers` were removed; writing them fails.

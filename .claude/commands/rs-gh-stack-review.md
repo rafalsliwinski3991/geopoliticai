@@ -1,7 +1,7 @@
 ---
 description: Review every pull request in a gh-stack chain layer by layer and post findings as inline PR line comments
 argument-hint: "[optional PR number or branch in the stack, or --all-lenses]"
-allowed-tools: Read, Glob, Grep, Bash, Agent, AskUserQuestion, mcp__context7__resolve-library-id, mcp__context7__query-docs, mcp__plugin_context7_context7__resolve-library-id, mcp__plugin_context7_context7__query-docs
+allowed-tools: Read, Glob, Grep, Bash, Agent, AskUserQuestion, mcp__context7__resolve-library-id, mcp__context7__query-docs, mcp__plugin_context7_context7__resolve-library-id, mcp__plugin_context7_context7__query-docs, mcp__tavily-remote-mcp__tavily_search, mcp__tavily-remote-mcp__tavily_extract
 ---
 
 Review input: $ARGUMENTS
@@ -130,7 +130,7 @@ Say plainly what remains unverified.
 
 ## Standing rules
 
-- Every spawned lens runs on Sonnet 5 at medium effort and reports to you; you are the only one who
+- Every spawned lens runs on Sonnet 5.5 at medium effort and reports to you; you are the only one who
   posts.
 - Quote the motivating line in the run log for every posted finding.
 - No framework claim or recommended fix is posted without a Context7 check against the pinned

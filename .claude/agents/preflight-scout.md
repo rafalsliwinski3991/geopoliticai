@@ -2,7 +2,7 @@
 name: preflight-scout
 description: Read-only pre-flight pass for a plan run. Compares an implementation plan against the current repo and reports per-commit status, risk, and staleness. Never writes.
 tools: Read, Grep, Glob, Bash
-model: sonnet
+model: claude-sonnet-5-5
 effort: medium
 ---
 

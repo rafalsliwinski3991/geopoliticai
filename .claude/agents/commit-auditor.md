@@ -2,7 +2,7 @@
 name: commit-auditor
 description: Read-only per-commit auditor for a plan run. Reads one commit's diff against the plan section it implements and reports whether it did what the plan said and only that. Never writes.
 tools: Read, Grep, Glob, Bash
-model: sonnet
+model: claude-sonnet-5-5
 effort: medium
 ---
 
