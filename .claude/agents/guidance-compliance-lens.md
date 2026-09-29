@@ -2,7 +2,7 @@
 name: guidance-compliance-lens
 description: Read-only final-review lens. Verifies that a completed branch diff kept this repo's own guidance files truthful and in sync. Never writes.
 tools: Read, Grep, Glob, Bash
-model: sonnet
+model: claude-sonnet-5-5
 effort: medium
 ---
 

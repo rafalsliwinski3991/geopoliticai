@@ -10,9 +10,9 @@ model: opencode-go/glm-5.3-flash
 > that role yourself, in a separate pass, and report its findings under that agent's name. Every
 > other rule applies unchanged.
 >
-> Step 6 dispatches `/codex:rescue`, a Claude Code plugin command. OpenCode has no equivalent, so
-> run that critique yourself instead: a separate, fresh read-only pass over the new plan and the
-> repository files, briefed and reported exactly as Step 6 describes. It stays mandatory at every
+> Step 5 dispatches `/opencode:rescue`, a Claude Code plugin command. OpenCode runs the critic
+> itself, so run that critique as a separate, fresh read-only pass over the new plan and the
+> repository files, briefed and reported exactly as Step 5 describes. It stays mandatory at every
 > tier; only the dispatch changes.
 
 Plan: $1
@@ -25,14 +25,52 @@ gitignored). If that file already exists, append a new dated section rather than
 
 ---
 
-## Step 0 — Resolve the new version path
+## Step 0 — Check the critic and resolve the new version path
+
+Before anything else, confirm that the Step 5 OpenCode critic can run:
+
+```bash
+opencode models 2>/dev/null | grep -Fx 'opencode-go/muse-spark-1.3-contributor'
+```
+
+If it prints nothing, tell the user OpenCode or the model is unavailable and ask with
+`AskUserQuestion` whether to **continue without the OpenCode critique** (skip Step 5) or **stop**.
+Record the answer in the run log.
 
 Read `$1`'s filename. It must end `_v<N>.md`; if it doesn't, treat it as `v1` for numbering purposes
-but do not rename it. The new path is the same directory and stem with `_v<N+1>.md`. If that path
-already exists, keep incrementing until it doesn't.
+but do not rename it. The new path is the same directory and stem with `_v<N+1>.md`. If any higher
+version of the same stem already exists, `$1` is not the latest version: stop and ask the user with
+`AskUserQuestion` whether to audit the newest version instead. Continue from `$1` only if the user
+says so, and then use the next unused version number.
 
-Do not create the new file yet. The revised plan is drafted in memory and is written only after the
-user explicitly approves it in Step 5.
+Do not create the new file yet; Step 4 writes it.
+
+## Step 1 — Read
+
+Read the plan in full. Then read every file, module, config, and test it names. Do not audit against
+the plan's description of the code — audit against the code. Where they disagree, the code wins, and
+every disagreement becomes a changelog entry in the new version, not a silent fix.
+
+Identify the plan's stated tier: **lightweight**, **standard**, or **full**. If it
+does not name one, infer the smallest safe tier from its scope. Preserve that tier
+unless the live code reveals a concrete risk that requires escalation; do not enlarge
+the plan merely because it is being reviewed. A lightweight plan is a minor contained
+change, a standard plan is coherent multi-file work within one subsystem, and a full
+plan covers major, risky, cross-component, interface, migration, or order-dependent
+work. Record any escalation and its evidence in the changelog.
+
+Settled decisions stay settled: the plan's own decisions, and those of the brainstorm or context doc
+it names, are not options to reopen. When a finding would reopen one, or a blocker cannot be resolved
+from the code, the plan, or its source doc, ask the user with `AskUserQuestion` instead of deciding
+it in the rewrite.
+
+When auditing a plan's use of an external framework or library, verify current
+APIs and version-specific behavior through Context7: resolve the exact library
+and version with `resolve-library-id`, then use `query-docs`. Treat installed
+versions and checked-out repository code as the local constraints; do not use
+Context7 for facts those sources already establish. For prior art or API guidance
+outside library docs, use Tavily (`tavily_search`, `tavily_extract`), and cite every
+web source the new version relies on.
 
 ## Stacked pull-request planning
 
@@ -51,30 +89,13 @@ implemented as a GitHub stacked pull-request chain without rewriting history:
 - If the source plan combines changes that need separate review, split them into
   ordered units and record that split in the changelog. If the source already has
   valid boundaries, preserve them and do not reorder them silently.
-- The revised plan must state that implementation makes one linear commit per
-  unit and that `rs-create-stacked-prs` separately adopts the branches, runs
-  `gh stack view`, and submits draft or ready-for-review PRs. This workflow does
-  not push, create, merge, or rewrite pull requests.
-
-## Step 1 — Read
-
-Read the plan in full. Then read every file, module, config, and test it names. Do not audit against
-the plan's description of the code — audit against the code. Where they disagree, the code wins, and
-every disagreement becomes a changelog entry in the new version, not a silent fix.
-
-Identify the plan's stated tier: **lightweight**, **standard**, or **full**. If it
-does not name one, infer the smallest safe tier from its scope. Preserve that tier
-unless the live code reveals a concrete risk that requires escalation; do not enlarge
-the plan merely because it is being reviewed. A lightweight plan is a minor contained
-change, a standard plan is coherent multi-file work within one subsystem, and a full
-plan covers major, risky, cross-component, interface, migration, or order-dependent
-work. Record any escalation and its evidence in the changelog.
-
-When auditing a plan's use of an external framework or library, verify current
-APIs and version-specific behavior through Context7: resolve the exact library
-and version with `resolve-library-id`, then use `query-docs`. Treat installed
-versions and checked-out repository code as the local constraints; do not use
-Context7 for facts those sources already establish.
+- If the bottom units are already merged into the base branch, make the base branch
+  the parent of the first remaining unit.
+- The revised plan must state that implementation creates one or more linear commits
+  per unit branch, with reviewer fixes remaining on that branch, and that
+  `rs-create-stacked-prs` separately adopts the branches, runs `gh stack view`, and
+  submits draft or ready-for-review PRs. This workflow does not push, create, merge,
+  or rewrite pull requests.
 
 ## Step 2 — Pre-flight scout
 
@@ -149,13 +170,24 @@ failure scenario. No style notes, no praise, no summary of what the plan does we
 
 Write every lens's findings into the run log verbatim.
 
-## Step 4 — Draft the new, complete version
+At every tier, then make a simplification pass yourself. Cut work the plan's goal does not need;
+replace a new helper, abstraction, config option, or dependency with an existing local pattern, the
+standard library, or an installed dependency when one does the job; and fold any unit not worth
+reviewing on its own into its neighbor. Never cut tests, validation, or error handling the change
+needs, and send any cut that would change a settled decision to the user (Step 1). Record each cut
+in the run log.
 
-Draft the new version in memory at the path resolved in Step 0. Do not write it to disk yet. **It must
+## Step 4 — Write the new, complete version
+
+Write the new version to the path resolved in Step 0. It is a new file; never modify `$1`. **It must
 stand alone.** Someone reading only
 this file, never opening the previous version, must get the full picture — do not write "see v1 for
 the rest" or omit a commit because it didn't change. Carry forward everything from the previous
-version that the scout and the lenses did not invalidate, and rewrite everything they did.
+version that the scout and the lenses did not invalidate, and rewrite everything they did. Anything
+you rewrite or add meets the bar a fresh plan of its tier must meet: exact files, behavior, and
+validation commands, and for a full plan, real before/after code fitted to this repo, with imports
+and both sides of any public interface it touches. Leave no placeholders such as `TBD`, "add
+appropriate handling", or "write tests".
 
 The new version keeps the previous version's tier and appropriate section structure: lightweight
 plans keep scope, change steps, validation, and applicable follow-up; standard plans keep scope,
@@ -164,7 +196,8 @@ file responsibilities, ordered commits with before/after code, test plan, migrat
 notes, and open questions. Add one more section immediately after the title:
 
 **Changelog (v`<N>` → v`<N+1>`)** — one entry per substantive change from this round, each stating
-what changed, which finding drove it (scout staleness, or a named lens finding), and why. Include
+what changed, which finding drove it (scout staleness, a named lens finding, or the simplification
+pass), and why. Include
 entries for commits marked `already applied` or `partially applied` by the scout and how the new
 version accounts for that (mark them done and adjust the remaining ordering, rather than re-proposing
 finished work). If a finding was surfaced but you rejected it, say so here with the reason, the same
@@ -172,34 +205,17 @@ way `rs-plan-from-brainstorm`'s "Open questions and rejected objections" section
 drop a reviewer's finding.
 
 Stop before implementing. Beyond the scout and the tier's lenses, the only remaining agent is the
-Step 6 Codex critic.
+Step 5 OpenCode critic.
 
-## Step 5 — Ask the user to approve the draft
+## Step 5 — OpenCode critique of the new version
 
-Present the complete drafted plan to the user, including its resolved output path, tier, and
-changelog. Then use `AskUserQuestion` to ask whether the user approves writing this exact draft to
-disk. Offer these choices:
+Runs for **every tier** — lightweight, standard, and full — once the new version exists on disk,
+unless the user chose to skip it in Step 0.
 
-- **Approve and write** — write the complete draft to the resolved path, then continue to Step 6.
-- **Request changes** — do not write the plan; ask the user what must change and revise the in-memory
-  draft before asking for approval again.
-- **Cancel** — do not write the new plan and stop after recording the current run-log information.
-
-Never write the new plan before the user chooses **Approve and write**. Do not treat silence,
-ambiguous feedback, or a general conversational acknowledgment as approval. If the user requests
-changes, incorporate them into the draft and show the complete updated draft again before asking for
-approval. Once approved, write the draft exactly as approved; do not make additional plan changes
-before writing it.
-
-## Step 6 — Codex critique of the new version
-
-Runs for **every tier** — lightweight, standard, and full — once the user has approved the draft and
-it exists on disk.
-
-Dispatch exactly one read-only Codex critic:
+Dispatch exactly one read-only OpenCode critic:
 
 ```text
-/codex:rescue --wait --fresh --model gpt-5.6-terra --effort high <task brief>
+/opencode:rescue --wait --fresh --model opencode-go/muse-spark-1.3-contributor --agent plan <task brief>
 ```
 
 Brief it as a **read-only reviewer**: it must not modify files, create commits, or run destructive
@@ -208,7 +224,9 @@ read the actual repository files rather than trusting either plan's description 
 severity-ranked findings only — each with a file path, a line in the plan or the source, and a
 concrete failure scenario — covering: proposed steps that would not apply cleanly to the current
 code, missing or wrong ordering, unstated assumptions, validation the plan claims but does not
-specify, and scope the plan enlarged beyond its tier. No praise, no summary, no style notes.
+specify, scope the plan enlarged beyond its tier, and over-engineering — work the goal does not
+need, or new code where an existing pattern or installed dependency would do — each with the simpler
+alternative. No praise, no summary, no style notes.
 
 Tell the critic to verify any external framework or library claim through Context7 rather than from
 memory: resolve the exact library and installed version with `resolve-library-id`, then use
@@ -216,13 +234,30 @@ memory: resolve the exact library and installed version with `resolve-library-id
 must not use Context7 for facts those sources already establish. If Context7 is unavailable to the
 critic, it must say so and mark such findings as unverified instead of asserting them.
 
-If the plugin, model, or high-effort setting is unavailable, stop and report the blocker; never fall
-back to a Claude agent or another model.
+If the dispatch fails because the plugin or model is unavailable, ask the user the same Step 0
+question: continue without the OpenCode critique, or stop. Never fall back to a Claude agent or
+another model. When the user chooses to stop, delete the new version file (never `$1`) and record
+the stop in the run log. When the critique is skipped, add a changelog entry saying the new version
+had no OpenCode critique.
 
 Write the critic's findings into the run log verbatim. Then fix the new version in place: apply
 every finding you accept, and add a changelog entry for each — accepted or rejected, with the reason
 — to the same **Changelog (v`<N>` → v`<N+1>`)** section. Do not create a further version file for
 this round, and do not dispatch a second critic.
+
+## Step 6 — Ask the user to approve the new version
+
+Present the new version's path, tier, and complete changelog; the full plan is on disk at that path.
+Then use `AskUserQuestion` to ask whether the user approves it. Offer these choices:
+
+- **Approve** — keep the new version as written and continue to Step 7.
+- **Request changes** — ask the user what must change, edit the new version in place, add a
+  changelog entry for each change, and ask for approval again.
+- **Cancel** — delete the new version file (never `$1`), record the cancellation in the run log, and
+  stop.
+
+Do not treat silence, ambiguous feedback, or a general conversational acknowledgment as approval.
+The run leaves the new version on disk only once the user chooses **Approve**.
 
 ## Step 7 — Report
 
@@ -230,8 +265,9 @@ Report to the user: the previous plan path, the new plan path, the version bump,
 and the applicable review summary. For a standard or full plan, include the scout's top-line status
 (how many tasks or commits are already applied / partially applied / not started); for a lightweight
 plan, include the direct pre-flight and self-review result instead. Also report how many findings
-each applicable lens raised and how many you accepted, how many the Codex critic raised and how many
-you accepted, plus the run-log path.
+each applicable lens raised and how many you accepted, how many the OpenCode critic raised and how
+many you accepted (or that the user chose to skip it), the simplifications you made, plus the
+run-log path.
 
 ---
 
@@ -239,13 +275,13 @@ you accepted, plus the run-log path.
 
 - You are the only writer. If you catch yourself asking a review agent to change something, stop —
   they have no write tools and the request will fail.
-- Every Claude subagent in this run — the Step 2 scout and every Step 3 lens — is spawned with
-  `model: "sonnet"` (Sonnet 5) at medium effort. No exceptions. The Step 6 Codex critic is not a Claude subagent and
-  keeps `gpt-5.6-terra`.
+- The Step 2 scout and every Step 3 lens run on the model and effort their agent definitions pin
+  (Sonnet 5.5, medium effort); do not pass `model` when spawning them. The Step 5 OpenCode critic is
+  not a Claude subagent and always uses `opencode-go/muse-spark-1.3-contributor`.
 - Reviewers must be told to message their findings. An idle notification tells you a teammate
   stopped; it does not carry its output.
-- The Step 6 Codex critique is mandatory at every tier, and it is the last thing that happens before
-  the report.
+- The Step 5 OpenCode critique runs at every tier, before the user is asked to approve. Only the
+  user can skip it, and only when OpenCode or the model is unavailable.
 - Where the plan and the code disagree, the code wins, and the disagreement goes in the changelog.
 - The new version is a complete replacement, never a diff or a pointer back to the old one.
 - Never claim a finding was addressed unless the new version's text actually reflects it.

@@ -96,18 +96,18 @@ For each unresolved thread, bottom-to-top layer order, decide **apply** or **rej
 For every decision, prepare the reply body. The reply is the deliverable, not a stub:
 
 ```text
-COPILOT: <MODEL_NAME>, applied -> <what was changed, in one or two sentences:
+CC: <MODEL_NAME> -> applied: <what was changed, in one or two sentences:
 file(s), the edit made, and the commit SHA once pushed.>
 ```
 
 ```text
-COPILOT: <MODEL_NAME>, rejected -> <the reason, in one or two sentences:
+CC: <MODEL_NAME> -> rejected: <the reason, in one or two sentences:
 what the code actually does, the evidence (docs lookup, test, or upstream layer),
 and, when useful, what would make you reconsider.>
 ```
 
 `<MODEL_NAME>` is the name of the model running this command as your system prompt states it (for
-example `COPILOT: GPT-5 mini, applied ->`). Every reply starts with this exact prefix and
+example `CC: Sonnet 5.5 -> applied:`). Every reply starts with this exact prefix and
 nothing starts without it. No praise, no thank-you filler, no diff summaries.
 
 The step is done when every unresolved thread has a decision, a drafted reply, and — for applies —
@@ -151,7 +151,7 @@ gh pr comment <number> --body "<reply body>"
 
 If GitHub rejects a payload (422), fall back to a plain PR comment prefixed the same way. Never
 post twice to the same thread: before posting, re-fetch the thread and skip if a reply starting
-with `COPILOT:` already exists (from this run or a previous one).
+with `CC:` already exists (from this run or a previous one).
 
 ## Step 5 — Report
 
@@ -170,8 +170,8 @@ you did not run, and any apply whose tests did not run clean.
 
 ## Standing rules
 
-- One reply per thread, exactly prefixed `COPILOT: <MODEL_NAME>, applied ->` or
-  `COPILOT: <MODEL_NAME>, rejected ->`. Nothing else is posted.
+- One reply per thread, exactly prefixed `CC: <MODEL_NAME> -> applied:` or
+  `CC: <MODEL_NAME> -> rejected:`. Nothing else is posted.
 - No framework claim or applied fix goes in without a Context7 check against the pinned version.
 - The code wins over the PR body and over the reviewer's claim; note disagreements in the run log.
 - Never resolve threads, never re-request review, never change the PR state.

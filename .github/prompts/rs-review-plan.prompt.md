@@ -85,7 +85,7 @@ Once the target is clear:
   An intentional change is not automatically an error. Distinguish that change
   from a stale assumption or a conflict with a standing repository requirement.
 - Verify material external API claims against the version used by this repo.
-  Prefer Context7 when available, otherwise use official documentation. If neither
+  Prefer Context7 when available, otherwise use Tavily search/extract on official documentation. If neither
   is accessible, label the claim unverified and continue with independent issues.
   Research facts available in the repository yourself.
 - Investigate enough to ground the first decision, then continue focused reads

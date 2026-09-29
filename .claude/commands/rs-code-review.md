@@ -121,7 +121,7 @@ the handling code and the test name, or record the claim as unknown.
 ## Step 4 — Lenses
 
 Skip this step entirely for a **lightweight** tier and say so: "Lightweight tier (N lines) — lenses
-skipped." Otherwise spawn the in-scope lenses **in parallel in one message**, each on Sonnet 5 at
+skipped." Otherwise spawn the in-scope lenses **in parallel in one message**, each on Sonnet 5.5 at
 medium effort, each told to read the real source files and to **message its findings to the lead**. An
 idle notification carries no output.
 
@@ -222,7 +222,7 @@ List anything you did not act on, and say plainly what remains unverified.
 
 ## Standing rules
 
-- Every spawned teammate runs on Sonnet 5 at medium effort; no other model or effort level.
+- Every spawned teammate runs on Sonnet 5.5 at medium effort; no other model or effort level.
 - You are the only writer. A lens has no write tools, so asking one to change code will fail.
 - Read the whole diff before the first finding. Never flag what the diff already addresses.
 - Quote the motivating line or the finding does not ship. "This looks fine" is not a finding either:

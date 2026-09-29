@@ -229,7 +229,7 @@ findings you did **not** act on, the PR URLs with their sources, and the run log
 
 ## Standing rules
 
-- Every spawned subagent (`scout`, `auditor`, implementer, and all three lenses) runs on Sonnet 5 at
+- Every spawned subagent (`scout`, `auditor`, implementer, and all three lenses) runs on Sonnet 5.5 at
   medium effort; no other model or effort level.
 - You are the only writer. If you catch yourself asking a review agent to change something, stop —
   they have no write tools and the request will fail.
