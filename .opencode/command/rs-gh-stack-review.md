@@ -136,7 +136,7 @@ Say plainly what remains unverified.
 
 ## Standing rules
 
-- Every spawned lens runs on Sonnet 5 at medium effort and reports to you; you are the only one who
+- Every spawned lens runs on Sonnet 5.5 at medium effort and reports to you; you are the only one who
   posts.
 - Quote the motivating line in the run log for every posted finding.
 - No framework claim or recommended fix is posted without a Context7 check against the pinned

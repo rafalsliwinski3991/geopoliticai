@@ -18,7 +18,7 @@ Apply these on top of the quickstart (they keep setup minimal and model-agnostic
 
 1. **Ask** which provider/model to use. Showcase that Deep Agents are model-agnostic. Suggested prompt:
 
-   > Which model should this agent use? Pass a `provider:model` string — e.g. `openai:gpt-5.5`, `anthropic:claude-sonnet-5`, `google_genai:gemini-3.5-flash`. Default if you're unsure: **`anthropic:claude-sonnet-5`**.  
+   > Which model should this agent use? Pass a `provider:model` string — e.g. `openai:gpt-5.5`, `anthropic:claude-sonnet-5-5`, `google_genai:gemini-3.5-flash`. Default if you're unsure: **`anthropic:claude-sonnet-5-5`**.  
    > We'll use that provider's built-in web search (no separate search API key).
 
 2. Create a **new** directory (e.g. `deep-agent/`) and do all work there — do not pollute the open project.
