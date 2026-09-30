@@ -130,8 +130,12 @@ async def test_pending_pause_wraps_non_dict_interrupt_value() -> None:
 
 @pytest.mark.anyio
 async def test_recorded_sources_patches_deep_tools() -> None:
-    # Arrange
-    recorded = [Source(title="t", url="https://news.example/a", text="text")]
+    # Arrange: two recorded sources so a filter regression to "return all" or
+    # "bind the wrong article to a URL" can actually fail this test.
+    recorded = [
+        Source(title="first", url="https://news.example/a", text="text-a"),
+        Source(title="second", url="https://news.example/b", text="text-b"),
+    ]
     tools_module: Any = importlib.import_module("agents.deep_expert.tools")
     original_search = tools_module.search_allowlisted
     original_fetch = tools_module.fetch_sources
@@ -139,15 +143,28 @@ async def test_recorded_sources_patches_deep_tools() -> None:
     # Act
     with recorded_sources(lambda: recorded):
         candidates = await tools_module.search_allowlisted("q", POLICY)
-        one = await tools_module.fetch_sources(
-            [Candidate(title="t", url="https://news.example/a", domain="recorded")],
+        requested = await tools_module.fetch_sources(
+            [Candidate(title="s", url="https://news.example/b", domain="recorded")],
+            POLICY,
+        )
+        unrecorded = await tools_module.fetch_sources(
+            [
+                Candidate(
+                    title="u", url="https://news.example/missing", domain="recorded"
+                )
+            ],
             POLICY,
         )
 
     # Assert
     assert [(c.title, c.url, c.domain) for c in candidates] == [
-        ("t", "https://news.example/a", "recorded")
+        ("first", "https://news.example/a", "recorded"),
+        ("second", "https://news.example/b", "recorded"),
     ]
-    assert one == recorded
+    # Only the requested URL, not the whole recorded set.
+    assert [s.url for s in requested] == ["https://news.example/b"]
+    assert requested == [recorded[1]]
+    # An unrecorded URL returns nothing.
+    assert unrecorded == []
     assert tools_module.search_allowlisted is original_search
     assert tools_module.fetch_sources is original_fetch

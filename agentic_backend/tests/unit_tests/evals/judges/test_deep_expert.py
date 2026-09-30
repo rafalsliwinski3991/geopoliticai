@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
+import pytest
+
 from evals.judges.deep_expert import _depth_view, judges
 
 
@@ -20,16 +22,26 @@ def test_judges_names_are_the_experts_three_plus_depth() -> None:
     ]
 
 
-def test_depth_view_maps_both_answers_and_tolerates_a_missing_expert_answer() -> None:
+def test_depth_view_requires_a_nonempty_expert_baseline() -> None:
+    # Arrange: a missing (or empty) live expert baseline must fail loudly, not
+    # become "", or any nonempty deep answer wins on depth by default.
+    input: dict[str, Any] = {"query": "q"}
+    for output in ({"deep_answer": "D"}, {"deep_answer": "D", "answer": ""}):
+        # Act + Assert
+        with pytest.raises(KeyError, match="baseline"):
+            _depth_view(input, output, {})
+
+
+def test_depth_view_maps_both_answers_when_the_baseline_exists() -> None:
     # Arrange
     input: dict[str, Any] = {"query": "q"}
-    output: dict[str, Any] = {"deep_answer": "D"}
+    output: dict[str, Any] = {"deep_answer": "D", "answer": "S"}
 
     # Act
     variables = _depth_view(input, output, {})
 
     # Assert
-    assert variables == {"question": "q", "deep_answer": "D", "answer": ""}
+    assert variables == {"question": "q", "deep_answer": "D", "answer": "S"}
 
 
 def test_the_adapted_expert_judges_read_the_deep_answer_never_the_expert_answer() -> (

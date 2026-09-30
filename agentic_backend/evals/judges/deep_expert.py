@@ -62,10 +62,19 @@ def _on_deep_answer(view: View) -> View:
 def _depth_view(
     input: dict[str, Any], output: dict[str, Any], expected: dict[str, Any]
 ) -> dict[str, Any]:
+    # The expert baseline is written live by this eval before the judges run
+    # (`deep_expert.run_deep_expert`). A missing one must fail loudly, not
+    # become "", or any nonempty deep answer wins on depth by default.
+    answer = output.get("answer")
+    if not answer:
+        raise KeyError(
+            "output.answer (the expert's live baseline) is required by the "
+            "deeper_than_expert judge"
+        )
     return {
         "question": input["query"],
         "deep_answer": output.get("deep_answer") or "",
-        "answer": output.get("answer") or "",
+        "answer": answer,
     }
 
 
