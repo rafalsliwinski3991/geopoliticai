@@ -1936,7 +1936,7 @@ async def test_a_deep_turn_short_of_quota_is_refused_before_the_site_is_charged(
     assert events[-1]["type"] == "error"
     assert events[-1]["status"] == 429
     assert events[-1]["message"] == (
-        "A deep analysis needs 5 research turns; you have 3 left today."
+        "A deep analysis needs 10 research turns; you have 3 left today."
     )
     assert all(event["type"] != "result" for event in events)
     assert increments == []
