@@ -1,0 +1,41 @@
+"""Unit tests for `agents.deep_expert.prompts`.
+
+Trace `0cf33720a156265c0af48a5449e165ab` shipped a last draft that talked
+about the grader, the spent search budget, and approval instead of answering,
+after the grader failed a single-source draft three times for lacking a
+second outlet. The prompts must forbid that meta-talk and keep the rubric
+satisfiable with the sources actually read.
+"""
+
+from __future__ import annotations
+
+import importlib
+from typing import Any
+
+prompts_module: Any = importlib.import_module("agents.deep_expert.prompts")
+
+
+def test_the_final_message_bans_grader_and_budget_meta_talk() -> None:
+    # Arrange
+    prompt = prompts_module.DEEP_SYSTEM_PROMPT.lower()
+
+    # Act + Assert
+    for banned in ("grader", "revision", "searches", "approval", "option"):
+        assert banned in prompt
+
+
+def test_the_rubric_scopes_disagreement_to_the_sources_read() -> None:
+    # Arrange
+    lines = prompts_module.DEEP_ANSWER_RUBRIC.splitlines()
+    attribution = next(line for line in lines if "attributes" in line.lower())
+
+    # Act + Assert
+    assert "as far as the sources" in attribution.lower()
+
+
+def test_the_method_prefers_reading_before_searching_again() -> None:
+    # Arrange
+    prompt = prompts_module.DEEP_SYSTEM_PROMPT.lower()
+
+    # Act + Assert
+    assert "before searching again" in prompt

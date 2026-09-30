@@ -58,6 +58,11 @@ class LLMSettings:
     temperature: float = 0.0
     timeout_seconds: float = 60.0
     max_output_tokens: int = 16_384
+    # OpenAI reasoning effort for the models that take it (o*, gpt-5*). None
+    # keeps the API default and is what every existing call site means: only an
+    # agent that drives its own tool loop sets this, where per-turn latency is
+    # the wall-clock budget (smoke run 2026-09-29).
+    reasoning_effort: str | None = None
 
 
 DEFAULT_LLM_SETTINGS = LLMSettings()

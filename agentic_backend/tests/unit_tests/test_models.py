@@ -4,6 +4,7 @@ from models import (
     LLMInvocationError,
     NoSourcesError,
     PipelineError,
+    ResearchLimitError,
     SearchUnavailableError,
 )
 
@@ -27,3 +28,13 @@ def test_each_error_carries_its_status(
 ) -> None:
     # Act + Assert
     assert error_type.status == status
+
+
+def test_research_limit_error_is_a_pipeline_error() -> None:
+    # Assert
+    assert issubclass(ResearchLimitError, PipelineError)
+
+
+def test_research_limit_error_status_is_504() -> None:
+    # Act + Assert
+    assert ResearchLimitError.status == 504
