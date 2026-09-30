@@ -162,31 +162,50 @@ async def test_is_staff_reads_the_database(_fake_pool: _FakePool) -> None:
 
 @pytest.mark.anyio
 async def test_quota_used_returns_the_spent_count() -> None:
+    # Arrange
     import datetime
 
     fake = _FakePool({sql.SELECT_QUOTA_USED: [{"used": 7}]})
-    assert await sql.quota_used(pool(fake), user_id=1) == 7
+
+    # Act
+    used = await sql.quota_used(pool(fake), user_id=1)
+
+    # Assert
+    assert used == 7
     statement, params = fake.conn.executed[0]
     assert statement == sql.SELECT_QUOTA_USED
     assert params["user_id"] == 1
-    assert params["day"] == datetime.date.today()
+    # The quota day is UTC (`sql._today()`), not the test host's local date.
+    assert params["day"] == datetime.datetime.now(datetime.timezone.utc).date()
 
 
 @pytest.mark.anyio
 async def test_quota_used_is_zero_without_a_row() -> None:
+    # Arrange
     fake = _FakePool({sql.SELECT_QUOTA_USED: []})
-    assert await sql.quota_used(pool(fake), user_id=1) == 0
+
+    # Act
+    used = await sql.quota_used(pool(fake), user_id=1)
+
+    # Assert
+    assert used == 0
 
 
 @pytest.mark.anyio
 async def test_increment_quota_sends_the_conditional_upsert() -> None:
+    # Arrange
     fake = _FakePool({sql.INCREMENT_QUOTA: [{"used": 1}]})
-    assert await sql.increment_quota(pool(fake), user_id=1, limit=20) == 1
+
+    # Act
+    used = await sql.increment_quota(pool(fake), user_id=1, limit=20)
+
+    # Assert
+    assert used == 1
     statement, params = fake.conn.executed[0]
     assert statement == sql.INCREMENT_QUOTA
     assert params == {
         "user_id": 1,
-        "day": datetime.date.today(),
+        "day": datetime.datetime.now(datetime.timezone.utc).date(),
         "limit": 20,
         "cost": 1,
     }
@@ -194,14 +213,66 @@ async def test_increment_quota_sends_the_conditional_upsert() -> None:
 
 @pytest.mark.anyio
 async def test_increment_quota_returns_falsy_at_the_cap() -> None:
+    # Arrange
     fake = _FakePool({sql.INCREMENT_QUOTA: []})
-    assert not await sql.increment_quota(pool(fake), user_id=1, limit=20)
+
+    # Act
+    used = await sql.increment_quota(pool(fake), user_id=1, limit=20)
+
+    # Assert
+    assert not used
+
+
+@pytest.mark.anyio
+async def test_increment_quota_refuses_an_over_cap_cost_before_any_sql() -> None:
+    # Arrange: a fresh day would INSERT `used = cost` directly, where the
+    # upsert's conflict WHERE cannot see it, so the guard in Python must say no.
+    fake = _FakePool({sql.INCREMENT_QUOTA: [{"used": 3}]})
+
+    # Act
+    used = await sql.increment_quota(pool(fake), user_id=1, limit=2, cost=3)
+
+    # Assert
+    assert used is None
+    assert fake.conn.executed == []
+
+
+@pytest.mark.anyio
+async def test_increment_quota_refuses_a_non_positive_cost_before_any_sql() -> None:
+    # Arrange
+    fake = _FakePool({sql.INCREMENT_QUOTA: [{"used": 1}]})
+
+    # Act
+    used = await sql.increment_quota(pool(fake), user_id=1, limit=20, cost=0)
+
+    # Assert
+    assert used is None
+    assert fake.conn.executed == []
+
+
+@pytest.mark.anyio
+async def test_increment_site_quota_refuses_an_over_cap_cost_before_any_sql() -> None:
+    # Arrange
+    fake = _FakePool({sql.INCREMENT_SITE_QUOTA: [{"used": 3}]})
+
+    # Act
+    used = await sql.increment_site_quota(pool(fake), limit=2, cost=3)
+
+    # Assert
+    assert used is None
+    assert fake.conn.executed == []
 
 
 @pytest.mark.anyio
 async def test_increment_site_quota_sends_the_conditional_upsert() -> None:
+    # Arrange
     fake = _FakePool({sql.INCREMENT_SITE_QUOTA: [{"used": 1}]})
-    assert await sql.increment_site_quota(pool(fake), limit=500) == 1
+
+    # Act
+    used = await sql.increment_site_quota(pool(fake), limit=500)
+
+    # Assert
+    assert used == 1
     statement, params = fake.conn.executed[0]
     assert statement == sql.INCREMENT_SITE_QUOTA
     # The quota day is UTC (`sql._today()`), not the test host's local date.
@@ -214,13 +285,19 @@ async def test_increment_site_quota_sends_the_conditional_upsert() -> None:
 
 @pytest.mark.anyio
 async def test_increment_quota_sends_the_cost() -> None:
+    # Arrange
     fake = _FakePool({sql.INCREMENT_QUOTA: [{"used": 6}]})
-    assert await sql.increment_quota(pool(fake), user_id=1, limit=20, cost=5) == 6
+
+    # Act
+    used = await sql.increment_quota(pool(fake), user_id=1, limit=20, cost=5)
+
+    # Assert
+    assert used == 6
     statement, params = fake.conn.executed[0]
     assert statement == sql.INCREMENT_QUOTA
     assert params == {
         "user_id": 1,
-        "day": datetime.date.today(),
+        "day": datetime.datetime.now(datetime.timezone.utc).date(),
         "limit": 20,
         "cost": 5,
     }
@@ -228,8 +305,14 @@ async def test_increment_quota_sends_the_cost() -> None:
 
 @pytest.mark.anyio
 async def test_increment_site_quota_sends_the_cost() -> None:
+    # Arrange
     fake = _FakePool({sql.INCREMENT_SITE_QUOTA: [{"used": 6}]})
-    assert await sql.increment_site_quota(pool(fake), limit=500, cost=5) == 6
+
+    # Act
+    used = await sql.increment_site_quota(pool(fake), limit=500, cost=5)
+
+    # Assert
+    assert used == 6
     statement, params = fake.conn.executed[0]
     assert statement == sql.INCREMENT_SITE_QUOTA
     assert params == {
@@ -241,5 +324,11 @@ async def test_increment_site_quota_sends_the_cost() -> None:
 
 @pytest.mark.anyio
 async def test_increment_site_quota_returns_none_at_the_ceiling() -> None:
+    # Arrange
     fake = _FakePool({sql.INCREMENT_SITE_QUOTA: []})
-    assert await sql.increment_site_quota(pool(fake), limit=500) is None
+
+    # Act
+    used = await sql.increment_site_quota(pool(fake), limit=500)
+
+    # Assert
+    assert used is None

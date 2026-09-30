@@ -42,6 +42,12 @@ SELECT used FROM quota WHERE user_id = %(user_id)s AND day = %(day)s
 # remain. A plain `used = quota.used + 1` lets concurrency buy extras.
 # `cost` is how many units this turn spends (1, or DEEP_RESEARCH_TURN_COST); the
 # turn is affordable only when all of it fits, so a partial balance buys nothing.
+# The cost is validated in Python (`increment_quota`), so a fresh row (the
+# INSERT arrow) can never carry a cost the cap rejects. The WHERE on the
+# conflict target covers the update path — with the row already there — and is
+# how N concurrent requests that all pass the door check still consume only the
+# turns that remain; a plain `used = quota.used + cost` would let them buy
+# extras.
 INCREMENT_QUOTA = """
 INSERT INTO quota (user_id, day, used)
 VALUES (%(user_id)s, %(day)s, %(cost)s)
@@ -50,8 +56,6 @@ WHERE quota.used + %(cost)s <= %(limit)s
 RETURNING used
 """
 
-# The same conditional upsert against the site-wide counter: `day` is the
-# primary key, so one row per UTC day, and no row comes back at the ceiling.
 # The same conditional upsert against the site-wide counter: `day` is the
 # primary key, so one row per UTC day, and no row comes back at the ceiling.
 INCREMENT_SITE_QUOTA = """
@@ -161,10 +165,18 @@ async def increment_quota(
 ) -> int | None:
     """Spend `cost` research units atomically; None when they do not all fit.
 
+    A non-positive or over-cap `cost` is refused before any SQL runs: a fresh
+    day's INSERT puts `cost` into `used` directly, so the database's conflict
+    WHERE (which sees only the existing row) cannot rate it — the Python guard
+    below decides affordability for that path exactly as the upsert's WHERE
+    decides it for every later one.
+
     The conditional upsert means N concurrent turns cannot buy extras: the
     database decides affordability, and the door check (`quota_used`) is only
     there for the clean pre-stream 429.
     """
+    if cost <= 0 or cost > limit:
+        return None
     async with pool.connection() as conn:
         cursor = await conn.execute(
             INCREMENT_QUOTA,
@@ -180,6 +192,8 @@ async def increment_site_quota(
     pool: AsyncConnectionPool[AsyncConnection[DictRow]], *, limit: int, cost: int = 1
 ) -> int | None:
     """Spend `cost` units from the site-wide ceiling; None when they do not all fit."""
+    if cost <= 0 or cost > limit:
+        return None
     async with pool.connection() as conn:
         cursor = await conn.execute(
             INCREMENT_SITE_QUOTA, {"day": _today(), "limit": limit, "cost": cost}
