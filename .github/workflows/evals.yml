@@ -46,6 +46,11 @@ jobs:
         working-directory: agentic_backend
         run: uv run python -m evals.expert
 
+      - name: Run deep expert evals
+        if: ${{ !cancelled() && steps.sync.outcome == 'success' }}
+        working-directory: agentic_backend
+        run: uv run python -m evals.deep_expert
+
       - name: Run reporter evals
         if: ${{ !cancelled() && steps.sync.outcome == 'success' }}
         working-directory: agentic_backend

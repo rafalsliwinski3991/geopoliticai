@@ -252,6 +252,25 @@ async def test_the_wall_time_cap_is_a_research_limit_error(
 
 
 @pytest.mark.anyio
+async def test_an_inner_timeout_becomes_llm_invocation_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A TimeoutError raised inside the graph (not by the wall) is a 502.
+
+    Without this, mapping every TimeoutError to ResearchLimitError would also
+    pass the suite.
+    """
+    # Arrange
+    spy = _GraphSpy([])
+    spy.fail_with = TimeoutError()
+    monkeypatch.setattr(research_module, "build_graph", lambda run: spy.bind_run(run))
+
+    # Act + Assert
+    with pytest.raises(LLMInvocationError):
+        await research_module.research("q", lambda e: None)
+
+
+@pytest.mark.anyio
 async def test_the_agent_receives_the_rubric_and_the_no_checkpoint_config(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -267,4 +286,5 @@ async def test_the_agent_receives_the_rubric_and_the_no_checkpoint_config(
     assert [type(m).__name__ for m in state["messages"]] == ["HumanMessage"]
     assert state["messages"][0].content == "the question"
     assert state["rubric"] == DEEP_ANSWER_RUBRIC
-    assert config == {"configurable": {research_module.CONFIG_KEY_CHECKPOINTER: None}}
+    graph_module: Any = importlib.import_module("agents.deep_expert.graph")
+    assert config == {"configurable": {graph_module.CONFIG_KEY_CHECKPOINTER: None}}

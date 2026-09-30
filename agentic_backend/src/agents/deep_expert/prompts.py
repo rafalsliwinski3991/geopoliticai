@@ -55,8 +55,10 @@ each with its source link. There is no shell; never call `execute`.
 
 # The grader reads only the user's question and the final draft, which
 # `graph.grader_view` hands over in parts so none is cut. It never sees
-# `read_source` output, so "every link points to a source read" is checked in
-# code by `research._checked_deep_answer`, never here (plan review).
+# `read_source` output, so source provenance is checked in code by
+# `research._checked_deep_answer` — which enforces that at least one cited link
+# is a source the run actually read; read coverage of *every* link is the
+# model's prompt duty, never a code check here (plan review).
 DEEP_ANSWER_RUBRIC = """1. The answer addresses the user's question directly and completely.
 2. Every factual sentence carries an inline markdown link to a source.
 3. It covers the main actors and their stated positions, and attributes \

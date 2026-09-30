@@ -8,13 +8,15 @@ import re
 from typing import Any
 
 from langchain_core.messages import AIMessage, HumanMessage
-from langchain_core.runnables import RunnableConfig
-from langgraph.constants import CONFIG_KEY_CHECKPOINTER
 from langgraph.types import StreamWriter
 
 from agents.deep_expert.config import LIMITS
 from agents.deep_expert.consts.progress import PLANNING_PROGRESS
-from agents.deep_expert.graph import build_graph
+from agents.deep_expert.graph import (
+    NO_CHECKPOINTER_CONFIG,
+    SHIPPABLE_VERDICTS,
+    build_graph,
+)
 from agents.deep_expert.prompts import DEEP_ANSWER_RUBRIC
 from agents.deep_expert.state import ResearchRun
 from models import (
@@ -26,18 +28,6 @@ from models import (
 
 # Same pattern as `evals/helpers/judge.py::MARKDOWN_LINK_URL`; src never imports evals.
 MARKDOWN_LINK_URL = re.compile(r"\]\((https?://[^)\s]+)\)")
-# `max_iterations_reached` ships the last draft (brainstorm Q7A); `failed` and
-# `grader_error` are hard errors; no verdict at all means the grader never ran.
-SHIPPABLE_VERDICTS = frozenset({"satisfied", "max_iterations_reached"})
-# Invoked inside the orchestrator's node, every nested run would inherit its
-# Postgres saver: `checkpointer=False` covers only the agent's own loop, while
-# its tasks still pass the parent saver down (langgraph 1.2.12
-# `pregel/_algo.py:737-740`) to the `task` subagent and the rubric grader. A
-# None under this key reaches the whole tree and disables all of it.
-# `langgraph.constants` keeps the name public through 1.x; the pin is <1.3.
-NO_CHECKPOINTER_CONFIG: RunnableConfig = {
-    "configurable": {CONFIG_KEY_CHECKPOINTER: None}
-}
 logger = logging.getLogger(__name__)
 
 
