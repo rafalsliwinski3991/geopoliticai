@@ -14,7 +14,16 @@ already covered — for example "write me a report on the eastern flank" or "tur
 that into a briefing". Choose "geopolitical" when the turn asks about politics, \
 government, elections, legislation, foreign policy, armed conflict, diplomacy, \
 sanctions, international institutions, or the political dimension of economics, \
-energy, migration, or security. A question that seeks new information is \
+energy, migration, or security. Choose "deep" instead of "geopolitical" only \
+when the user has explicitly asked for depth on this topic: a deep dive, an \
+in-depth, thorough, comprehensive, detailed, or advanced analysis, or any other \
+wording that plainly asks for a deeper answer than usual. A follow-up that \
+continues the same topic as an earlier turn where the user asked for depth \
+stays "deep": "and Poland?" right after a requested deep dive into Germany's \
+defence budget is "deep". A new topic, or a request for a quick, short, or \
+brief answer, is "geopolitical" again. Never choose "deep" because a question \
+looks complex, broad, or important, and "deep state" or similar phrases are not \
+requests for depth. A question that seeks new information is \
 "geopolitical" even when it uses the word "report"; only a request to produce a \
 document is "report". Choose "other" for everything else, including greetings, \
 small talk, and questions about this assistant.

@@ -27,6 +27,7 @@ from agents.reporter.consts.progress import OUTLINE_PROGRESS, REPORT_PROGRESS
 from config import (
     DAILY_RESEARCH_TURNS,
     DAILY_RESEARCH_TURNS_ALL_USERS,
+    DEEP_RESEARCH_TURN_COST,
     LogContextFilter,
 )
 from db.web.sql import ThreadRow
@@ -92,7 +93,7 @@ def _owned_thread_with_quota_headroom(monkeypatch: pytest.MonkeyPatch) -> None:
 def _site_has_headroom(monkeypatch: pytest.MonkeyPatch) -> None:
     """The site-wide ceiling has room, unless a test says otherwise."""
 
-    async def site(pool: Any, *, limit: int) -> int | None:
+    async def site(pool: Any, *, limit: int, cost: int = 1) -> int | None:
         return 1
 
     monkeypatch.setattr(api, "increment_site_quota", site)
@@ -492,7 +493,9 @@ async def test_an_approve_resume_proceeds_at_the_cap(
 
     increments: list[int] = []
 
-    async def increment(pool: Any, *, user_id: int, limit: int) -> int | None:
+    async def increment(
+        pool: Any, *, user_id: int, limit: int, cost: int = 1
+    ) -> int | None:
         increments.append(user_id)
         return 1
 
@@ -1225,7 +1228,9 @@ async def test_the_21st_research_turn_is_429_mid_stream(
     """The cap is enforced in the counted branch: a research turn over it is
     refused with a 429 error frame on an HTTP 200, never a result."""
 
-    async def increment(pool: Any, *, user_id: int, limit: int) -> int | None:
+    async def increment(
+        pool: Any, *, user_id: int, limit: int, cost: int = 1
+    ) -> int | None:
         # The caller's own cap is the one already reached; the site still has
         # headroom for the refusal (the autouse `_site_has_headroom`).
         return None
@@ -1261,7 +1266,9 @@ async def test_a_chat_routed_turn_proceeds_at_the_cap(
 
     increments: list[int] = []
 
-    async def increment(pool: Any, *, user_id: int, limit: int) -> int | None:
+    async def increment(
+        pool: Any, *, user_id: int, limit: int, cost: int = 1
+    ) -> int | None:
         increments.append(user_id)
         return 1
 
@@ -1292,11 +1299,13 @@ async def test_a_turn_refused_by_the_site_ceiling_does_not_charge_the_user(
 
     increments: list[int] = []
 
-    async def increment(pool: Any, *, user_id: int, limit: int) -> int | None:
+    async def increment(
+        pool: Any, *, user_id: int, limit: int, cost: int = 1
+    ) -> int | None:
         increments.append(user_id)
         return 1
 
-    async def site_full(pool: Any, *, limit: int) -> int | None:
+    async def site_full(pool: Any, *, limit: int, cost: int = 1) -> int | None:
         # The site is already at its ceiling; the caller still has headroom.
         return None
 
@@ -1330,7 +1339,9 @@ async def test_a_chat_routed_turn_does_not_increment_the_quota(
 
     increments: list[int] = []
 
-    async def increment(pool: Any, *, user_id: int, limit: int) -> int | None:
+    async def increment(
+        pool: Any, *, user_id: int, limit: int, cost: int = 1
+    ) -> int | None:
         increments.append(user_id)
         return 1
 
@@ -1367,11 +1378,13 @@ async def test_a_research_routed_turn_increments_exactly_once(
 
     calls: list[tuple[Any, ...]] = []
 
-    async def increment(pool: Any, *, user_id: int, limit: int) -> int | None:
+    async def increment(
+        pool: Any, *, user_id: int, limit: int, cost: int = 1
+    ) -> int | None:
         calls.append(("user", user_id, limit))
         return 1
 
-    async def site(pool: Any, *, limit: int) -> int | None:
+    async def site(pool: Any, *, limit: int, cost: int = 1) -> int | None:
         calls.append(("site", limit))
         return 1
 
@@ -1421,7 +1434,9 @@ async def test_a_turn_that_fails_after_routing_still_increments_once(
 
     increments: list[int] = []
 
-    async def increment(pool: Any, *, user_id: int, limit: int) -> int | None:
+    async def increment(
+        pool: Any, *, user_id: int, limit: int, cost: int = 1
+    ) -> int | None:
         increments.append(user_id)
         return 1
 
@@ -1451,7 +1466,9 @@ async def test_a_turn_at_the_cap_ends_with_a_429_error_frame(
 ) -> None:
     """A concurrent turn took the last one before this turn's increment."""
 
-    async def increment(pool: Any, *, user_id: int, limit: int) -> int | None:
+    async def increment(
+        pool: Any, *, user_id: int, limit: int, cost: int = 1
+    ) -> int | None:
         return None
 
     monkeypatch.setattr(api, "increment_quota", increment)
@@ -1507,7 +1524,9 @@ async def test_a_client_that_disconnects_mid_stream_is_still_counted(
     """
     increments: list[int] = []
 
-    async def increment(pool: Any, *, user_id: int, limit: int) -> int | None:
+    async def increment(
+        pool: Any, *, user_id: int, limit: int, cost: int = 1
+    ) -> int | None:
         increments.append(user_id)
         return 1
 
@@ -1541,7 +1560,9 @@ async def test_a_resume_run_counts_nothing_new(
     re-run on a resume, so approving a pending outline is free."""
     increments: list[int] = []
 
-    async def increment(pool: Any, *, user_id: int, limit: int) -> int | None:
+    async def increment(
+        pool: Any, *, user_id: int, limit: int, cost: int = 1
+    ) -> int | None:
         increments.append(user_id)
         return 1
 
@@ -1796,3 +1817,246 @@ async def test_thread_routes_422_on_a_malformed_thread_id(
 ) -> None:
     response = await client.get(route + thread_id)
     assert response.status_code == 422
+
+
+@pytest.mark.anyio
+async def test_a_deep_turn_spends_the_deep_cost_from_both_counters(
+    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A deep turn costs DEEP_RESEARCH_TURN_COST units from both counters."""
+
+    calls: list[tuple[Any, ...]] = []
+
+    async def increment(
+        pool: Any, *, user_id: int, limit: int, cost: int = 1
+    ) -> int | None:
+        calls.append(("user", user_id, limit, cost))
+        return 1
+
+    async def site(pool: Any, *, limit: int, cost: int = 1) -> int | None:
+        calls.append(("site", limit, cost))
+        return 1
+
+    monkeypatch.setattr(api, "increment_quota", increment)
+    monkeypatch.setattr(api, "increment_site_quota", site)
+
+    async def stream(
+        graph_input: Any, thread_id: str
+    ) -> AsyncIterator[tuple[str, Any]]:
+        yield ("counted", "deep")
+        yield ("token", "never")
+
+    with patch("api._astream_answer", stream):
+        response = await client.post(
+            "/api/run_pipeline/stream", json={"query": "x", "thread_id": "t-1"}
+        )
+    # Assert
+    assert response.status_code == 200
+    assert _events(response.text)[-1]["type"] == "result"
+    assert calls == [
+        ("site", DAILY_RESEARCH_TURNS_ALL_USERS, DEEP_RESEARCH_TURN_COST),
+        ("user", 1, DAILY_RESEARCH_TURNS, DEEP_RESEARCH_TURN_COST),
+    ]
+
+
+@pytest.mark.anyio
+async def test_a_geopolitical_turn_still_spends_one(
+    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    increments: list[int] = []
+    site_costs: list[int] = []
+
+    async def increment(
+        pool: Any, *, user_id: int, limit: int, cost: int = 1
+    ) -> int | None:
+        increments.append(user_id)
+        return 1
+
+    async def site(pool: Any, *, limit: int, cost: int = 1) -> int | None:
+        site_costs.append(cost)
+        return 1
+
+    monkeypatch.setattr(api, "increment_quota", increment)
+    monkeypatch.setattr(api, "increment_site_quota", site)
+
+    async def stream(
+        graph_input: Any, thread_id: str
+    ) -> AsyncIterator[tuple[str, Any]]:
+        yield ("counted", "geopolitical")
+        yield ("token", "never")
+
+    with patch("api._astream_answer", stream):
+        response = await client.post(
+            "/api/run_pipeline/stream", json={"query": "x", "thread_id": "t-1"}
+        )
+    # Assert
+    assert response.status_code == 200
+    assert increments == [1]
+    assert site_costs == [1]
+
+
+@pytest.mark.anyio
+async def test_a_deep_turn_short_of_quota_is_refused_before_the_site_is_charged(
+    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The advisory headroom read refuses a deep turn that cannot fit."""
+
+    async def exhausted(pool: Any, *, user_id: int) -> int:
+        return DAILY_RESEARCH_TURNS - 3
+
+    increments: list[int] = []
+    site_calls: list[int] = []
+
+    async def increment(
+        pool: Any, *, user_id: int, limit: int, cost: int = 1
+    ) -> int | None:
+        increments.append(user_id)
+        return 1
+
+    async def site(pool: Any, *, limit: int, cost: int = 1) -> int | None:
+        site_calls.append(cost)
+        return 1
+
+    monkeypatch.setattr(api, "quota_used", exhausted)
+    monkeypatch.setattr(api, "increment_quota", increment)
+    monkeypatch.setattr(api, "increment_site_quota", site)
+
+    async def stream(
+        graph_input: Any, thread_id: str
+    ) -> AsyncIterator[tuple[str, Any]]:
+        yield ("counted", "deep")
+        yield ("token", "never")
+
+    with patch("api._astream_answer", stream):
+        response = await client.post(
+            "/api/run_pipeline/stream", json={"query": "x", "thread_id": "t-1"}
+        )
+    # Assert
+    events = _events(response.text)
+    assert events[-1]["type"] == "error"
+    assert events[-1]["status"] == 429
+    assert events[-1]["message"] == (
+        "A deep analysis needs 5 research turns; you have 3 left today."
+    )
+    assert all(event["type"] != "result" for event in events)
+    assert increments == []
+    assert site_calls == []
+
+
+@pytest.mark.anyio
+async def test_a_deep_turn_losing_a_race_gets_the_generic_limit_message(
+    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A deep turn that passes the headroom read but loses the upsert race
+    gets the generic 429; the site slot it took belongs to this run's refusal."""
+
+    async def fresh(pool: Any, *, user_id: int) -> int:
+        return 0
+
+    async def increment(
+        pool: Any, *, user_id: int, limit: int, cost: int = 1
+    ) -> int | None:
+        return None
+
+    async def site(pool: Any, *, limit: int, cost: int = 1) -> int | None:
+        return 1
+
+    monkeypatch.setattr(api, "quota_used", fresh)
+    monkeypatch.setattr(api, "increment_quota", increment)
+    monkeypatch.setattr(api, "increment_site_quota", site)
+
+    async def stream(
+        graph_input: Any, thread_id: str
+    ) -> AsyncIterator[tuple[str, Any]]:
+        yield ("counted", "deep")
+        yield ("token", "never")
+
+    with patch("api._astream_answer", stream):
+        response = await client.post(
+            "/api/run_pipeline/stream", json={"query": "x", "thread_id": "t-1"}
+        )
+    # Assert
+    events = _events(response.text)
+    assert events[-1]["type"] == "error"
+    assert events[-1]["status"] == 429
+    assert events[-1]["message"] == "Daily research limit reached."
+    assert all(event["type"] != "result" for event in events)
+
+
+@pytest.mark.anyio
+async def test_a_geopolitical_turn_skips_the_headroom_read(
+    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    reads: list[int] = []
+
+    async def read(pool: Any, *, user_id: int) -> int:
+        reads.append(user_id)
+        return 0
+
+    async def increment(
+        pool: Any, *, user_id: int, limit: int, cost: int = 1
+    ) -> int | None:
+        return 1
+
+    async def site(pool: Any, *, limit: int, cost: int = 1) -> int | None:
+        return 1
+
+    monkeypatch.setattr(api, "quota_used", read)
+    monkeypatch.setattr(api, "increment_quota", increment)
+    monkeypatch.setattr(api, "increment_site_quota", site)
+
+    async def stream(
+        graph_input: Any, thread_id: str
+    ) -> AsyncIterator[tuple[str, Any]]:
+        yield ("counted", "geopolitical")
+        yield ("token", "never")
+
+    with patch("api._astream_answer", stream):
+        response = await client.post(
+            "/api/run_pipeline/stream", json={"query": "x", "thread_id": "t-1"}
+        )
+    # Assert
+    assert response.status_code == 200
+    assert reads == []
+
+
+@pytest.mark.anyio
+async def test_a_deep_turn_reaches_the_browser_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The real graph: the deep answer arrives as one `notice`, never a token,
+    and the counted event carries the destination."""
+
+    import importlib
+
+    from agents.deep_expert.consts.progress import PLANNING_PROGRESS
+    from agents.orchestrator.state import RouteDecision
+
+    classify_module = importlib.import_module("agents.orchestrator.nodes.classify")
+    deep_node = importlib.import_module("agents.orchestrator.nodes.deep_expert")
+    graph_module = importlib.import_module("agents.orchestrator.graph")
+
+    async def decide(*args: Any, **kwargs: Any) -> RouteDecision:
+        return RouteDecision(destination="deep", standalone_query="rewritten")
+
+    DEEP_ANSWER = "Deep answer [a](https://reuters.com/x)."
+
+    async def fake_research(query: str, writer: Any) -> str:
+        writer(PLANNING_PROGRESS)
+        return DEEP_ANSWER
+
+    monkeypatch.setattr(classify_module, "ainvoke_structured", decide)
+    monkeypatch.setattr(deep_node, "research", fake_research)
+    monkeypatch.setattr(api, "graph", graph_module.build_graph())
+
+    events = [
+        event
+        async for event in api._astream_answer(
+            build_initial_orchestrator_state("q"), "t-1"
+        )
+    ]
+    # Assert
+    assert ("counted", "deep") in events
+    assert ("progress", PLANNING_PROGRESS) in events
+    assert [v for k, v in events if k == "notice"] == [DEEP_ANSWER]
+    assert [v for k, v in events if k == "token"] == []

@@ -30,7 +30,7 @@ llm_module = importlib.import_module("llm")
 CITED_ANSWER = "Here is the situation [1](https://reuters.com/x)."
 
 
-def test_graph_has_exactly_four_nodes() -> None:
+def test_graph_has_exactly_five_nodes() -> None:
     # Act
     nodes = set(orchestrator.build_graph().get_graph().nodes)
 
@@ -38,6 +38,7 @@ def test_graph_has_exactly_four_nodes() -> None:
     assert nodes - {"__start__", "__end__"} == {
         "classify",
         "expert",
+        "deep_expert",
         "chat",
         "reporter",
     }
@@ -54,9 +55,11 @@ def test_graph_forks_after_classify() -> None:
     assert {
         (START, "classify"),
         ("classify", "expert"),
+        ("classify", "deep_expert"),
         ("classify", "chat"),
         ("classify", "reporter"),
         ("expert", END),
+        ("deep_expert", END),
         ("chat", END),
         ("reporter", END),
     } <= edges

@@ -34,6 +34,7 @@ from auth import Identity, require_identity
 from config import (
     DAILY_RESEARCH_TURNS,
     DAILY_RESEARCH_TURNS_ALL_USERS,
+    DEEP_RESEARCH_TURN_COST,
     bind_log_context,
     init_environment,
     require_env,
@@ -98,13 +99,21 @@ ANSWER_PROGRESS = {"node": "answer", "label": "Writing the answer..."}
 # `langgraph_node == "reporter"` — and that same text already reaches the
 # browser through the node's own `notice` custom event. Adding `"reporter"`
 # here would print every refusal and cancellation twice.
+#
+# `"deep_expert"` must never be added either, for the same reason: its node
+# returns an `AIMessage` that also arrives in `messages` mode, and the finished
+# analysis already reached the browser as that node's `notice`.
 ANSWER_NODES = frozenset({"answer", "chat", "write"})
 
 # `other` — the chat branch — is absent on purpose (Q5b): chat turns stay
 # free. `classify` does not re-run on a resume, so approving or revising a
 # pending report does not count again: one report is one count, taken when it
 # was requested, and the reporter's own revision cap bounds the rounds.
-RESEARCH_DESTINATIONS = frozenset({"geopolitical", "report"})
+# `deep` spends DEEP_RESEARCH_TURN_COST units instead of one (brainstorm Q3).
+RESEARCH_DESTINATIONS = frozenset({"geopolitical", "deep", "report"})
+DEEP_QUOTA_MESSAGE = (
+    "A deep analysis needs {cost} research turns; you have {left} left today."
+)
 
 # The checkpointer names its tables unqualified in both its DDL and its
 # queries, so search_path is the only way to put them anywhere but `public`.
@@ -469,9 +478,11 @@ async def _astream_answer(
                 continue
             event_type = data.get("type")
             if event_type == "notice":
-                # A branch that produced the turn's answer without a model call
-                # (refusal, cancel, revision cap). It goes out as a token, not
-                # as a frame of its own, because it *is* the answer: it has to
+                # A branch that delivers the turn's answer whole instead of
+                # streaming it: the reporter's refusal, cancel and revision-cap
+                # paths, and the deep expert's finished analysis. It goes out as
+                # a token, not as a frame of its own, because it *is* the
+                # answer: it has to
                 # reach `parts`, the `MAX_ANSWER_CHARS` accounting and
                 # `result.output` like any other. It is also the only custom
                 # payload that may contain model-produced text, which is
@@ -496,9 +507,10 @@ async def _astream_answer(
             # carries the branch (`agents/orchestrator/nodes/classify.py:68`).
             decision = data.get("classify")
             if not counted and isinstance(decision, dict):
-                if decision.get("destination") in RESEARCH_DESTINATIONS:
+                destination = decision.get("destination")
+                if destination in RESEARCH_DESTINATIONS:
                     counted = True
-                    yield ("counted", None)
+                    yield ("counted", destination)
             interrupts = data.get("__interrupt__")
             if interrupts:
                 yield ("pause", interrupts[0].value)
@@ -594,6 +606,31 @@ async def run_pipeline_stream_endpoint(
                     is_report = True
                     continue
                 if kind == "counted":
+                    # A value of None (the pre-change shape, still used by test
+                    # fakes) is an ordinary one-unit research turn.
+                    cost = DEEP_RESEARCH_TURN_COST if value == "deep" else 1
+                    if cost > 1:
+                        # Advisory headroom check before the site is charged
+                        # (plan review): without it, a user at 17/20 retrying a
+                        # deep request spends 5 site units per refused retry,
+                        # and ~100 retries exhaust the 500-unit site ceiling for
+                        # everyone. The user upsert below still decides; this
+                        # read only stops the obviously unaffordable turn early.
+                        # Refused, not downgraded to an expert answer (Q8A).
+                        left = DAILY_RESEARCH_TURNS - await quota_used(
+                            pool, user_id=identity.user_id
+                        )
+                        if left < cost:
+                            yield _sse(
+                                {
+                                    "type": "error",
+                                    "status": 429,
+                                    "message": DEEP_QUOTA_MESSAGE.format(
+                                        cost=cost, left=max(0, left)
+                                    ),
+                                }
+                            )
+                            return
                     # The site ceiling is committed before the caller is
                     # charged: a turn the site refuses must not cost the
                     # user their own turn, and unlike an advisory pre-read
@@ -601,7 +638,7 @@ async def run_pipeline_stream_endpoint(
                     # database decides, so no concurrent turn can still
                     # take the last slot between a read and this write.
                     if not await increment_site_quota(
-                        pool, limit=DAILY_RESEARCH_TURNS_ALL_USERS
+                        pool, limit=DAILY_RESEARCH_TURNS_ALL_USERS, cost=cost
                     ):
                         # The site-wide ceiling: the operator's bill has a
                         # second, coarser bound no single account controls.
@@ -615,13 +652,17 @@ async def run_pipeline_stream_endpoint(
                         )
                         return
                     if not await increment_quota(
-                        pool, user_id=identity.user_id, limit=DAILY_RESEARCH_TURNS
+                        pool,
+                        user_id=identity.user_id,
+                        limit=DAILY_RESEARCH_TURNS,
+                        cost=cost,
                     ):
-                        # A concurrent turn took the last one. The site slot
-                        # just taken belongs to this run's own refusal: the
-                        # user is not charged for a turn the endpoint ends
-                        # before it produces an answer, and the site count
-                        # stays honest about the run that did happen.
+                        # A concurrent turn took the last one (for a deep turn:
+                        # took units between the headroom read and here). The
+                        # site slot just taken belongs to this run's own
+                        # refusal: the user is not charged for a turn the
+                        # endpoint ends before it produces an answer, and the
+                        # site count stays honest about the run that did happen.
                         yield _sse(
                             {
                                 "type": "error",
@@ -645,9 +686,9 @@ async def run_pipeline_stream_endpoint(
                     # after it would leave that as the *active* step for the
                     # whole report — `progressLog` is an accumulating list that
                     # never dedupes (`frontend/index.html:359-369`). And a
-                    # `notice` is not a model answer at all: it is a refusal or
-                    # a cancellation, arriving whole, with nothing being
-                    # written.
+                    # `notice` arrives whole — a refusal, a cancellation, or a
+                    # finished deep analysis — so nothing is left to announce
+                    # as being written.
                     yield _sse({"type": "progress", **ANSWER_PROGRESS})
                 remaining = MAX_ANSWER_CHARS - consumed
                 if remaining <= 0:
