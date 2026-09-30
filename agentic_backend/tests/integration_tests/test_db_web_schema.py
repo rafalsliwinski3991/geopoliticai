@@ -290,13 +290,19 @@ def test_increment_quota_upserts_increments_and_caps(
     day = date.today()
     # Act
     first = fetch_one(
-        conn, sql.INCREMENT_QUOTA, {"user_id": user_id, "day": day, "limit": 2}
+        conn,
+        sql.INCREMENT_QUOTA,
+        {"user_id": user_id, "day": day, "limit": 2, "cost": 1},
     )["used"]
     second = fetch_one(
-        conn, sql.INCREMENT_QUOTA, {"user_id": user_id, "day": day, "limit": 2}
+        conn,
+        sql.INCREMENT_QUOTA,
+        {"user_id": user_id, "day": day, "limit": 2, "cost": 1},
     )["used"]
     capped = fetch_one(
-        conn, sql.INCREMENT_QUOTA, {"user_id": user_id, "day": day, "limit": 2}
+        conn,
+        sql.INCREMENT_QUOTA,
+        {"user_id": user_id, "day": day, "limit": 2, "cost": 1},
     )
     # Assert
     assert (first, second) == (1, 2)
@@ -315,13 +321,15 @@ def test_increment_site_quota_upserts_increments_and_caps(
     day = date(1971, 1, 1)
     # Act
     try:
-        first = fetch_one(conn, sql.INCREMENT_SITE_QUOTA, {"day": day, "limit": 2})[
-            "used"
-        ]
-        second = fetch_one(conn, sql.INCREMENT_SITE_QUOTA, {"day": day, "limit": 2})[
-            "used"
-        ]
-        capped = fetch_one(conn, sql.INCREMENT_SITE_QUOTA, {"day": day, "limit": 2})
+        first = fetch_one(
+            conn, sql.INCREMENT_SITE_QUOTA, {"day": day, "limit": 2, "cost": 1}
+        )["used"]
+        second = fetch_one(
+            conn, sql.INCREMENT_SITE_QUOTA, {"day": day, "limit": 2, "cost": 1}
+        )["used"]
+        capped = fetch_one(
+            conn, sql.INCREMENT_SITE_QUOTA, {"day": day, "limit": 2, "cost": 1}
+        )
         used = fetch_one(conn, "SELECT used FROM site_quota WHERE day = %s", (day,))[
             "used"
         ]
@@ -332,6 +340,63 @@ def test_increment_site_quota_upserts_increments_and_caps(
     assert (first, second) == (1, 2)
     assert capped is None
     assert used == 2
+
+
+def test_increment_quota_spends_the_whole_cost_or_nothing(
+    conn: Connection[dict[str, Any]], user_id: int
+) -> None:
+    """A cost that does not all fit buys nothing; a partial balance never spends."""
+    # Act + Assert: raw statements only, like the existing upsert test — the
+    # helper is pinned to today's live counters, which this must never touch.
+    first = fetch_one(
+        conn,
+        sql.INCREMENT_QUOTA,
+        {"user_id": user_id, "day": date.today(), "limit": 5, "cost": 3},
+    )["used"]
+    refused = fetch_one(
+        conn,
+        sql.INCREMENT_QUOTA,
+        {"user_id": user_id, "day": date.today(), "limit": 5, "cost": 3},
+    )
+    left = fetch_one(
+        conn,
+        "SELECT used FROM quota WHERE user_id = %s AND day = %s",
+        (user_id, date.today()),
+    )["used"]
+    last = fetch_one(
+        conn,
+        sql.INCREMENT_QUOTA,
+        {"user_id": user_id, "day": date.today(), "limit": 5, "cost": 2},
+    )["used"]
+    assert first == 3
+    assert refused is None
+    assert left == 3
+    assert last == 5
+
+
+def test_increment_site_quota_spends_the_whole_cost_or_nothing(
+    conn: Connection[dict[str, Any]],
+) -> None:
+    """The site-wide whole-cost rule, on the fixed day, never today's row."""
+    # Arrange
+    day = date(1971, 1, 2)
+    try:
+        # Act + Assert
+        first = fetch_one(
+            conn, sql.INCREMENT_SITE_QUOTA, {"day": day, "limit": 5, "cost": 3}
+        )["used"]
+        refused = fetch_one(
+            conn, sql.INCREMENT_SITE_QUOTA, {"day": day, "limit": 5, "cost": 3}
+        )
+        last = fetch_one(
+            conn, sql.INCREMENT_SITE_QUOTA, {"day": day, "limit": 5, "cost": 2}
+        )["used"]
+    finally:
+        with conn.cursor() as cursor:
+            cursor.execute("DELETE FROM site_quota WHERE day = %s", (day,))
+    assert first == 3
+    assert refused is None
+    assert last == 5
 
 
 def test_deleting_a_user_cascades_into_the_checkpointer_tables(
