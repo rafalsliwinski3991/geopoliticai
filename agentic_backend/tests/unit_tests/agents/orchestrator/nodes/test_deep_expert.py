@@ -16,7 +16,9 @@ DEEP_ANSWER = "Deep answer [a](https://reuters.com/x)."
 
 
 @pytest.mark.anyio
-async def test_the_node_receives_the_query_and_writes_exactly_one_notice() -> None:
+async def test_the_node_receives_the_query_and_writes_exactly_one_notice(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     # Arrange
     received: dict[str, Any] = {}
     events: list[dict[str, Any]] = []
@@ -26,27 +28,20 @@ async def test_the_node_receives_the_query_and_writes_exactly_one_notice() -> No
         received["writer"] = writer
         return DEEP_ANSWER
 
-    node_module.research = fake_research
-    try:
-        state: OrchestratorState = {
-            "messages": [],
-            "standalone_query": "the rewritten query",
-        }
+    # Pytest restores the production `research` after the test; the previous
+    # manual `try/finally` left a raising stub installed for every later test
+    # in the process (review thread, #130 c4133685799).
+    monkeypatch.setattr(node_module, "research", fake_research)
+    state: OrchestratorState = {
+        "messages": [],
+        "standalone_query": "the rewritten query",
+    }
 
-        # Act
-        result = await node_module.deep_expert(state, events.append)
-    finally:
-        node_module.research = _restore()
+    # Act
+    result = await node_module.deep_expert(state, events.append)
 
     # Assert
     assert received["query"] == "the rewritten query"
     assert received["writer"] is not None
     assert events == [{"type": "notice", "text": DEEP_ANSWER}]
     assert result == {"messages": [AIMessage(DEEP_ANSWER)]}
-
-
-def _restore() -> Any:
-    async def research(query: str, writer: Any) -> str:
-        raise AssertionError("research must be patched in tests")
-
-    return research

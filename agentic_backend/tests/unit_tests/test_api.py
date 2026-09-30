@@ -1944,6 +1944,50 @@ async def test_a_deep_turn_short_of_quota_is_refused_before_the_site_is_charged(
 
 
 @pytest.mark.anyio
+async def test_a_deep_turn_exactly_at_the_headroom_is_counted(
+    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The boundary `left == cost` is affordable, not refused (`left < cost`)."""
+
+    async def exactly_affordable(pool: Any, *, user_id: int) -> int:
+        return DAILY_RESEARCH_TURNS - DEEP_RESEARCH_TURN_COST
+
+    calls: list[tuple[str, int]] = []
+
+    async def increment(
+        pool: Any, *, user_id: int, limit: int, cost: int = 1
+    ) -> int | None:
+        calls.append(("user", cost))
+        return 1
+
+    async def site(pool: Any, *, limit: int, cost: int = 1) -> int | None:
+        calls.append(("site", cost))
+        return 1
+
+    monkeypatch.setattr(api, "quota_used", exactly_affordable)
+    monkeypatch.setattr(api, "increment_quota", increment)
+    monkeypatch.setattr(api, "increment_site_quota", site)
+
+    async def stream(
+        graph_input: Any, thread_id: str
+    ) -> AsyncIterator[tuple[str, Any]]:
+        yield ("counted", "deep")
+        yield ("token", "never")
+
+    with patch("api._astream_answer", stream):
+        response = await client.post(
+            "/api/run_pipeline/stream", json={"query": "x", "thread_id": "t-1"}
+        )
+    # Assert
+    assert response.status_code == 200
+    assert _events(response.text)[-1]["type"] == "result"
+    assert calls == [
+        ("site", DEEP_RESEARCH_TURN_COST),
+        ("user", DEEP_RESEARCH_TURN_COST),
+    ]
+
+
+@pytest.mark.anyio
 async def test_a_deep_turn_losing_a_race_gets_the_generic_limit_message(
     client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:

@@ -21,11 +21,14 @@ class RouteDecision(BaseModel):
 
     destination: Destination = Field(
         description=(
-            "'geopolitical' when the last user turn is a political or "
-            "geopolitical question, 'deep' when it is one and the user has "
-            "explicitly asked for an in-depth answer on this topic, 'report' "
-            "when it asks for a written report or write-up of what has already "
-            "been discussed, 'other' for anything else."
+            "The complete set of destinations is 'geopolitical', 'deep', "
+            "'report', 'other' — pick exactly one of those four, never "
+            "anything outside it. Choose 'geopolitical' when the last user "
+            "turn is a political or geopolitical question, 'deep' when it is "
+            "one and the user has explicitly asked for an in-depth answer on "
+            "this topic, 'report' when it asks for a written report or "
+            "write-up of what has already been discussed, 'other' for "
+            "anything else."
         )
     )
     standalone_query: str = Field(
