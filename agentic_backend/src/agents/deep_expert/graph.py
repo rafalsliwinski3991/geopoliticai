@@ -5,6 +5,12 @@ to construct without `OPENAI_API_KEY`, and `make test` and CI run without one.
 Each turn's tools are also closures over that turn's `ResearchRun`.
 `research()` builds the agent per call. Compilation costs milliseconds against
 a turn that takes minutes.
+
+The other agents keep the entity the orchestrator-facing entry point needs on
+`graph.py`, so the shared shape lives here too: `SHIPPABLE_VERDICTS` (the
+grader outcomes that ship, which `research._checked_deep_answer` acts on) and
+`NO_CHECKPOINTER_CONFIG` (the invocation config that runs the whole tree
+without the parent's saver).
 """
 
 from __future__ import annotations
@@ -14,6 +20,8 @@ from typing import Any
 from deepagents import RubricMiddleware, create_deep_agent
 from langchain.agents.middleware import TodoListMiddleware
 from langchain_core.messages import AIMessage, AnyMessage, HumanMessage
+from langchain_core.runnables import RunnableConfig
+from langgraph.constants import CONFIG_KEY_CHECKPOINTER
 
 from agents.deep_expert.config import AGENT_LLM_SETTINGS, GRADER_LLM_SETTINGS, LIMITS
 from agents.deep_expert.prompts import (
@@ -34,6 +42,19 @@ GENERAL_PURPOSE_SUBAGENT_NAME = "general-purpose"
 # A part plus its `GRADER_ANSWER_PART` label stays under the first; 29 parts
 # hold ~113,000 characters, more than 16,384 output tokens can produce.
 GRADER_PART_CHARS = 3_900
+
+# `max_iterations_reached` ships the last draft (brainstorm Q7A); `failed` and
+# `grader_error` are hard errors; no verdict at all means the grader never ran.
+SHIPPABLE_VERDICTS = frozenset({"satisfied", "max_iterations_reached"})
+# Invoked inside the orchestrator's node, every nested run would inherit its
+# Postgres saver: `checkpointer=False` covers only the agent's own loop, while
+# its tasks still pass the parent saver down (langgraph 1.2.12
+# `pregel/_algo.py:737-740`) to the `task` subagent and the rubric grader. A
+# None under this key reaches the whole tree and disables all of it.
+# `langgraph.constants` keeps the name public through 1.x; the pin is <1.3.
+NO_CHECKPOINTER_CONFIG: RunnableConfig = {
+    "configurable": {CONFIG_KEY_CHECKPOINTER: None}
+}
 
 
 def grader_view(messages: list[AnyMessage]) -> list[AnyMessage]:

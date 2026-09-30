@@ -84,16 +84,21 @@ def build_tools(run: ResearchRun) -> list[BaseTool]:
         candidate = run.candidates.get(url)
         if candidate is None:
             return UNKNOWN_URL_MESSAGE
-        source = run.sources.get(url)
-        if source is None:
-            fetched = await fetch_sources([candidate], EXPERT_SOURCES)
-            if not fetched:
-                return UNREADABLE_MESSAGE
-            source = fetched[0]
-            # Keyed by the URL the model asked for, which is the one it will
-            # cite, even when a redirect changed `source.url`.
-            run.sources[url] = source
-            run.progress(READ_PROGRESS_LABEL.format(count=len(run.sources)))
+        # One in-flight read per URL (review thread, #129 c4142559750): a
+        # concurrent call for the same URL waits here, then finds the source
+        # cached and skips the fetch, instead of fetching first and
+        # duplicating the progress event.
+        async with run.lock_for(url):
+            source = run.sources.get(url)
+            if source is None:
+                fetched = await fetch_sources([candidate], EXPERT_SOURCES)
+                if not fetched:
+                    return UNREADABLE_MESSAGE
+                source = fetched[0]
+                # Keyed by the URL the model asked for, which is the one it
+                # will cite, even when a redirect changed `source.url`.
+                run.sources[url] = source
+                run.progress(READ_PROGRESS_LABEL.format(count=len(run.sources)))
         return f"--- SOURCE ---\nTitle: {source.title}\nURL: {url}\n\n{source.text}"
 
     return [search_sources, read_source]

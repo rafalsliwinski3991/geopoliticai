@@ -8,6 +8,7 @@ objects, so it spends from the same budget.
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass, field
 
 from deepagents.middleware import RubricEvaluation
@@ -27,6 +28,14 @@ class ResearchRun:
     candidates: dict[str, Candidate] = field(default_factory=dict)
     sources: dict[str, Source] = field(default_factory=dict)
     verdicts: list[str] = field(default_factory=list)
+    # One in-flight read per URL (review thread, #129 c4142559750): concurrent
+    # `read_source` calls for the same URL serialize on this lock; the second
+    # arrival finds the source cached and skips the fetch.
+    read_locks: dict[str, asyncio.Lock] = field(default_factory=dict)
+
+    def lock_for(self, url: str) -> asyncio.Lock:
+        """Return the read lock for `url`, creating it on first use."""
+        return self.read_locks.setdefault(url, asyncio.Lock())
 
     def progress(self, label: str) -> None:
         """Emit one progress frame; `label` must be code-produced (see consts)."""
