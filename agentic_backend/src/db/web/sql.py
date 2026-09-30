@@ -8,7 +8,7 @@ creates every table named here. The coupling is real and accepted;
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 
 from psycopg import AsyncConnection
 from psycopg.rows import DictRow
@@ -186,4 +186,4 @@ async def increment_site_quota(
 
 def _today() -> date:
     """Return the quota day, in UTC: the quota resets at midnight UTC."""
-    return datetime.now(timezone.utc).date()
+    return datetime.now(UTC).date()
