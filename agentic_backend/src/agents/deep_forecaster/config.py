@@ -8,6 +8,7 @@ editorial data in `consts/forecasters.py`.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Literal
 
 from config import LLMSettings
 
@@ -21,6 +22,20 @@ RESEARCH_LLM_SETTINGS = LLMSettings(
     max_output_tokens=16_384,
     reasoning_effort="low",
 )
+
+# Drafting the claims: one structured call over every source (brainstorm Q27).
+# Its output is a few short claims, each with up to six paragraph numbers;
+# choosing the paragraphs is why it gets 120 s, not 90 (user decision
+# 2026-10-01). The timeout equals `LIMITS.claims_seconds`.
+CLAIMS_LLM_SETTINGS = LLMSettings(
+    model="gpt-5-mini",
+    temperature=1.0,
+    timeout_seconds=120.0,
+    max_output_tokens=8_192,
+    reasoning_effort="low",
+)
+# A ballot is short, but the free reasoning models spend output tokens thinking.
+MEMBER_MAX_OUTPUT_TOKENS = 8_192
 
 
 @dataclass(frozen=True)
@@ -104,6 +119,61 @@ class ForecastLimits:
     max_reason_chars: int = 600
     max_evidences: int = 5
     wall_seconds: float = 840.0
+
+
+@dataclass(frozen=True)
+class Seat:
+    """One council seat's model; `provider` picks its endpoint (brainstorm Q4, Q26).
+
+    `fallback` is a paid OpenRouter model, asked once when the seat's free
+    model produces no counted ballot (user decision 2026-10-01, overriding
+    Q4's free-only roster for that path; `council._cast`). It is the free
+    model's paid twin where OpenRouter lists one, else a model from a vendor
+    with no seat, so no vendor ever holds two seats (Q3).
+    """
+
+    model: str
+    provider: Literal["openai", "gemini", "openrouter"]
+    reasoning_effort: str | None = None
+    fallback: str | None = None
+
+
+# One seat per vendor (Q3, Q4, Q26): OpenAI directly, Gemini through its
+# OpenAI-compatible endpoint, five free OpenRouter models picked on
+# 2026-09-30, each with a paid fallback checked on OpenRouter's public model
+# list on 2026-10-01 (all list `tools` and `tool_choice`). dots-3-note-preview
+# and ling-3.0-flash-sante have no paid twin: DeepSeek has no seat, and
+# ling-3.0-flash is inclusionAI's own base model. poolside is kept out of the
+# fallbacks because `poolside/laguna-s-2.1:free` is the named replacement
+# seat (plan unit 05 smoke gate). Member n is COUNCIL[n - 1],
+# so reordering renumbers members. Roster churn is an edit here (brainstorm
+# §5); which model holds which seat, and which one voted, is logged, never
+# shown (Q21).
+COUNCIL: tuple[Seat, ...] = (
+    Seat("gpt-5-mini", "openai", reasoning_effort="low"),
+    Seat("gemini-3.8-flash", "gemini", reasoning_effort="low"),
+    Seat(
+        "nvidia/nemotron-3-ultra-550b-a55b:free",
+        "openrouter",
+        fallback="nvidia/nemotron-3-ultra-550b-a55b",
+    ),
+    Seat("qwen/qwen3.8-27b:free", "openrouter", fallback="qwen/qwen3.8-27b"),
+    Seat(
+        "thinkingmachines/inkling:free",
+        "openrouter",
+        fallback="thinkingmachines/inkling",
+    ),
+    Seat(
+        "dots-studio/dots-3-note-preview:free",
+        "openrouter",
+        fallback="deepseek/deepseek-v4-flash",
+    ),
+    Seat(
+        "inclusionai/ling-3.0-flash-sante:free",
+        "openrouter",
+        fallback="inclusionai/ling-3.0-flash",
+    ),
+)
 
 
 VIDEO_SETTINGS = VideoSettings()
