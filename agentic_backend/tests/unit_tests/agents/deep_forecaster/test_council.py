@@ -274,8 +274,8 @@ class TestConvene:
             "nvidia/nemotron-3-ultra-550b-a55b": "raise",
             "qwen/qwen3.8-27b:free": "slow",
             "qwen/qwen3.8-27b": "slow",
-            "thinkingmachines/inkling:free": "invalid",
-            "thinkingmachines/inkling": "invalid",
+            "poolside/laguna-s-2.1:free": "invalid",
+            "poolside/laguna-s-2.1": "invalid",
             "dots-studio/dots-3-note-preview:free": "none",
             "deepseek/deepseek-v4-flash": "none",
         }

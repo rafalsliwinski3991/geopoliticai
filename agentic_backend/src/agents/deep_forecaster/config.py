@@ -69,9 +69,13 @@ class Seat:
 # 2026-09-30, each with a paid fallback checked on OpenRouter's public model
 # list on 2026-10-01 (all list `tools` and `tool_choice`). dots-3-note-preview
 # and ling-3.0-flash-sante have no paid twin: DeepSeek has no seat, and
-# ling-3.0-flash is inclusionAI's own base model. poolside is kept out of the
-# fallbacks because `poolside/laguna-s-2.1:free` is the named replacement
-# seat (plan unit 05 smoke gate). Member n is COUNCIL[n - 1],
+# ling-3.0-flash is inclusionAI's own base model. Seat 5 is poolside because
+# `thinkingmachines/inkling:free` is gated to OpenRouter's listed agentic
+# harnesses (403 "only available on agentic harnesses", smoke gate F3 run 1,
+# 2026-10-01 — a permanent refusal for our backend, not a transient one), and
+# poolside's free and paid models both list `tools` and `tool_choice`, with a
+# 262k context. That is why no other seat's fallback is a poolside model.
+# Member n is COUNCIL[n - 1],
 # so reordering renumbers members. Roster churn is an edit here (brainstorm
 # §5); which model holds which seat, and which one voted, is logged, never
 # shown (Q21).
@@ -85,9 +89,9 @@ COUNCIL: tuple[Seat, ...] = (
     ),
     Seat("qwen/qwen3.8-27b:free", "openrouter", fallback="qwen/qwen3.8-27b"),
     Seat(
-        "thinkingmachines/inkling:free",
+        "poolside/laguna-s-2.1:free",
         "openrouter",
-        fallback="thinkingmachines/inkling",
+        fallback="poolside/laguna-s-2.1",
     ),
     Seat(
         "dots-studio/dots-3-note-preview:free",
