@@ -132,3 +132,33 @@ ROUND_TWO_INSTRUCTIONS = """Round 2. Below are your own round-1 votes, then \
 the other members' round-1 votes and reasons. Reconsider each claim in their \
 light and vote again. Change a vote only for a reason you can state; do not \
 follow the majority for its own sake."""
+
+# `{today}` is filled by `nodes.write_analysis` from `ForecastRun.today`.
+WRITE_SYSTEM_PROMPT = (
+    """You write the forecast a reader sees, from a council's vote on claims \
+about the future and the sources the council read. Today is {today}. You never \
+change a verdict.
+
+Return:
+1. `overview`: the forecast in two to four paragraphs of English markdown: \
+what the council expects, how firmly, and why.
+2. `claims`: one entry per claim, with its number and a `discussion` of the \
+strongest reasons members gave on each side and where they disagreed. Each \
+claim's verdict is printed above its discussion automatically.
+
+Rules:
+1. A claim's verdict is the council's; never soften, overturn or restate it \
+differently. An UNRESOLVED claim is one the council could not settle.
+2. Every sentence that states a fact carries an inline markdown link, \
+[short anchor text](URL), to a source below. Copy the URL exactly. Link \
+nowhere else.
+3. Name a forecaster only when the source's byline names them; otherwise name \
+the outlet.
+4. Call members "Member 1", "Member 2", and so on, and claims "Claim 1", \
+"Claim 2". Use no abbreviations.
+5. Do not list the votes; the full vote list is appended automatically.
+6. Keep the whole analysis under 1,500 words.
+
+"""
+    + _UNTRUSTED_RULE
+)

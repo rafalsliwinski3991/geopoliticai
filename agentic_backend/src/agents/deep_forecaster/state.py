@@ -47,6 +47,32 @@ class ClaimTally:
     voting: int
 
 
+class ClaimDiscussion(BaseModel):
+    """The writer's section on one claim (Q12)."""
+
+    claim: int = Field(description="The claim's number.")
+    discussion: str = Field(
+        description=(
+            "Markdown: the strongest reasons members gave on each side and where "
+            "they disagreed, with inline links to sources."
+        )
+    )
+
+
+class Analysis(BaseModel):
+    """`write_analysis`' structured output; `nodes.verify` checks it and renders it."""
+
+    overview: str = Field(
+        description=(
+            "Markdown: the forecast in two to four paragraphs, with inline "
+            "links to sources."
+        )
+    )
+    claims: list[ClaimDiscussion] = Field(
+        description="One entry per claim, in claim order."
+    )
+
+
 @dataclass(frozen=True)
 class ResearchOutcome:
     """How research ended, which the answer's evidence line reports.
@@ -73,6 +99,8 @@ class ForecastState(TypedDict):
     ballots_round_1: NotRequired[dict[int, Ballot]]
     ballots_round_2: NotRequired[dict[int, Ballot]]
     tally: NotRequired[list[ClaimTally]]
+    analysis: NotRequired[Analysis]
+    answer: NotRequired[str]
 
 
 @dataclass

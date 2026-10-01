@@ -2,10 +2,14 @@
 
 from agents.deep_forecaster.prompts import (
     _UNTRUSTED_RULE,
+    DRAFT_CLAIMS_PROMPT,
     LEAD_SYSTEM_PROMPT,
+    MEMBER_SYSTEM_PROMPT,
+    ROUND_TWO_INSTRUCTIONS,
     SCOUT_PROMPT,
     VIDEO_NOT_DISCUSSED,
     VIDEO_PROMPT,
+    WRITE_SYSTEM_PROMPT,
 )
 
 
@@ -42,3 +46,12 @@ def test_video_prompt_names_the_not_discussed_reply() -> None:
 def test_lead_prompt_delegates_with_the_task_tool() -> None:
     # Assert
     assert "Delegate with the `task` tool" in LEAD_SYSTEM_PROMPT
+
+
+def test_the_write_prompt_fills_with_today_and_carries_the_untrusted_rule() -> None:
+    filled = WRITE_SYSTEM_PROMPT.format(today="30 September 2026")
+    assert "{" not in filled, filled
+    assert _UNTRUSTED_RULE in WRITE_SYSTEM_PROMPT
+    assert DRAFT_CLAIMS_PROMPT.format(today="30 September 2026")
+    assert _UNTRUSTED_RULE in MEMBER_SYSTEM_PROMPT
+    assert "Round 2" in ROUND_TWO_INSTRUCTIONS

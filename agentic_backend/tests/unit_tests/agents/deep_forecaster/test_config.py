@@ -24,3 +24,10 @@ def test_the_research_lead_uses_the_deep_expert_budget() -> None:
     # Assert
     assert RESEARCH_LLM_SETTINGS.model == "gpt-5-mini"
     assert RESEARCH_LLM_SETTINGS.reasoning_effort == "low"
+
+
+def test_the_write_call_times_out_with_its_step() -> None:
+    from agents.deep_forecaster.config import WRITE_LLM_SETTINGS
+
+    assert WRITE_LLM_SETTINGS.timeout_seconds == LIMITS.write_seconds
+    assert WRITE_LLM_SETTINGS.model == "gpt-5-mini"

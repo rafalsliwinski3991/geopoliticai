@@ -34,6 +34,15 @@ CLAIMS_LLM_SETTINGS = LLMSettings(
     max_output_tokens=8_192,
     reasoning_effort="low",
 )
+
+# The analysis the reader sees, from the claims, the tally and every source.
+WRITE_LLM_SETTINGS = LLMSettings(
+    model="gpt-5-mini",
+    temperature=1.0,
+    timeout_seconds=150.0,
+    max_output_tokens=16_384,
+    reasoning_effort="low",
+)
 # A ballot is short, but the free reasoning models spend output tokens thinking.
 MEMBER_MAX_OUTPUT_TOKENS = 8_192
 
