@@ -85,11 +85,21 @@ export default function App() {
     };
   }, [attempt]);
 
+  // The latest openThread selection wins: a thread read that resolves after a
+  // later selection must not overwrite it. The reload restore below shares the
+  // counter, so it obeys the same rule.
+  const openRequestRef = useRef(0);
+  // The reload restore runs once, on the first listing: every later refresh
+  // (after each turn) must not re-read the transcript — that would replace the
+  // live conversation with a stale copy and erase pause/error states.
+  const restoredOnLoadRef = useRef(false);
+
   const refreshThreads = useCallback(() => {
     listThreads()
       .then((listing) => {
         setThreads(listing.threads);
         setQuota(listing.quota);
+        const storedId = loadThreadId();
         // Every refresh after a turn settles the thread the turn actually
         // used, so a conversation started in this tab becomes the active one:
         // without this the heading stays "New conversation" forever and the
@@ -98,9 +108,33 @@ export default function App() {
         // simply fails and the current selection stays.
         setActiveThread(
           (current) =>
-            listing.threads.find((thread) => thread.id === loadThreadId()) ??
-            current,
+            listing.threads.find((thread) => thread.id === storedId) ?? current,
         );
+        // The stored id alone only restores the heading, not the transcript:
+        // a reload showed the last conversation's title over an empty pane.
+        // The first listing that contains the stored thread re-reads it, so a
+        // reload restores the messages without a sidebar click.
+        if (!restoredOnLoadRef.current) {
+          restoredOnLoadRef.current = true;
+          if (listing.threads.some((thread) => thread.id === storedId)) {
+            const requested = openRequestRef.current + 1;
+            openRequestRef.current = requested;
+            readThread(storedId)
+              .then((stored) => {
+                if (requested !== openRequestRef.current) return;
+                // `newChat` since the request left must win: it minted a
+                // fresh id for an intentionally empty conversation, and
+                // replaying the old transcript would undo the reset.
+                if (loadThreadId() !== storedId) return;
+                restore(storedId, stored.messages);
+              })
+              .catch(() => {
+                // The listing advertised the thread but the read failed (a
+                // rate limit, a dropped connection): an empty slate beats a
+                // half-loaded transcript, and the sidebar row still works.
+              });
+          }
+        }
       })
       .catch((error: unknown) => {
         // The 401 path already navigated; other failures stay silent here.
@@ -126,10 +160,6 @@ export default function App() {
     storeThreadId(mintThreadId());
     reset();
   }, [reset]);
-
-  // The latest openThread selection wins: a thread read that resolves after a
-  // later selection must not overwrite it.
-  const openRequestRef = useRef(0);
 
   const openThread = useCallback(
     (threadId: string) => {
@@ -183,6 +213,10 @@ export default function App() {
   }
 
   const handleSend = (text: string) => {
+    // A turn starts a new conversation generation: any pending reload restore
+    // (or in-flight sidebar read) must lose to it, or the late restore would
+    // overwrite the live turn — messages and pause/progress state alike.
+    openRequestRef.current += 1;
     // The turn's completion also settles the new thread's title and the spent
     // quota — both only exist after the turn finishes (the plan's one-request
     // refresh rule). The refreshed listing is reconciled with the thread the

@@ -59,6 +59,9 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  // The stored conversation key outlives a test: a later test in this file
+  // must not inherit it and replay an unrelated transcript.
+  window.localStorage.removeItem("politicalagent.thread_id");
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
@@ -176,6 +179,89 @@ describe("the app shell", () => {
         await screen.findByRole("link", { name: /Baltic energy/ })
       ).getAttribute("aria-current"),
     ).toBe("page");
+  });
+
+  it("a reload restores the stored conversation's messages, not just its heading", async () => {
+    // A previous session left the thread id behind: the reload must re-read
+    // the transcript from the threads API on the first listing, without a
+    // sidebar click.
+    window.localStorage.setItem("politicalagent.thread_id", "t1");
+    const fetchMock = stubFetch(tokenOk);
+    const App = await importApp();
+    render(<App />);
+    expect(await screen.findByText("earlier question")).toBeTruthy();
+    expect(await screen.findByText("earlier answer")).toBeTruthy();
+    // The heading comes from the listing's match; the transcript from the
+    // one read this reload triggers.
+    expect(screen.getByRole("heading", { name: "Baltic energy" })).toBeTruthy();
+    expect(screen.getByRole("link", { name: /Baltic energy/ }).getAttribute("aria-current")).toBe(
+      "page",
+    );
+    // Exactly one read: the post-turn refresh must not replay the transcript
+    // over a live conversation.
+    expect(fetchMock.mock.calls.filter(([url]) => url === "/api/threads/t1").length).toBe(1);
+  });
+
+  it("a turn starting while the reload restore is pending discards the restore", async () => {
+    // The restore read hangs until this test resolves it: the user submits
+    // first, and the late transcript must not overwrite the live turn.
+    let resolveRead: (value: unknown) => void = () => {};
+    window.localStorage.setItem("politicalagent.thread_id", "t1");
+    const fetchMock = vi.fn((url: string) => {
+      if (url === "/accounts/token/") return Promise.resolve(tokenOk);
+      if (url === "/api/threads") {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: async () => ({
+            threads: [
+              { id: "t1", title: "Baltic energy", created_at: "2026-09-18T10:00:00Z" },
+            ],
+            quota: { used: 6, limit: 20 },
+          }),
+        } as unknown as Response);
+      }
+      if (url === "/api/threads/t1") {
+        return new Promise((resolve) => {
+          resolveRead = resolve;
+        });
+      }
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        body: new ReadableStream({
+          start(controller) {
+            controller.close();
+          },
+        }),
+      } as unknown as Response);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const App = await importApp();
+    render(<App />);
+    await screen.findByRole("button", { name: "Send" });
+    await vi.waitFor(() =>
+      expect(fetchMock.mock.calls.filter(([url]) => url === "/api/threads/t1").length).toBe(1),
+    );
+    const input = screen.getByLabelText("Ask a question") as HTMLTextAreaElement;
+    fireEvent.change(input, { target: { value: "hello" } });
+    fireEvent.submit(input.closest("form")!);
+    await screen.findByText("hello");
+    await act(async () => {
+      resolveRead({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          thread_id: "t1",
+          messages: [
+            { role: "user", text: "earlier question" },
+            { role: "assistant", text: "earlier answer" },
+          ],
+        }),
+      });
+    });
+    expect(screen.queryByText("earlier question")).toBeNull();
+    expect(screen.getByText("hello")).toBeTruthy();
   });
 
   it("the thread list and quota refresh after every completed turn", async () => {
