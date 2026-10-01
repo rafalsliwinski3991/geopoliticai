@@ -418,7 +418,7 @@ async def test_rubric_loop_drives_revision_and_max_completion(
             ],
         )
 
-    grader_responses = [
+    grader_responses: list[Any] = [
         grader_response("needs_revision", 1),
         grader_response("needs_revision", 2),
         grader_response("satisfied", 3),

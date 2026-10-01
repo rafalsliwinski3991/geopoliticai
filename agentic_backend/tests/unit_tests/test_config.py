@@ -12,6 +12,7 @@ from config import (
     DAILY_RESEARCH_TURNS_ALL_USERS,
     DEEP_RESEARCH_TURN_COST,
     DEFAULT_LLM_SETTINGS,
+    FORECAST_TURN_COST,
     LLMSettings,
     LogContextFilter,
     bind_log_context,
@@ -167,6 +168,16 @@ def test_init_environment_formats_every_line_with_the_context(
     assert "search" in line
     assert "[thread=t-1 user=7]" in line
     assert "hello there" in line
+
+
+def test_forecast_cost_fits_inside_the_daily_quota() -> None:
+    # Assert: pins §4.1's unchecked first-insert branch — the advisory headroom
+    # read and the site ceiling stay safe only while the cost fits both limits.
+    assert (
+        1
+        < FORECAST_TURN_COST
+        <= min(DAILY_RESEARCH_TURNS, DAILY_RESEARCH_TURNS_ALL_USERS)
+    )
 
 
 def test_deep_cost_fits_inside_the_daily_quota() -> None:

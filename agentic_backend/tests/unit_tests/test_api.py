@@ -28,6 +28,7 @@ from config import (
     DAILY_RESEARCH_TURNS,
     DAILY_RESEARCH_TURNS_ALL_USERS,
     DEEP_RESEARCH_TURN_COST,
+    FORECAST_TURN_COST,
     LogContextFilter,
 )
 from db.web.sql import ThreadRow
@@ -2025,6 +2026,138 @@ async def test_a_deep_turn_losing_a_race_gets_the_generic_limit_message(
     assert events[-1]["status"] == 429
     assert events[-1]["message"] == "Daily research limit reached."
     assert all(event["type"] != "result" for event in events)
+
+
+@pytest.mark.anyio
+async def test_a_forecast_spends_the_forecast_cost_from_both_counters(
+    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A forecast costs FORECAST_TURN_COST units from both counters."""
+
+    calls: list[tuple[Any, ...]] = []
+
+    async def increment(
+        pool: Any, *, user_id: int, limit: int, cost: int = 1
+    ) -> int | None:
+        calls.append(("user", user_id, limit, cost))
+        return 1
+
+    async def site(pool: Any, *, limit: int, cost: int = 1) -> int | None:
+        calls.append(("site", limit, cost))
+        return 1
+
+    monkeypatch.setattr(api, "increment_quota", increment)
+    monkeypatch.setattr(api, "increment_site_quota", site)
+
+    async def stream(
+        graph_input: Any, thread_id: str
+    ) -> AsyncIterator[tuple[str, Any]]:
+        yield ("counted", "forecast")
+        yield ("token", "never")
+
+    with patch("api._astream_answer", stream):
+        response = await client.post(
+            "/api/run_pipeline/stream", json={"query": "x", "thread_id": "t-1"}
+        )
+    # Assert
+    assert response.status_code == 200
+    assert _events(response.text)[-1]["type"] == "result"
+    assert calls == [
+        ("site", DAILY_RESEARCH_TURNS_ALL_USERS, FORECAST_TURN_COST),
+        ("user", 1, DAILY_RESEARCH_TURNS, FORECAST_TURN_COST),
+    ]
+
+
+@pytest.mark.anyio
+async def test_a_forecast_short_of_quota_is_refused_before_the_site_is_charged(
+    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The advisory headroom read refuses a forecast that cannot fit."""
+
+    async def exhausted(pool: Any, *, user_id: int) -> int:
+        return 1
+
+    increments: list[int] = []
+    site_calls: list[int] = []
+
+    async def increment(
+        pool: Any, *, user_id: int, limit: int, cost: int = 1
+    ) -> int | None:
+        increments.append(user_id)
+        return 1
+
+    async def site(pool: Any, *, limit: int, cost: int = 1) -> int | None:
+        site_calls.append(cost)
+        return 1
+
+    monkeypatch.setattr(api, "quota_used", exhausted)
+    monkeypatch.setattr(api, "increment_quota", increment)
+    monkeypatch.setattr(api, "increment_site_quota", site)
+
+    async def stream(
+        graph_input: Any, thread_id: str
+    ) -> AsyncIterator[tuple[str, Any]]:
+        yield ("counted", "forecast")
+        yield ("token", "never")
+
+    with patch("api._astream_answer", stream):
+        response = await client.post(
+            "/api/run_pipeline/stream", json={"query": "x", "thread_id": "t-1"}
+        )
+    # Assert
+    events = _events(response.text)
+    assert events[-1]["type"] == "error"
+    assert events[-1]["status"] == 429
+    assert events[-1]["message"] == (
+        "A forecast needs 20 research turns; you have 19 left today."
+    )
+    assert all(event["type"] != "result" for event in events)
+    assert increments == []
+    assert site_calls == []
+
+
+@pytest.mark.anyio
+async def test_a_forecast_on_a_fresh_day_is_counted(
+    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The boundary `left == cost` is affordable, not refused (`left < cost`)."""
+
+    async def fresh(pool: Any, *, user_id: int) -> int:
+        return 0
+
+    calls: list[tuple[str, int]] = []
+
+    async def increment(
+        pool: Any, *, user_id: int, limit: int, cost: int = 1
+    ) -> int | None:
+        calls.append(("user", cost))
+        return 1
+
+    async def site(pool: Any, *, limit: int, cost: int = 1) -> int | None:
+        calls.append(("site", cost))
+        return 1
+
+    monkeypatch.setattr(api, "quota_used", fresh)
+    monkeypatch.setattr(api, "increment_quota", increment)
+    monkeypatch.setattr(api, "increment_site_quota", site)
+
+    async def stream(
+        graph_input: Any, thread_id: str
+    ) -> AsyncIterator[tuple[str, Any]]:
+        yield ("counted", "forecast")
+        yield ("token", "never")
+
+    with patch("api._astream_answer", stream):
+        response = await client.post(
+            "/api/run_pipeline/stream", json={"query": "x", "thread_id": "t-1"}
+        )
+    # Assert
+    assert response.status_code == 200
+    assert _events(response.text)[-1]["type"] == "result"
+    assert calls == [
+        ("site", FORECAST_TURN_COST),
+        ("user", FORECAST_TURN_COST),
+    ]
 
 
 @pytest.mark.anyio

@@ -145,8 +145,8 @@ SIMPLE_JWT = {
     # never hold a key that can also sign a session cookie.
     "SIGNING_KEY": os.environ["JWT_SIGNING_KEY"],
     "ALGORITHM": "HS256",
-    # Comfortably above the frontend's 10-minute stream cap, which is
-    # checked once at request start.
+    # Checked once at request start, so a stream may outlive the token: the
+    # frontend's 15-minute stream cap does not depend on it.
     "ACCESS_TOKEN_LIFETIME": timedelta(minutes=15),
     "USER_ID_FIELD": "id",
     "USER_ID_CLAIM": "user_id",

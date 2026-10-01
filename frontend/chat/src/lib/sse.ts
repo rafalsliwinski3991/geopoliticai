@@ -25,11 +25,14 @@ export class HttpError extends Error {
   }
 }
 
-// The backend caps a run at ten minutes' worth of streaming and nginx allows
-// 600s (`proxy_read_timeout`). A 15-minute access token outlives both, checked
-// once at request start — which is why header auth works here at all and why
-// EventSource, which cannot send a header, must never be used (brainstorm §4.3).
-const STREAM_TIMEOUT_MS = 10 * 60 * 1000;
+// A forecast may run 14 minutes (brainstorm 2026Sep30 Q14), and the browser
+// cannot know a turn's route before it asks, so every turn gets 15. nginx's
+// 600s `proxy_read_timeout` is the silence allowed between two frames, not a
+// total, and every long path emits progress well inside it. The 15-minute
+// access token is checked once at request start, so a stream may outlive it —
+// which is why header auth works here at all and why EventSource, which
+// cannot send a header, must never be used (brainstorm §4.3).
+const STREAM_TIMEOUT_MS = 15 * 60 * 1000;
 const SSE_PREFIX = "data: ";
 
 export async function* streamTurn(

@@ -35,6 +35,7 @@ from config import (
     DAILY_RESEARCH_TURNS,
     DAILY_RESEARCH_TURNS_ALL_USERS,
     DEEP_RESEARCH_TURN_COST,
+    FORECAST_TURN_COST,
     bind_log_context,
     init_environment,
     require_env,
@@ -110,11 +111,22 @@ ANSWER_NODES = frozenset({"answer", "chat", "write"})
 # pending report does not count again: one report is one count, taken when it
 # was requested, and the reporter's own revision cap bounds the rounds.
 # `deep` spends DEEP_RESEARCH_TURN_COST units instead of one (brainstorm Q3).
-RESEARCH_DESTINATIONS = frozenset({"geopolitical", "deep", "report"})
-DEEP_QUOTA_MESSAGE = (
-    "A deep analysis needs {cost} research turns; you have {left} left today."
-)
-
+RESEARCH_DESTINATIONS = frozenset({"geopolitical", "deep", "forecast", "report"})
+# The research destinations that spend more than one unit, each with the
+# refusal the advisory headroom read gives a caller who cannot afford it
+# (brainstorm 2026Sep28 Q3; 2026Sep30 Q22). Every other research destination
+# spends one unit, and `ONE_UNIT`'s empty refusal is never shown.
+COSTLY_DESTINATIONS: dict[str, tuple[int, str]] = {
+    "deep": (
+        DEEP_RESEARCH_TURN_COST,
+        "A deep analysis needs {cost} research turns; you have {left} left today.",
+    ),
+    "forecast": (
+        FORECAST_TURN_COST,
+        "A forecast needs {cost} research turns; you have {left} left today.",
+    ),
+}
+ONE_UNIT: tuple[int, str] = (1, "")
 # The checkpointer names its tables unqualified in both its DDL and its
 # queries, so search_path is the only way to put them anywhere but `public`.
 # `agentic` first means setup() creates there; `public` second means
@@ -608,15 +620,16 @@ async def run_pipeline_stream_endpoint(
                 if kind == "counted":
                     # A value of None (the pre-change shape, still used by test
                     # fakes) is an ordinary one-unit research turn.
-                    cost = DEEP_RESEARCH_TURN_COST if value == "deep" else 1
+                    cost, refusal = COSTLY_DESTINATIONS.get(value, ONE_UNIT)
                     if cost > 1:
                         # Advisory headroom check before the site is charged
                         # (plan review): without it, a user at 17/20 retrying a
-                        # deep request spends 5 site units per refused retry,
-                        # and ~100 retries exhaust the 500-unit site ceiling for
-                        # everyone. The user upsert below still decides; this
-                        # read only stops the obviously unaffordable turn early.
-                        # Refused, not downgraded to an expert answer (Q8A).
+                        # costly request (deep or forecast) spends its cost in
+                        # site units per refused retry, and a few dozen retries
+                        # exhaust the 500-unit site ceiling for everyone. The
+                        # user upsert below still decides; this read only stops
+                        # the obviously unaffordable turn early. Refused, not
+                        # downgraded to an expert answer (Q8A).
                         left = DAILY_RESEARCH_TURNS - await quota_used(
                             pool, user_id=identity.user_id
                         )
@@ -625,7 +638,7 @@ async def run_pipeline_stream_endpoint(
                                 {
                                     "type": "error",
                                     "status": 429,
-                                    "message": DEEP_QUOTA_MESSAGE.format(
+                                    "message": refusal.format(
                                         cost=cost, left=max(0, left)
                                     ),
                                 }
@@ -657,8 +670,8 @@ async def run_pipeline_stream_endpoint(
                         limit=DAILY_RESEARCH_TURNS,
                         cost=cost,
                     ):
-                        # A concurrent turn took the last one (for a deep turn:
-                        # took units between the headroom read and here). The
+                        # A concurrent turn took the last one (for a costly
+                        # turn: took units between the headroom read and here). The
                         # site slot just taken belongs to this run's own
                         # refusal: the user is not charged for a turn the
                         # endpoint ends before it produces an answer, and the

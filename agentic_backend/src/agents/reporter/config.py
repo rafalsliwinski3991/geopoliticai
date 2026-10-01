@@ -32,8 +32,9 @@ OUTLINE_LLM_SETTINGS = LLMSettings(
 # cover reasoning *and* visible tokens, so this is sized for both; gpt-5-mini's
 # published ceiling is 128_000. Both of those are OpenAI-documented claims, not
 # local measurements (§1). The timeout is far above the 60s default because a
-# long synthesis is slow; nginx allows 600s and the browser aborts at 600s, so
-# 300s fits inside both with room to report the failure.
+# long synthesis is slow; nginx allows 600s of silence between two frames and
+# the browser aborts at 15 minutes, so 300s fits inside both with room to
+# report the failure.
 REPORT_LLM_SETTINGS = LLMSettings(
     model="gpt-5-mini",
     temperature=1.0,  # see OUTLINE_LLM_SETTINGS: 0.0 is silently dropped

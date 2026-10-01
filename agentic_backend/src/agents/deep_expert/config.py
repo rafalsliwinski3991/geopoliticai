@@ -15,8 +15,9 @@ from config import LLMSettings
 # see `agents/reporter/config.py` for the measurement. max_output_tokens covers
 # reasoning and visible tokens on a reasoning model. `reasoning_effort="low"`
 # is the smoke run's measurement (2026-09-29): at the default effort one agent
-# turn costs 40-97 s and no useful turn count fits under the 600 s browser
-# bound; the deep agent drives its own loop, so per-turn latency is the budget.
+# turn costs 40-97 s and no useful turn count fits under the deep expert's
+# 480 s wall; the deep agent drives its own loop, so per-turn latency is the
+# budget.
 AGENT_LLM_SETTINGS = LLMSettings(
     model="gpt-5-mini",
     temperature=1.0,
@@ -42,8 +43,10 @@ class ResearchLimits:
     budget is a message to the model (plan review, user decision), and the
     grader cap ships the last draft (brainstorm Q7A).
 
-    `wall_seconds` must stay well under the 600 s at which nginx and the browser
-    abort (see `agents/reporter/config.py`), leaving room to report the error.
+    `wall_seconds` must stay well under the browser's 15-minute abort
+    (`frontend/chat/src/lib/sse.ts`), leaving room to report the error;
+    nginx's 600 s `proxy_read_timeout` bounds only the silence between two
+    frames.
     `max_grader_rounds` is RubricMiddleware's `max_iterations`: grader calls,
     so at most `max_grader_rounds - 1` revisions.
 
