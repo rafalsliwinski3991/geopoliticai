@@ -6,10 +6,12 @@ This shared boundary names no agent. Callers supply a :class:`SourcePolicy`.
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import os
 from collections import Counter
 from collections.abc import Sequence
+from html.parser import HTMLParser
 from urllib.parse import urljoin, urlparse
 
 import httpx
@@ -28,6 +30,24 @@ FETCH_CONCURRENCY = 8
 QUERY_TRIM_CHARS = 140
 QUERY_TRIM_WORDS = 20
 MAX_REDIRECTS = 3
+
+# A byline is what the page declares as its author (brainstorm 2026Sep30 Q16):
+# the `author` of a JSON-LD object of one of these types, else
+# `<meta name="author">`. A JSON-LD `Person` on its own is a page's subject (an
+# expert's profile page), never its author.
+ARTICLE_TYPES = frozenset(
+    {
+        "Article",
+        "NewsArticle",
+        "OpinionNewsArticle",
+        "AnalysisNewsArticle",
+        "ReportageNewsArticle",
+        "BlogPosting",
+        "ScholarlyArticle",
+        "Report",
+    }
+)
+MAX_AUTHOR_CHARS = 200
 FETCH_HEADERS = {
     "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/124.0.0.0 Safari/537.36",
     "Accept": "text/html,application/xhtml+xml",
@@ -187,7 +207,10 @@ async def _fetch_and_extract(
             if not text or len(text) < policy.min_source_chars:
                 return None
             return Source(
-                title=candidate.title, url=url, text=text[: policy.max_source_chars]
+                title=candidate.title,
+                url=url,
+                text=text[: policy.max_source_chars],
+                author=await _extract_byline(body),
             )
         except Exception as exc:  # noqa: BLE001 - one bad source must not abort the batch
             logger.info("Extraction failed url=%s: %s", url, exc)
@@ -205,6 +228,81 @@ def _extract_sync(body: str) -> str | None:
 async def _extract_text(body: str) -> str | None:
     """Run the synchronous extractor without blocking the event loop."""
     return await asyncio.to_thread(_extract_sync, body)
+
+
+class _BylineParser(HTMLParser):
+    """Collect a page's `<meta name="author">` values and JSON-LD blocks."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.meta_authors: list[str] = []
+        self.json_ld: list[str] = []
+        self._in_json_ld = False
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        values = {name: value or "" for name, value in attrs}
+        if tag == "meta" and values.get("name", "").lower() == "author":
+            self.meta_authors.append(values.get("content", ""))
+        elif (
+            tag == "script" and values.get("type", "").lower() == "application/ld+json"
+        ):
+            self._in_json_ld = True
+            self.json_ld.append("")
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag == "script":
+            self._in_json_ld = False
+
+    def handle_data(self, data: str) -> None:
+        if self._in_json_ld:
+            self.json_ld[-1] += data
+
+
+def _article_authors(node: object) -> list[str]:
+    """Return the author names of every article-typed object in a JSON-LD tree."""
+    if isinstance(node, list):
+        return [name for item in node for name in _article_authors(item)]
+    if not isinstance(node, dict):
+        return []
+    names = _article_authors(node.get("@graph", []))
+    kinds = node.get("@type")
+    kinds = kinds if isinstance(kinds, list) else [kinds]
+    if any(isinstance(kind, str) and kind in ARTICLE_TYPES for kind in kinds):
+        authors = node.get("author")
+        for author in authors if isinstance(authors, list) else [authors]:
+            name = author.get("name") if isinstance(author, dict) else author
+            if isinstance(name, str):
+                names.append(name)
+    return names
+
+
+def _byline_sync(body: str) -> str:
+    """Return the page's own byline, or "" (worker thread).
+
+    A byline is optional: a malformed page or JSON-LD block must never drop a
+    page the article extraction accepted, so any failure returns "".
+    """
+    try:
+        parser = _BylineParser()
+        parser.feed(body)
+        parser.close()
+        names: list[str] = []
+        for block in parser.json_ld:
+            try:
+                names += _article_authors(json.loads(block))
+            except ValueError:
+                continue
+        names = names or parser.meta_authors
+        cleaned = (" ".join(name.split()) for name in names)
+        byline = ", ".join(dict.fromkeys(name for name in cleaned if name))
+    except Exception:  # noqa: BLE001 - an optional byline never costs a source
+        return ""
+    return byline[:MAX_AUTHOR_CHARS]
+
+
+async def _extract_byline(body: str) -> str:
+    """Run the synchronous byline reader without blocking the event loop."""
+    return await asyncio.to_thread(_byline_sync, body)
 
 
 async def search_allowlisted(query: str, policy: SourcePolicy) -> list[Candidate]:
