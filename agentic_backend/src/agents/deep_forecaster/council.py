@@ -300,6 +300,15 @@ async def _attempt(
                 messages
             )
     except Exception as exc:  # noqa: BLE001 - a failed attempt has no ballot (Q9)
+        # The body, logged only: the smoke runs need to tell a rejected
+        # parameter from a transient provider error (F3).
+        logger.error(
+            "council: Member %d's attempt on %s failed: %s: %s",
+            COUNCIL.index(seat) + 1,
+            model,
+            type(exc).__name__,
+            str(exc)[:400],
+        )
         return None, type(exc).__name__
     # `ainvoke` returns `Any`: narrow it before returning it as a `Ballot`
     # (mypy --strict refuses a returned `Any`).
