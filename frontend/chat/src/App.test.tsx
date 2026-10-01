@@ -59,6 +59,9 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  // The stored conversation key outlives a test: a later test in this file
+  // must not inherit it and replay an unrelated transcript.
+  window.localStorage.removeItem("politicalagent.thread_id");
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
@@ -176,6 +179,27 @@ describe("the app shell", () => {
         await screen.findByRole("link", { name: /Baltic energy/ })
       ).getAttribute("aria-current"),
     ).toBe("page");
+  });
+
+  it("a reload restores the stored conversation's messages, not just its heading", async () => {
+    // A previous session left the thread id behind: the reload must re-read
+    // the transcript from the threads API on the first listing, without a
+    // sidebar click.
+    window.localStorage.setItem("politicalagent.thread_id", "t1");
+    const fetchMock = stubFetch(tokenOk);
+    const App = await importApp();
+    render(<App />);
+    expect(await screen.findByText("earlier question")).toBeTruthy();
+    expect(await screen.findByText("earlier answer")).toBeTruthy();
+    // The heading comes from the listing's match; the transcript from the
+    // one read this reload triggers.
+    expect(screen.getByRole("heading", { name: "Baltic energy" })).toBeTruthy();
+    expect(screen.getByRole("link", { name: /Baltic energy/ }).getAttribute("aria-current")).toBe(
+      "page",
+    );
+    // Exactly one read: the post-turn refresh must not replay the transcript
+    // over a live conversation.
+    expect(fetchMock.mock.calls.filter(([url]) => url === "/api/threads/t1").length).toBe(1);
   });
 
   it("the thread list and quota refresh after every completed turn", async () => {
