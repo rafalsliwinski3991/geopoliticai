@@ -74,9 +74,7 @@ async def test_watch_video_sends_the_url_at_low_fps(
 ) -> None:
     models = _FakeModels()
     _patch(monkeypatch, models)
-    monkeypatch.setattr(
-        video_module, "VIDEO_SETTINGS", VideoSettings(processing="static")
-    )
+    monkeypatch.setattr(video_module, "VIDEO_SETTINGS", VideoSettings())
     # Act
     notes = await watch_video("https://www.youtube.com/watch?v=abc", "Russia and NATO")
     # Assert
@@ -85,7 +83,9 @@ async def test_watch_video_sends_the_url_at_low_fps(
     assert recorded is not None
     parts = recorded["contents"].parts
     assert parts[0].file_data.file_uri == "https://www.youtube.com/watch?v=abc"
-    assert parts[0].media_processing == types.MediaProcessing.STATIC
+    # A 400 whose body names `mediaProcessing` (unit 03 probe, 2026-10-01):
+    # the field is not accepted for a YouTube URL, so none is sent.
+    assert parts[0].media_processing is None
     assert parts[0].video_metadata.fps == 0.1
     assert parts[0].video_metadata.fps == VIDEO_SETTINGS.fps
     config = recorded["config"]
@@ -94,21 +94,6 @@ async def test_watch_video_sends_the_url_at_low_fps(
     assert config.http_options.timeout == 120_000
     assert "Russia and NATO" in parts[1].text
     assert recorded["model"] == VIDEO_SETTINGS.model
-
-
-@pytest.mark.anyio
-async def test_agentic_processing_sends_no_fps(monkeypatch: pytest.MonkeyPatch) -> None:
-    models = _FakeModels()
-    _patch(monkeypatch, models)
-    monkeypatch.setattr(
-        video_module, "VIDEO_SETTINGS", VideoSettings(processing="agentic")
-    )
-    await watch_video("https://www.youtube.com/watch?v=abc", "q")
-    recorded = models.recorded
-    assert recorded is not None
-    parts = recorded["contents"].parts
-    assert parts[0].media_processing == types.MediaProcessing.AGENTIC
-    assert parts[0].video_metadata is None
 
 
 @pytest.mark.anyio

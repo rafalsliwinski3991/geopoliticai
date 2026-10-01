@@ -8,7 +8,6 @@ editorial data in `consts/forecasters.py`.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Literal
 
 from config import LLMSettings
 
@@ -28,20 +27,18 @@ RESEARCH_LLM_SETTINGS = LLMSettings(
 class VideoSettings:
     """Gemini reading one public YouTube video (brainstorm 2026Sep30 Q17c).
 
-    Gemini processes frames and audio, about 100 tokens per second at low
-    media resolution. The brainstorm's "static" processing is requested
-    explicitly, because a custom `fps` is documented only for static
-    processing: `fps` samples fewer frames than the default one per second,
-    so a 1-hour video costs ~24k frame tokens plus ~115k audio tokens.
-    Whether `fps` applies to a YouTube URL is the unit 03 probe's
-    measurement (F3); `VideoMetadata` is marked deprecated in the current
-    API reference, though the installed SDK has no other `fps` path. If the
-    probe shows it ignored, `processing = "agentic"` is the documented
-    long-video mode (up to 88% fewer tokens) and sends no `fps`.
+    Static processing, committed after the unit 03 probe (2026-10-01): a
+    ~1-hour Wojczal video answered in 12 s at 129,698 prompt tokens — close
+    to the fps=0.1 estimate of ~24k frame tokens plus ~115k audio tokens, so
+    the custom `fps` is respected. `media_processing` is never sent: the API
+    rejects it for a YouTube URL with 400 "mime_type must be set when
+    media_processing is specified" (the probe's first attempt). The
+    `processing` knob v1..v3 carried is gone; `VideoMetadata` is marked
+    deprecated in the current API reference, but the installed SDK has no
+    other `fps` path for a YouTube URL.
     """
 
     model: str = "gemini-3.8-flash"
-    processing: Literal["static", "agentic"] = "static"
     fps: float = 0.1
     timeout_seconds: float = 120.0
     max_output_tokens: int = 8_192
