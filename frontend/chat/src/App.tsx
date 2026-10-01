@@ -213,6 +213,10 @@ export default function App() {
   }
 
   const handleSend = (text: string) => {
+    // A turn starts a new conversation generation: any pending reload restore
+    // (or in-flight sidebar read) must lose to it, or the late restore would
+    // overwrite the live turn — messages and pause/progress state alike.
+    openRequestRef.current += 1;
     // The turn's completion also settles the new thread's title and the spent
     // quota — both only exist after the turn finishes (the plan's one-request
     // refresh rule). The refreshed listing is reconciled with the thread the
