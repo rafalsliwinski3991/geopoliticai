@@ -13,7 +13,6 @@ text: the sources are the step's whole output.
 
 from __future__ import annotations
 
-import asyncio
 import logging
 from typing import Any
 
@@ -24,6 +23,7 @@ from langchain_core.messages import HumanMessage
 from langgraph.runtime import Runtime
 
 from agents.deep_expert.graph import NO_CHECKPOINTER_CONFIG
+from agents.deep_forecaster.caps import run_under_cap
 from agents.deep_forecaster.config import LIMITS, RESEARCH_LLM_SETTINGS
 from agents.deep_forecaster.consts.forecasters import FORECASTERS
 from agents.deep_forecaster.consts.progress import RESEARCH_LABEL
@@ -143,17 +143,19 @@ async def _run_agent(agent: Any, question: str) -> bool:
     """Run the lead inside its time box; return whether the box ended it.
 
     The box ending is not an error (user decision 2026-09-30): the forecast
-    continues on what was read, and the answer's evidence line says so.
+    continues on what was read, and the answer's evidence line says so. The
+    box is a dedicated-task cancel (`caps.run_under_cap`): the pregel runner
+    absorbs a `CancelledError` raised inside its own loop, so the frame's
+    `asyncio.timeout` alone does not end a hung agent (smoke gate F3, run 1).
     """
-    deadline = asyncio.timeout(LIMITS.research_seconds)
     try:
-        async with deadline:
-            await agent.ainvoke(
+        _, timed_out = await run_under_cap(
+            agent.ainvoke(
                 {"messages": [HumanMessage(question)]}, config=NO_CHECKPOINTER_CONFIG
-            )
+            ),
+            LIMITS.research_seconds,
+        )
     except TimeoutError as exc:
-        if deadline.expired():
-            return True
         raise LLMInvocationError("The forecast's research failed.") from exc
     except PipelineError:
         # Already the right status (no tool raises one today; kept as the deep
@@ -161,4 +163,4 @@ async def _run_agent(agent: Any, question: str) -> bool:
         raise
     except Exception as exc:  # noqa: BLE001 - one boundary for the whole agent
         raise LLMInvocationError("The forecast's research failed.") from exc
-    return False
+    return timed_out
