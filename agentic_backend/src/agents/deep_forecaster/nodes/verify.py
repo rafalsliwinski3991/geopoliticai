@@ -13,6 +13,7 @@ the council read, and a time box or failed searches that cut research short.
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Mapping, Sequence
 from typing import Any
 from urllib.parse import urlsplit
@@ -41,6 +42,7 @@ from config import MAX_ANSWER_CHARS
 from models import LLMInvocationError, Source
 from search import allowed_domain
 
+logger = logging.getLogger(__name__)
 
 async def verify(state: ForecastState, runtime: Runtime[ForecastRun]) -> dict[str, Any]:
     """Check the analysis and return the answer the reader sees."""
@@ -141,7 +143,15 @@ def checked_answer(
     linked = {_normalized(url) for url in links_in("\n".join(prose))}
     if not linked:
         raise LLMInvocationError("The analysis cited none of the sources it read.")
-    if linked - {_normalized(source.url) for source in sources}:
+    unread = linked - {_normalized(source.url) for source in sources}
+    if unread:
+        # Logged, never shown: the smoke runs and evals read which URL forms
+        # the writer invents (F3).
+        logger.error(
+            "verify: the analysis links to %d unread URL(s): %s",
+            len(unread),
+            ", ".join(sorted(unread)),
+        )
         raise LLMInvocationError(
             "The analysis links to a page the forecast never read."
         )
