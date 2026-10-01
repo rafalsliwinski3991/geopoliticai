@@ -21,6 +21,11 @@ dependencies = [
     # and langchain-google-genai as hard requirements even though only OpenAI is
     # called; accepted in brainstorm 2026Sep28 Q1. <0.8: RubricMiddleware is @beta.
     "deepagents>=0.7.19,<0.8",
+    # The forecaster's `ask_video` (agents/deep_forecaster/video.py): Gemini's
+    # native API is the only one that takes a YouTube URL; its OpenAI-compatible
+    # endpoint takes no video. Already locked as a transitive of deepagents
+    # (via langchain-google-genai); declared because it is imported directly.
+    "google-genai>=2.25,<3",
     # Imported directly (`TodoListMiddleware`), so declared rather than relied
     # on as a transitive of deepagents.
     "langchain>=1.4.2,<2.0",

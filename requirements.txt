@@ -68,7 +68,9 @@ filetype==1.2.0
 google-auth==2.59.0
     # via google-genai
 google-genai==2.25.0
-    # via langchain-google-genai
+    # via
+    #   agent
+    #   langchain-google-genai
 googleapis-common-protos==1.72.0
     # via
     #   opentelemetry-exporter-otlp-proto-grpc
