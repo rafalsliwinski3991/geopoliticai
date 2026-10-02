@@ -1785,22 +1785,35 @@ async def test_require_migrated_checkpointer_schema_refuses_a_stray_table() -> N
 
 
 @pytest.mark.anyio
-async def test_assert_checkpointer_schema_passes_when_setup_created_it() -> None:
-    # Arrange
-    # Arrange: setup() did its job where search_path should have put it.
-    pool: Any = _FakeGuardPool({"expected": {"oid": 16385}})
+async def test_assert_agentic_schema_passes_when_setup_created_both() -> None:
+    # Arrange: both setups did their job where search_path should have put them.
+    pool: Any = _FakeGuardPool({"checkpoints": {"oid": 16385}, "store": {"oid": 16386}})
     # Act + Assert: no raise
-    await api._assert_checkpointer_schema(pool)  # assert: no raise
+    await api._assert_agentic_schema(pool)
 
 
 @pytest.mark.anyio
-async def test_assert_checkpointer_schema_refuses_a_missing_table() -> None:
+@pytest.mark.parametrize(
+    "row",
+    [
+        {"checkpoints": None, "store": {"oid": 16386}},
+        {"checkpoints": {"oid": 16385}, "store": None},
+    ],
+    ids=["store only", "checkpointer only"],
+)
+async def test_assert_agentic_schema_refuses_a_missing_table(
+    row: dict[str, Any],
+) -> None:
     # Arrange: the pool's options did not reach the connection.
-    pool: Any = _FakeGuardPool({"expected": None})
+    pool: Any = _FakeGuardPool(row)
     # Act
     with pytest.raises(RuntimeError, match="search_path") as refusal:
+<<<<<<< HEAD
         # Arrange
         await api._assert_checkpointer_schema(pool)
+=======
+        await api._assert_agentic_schema(pool)
+>>>>>>> fc7268b (Cache Gemini's video notes for 30 days)
     # Assert
     assert refusal.type is RuntimeError
 
@@ -1826,35 +1839,70 @@ async def test_lifespan_checks_the_migration_before_the_checkpointer_setup(
         calls.append("require")
 
     async def setup() -> None:
-        calls.append("setup")
+        calls.append("checkpointer_setup")
 
     async def assert_schema(pool_arg: Any) -> None:
         calls.append("assert_schema")
 
-    def build_graph(checkpointer: Any) -> Any:
+    def build_graph(checkpointer: Any, store: Any = None) -> Any:
         calls.append("graph")
+        received["checkpointer"] = checkpointer
+        received["store"] = store
         return object()
 
     monkeypatch.setattr(api, "AsyncConnectionPool", lambda *a, **k: pool)
     serdes: list[Any] = []
+    received: dict[str, Any] = {}
+    store_ttls: list[Any] = []
 
     def make_saver(pool_arg: Any, serde: Any = None) -> Any:
         serdes.append(serde)
         return type("S", (), {"setup": staticmethod(setup)})()
 
+    def make_store(pool_arg: Any, ttl: Any = None) -> Any:
+        store_ttls.append(ttl)
+
+        class _Store:
+            async def setup(self) -> None:
+                calls.append("store_setup")
+
+            async def start_ttl_sweeper(self) -> None:
+                calls.append("sweeper_start")
+
+            async def stop_ttl_sweeper(self) -> None:
+                calls.append("sweeper_stop")
+
+        return _Store()
+
     monkeypatch.setattr(api, "AsyncPostgresSaver", make_saver)
+    monkeypatch.setattr(api, "AsyncPostgresStore", make_store)
     monkeypatch.setattr(api, "_require_migrated_checkpointer_schema", require)
-    monkeypatch.setattr(api, "_assert_checkpointer_schema", assert_schema)
+    monkeypatch.setattr(api, "_assert_agentic_schema", assert_schema)
     monkeypatch.setattr(api, "build_graph", build_graph)
 
     # Act
     async with api.lifespan(api.app):
-        pass
+        # Assert (inside, so the exit paths also run)
+        assert calls.index("require") < calls.index("checkpointer_setup")
+        assert calls.index("checkpointer_setup") < calls.index("store_setup")
+        assert calls.index("store_setup") < calls.index("assert_schema")
+        assert calls.index("assert_schema") < calls.index("sweeper_start")
+        assert calls.index("sweeper_start") < calls.index("graph")
+        assert received["store"] is not None
+        assert store_ttls == [api.STORE_TTL]
+        assert serdes == [api.CHECKPOINT_SERDE]
+    assert "sweeper_stop" in calls
 
-    # Assert
-    assert calls.index("require") < calls.index("setup")
-    assert calls.index("setup") < calls.index("assert_schema")
-    assert serdes == [api.CHECKPOINT_SERDE]
+
+@pytest.mark.anyio
+async def test_store_ttl_is_thirty_days_from_writing() -> None:
+    # Act + Assert
+    assert api.STORE_TTL == {
+        "default_ttl": 43_200,
+        "refresh_on_read": False,
+        "omit_expired": True,
+        "sweep_interval_minutes": 60,
+    }
 
 
 @dataclass(frozen=True)

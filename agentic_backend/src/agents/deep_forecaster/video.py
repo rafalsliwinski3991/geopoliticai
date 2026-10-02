@@ -15,30 +15,78 @@ as a hard error (guidance review).
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import os
 
 import httpx
+import psycopg
 from google import genai
 from google.genai import errors, types
+from langgraph.store.base import BaseStore
 
 from agents.deep_forecaster.config import VIDEO_SETTINGS
 from agents.deep_forecaster.prompts import VIDEO_NOT_DISCUSSED, VIDEO_PROMPT
 
 logger = logging.getLogger(__name__)
 
+# Gemini's notes, cached by video and question (user decision 2026-10-01).
+# Items expire with the API store's TTL (`api.STORE_TTL`, 30 days).
+NOTES_NAMESPACE = ("forecast_video_notes",)
+
 
 class VideoUnavailableError(Exception):
     """Gemini refused, rate-limited, failed or timed out on one video (F2)."""
 
 
-async def watch_video(url: str, question: str) -> str:
+def _notes_key(url: str, question: str) -> str:
+    """Return the cache key for one canonical video URL and one question.
+
+    The question is compared without case or extra whitespace; the scouts
+    write it, so the same wording is what makes a hit.
+    """
+    normalised = " ".join(question.split()).casefold()
+    return hashlib.sha256(f"{url}\n{normalised}".encode()).hexdigest()
+
+
+async def watch_video(url: str, question: str, store: BaseStore | None = None) -> str:
     """Return Gemini's notes on what the public video at `url` says about `question`.
 
-    Raises `VideoUnavailableError` for a provider or transport failure, and
+    With a store, notes cached for the same video and question are returned
+    without calling Gemini, and new non-empty notes are cached. A database
+    failure on either side is logged and skipped: the cache only saves Gemini
+    time, and an error there must not fail a forecast that has already been
+    charged and already has its notes (framework review). Raises
+    `VideoUnavailableError` for a provider or transport failure, and
     for a missing `GEMINI_API_KEY`, so the scout sees the documented soft
     stop instead of a hard `KeyError` (review thread, #140).
     """
+    key = _notes_key(url, question)
+    if store is not None:
+        try:
+            item = await store.aget(NOTES_NAMESPACE, key)
+        except psycopg.Error:
+            logger.warning("ask_video: notes cache unreadable", exc_info=True)
+            item = None
+        if item is not None:
+            logger.info("ask_video: cached notes")
+            return str(item.value["notes"])
+    notes = await _ask_gemini(url, question)
+    if store is not None and notes:
+        try:
+            await store.aput(
+                NOTES_NAMESPACE,
+                key,
+                # jsonb refuses NUL, which a model's text can carry.
+                {"url": url, "question": question, "notes": notes.replace("\x00", "")},
+            )
+        except psycopg.Error:
+            logger.warning("ask_video: notes not cached", exc_info=True)
+    return notes
+
+
+async def _ask_gemini(url: str, question: str) -> str:
+    """Call Gemini once on the video; raises `VideoUnavailableError` on provider failure."""
     try:
         api_key = os.environ["GEMINI_API_KEY"]
     except KeyError as exc:

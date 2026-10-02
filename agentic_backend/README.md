@@ -34,7 +34,8 @@ the database to become healthy. `DATABASE_URL` is required by the API;
 Compose derives it from `POSTGRES_PASSWORD`.
 The checkpointer uses the direct `psycopg[binary]` dependency, which does not
 require a system `libpq` installation. There is no `prompt_logs` persistence
-path or `src/database.py`; Postgres is used only for LangGraph checkpoints.
+path or `src/database.py`; Postgres is used for LangGraph checkpoints and,
+through LangGraph's store, the deep forecaster's cached video notes.
 
 The streaming endpoint caps emitted answers at 50,000 characters, stamped with
 a `truncated` flag on the `result`, while `_generate` drains the upstream

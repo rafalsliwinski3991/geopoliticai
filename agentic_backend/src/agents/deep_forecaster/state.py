@@ -19,6 +19,7 @@ import logging
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
 
+from langgraph.store.base import BaseStore
 from langgraph.types import StreamWriter
 from typing_extensions import NotRequired, TypedDict
 
@@ -107,6 +108,8 @@ class ResearchRun:
     """
 
     writer: StreamWriter
+    # The orchestrator's store, for `video.watch_video`'s cache; None at the root.
+    store: BaseStore | None = None
     searches: int = 0
     failed_searches: int = 0
     videos: int = 0

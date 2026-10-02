@@ -1,133 +1,197 @@
-"""Unit tests for `agents.deep_forecaster.video`."""
+"""Unit tests for `agents.deep_forecaster.video`'s notes cache."""
 
 from __future__ import annotations
 
-from types import SimpleNamespace
-from typing import Any
+from typing import Any, cast
 
-import httpx
 import pytest
-from google.genai import errors, types
+from langgraph.store.memory import InMemoryStore
 
-import agents.deep_forecaster.video as video_module
-from agents.deep_forecaster.config import VIDEO_SETTINGS, VideoSettings
 from agents.deep_forecaster.video import (
-    VideoUnavailableError,
+    NOTES_NAMESPACE,
+    _notes_key,
     watch_video,
 )
 
-
-class _FakeModels:
-    """Records `generate_content` kwargs; returns or raises as configured."""
-
-    def __init__(
-        self, text: str = "  notes  ", fail: BaseException | None = None
-    ) -> None:
-        self.recorded: dict[str, Any] | None = None
-        self.text = text
-        self.fail = fail
-
-    async def generate_content(self, **kwargs: Any) -> Any:
-        if self.fail is not None:
-            raise self.fail
-        self.recorded = kwargs
-        return SimpleNamespace(text=self.text, usage_metadata=None)
+video_module: Any = __import__("agents.deep_forecaster.video", fromlist=["watch_video"])
 
 
-class _FakeAio:
-    """The async context manager `.aio` returns."""
+class _GeminiRecorder:
+    """Records watch_video's Gemini calls; returns scripted notes."""
 
-    def __init__(self, client: _FakeClient) -> None:
-        self.client = client
+    def __init__(self, notes: str = "Points from the video.") -> None:
+        self.notes = notes
+        self.calls: list[tuple[str, str]] = []
 
-    async def __aenter__(self) -> _FakeClient:
-        return self.client
-
-    async def __aexit__(self, *exc: object) -> None:
-        return None
-
-
-class _FakeClient:
-    """The patched `genai.Client`: an async-context-manager `.aio`."""
-
-    def __init__(self, models: _FakeModels, **kwargs: Any) -> None:
-        self.models = models
-        self.kwargs = kwargs
-
-    @property
-    def aio(self) -> _FakeAio:
-        return _FakeAio(self)
+    async def __call__(self, url: str, question: str) -> str:
+        self.calls.append((url, question))
+        return self.notes
 
 
-def _patch(monkeypatch: pytest.MonkeyPatch, models: _FakeModels) -> None:
-    from google import genai as google_genai
-
-    monkeypatch.setattr(
-        google_genai, "Client", lambda **kwargs: _FakeClient(models, **kwargs)
-    )
-    monkeypatch.setenv("GEMINI_API_KEY", "test-key")
+@pytest.fixture
+def recorder(monkeypatch: pytest.MonkeyPatch) -> _GeminiRecorder:
+    gemini = _GeminiRecorder()
+    monkeypatch.setattr(video_module, "_ask_gemini", gemini)
+    return gemini
 
 
 @pytest.mark.anyio
-async def test_watch_video_sends_the_url_at_low_fps(
-    monkeypatch: pytest.MonkeyPatch,
+async def test_a_cached_question_never_reaches_gemini(
+    recorder: _GeminiRecorder,
 ) -> None:
-    models = _FakeModels()
-    _patch(monkeypatch, models)
-    monkeypatch.setattr(video_module, "VIDEO_SETTINGS", VideoSettings())
+    store = InMemoryStore()
     # Act
-    notes = await watch_video("https://www.youtube.com/watch?v=abc", "Russia and NATO")
+    first = await watch_video(
+        "https://www.youtube.com/watch?v=abc", "Russia and NATO", store
+    )
+    second = await watch_video(
+        "https://www.youtube.com/watch?v=abc", "  russia AND nato ", store
+    )
     # Assert
-    assert notes == "notes"
-    recorded = models.recorded
-    assert recorded is not None
-    parts = recorded["contents"].parts
-    assert parts[0].file_data.file_uri == "https://www.youtube.com/watch?v=abc"
-    # A 400 whose body names `mediaProcessing` (unit 03 probe, 2026-10-01):
-    # the field is not accepted for a YouTube URL, so none is sent.
-    assert parts[0].media_processing is None
-    assert parts[0].video_metadata.fps == 0.1
-    assert parts[0].video_metadata.fps == VIDEO_SETTINGS.fps
-    config = recorded["config"]
-    assert config.media_resolution == types.MediaResolution.MEDIA_RESOLUTION_LOW
-    assert config.thinking_config.thinking_level == types.ThinkingLevel.LOW
-    assert config.http_options.timeout == 120_000
-    assert "Russia and NATO" in parts[1].text
-    assert recorded["model"] == VIDEO_SETTINGS.model
+    assert first == second == "Points from the video."
+    assert len(recorder.calls) == 1
+    items = await store.asearch(NOTES_NAMESPACE)
+    assert len(items) == 1
+    assert items[0].value["question"] == "Russia and NATO"
 
 
 @pytest.mark.anyio
-@pytest.mark.parametrize(
-    "fail",
-    [
-        errors.ClientError(429, {"error": {"message": "quota"}}),
-        errors.ServerError(503, {"error": {"message": "busy"}}),
-        httpx.ReadTimeout("slow"),
-    ],
-)
-async def test_provider_and_transport_failures_are_video_unavailable(
-    fail: BaseException, monkeypatch: pytest.MonkeyPatch
+async def test_another_question_or_video_is_a_miss(
+    recorder: _GeminiRecorder,
 ) -> None:
-    models = _FakeModels(fail=fail)
-    _patch(monkeypatch, models)
-    with pytest.raises(VideoUnavailableError):
-        await watch_video("https://www.youtube.com/watch?v=abc", "q")
+    store = InMemoryStore()
+    # Act
+    await watch_video("https://www.youtube.com/watch?v=abc", "Russia and NATO", store)
+    await watch_video("https://www.youtube.com/watch?v=abc", "Poland and NATO", store)
+    await watch_video("https://www.youtube.com/watch?v=xyz", "Russia and NATO", store)
+    # Assert
+    assert len(recorder.calls) == 3
 
 
 @pytest.mark.anyio
-async def test_a_programming_error_is_not_swallowed(
+async def test_empty_notes_are_not_cached(recorder: _GeminiRecorder) -> None:
+    recorder.notes = ""
+    store = InMemoryStore()
+    # Act
+    notes = await watch_video("https://www.youtube.com/watch?v=abc", "q", store)
+    # Assert
+    assert notes == ""
+    items = await store.asearch(NOTES_NAMESPACE)
+    assert items == []
+
+
+@pytest.mark.anyio
+async def test_not_discussed_is_cached(recorder: _GeminiRecorder) -> None:
+    from agents.deep_forecaster.prompts import VIDEO_NOT_DISCUSSED
+
+    recorder.notes = VIDEO_NOT_DISCUSSED
+    store = InMemoryStore()
+    # Act
+    first = await watch_video("https://www.youtube.com/watch?v=abc", "q", store)
+    second = await watch_video("https://www.youtube.com/watch?v=abc", "q", store)
+    # Assert
+    assert first == second == VIDEO_NOT_DISCUSSED
+    assert len(recorder.calls) == 1
+
+
+@pytest.mark.anyio
+async def test_without_a_store_gemini_is_always_called(
+    recorder: _GeminiRecorder,
+) -> None:
+    # Act
+    await watch_video("https://www.youtube.com/watch?v=abc", "q")
+    await watch_video("https://www.youtube.com/watch?v=abc", "q")
+    # Assert
+    assert len(recorder.calls) == 2
+
+
+@pytest.mark.anyio
+async def test_a_database_failure_is_a_miss(recorder: _GeminiRecorder) -> None:
+    import psycopg
+
+    class _DeadStore:
+        async def aget(self, namespace: Any, key: str) -> Any:
+            raise psycopg.OperationalError("pool gone")
+
+        async def aput(self, namespace: Any, key: str, value: Any) -> None:
+            raise psycopg.OperationalError("pool gone")
+
+    store: Any = _DeadStore()
+    # Act
+    notes = await watch_video("https://www.youtube.com/watch?v=abc", "q", store)
+    # Assert: the forecast still gets its notes.
+    assert notes == "Points from the video."
+    assert len(recorder.calls) == 1
+
+
+@pytest.mark.anyio
+async def test_a_write_failure_still_returns_notes(
+    recorder: _GeminiRecorder, caplog: pytest.LogCaptureFixture
+) -> None:
+    import logging
+
+    import psycopg
+
+    class _ReadOnlyStore:
+        async def aget(self, namespace: Any, key: str) -> Any:
+            return None
+
+        async def aput(self, namespace: Any, key: str, value: Any) -> None:
+            raise psycopg.OperationalError("read-only")
+
+    caplog.set_level(logging.WARNING, logger=video_module.__name__)
+    # Act
+    notes = await watch_video(
+        "https://www.youtube.com/watch?v=abc", "q", cast(Any, _ReadOnlyStore())
+    )
+    # Assert
+    assert notes == "Points from the video."
+    assert "notes not cached" in caplog.text
+
+
+@pytest.mark.anyio
+async def test_a_non_psycopg_error_propagates(
+    recorder: _GeminiRecorder,
+) -> None:
+    class _BrokenStore:
+        async def aget(self, namespace: Any, key: str) -> Any:
+            raise RuntimeError("bug")
+
+    with pytest.raises(RuntimeError, match="bug"):
+        await watch_video(
+            "https://www.youtube.com/watch?v=abc", "q", cast(Any, _BrokenStore())
+        )
+
+
+@pytest.mark.anyio
+async def test_a_nul_is_stripped_before_caching(
+    recorder: _GeminiRecorder,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    models = _FakeModels(fail=TypeError("bug"))
-    _patch(monkeypatch, models)
-    with pytest.raises(TypeError):
-        await watch_video("https://www.youtube.com/watch?v=abc", "q")
+    recorder.notes = "bad\x00note"
+    stored: dict[str, Any] = {}
+
+    class _SpyStore:
+        async def aget(self, namespace: Any, key: str) -> Any:
+            return None
+
+        async def aput(self, namespace: Any, key: str, value: Any) -> None:
+            stored["value"] = value
+
+    # Act
+    notes = await watch_video(
+        "https://www.youtube.com/watch?v=abc", "q", cast(Any, _SpyStore())
+    )
+    # Assert
+    assert notes == "bad\x00note"
+    assert stored["value"]["notes"] == "badnote"
 
 
-@pytest.mark.anyio
-async def test_empty_and_off_topic_replies_pass_through(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    models = _FakeModels(text="")
-    _patch(monkeypatch, models)
-    assert await watch_video("https://www.youtube.com/watch?v=abc", "q") == ""
+def test_the_notes_key_normalises_the_question() -> None:
+    # Act + Assert
+    assert _notes_key(
+        "https://www.youtube.com/watch?v=abc", "  Russia   and NATO "
+    ) == _notes_key("https://www.youtube.com/watch?v=abc", "russia and nato")
+    assert _notes_key("https://www.youtube.com/watch?v=abc", "q") != _notes_key(
+        "https://www.youtube.com/watch?v=xyz", "q"
+    )

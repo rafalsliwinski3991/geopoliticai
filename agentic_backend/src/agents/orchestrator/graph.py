@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from langgraph.graph import END, START, StateGraph
+from langgraph.store.base import BaseStore
 
 from agents.orchestrator.nodes import (
     chat,
@@ -23,13 +24,15 @@ def _route(state: OrchestratorState) -> str:
     return state["destination"]
 
 
-def build_graph(checkpointer: Any | None = None) -> Any:
+def build_graph(checkpointer: Any | None = None, store: BaseStore | None = None) -> Any:
     """Construct and compile the orchestrator graph.
 
-    The checkpointer is an argument and is never built here. `graph.py`
-    constructs and never runs, `make test` and `langgraph dev` must keep
-    working with no database, and the hard `DATABASE_URL` requirement belongs
-    to the API lifespan, which is the only caller that passes a real saver.
+    The checkpointer and the store are arguments and are never built here.
+    `graph.py` constructs and never runs, `make test` and `langgraph dev` must
+    keep working with no database, and the hard `DATABASE_URL` requirement
+    belongs to the API lifespan, which is the only caller that passes a real
+    saver and a real store. The store reaches every child graph a node
+    invokes as `runtime.store` (the deep forecaster's video-notes cache).
     """
     orchestrator = StateGraph(OrchestratorState)
     orchestrator.add_node("classify", classify)
@@ -55,7 +58,9 @@ def build_graph(checkpointer: Any | None = None) -> Any:
     orchestrator.add_edge("deep_forecaster", END)
     orchestrator.add_edge("chat", END)
     orchestrator.add_edge("reporter", END)
-    return orchestrator.compile(name="orchestrator", checkpointer=checkpointer)
+    return orchestrator.compile(
+        name="orchestrator", checkpointer=checkpointer, store=store
+    )
 
 
 def build_runtime_config(*, thread_id: str) -> dict[str, dict[str, Any]]:

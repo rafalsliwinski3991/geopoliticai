@@ -43,7 +43,8 @@ Compose derives `DATABASE_URL` from `POSTGRES_PASSWORD`, gives Postgres a
 `pg_isready` healthcheck, and starts the backend only after Postgres is healthy.
 The app declares `psycopg[binary]` directly for the checkpointer; no system
 `libpq` installation is required. There is no `prompt_logs` persistence path or
-`database.py` module: Postgres is used for LangGraph checkpoints only.
+`database.py` module: Postgres is used for LangGraph checkpoints and,
+through LangGraph's store, the deep forecaster's cached video notes.
 
 The stream caps emitted answers at 50,000 characters, but `_generate` continues
 draining an over-limit upstream stream before emitting the capped result so the

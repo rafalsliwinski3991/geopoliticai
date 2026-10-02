@@ -18,6 +18,8 @@ from fastapi.responses import StreamingResponse
 from langchain_core.messages import AIMessage
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
+from langgraph.store.base import TTLConfig
+from langgraph.store.postgres.aio import AsyncPostgresStore
 from langgraph.types import Command
 from psycopg import AsyncConnection
 from psycopg.rows import DictRow, dict_row
@@ -64,6 +66,18 @@ logger = logging.getLogger(__name__)
 # `models.Source`; every other custom type is refused rather than rebuilt.
 # LangChain messages and primitives are always allowed.
 CHECKPOINT_SERDE = JsonPlusSerializer(allowed_msgpack_modules=[("models", "Source")])
+
+# The store holds only the deep forecaster's cached video notes (plan unit 09).
+# Every item expires 30 days after it is written, as the privacy page says:
+# reads never refresh it, and an expired item is never returned, even before
+# the hourly sweep deletes it. The TTL lives here, not in `aput`, because the
+# in-memory store the tests use has no TTL support.
+STORE_TTL: TTLConfig = {
+    "default_ttl": 30 * 24 * 60,
+    "refresh_on_read": False,
+    "omit_expired": True,
+    "sweep_interval_minutes": 60,
+}
 
 # Hardcoded the way `LLMSettings` is hardcoded: edited here, never read from
 # the environment.
@@ -218,24 +232,26 @@ async def _require_migrated_checkpointer_schema(
         )
 
 
-async def _assert_checkpointer_schema(
+async def _assert_agentic_schema(
     pool: AsyncConnectionPool[AsyncConnection[DictRow]],
 ) -> None:
-    """Confirm `setup()` put the tables where `search_path` should have.
+    """Confirm both `setup()` calls put their tables where `search_path` should have.
 
     Cheap second assertion. If this fires, the pool's `options` are not
     reaching the connection.
     """
     async with pool.connection() as conn:
         cursor = await conn.execute(
-            "SELECT to_regclass('agentic.checkpoints') AS expected"
+            "SELECT to_regclass('agentic.checkpoints') AS checkpoints,"
+            " to_regclass('agentic.store') AS store"
         )
         row = await cursor.fetchone() or {}
-    if row.get("expected") is None:
-        raise RuntimeError(
-            "agentic.checkpoints does not exist after setup(): the pool's "
-            "search_path is not reaching the connection."
-        )
+    for table in ("checkpoints", "store"):
+        if row.get(table) is None:
+            raise RuntimeError(
+                f"agentic.{table} does not exist after setup(): the pool's "
+                "search_path is not reaching the connection."
+            )
 
 
 @asynccontextmanager
@@ -258,18 +274,26 @@ async def lifespan(_app: FastAPI) -> AsyncGenerator[None, None]:
         open=False,
     )
     await pool.open()
+    store: AsyncPostgresStore | None = None
     try:
         checkpointer = AsyncPostgresSaver(pool, serde=CHECKPOINT_SERDE)
         await _require_migrated_checkpointer_schema(pool)
         await checkpointer.setup()
-        await _assert_checkpointer_schema(pool)
-        graph = build_graph(checkpointer=checkpointer)
+        # Built here, not at import: it captures the running loop. Same pool,
+        # so the guard above also decides where its tables land.
+        store = AsyncPostgresStore(pool, ttl=STORE_TTL)
+        await store.setup()
+        await _assert_agentic_schema(pool)
+        await store.start_ttl_sweeper()
+        graph = build_graph(checkpointer=checkpointer, store=store)
         # The thread/quota endpoints and the identity dependencies reach the
         # pool the checkpointer already shares; no second pool is opened.
         _app.state.pool = pool
         yield
     finally:
         graph = _default_graph
+        if store is not None:
+            await store.stop_ttl_sweeper()
         await pool.close()
 
 
