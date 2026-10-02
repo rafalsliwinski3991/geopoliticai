@@ -294,5 +294,147 @@
    "standalone_query": "Give a quick summary of Poland's defence budget decisions this year.",
    "answer": null
   }
+ },
+ {
+  "name": "orchestrator-forecast-explicit",
+  "input": {
+   "messages": [
+    {
+     "type": "human",
+     "data": {
+      "type": "human",
+      "content": "Give me a forecast: will China impose a naval blockade on Taiwan before 2028?"
+     }
+    }
+   ]
+  },
+  "output": {
+   "destination": "forecast",
+   "standalone_query": "Give me a forecast: will China impose a naval blockade on Taiwan before 2028?",
+   "answer": null
+  }
+ },
+ {
+  "name": "orchestrator-forecast-paraphrase",
+  "input": {
+   "messages": [
+    {
+     "type": "human",
+     "data": {
+      "type": "human",
+      "content": "Can you predict whether Serbia will join the EU by 2030?"
+     }
+    }
+   ]
+  },
+  "output": {
+   "destination": "forecast",
+   "standalone_query": "Will Serbia join the EU by 2030?",
+   "answer": null
+  }
+ },
+ {
+  "name": "orchestrator-future-question-is-not-a-forecast",
+  "input": {
+   "messages": [
+    {
+     "type": "human",
+     "data": {
+      "type": "human",
+      "content": "Will Turkey leave NATO?"
+     }
+    }
+   ]
+  },
+  "output": {
+   "destination": "geopolitical",
+   "standalone_query": "Will Turkey leave NATO?",
+   "answer": null
+  }
+ },
+ {
+  "name": "orchestrator-deep-dive-on-the-future-stays-deep",
+  "input": {
+   "messages": [
+    {
+     "type": "human",
+     "data": {
+      "type": "human",
+      "content": "A deep dive please: will Turkey leave NATO?"
+     }
+    }
+   ]
+  },
+  "output": {
+   "destination": "deep",
+   "standalone_query": "Will Turkey leave NATO?",
+   "answer": null
+  }
+ },
+ {
+  "name": "orchestrator-forecast-follow-up-is-not-a-forecast",
+  "input": {
+   "messages": [
+    {
+     "type": "human",
+     "data": {
+      "type": "human",
+      "content": "Give me a forecast: will Serbia join the EU by 2030?"
+     }
+    },
+    {
+     "type": "ai",
+     "data": {
+      "type": "ai",
+      "content": "Claim 1: Serbia signs an EU accession treaty by 31 December 2030. Council verdict: REJECTED (5 of 6 voted against)."
+     }
+    },
+    {
+     "type": "human",
+     "data": {
+      "type": "human",
+      "content": "and Montenegro?"
+     }
+    }
+   ]
+  },
+  "output": {
+   "destination": "geopolitical",
+   "standalone_query": "Will Montenegro join the EU by 2030?",
+   "answer": null
+  }
+ },
+ {
+  "name": "orchestrator-question-about-the-forecast-is-chat",
+  "input": {
+   "messages": [
+    {
+     "type": "human",
+     "data": {
+      "type": "human",
+      "content": "Give me a forecast: will Serbia join the EU by 2030?"
+     }
+    },
+    {
+     "type": "ai",
+     "data": {
+      "type": "ai",
+      "content": "Claim 1: Serbia signs an EU accession treaty by 31 December 2030. Council verdict: REJECTED.\n\n## How the council voted\n\n- Member 3: against \u2014 Serbia has not closed the rule-of-law chapters, and the sources expect no deal before the next EU budget."
+     }
+    },
+    {
+     "type": "human",
+     "data": {
+      "type": "human",
+      "content": "Why did Member 3 vote against Claim 1?"
+     }
+    }
+   ]
+  },
+  "output": {
+   "destination": "other",
+   "standalone_query": "Why did Member 3 vote against Claim 1 in the forecast on Serbia joining the EU?",
+   "answer": "Member 3 voted against Claim 1 because Serbia has not closed the rule-of-law chapters of its accession talks, and the sources it relied on expect no accession deal before the next EU budget."
+  }
  }
 ]

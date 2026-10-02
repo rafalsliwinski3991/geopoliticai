@@ -168,3 +168,52 @@ async def test_recorded_sources_patches_deep_tools() -> None:
     assert unrecorded == []
     assert tools_module.search_allowlisted is original_search
     assert tools_module.fetch_sources is original_fetch
+
+
+@pytest.mark.anyio
+async def test_recorded_sources_patches_forecaster_tools() -> None:
+    # Arrange: two recorded sources so the URL filter can actually fail.
+    recorded = [
+        Source(title="first", url="https://forecasters.example/a", text="text-a"),
+        Source(title="second", url="https://forecasters.example/b", text="text-b"),
+    ]
+    tools_module: Any = importlib.import_module("agents.deep_forecaster.tools")
+    original_search = tools_module.search_allowlisted
+    original_fetch = tools_module.fetch_sources
+    original_watch = tools_module.watch_video
+
+    # Act
+    with recorded_sources(lambda: recorded):
+        candidates = await tools_module.search_allowlisted("q", POLICY)
+        requested = await tools_module.fetch_sources(
+            [
+                Candidate(
+                    title="s", url="https://forecasters.example/b", domain="recorded"
+                )
+            ],
+            POLICY,
+        )
+        with pytest.raises(RuntimeError, match="Evals never call Gemini"):
+            await tools_module.watch_video("https://www.youtube.com/watch?v=x", "q")
+
+    # Assert
+    assert [c.url for c in candidates] == [
+        "https://forecasters.example/a",
+        "https://forecasters.example/b",
+    ]
+    assert [s.url for s in requested] == ["https://forecasters.example/b"]
+    assert tools_module.search_allowlisted is original_search
+    assert tools_module.fetch_sources is original_fetch
+    assert tools_module.watch_video is original_watch
+
+
+def test_load_sources_reads_an_optional_author() -> None:
+    # Act
+    sources = load_sources(
+        [
+            {"title": "t", "url": "u", "text": "x", "author": "A. Writer"},
+            {"title": "t2", "url": "u2", "text": "x2"},
+        ]
+    )
+    # Assert
+    assert [s.author for s in sources] == ["A. Writer", ""]

@@ -1,0 +1,87 @@
+"""Deep forecaster eval: one whole forecast per example, from recorded sources.
+
+The council's members are called live (OpenAI, Gemini, and OpenRouter's free
+models), so a run spends the OpenRouter account's shared free budget (F8):
+about 13 free requests per example (10 council calls, 3 model judges). A free
+call that fails is retried once on its seat's paid fallback, so a run can
+also spend credits on the key it uses: at most 10 paid calls per example, a
+few cents at the prices listed on 2026-10-01. Brave and Gemini's video
+reading are never called: every search returns the recorded set, and no
+recorded source is a video. The whole graph is invoked, not `forecast()`, so
+the judges can read the claims and the tally as well as the answer.
+"""
+
+from __future__ import annotations
+
+import asyncio
+from pathlib import Path
+from typing import Any
+
+from evals.helpers.graph import load_sources, recorded_sources
+from evals.helpers.run import run
+from evals.judges.deep_forecaster import judges
+
+DATASET_PATH = Path(__file__).parent / "datasets" / "deep_forecaster.json"
+# 2x the forecaster's wall cap (`ForecastLimits.wall_seconds`, 840 s). The
+# graph is invoked without `forecast()`'s wall cap, so this timeout is what
+# bounds a runaway example. Judges run in a separate call with their own timeout.
+TIMEOUT_SECONDS = 1_680
+
+
+def forecast_output(state: dict[str, Any]) -> dict[str, Any]:
+    """Return what the judges read, and the share of unanimous claims (F4)."""
+    # Imported here, as every eval script imports agents (`evals/deep_expert.py`).
+    from agents.deep_forecaster.council import final_ballots
+
+    claims = state["claims"]
+    # The ballots the verdicts counted, carried round-1 votes included.
+    ballots = final_ballots(state["ballots_round_1"], state["ballots_round_2"]).values()
+    unanimous = sum(
+        1
+        for number in range(1, len(claims) + 1)
+        if len({v.stance for b in ballots for v in b.votes if v.claim == number}) == 1
+    )
+    share = unanimous / len(claims)
+    # F4: revisit the council's instructions if most claims come back unanimous.
+    print(f"unanimous share: {share:.2f}")
+    return {
+        "answer": state["answer"],
+        "claims": [
+            f"Claim {n}: {c.statement} (deadline: {c.deadline.isoformat()})"
+            for n, c in enumerate(claims, start=1)
+        ],
+        "verdicts": [f"Claim {t.claim}: {t.verdict}" for t in state["tally"]],
+        "unanimous_share": share,
+    }
+
+
+async def run_deep_forecaster(input: dict[str, Any]) -> dict[str, Any]:
+    """Run the forecaster's graph on one example's recorded sources."""
+    from agents.deep_expert.graph import NO_CHECKPOINTER_CONFIG
+    from agents.deep_forecaster.graph import build_graph
+    from agents.deep_forecaster.state import ForecastRun
+    from config import require_env
+
+    # The council's Gemini seat; the runner itself requires only OpenAI and
+    # OpenRouter (`evals/helpers/run.py`, EVAL_ENV_VARS).
+    require_env(("GEMINI_API_KEY",))
+    sources = load_sources(input["sources"])
+    with recorded_sources(lambda: sources):
+        state = await build_graph().ainvoke(
+            {"question": input["query"]},
+            config=NO_CHECKPOINTER_CONFIG,
+            context=ForecastRun(),
+        )
+    return forecast_output(state)
+
+
+if __name__ == "__main__":
+    asyncio.run(
+        run(
+            eval_name="deep_forecaster",
+            dataset_path=DATASET_PATH,
+            task=run_deep_forecaster,
+            judges=judges(),
+            timeout=TIMEOUT_SECONDS,
+        )
+    )
