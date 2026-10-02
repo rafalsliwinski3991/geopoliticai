@@ -21,15 +21,16 @@ MAX_ANSWER_CHARS = 50_000
 REQUIRED_ENV_VARS = (
     "OPENAI_API_KEY",
     "BRAVE_SEARCH_KEY",
-    "OPENROUTER_API_KEY",
     "JWT_SIGNING_KEY",
+    # The forecaster's council seats and its video reading (brainstorm
+    # 2026Sep30 Q4, Q26, F10): a forecast without them loses two to six of its
+    # seven members and falls below quorum, so the API does not start.
+    "OPENROUTER_API_KEY",
+    "GEMINI_API_KEY",
 )
 # Checked at startup, never at import: `langgraph dev` and the unit suite run
 # `build_graph()` with no checkpointer and patch `require_env` where needed,
 # but the API must not come up unable to authenticate anyone (§1.6, fail closed).
-# OPENROUTER_API_KEY is the council's five free seats and their paid fallbacks
-# (review thread, #142): without it round 1 can never reach the quorum.
-# GEMINI_API_KEY stays optional at startup: `ask_video` soft-stops without it.
 
 # The daily research-turn quota (flag 1): a named constant, never a literal.
 # DAILY_RESEARCH_TURNS bounds one account's spending; it does not bound the

@@ -80,9 +80,9 @@ def _routing_view(
 def _query_view(
     input: dict[str, Any], output: dict[str, Any], expected: dict[str, Any]
 ) -> dict[str, Any] | None:
-    # Only the expert and the deep expert read `standalone_query`; elsewhere the
-    # app discards it.
-    if expected["destination"] not in ("geopolitical", "deep"):
+    # Only the expert, the deep expert and the forecaster read `standalone_query`;
+    # elsewhere the app discards it.
+    if expected["destination"] not in ("geopolitical", "deep", "forecast"):
         return None
     return {
         "conversation": _conversation(input),

@@ -110,6 +110,10 @@ ANSWER_PROGRESS = {"node": "answer", "label": "Writing the answer..."}
 # `"deep_expert"` must never be added either, for the same reason: its node
 # returns an `AIMessage` that also arrives in `messages` mode, and the finished
 # analysis already reached the browser as that node's `notice`.
+#
+# `"deep_forecaster"` must never be added either, and no forecaster node may be
+# named `answer`, `chat` or `write`: the forecast reaches the browser once, as
+# that node's `notice`.
 ANSWER_NODES = frozenset({"answer", "chat", "write"})
 
 # `other` — the chat branch — is absent on purpose (Q5b): chat turns stay
@@ -498,7 +502,8 @@ async def _astream_answer(
             if event_type == "notice":
                 # A branch that delivers the turn's answer whole instead of
                 # streaming it: the reporter's refusal, cancel and revision-cap
-                # paths, and the deep expert's finished analysis. It goes out as
+                # paths, and the deep expert's and the deep forecaster's
+                # finished answers. It goes out as
                 # a token, not as a frame of its own, because it *is* the
                 # answer: it has to
                 # reach `parts`, the `MAX_ANSWER_CHARS` accounting and

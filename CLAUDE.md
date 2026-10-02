@@ -59,19 +59,26 @@ own `tests/unit_tests/agents/<name>/test_graph.py`.
 START -> classify -> expert -> END
                   \-> chat   -> END
                   \-> deep_expert -> END
+                  \-> deep_forecaster -> END
                   \-> reporter -> END
 
 START -> search_and_fetch -> answer -> END
+
+START -> research -> draft_claims -> council_round_1 -> council_round_2 -> tally -> write_analysis -> verify -> END
 ```
 
 The orchestrator invokes the expert, the deep expert, and the reporter from their own nodes, not
 with `add_node`, because no child's state schema matches the orchestrator's: the expert's and the
-reporter's share no key with it, and the deep expert's shares only `messages`. The expert makes exactly
+reporter's share no key with it, and the deep expert's shares only `messages`. The forecaster's
+(`agents/deep_forecaster/`) shares no key with the orchestrator's either, and is invoked the same
+way. The expert makes exactly
 three Brave batches, extracts allow-listed pages with trafilatura, and makes one
 streamed plain-text model call. Expert search, source, and model failures are
 hard errors; do not add degraded fallbacks.
 
 The deep expert (`agents/deep_expert/`) is a `deepagents` agent (gpt-5-mini, `reasoning_effort="low"`). It plans, searches and reads through the shared `search.py` boundary with the expert's `EXPERT_SOURCES`, and revises under `RubricMiddleware` (gpt-4o-mini grader). The grader reads the question and the whole final draft (`graph.grader_view`), never tool output. The classifier routes to `"deep"` only after an explicit request for depth, and keeps same-topic follow-ups deep. Search is capped at 5 per turn, shared with its subagent, and a spent budget is a message to the model rather than an error. Wall time is capped at 480 s, and passing it is a hard error (`ResearchLimitError`, 504). An unsatisfied grader after 3 rounds ships the last draft. A grader crash, no source read, or no cited source is a hard error. Its graph and tools are built per turn, never at import. `research()` runs the agent with checkpointing off for its whole tree (`NO_CHECKPOINTER_CONFIG`). Its answer reaches the browser once as a `notice`, and its progress labels carry counts only.
+
+The deep forecaster (`agents/deep_forecaster/`) is a fixed seven-step workflow, not an agent: research, drafting the claims, two council rounds, tally, writing, verification. Only `research` is autonomous — a `deepagents` lead and parallel scouts over the twelve forecasters' own sites, with `ask_video` for one forecaster's public YouTube videos — and the node returns what the scouts' tools recorded, never the lead's text. The council is seven seats, one per vendor (OpenAI, Gemini, five free OpenRouter models, each free seat with a paid fallback), whose members read only the passages the drafter points at and vote in two Delphi rounds; every verdict is counted in code, and `verify` re-renders them with the full vote list. Routing: `"forecast"` only on an explicit forecast or prediction request, never sticky — a new question after a forecast is `"geopolitical"`, and a question about the forecast is `"other"`. Wall time is capped at 840 s (`caps.run_under_cap`, a dedicated-task cancel: the pregel runner absorbs an in-frame cancel), research is time-boxed at 330 s, and each forecast is charged 20 research turns. A forecast answers from `ForecastState` only — no key of it is shared with the orchestrator's — and its answer reaches the browser once as a `notice`.
 
 The API accepts exactly one of `{query, thread_id}` or `{resume, thread_id}`.
 Every `/api/*` route requires a bearer access token minted by Django at

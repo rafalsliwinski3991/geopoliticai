@@ -6,7 +6,14 @@ from typing import Any
 
 from langgraph.graph import END, START, StateGraph
 
-from agents.orchestrator.nodes import chat, classify, deep_expert, expert, reporter
+from agents.orchestrator.nodes import (
+    chat,
+    classify,
+    deep_expert,
+    deep_forecaster,
+    expert,
+    reporter,
+)
 from agents.orchestrator.state import OrchestratorState
 from tracing import init_tracing
 
@@ -28,6 +35,7 @@ def build_graph(checkpointer: Any | None = None) -> Any:
     orchestrator.add_node("classify", classify)
     orchestrator.add_node("expert", expert)
     orchestrator.add_node("deep_expert", deep_expert)
+    orchestrator.add_node("deep_forecaster", deep_forecaster)
     orchestrator.add_node("chat", chat)
     orchestrator.add_node("reporter", reporter)
     orchestrator.add_edge(START, "classify")
@@ -37,12 +45,14 @@ def build_graph(checkpointer: Any | None = None) -> Any:
         {
             "geopolitical": "expert",
             "deep": "deep_expert",
+            "forecast": "deep_forecaster",
             "other": "chat",
             "report": "reporter",
         },
     )
     orchestrator.add_edge("expert", END)
     orchestrator.add_edge("deep_expert", END)
+    orchestrator.add_edge("deep_forecaster", END)
     orchestrator.add_edge("chat", END)
     orchestrator.add_edge("reporter", END)
     return orchestrator.compile(name="orchestrator", checkpointer=checkpointer)

@@ -104,3 +104,10 @@ class LlmsTests(TestCase):
         self.assertNotIn("&amp;", body)
         self.assertNotIn("Draft &", body)
         self.assertNotIn("Future", body)
+
+    def test_llms_txt_mentions_the_opt_in_forecast(self) -> None:
+        # Arrange
+        # Act
+        response = self.client.get("/llms.txt")
+        # Assert
+        self.assertContains(response, "On explicit request it also makes a forecast")

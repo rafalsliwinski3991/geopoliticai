@@ -2322,3 +2322,53 @@ async def test_a_deep_turn_reaches_the_browser_once(
     assert ("progress", PLANNING_PROGRESS) in events
     assert [v for k, v in events if k == "notice"] == [DEEP_ANSWER]
     assert [v for k, v in events if k == "token"] == []
+
+
+@pytest.mark.anyio
+async def test_a_forecast_reaches_the_browser_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The real graph: the forecast arrives as one `notice`, never a token,
+    and the counted event carries the destination."""
+
+    import importlib
+
+    from agents.orchestrator.state import RouteDecision
+
+    classify_module = importlib.import_module("agents.orchestrator.nodes.classify")
+    forecast_node = importlib.import_module("agents.orchestrator.nodes.deep_forecaster")
+    graph_module = importlib.import_module("agents.orchestrator.graph")
+
+    async def decide(*args: Any, **kwargs: Any) -> RouteDecision:
+        return RouteDecision(destination="forecast", standalone_query="rewritten")
+
+    FORECAST_ANSWER = "Forecast answer [a](https://reuters.com/x)."
+
+    async def fake_forecast(query: str) -> str:
+        return FORECAST_ANSWER
+
+    monkeypatch.setattr(classify_module, "ainvoke_structured", decide)
+    monkeypatch.setattr(forecast_node, "forecast", fake_forecast)
+    monkeypatch.setattr(api, "graph", graph_module.build_graph())
+
+    events = [
+        event
+        async for event in api._astream_answer(
+            build_initial_orchestrator_state("q"), "t-1"
+        )
+    ]
+    # Assert
+    assert ("counted", "forecast") in events
+    assert [v for k, v in events if k == "notice"] == [FORECAST_ANSWER]
+    assert [v for k, v in events if k == "token"] == []
+
+
+@pytest.mark.anyio
+async def test_no_forecaster_node_is_an_answer_node() -> None:
+    from agents.deep_forecaster.graph import build_graph
+
+    # Assert
+    forecaster_nodes = (
+        set(build_graph().get_graph().nodes) - {"__start__", "__end__"}
+    ) | {"deep_forecaster"}
+    assert forecaster_nodes & api.ANSWER_NODES == set()

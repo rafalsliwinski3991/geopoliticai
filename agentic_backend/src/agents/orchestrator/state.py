@@ -9,7 +9,7 @@ from langgraph.graph.message import add_messages
 from pydantic import BaseModel, Field
 from typing_extensions import NotRequired
 
-Destination = Literal["geopolitical", "deep", "other", "report"]
+Destination = Literal["geopolitical", "deep", "forecast", "other", "report"]
 
 
 class RouteDecision(BaseModel):
@@ -22,13 +22,14 @@ class RouteDecision(BaseModel):
     destination: Destination = Field(
         description=(
             "The complete set of destinations is 'geopolitical', 'deep', "
-            "'report', 'other' — pick exactly one of those four, never "
-            "anything outside it. Choose 'geopolitical' when the last user "
-            "turn is a political or geopolitical question, 'deep' when it is "
-            "one and the user has explicitly asked for an in-depth answer on "
-            "this topic, 'report' when it asks for a written report or "
-            "write-up of what has already been discussed, 'other' for "
-            "anything else."
+            "'forecast', 'report', 'other' — pick exactly one of those five, "
+            "never anything outside it. Choose 'geopolitical' when the last "
+            "user turn is a political or geopolitical question, 'deep' when it "
+            "is one and the user has explicitly asked for an in-depth answer on "
+            "this topic, 'forecast' when the last user turn itself explicitly "
+            "asks for a forecast or a prediction, 'report' when it asks for a "
+            "written report or write-up of what has already been discussed, "
+            "'other' for anything else."
         )
     )
     standalone_query: str = Field(

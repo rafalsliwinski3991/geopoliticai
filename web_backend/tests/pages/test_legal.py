@@ -50,7 +50,10 @@ class PrivacyPageTests(TestCase):
             'why, for how long, who receives it, and your rights under the GDPR.">',
             html=True,
         )
-        self.assertContains(response, "Last updated 24 September 2026.")
+        self.assertContains(response, "Last updated 2 October 2026.")
+        self.assertContains(response, "OpenRouter")
+        self.assertContains(response, "a paid model in place of a free one")
+        self.assertContains(response, "Google")
         self.assertContains(response, "uodo.gov.pl")
 
 
