@@ -70,6 +70,9 @@ Provider trees present: `.claude`, `.opencode`, `.github`.
 | guidance-compliance-lens | yes | no | no |
 | plan-auditor | no | yes | yes |
 | plan-explainer | no | no | yes |
+| plan-final-review | no | yes | no |
+| plan-implementer | yes | yes | no |
+| plan-retry | no | yes | no |
 | preflight-scout | yes | no | no |
 
 ---
