@@ -14,7 +14,7 @@ OpenCode dispatches a subagent with the Task tool. Set `subagent_type` to one of
 |---|---|---|
 | Implement one unit | `plan-implementer` | `opencode-go/glm-5.3-flash` |
 | Second attempt after `BLOCKED` | `plan-retry` | `opencode-go/glm-5.3-flash` |
-| Review one unit | `plan-auditor` | `opencode-go/glm-5.3-flash` |
+| Review one unit | `plan-unit-auditor` | `opencode-go/glm-5.3-flash` |
 | Review the finished branch | `plan-final-review` | `opencode-go/deepseek-v4.1-flash` |
 
 Do not dispatch `general`, `explore`, `preflight-scout`, `commit-auditor`, or a lens name. Those are not this command's workers.
@@ -28,6 +28,7 @@ Workspace, one directory per plan: `docs/cc_logs/<plan-filename-stem>/`. It is g
 - `unit-<NN>-report.md` — the implementer's report.
 - `unit-<NN>.diff` — `git diff <base>..<head>` for that unit.
 - `branch.diff` — `git diff <base>...HEAD` for the final review.
+- `final-fix-brief.md`, `final-fix-report.md` — the final review's findings and the fix implementer's report.
 
 If `ledger.md` already starts with this plan path, a line `Unit <NN>: complete` means that unit is done. Resume at the first unit without that line.
 
@@ -41,7 +42,7 @@ Read the plan. Record its tier: **lightweight**, **standard**, or **full**. If i
 
 Resolve the base branch with `gh repo view --json defaultBranchRef --jq .defaultBranchRef.name`, unless the user named another. Record a stable stack slug. The plan's slug wins when it names one.
 
-Run `git fetch`. Then `git log --name-only <plan-base>..origin/<base>`. Re-read a cited line only when that log touches the file. Write the result in the ledger. An empty log is a clean staleness result, not a skipped check.
+Run `git fetch`. Then `git log --name-only <plan-base>..origin/<base>`, where `<plan-base>` is `git rev-list -1 --before="$(date -r <plan-path> -Iseconds)" origin/<base>`, the base branch as it stood when the plan file was last written. Re-read a cited line only when that log touches the file. Write the result in the ledger. An empty log is a clean staleness result, not a skipped check.
 
 Write a conflict table: one row per pair of units that share a file or a public interface, naming what one produces and the other consumes. One row per unit whose tests and code disagree inside the plan. Rule on nothing. This table is for you; a contradiction that blocks implementation is a checkpoint question.
 
@@ -53,7 +54,7 @@ Map every unit to its Asana tasks, GitHub issues, and Aikido issues. A unit that
 
 Stop. This is the only scheduled stop. Use the `question` tool. If that tool is unavailable, ask in text and wait. Do not start on silence.
 
-Show, for every plan: tier, staleness, conflict table, source gaps, and the operator checklist. Ask which unit to start from, whether Step 6 opens **drafts** or **ready for review**, and whether the checklist is done. Begin Step 3 only after the user answers.
+Show, for every plan: tier, staleness, conflict table, source gaps, and the operator checklist. Ask which unit to start from, whether Step 5 opens **drafts** or **ready for review**, and whether the checklist is done. Begin Step 3 only after the user answers.
 
 A live gate whose key or credit is missing stays blocked. Do not start the next unit to get around it.
 
@@ -71,10 +72,10 @@ For each unit:
    - `NEEDS_CONTEXT`: add the missing fact to the brief and dispatch `plan-implementer` again.
    - `BLOCKED`: dispatch `plan-retry` once, with the brief path, the report path, and the failure. If that attempt is also `BLOCKED`, stop and ask the user.
 5. Write `unit-<NN>.diff` from `BASE` to the unit's HEAD. Never use `HEAD~1`; a unit may have more than one commit.
-6. Dispatch `plan-auditor` with the brief path, the report path, and the diff path.
+6. Dispatch `plan-unit-auditor` with the brief path, the report path, and the diff path.
 7. Apply the audit result:
    - `HALT`: stop the run, show the finding, and wait.
-   - `FAIL` or an `Important` finding: dispatch `plan-implementer` with the findings, at most twice. After each fix, write a new diff from the previous review's HEAD and dispatch `plan-auditor` on that diff only.
+   - `FAIL` or an `Important` finding: dispatch `plan-implementer` with the findings, at most twice. After each fix, rewrite `unit-<NN>.diff` from `BASE` to the new HEAD and dispatch `plan-unit-auditor` on that whole unit diff.
    - `Minor`: copy it into the ledger. It does not block the next unit.
    - Gate `FAIL`: the implementer re-runs the gate and appends the tail before you mark the unit complete.
 8. Append `Unit <NN>: complete (commits <base>..<head>, review <clean|N minor>)`.
@@ -88,7 +89,7 @@ After the last unit, write `branch.diff` for `git diff <base>...HEAD`.
 - **Lightweight:** read that diff yourself against the plan's scope. Dispatch `plan-final-review` only if you find a concrete risk.
 - **Standard or full:** dispatch `plan-final-review` once, with the plan path, `branch.diff`, and the ledger.
 
-If it returns findings, dispatch one `plan-implementer` with the full list, then one `plan-auditor` on the fix diff. A residual that contradicts the plan is `HALT`. Any other residual goes in the ledger and in the Step 6 report. There is no second fix wave.
+If it returns findings, write `final-fix-brief.md`: the full findings list, the plan path, the branch, `BASE` (the current HEAD), the focused test commands, and the full gate command. Dispatch one `plan-implementer` with that brief and the report path `final-fix-report.md`. Then rewrite `branch.diff` and dispatch one `plan-unit-auditor` with `final-fix-brief.md`, `final-fix-report.md`, and `branch.diff`. A residual that contradicts the plan is `HALT`. Any other residual goes in the ledger and in the Step 6 report. There is no second fix wave.
 
 ## Step 5 — Stacked pull requests
 

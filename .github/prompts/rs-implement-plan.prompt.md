@@ -69,7 +69,7 @@ Write the scout's table and blockers into the ledger verbatim.
 
 Also record in the ledger: the base branch (`gh repo view --json defaultBranchRef --jq
 .defaultBranchRef.name` unless the user named another) and the stack slug; the staleness result from
-`git fetch` then `git log --name-only <plan-base>..origin/<base>` (re-read a cited line only when that
+`git fetch` then `git log --name-only <plan-base>..origin/<base>`, where `<plan-base>` is `git rev-list -1 --before="$(date -r <plan-path> -Iseconds)" origin/<base>`, the base branch as it stood when the plan file was last written (re-read a cited line only when that
 log touches its file; an empty log is a clean result, not a skipped check); a conflict table with one
 row per pair of units that share a file or public interface, naming what one produces and the other
 consumes (rule on nothing; a contradiction that blocks implementation is a checkpoint question); and
@@ -153,7 +153,7 @@ Then:
 - **`HALT`** → stop the run, report it to the user, and wait. This is a scope question and it is not
   yours to settle.
 - **`FAIL` or an `Important` finding** → fix it as a follow-up commit, using the TDD rule when behavior
-  changes, then gate and log it. Re-audit only the fix diff, from the previous review's head. At most
+  changes, then gate and log it. After each fix, rewrite `unit-<NN>.diff` from `BASE` to the new HEAD and re-audit that whole unit diff. At most
   two fix rounds per unit; if it still fails, stop and ask the user.
 - **`Minor`** → copy it into the ledger. It does not block the next unit.
 

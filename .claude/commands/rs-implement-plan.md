@@ -70,7 +70,7 @@ Write the scout's table and blockers into the ledger verbatim.
 
 For every plan, also record in the ledger: the base branch (`gh repo view --json defaultBranchRef
 --jq .defaultBranchRef.name` unless the user named another) and the stack slug; the staleness result
-from `git fetch` then `git log --name-only <plan-base>..origin/<base>` (re-read a cited line only
+from `git fetch` then `git log --name-only <plan-base>..origin/<base>`, where `<plan-base>` is `git rev-list -1 --before="$(date -r <plan-path> -Iseconds)" origin/<base>`, the base branch as it stood when the plan file was last written (re-read a cited line only
 when that log touches its file; an empty log is a clean result, not a skipped check); a conflict
 table with one row per pair of units that share a file or public interface, naming what one produces
 and the other consumes (rule on nothing; a contradiction that blocks implementation is a checkpoint
@@ -164,7 +164,7 @@ otherwise). It returns Spec, Quality, and Gate verdicts; the first line of each 
   yours to settle.
 - **`FAIL` or an `Important` finding** → fix it (full plan: spawn `plan-implementer` with the findings;
   otherwise yourself) as a follow-up commit, using the TDD rule when behavior changes, then gate and
-  log it. Re-audit only the fix diff, from the previous review's head. At most two fix rounds per
+  log it. After each fix, rewrite `unit-<NN>.diff` from `BASE` to the new HEAD and re-audit that whole unit diff. At most two fix rounds per
   unit; if it still fails, stop and ask the user.
 - **Gate `FAIL`** → the missing gate is run and its tail logged before the unit is marked complete.
 - **`Minor`** → copy it into the ledger. It does not block the next unit.
