@@ -49,6 +49,7 @@ Provider trees present: `.claude`, `.opencode`, `.github`.
 | rs-create-stacked-prs | yes | yes | yes |
 | rs-explain-plan | yes | yes | yes |
 | rs-gh-stack-address-feedback | yes | yes | yes |
+| rs-gh-stack-guidebook | yes | yes | yes |
 | rs-gh-stack-merge | yes | yes | yes |
 | rs-gh-stack-review | yes | yes | yes |
 | rs-implement-plan | yes | yes | yes |
