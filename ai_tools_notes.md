@@ -38,9 +38,6 @@ two commands existed in both with different bodies and undefined precedence. The
 two generic review commands it also held (`review`, `plan-review`) are replaced
 by the `rs-code-review` and `rs-review-plan` ports, not dropped.
 
-`rs-implement-plan-as-codex` and `rs-implement-plan-as-opencode` are Claude
-Code only. They dispatch through Claude Code plugins that no other harness has.
-
 OpenCode command copies are the Claude originals with `argument-hint` and
 `allowed-tools` (neither of which OpenCode reads) replaced by `agent: build`
 and `model: opencode-go/glm-5.3-flash`; the bodies match byte for byte apart
@@ -87,10 +84,6 @@ Claude commands are ported to `.github/prompts/<name>.prompt.md`, Copilot's
 slash-command format: `allowed-tools` becomes `tools` with Copilot tool names,
 and `agent: agent` replaces Claude's implicit write access. Harness notes follow
 the rule in Commands above.
-
-`rs-implement-plan-as-codex` and `rs-implement-plan-as-opencode` are not ported.
-They delegate every worker call through Claude Code plugins, so a port would be
-a command that cannot run.
 
 `make sync-copilot` rebuilds `.github/skills/` from scratch rather than copying
 over it, so a skill deleted from `.claude/skills/` disappears downstream too.
