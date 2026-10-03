@@ -68,7 +68,8 @@ Before the command that pushes branches or creates/updates PRs, ask exactly one
 confirmation question:
 
 - **Create drafts**: for a stack, `gh stack submit --auto`. For one PR, `git push -u origin <current-branch>`
-  after the same remote-ref check as above, then `gh pr create --base <base> --head <current-branch> --draft --title "<subject>" --body-file <file>`.
+  after the same remote-ref check as above, then write the description first (see "Descriptions"
+  below) and run `gh pr create --base <base> --head <current-branch> --draft --title "<subject>" --body-file <file>`.
 - **Create ready for review**: the same, with `gh stack submit --auto --open`, or without `--draft`.
 - **Cancel**: leave all local branches and PRs untouched.
 

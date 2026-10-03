@@ -30,7 +30,7 @@ Workspace, one directory per plan: `docs/cc_logs/<plan-filename-stem>/`. It is g
 - `branch.diff` — `git diff <base>...HEAD` for the final review.
 - `final-fix-brief.md`, `final-fix-report.md` — the final review's findings and the fix implementer's report.
 
-If `ledger.md` already starts with this plan path, a line `Unit <NN>: complete` means that unit is done. Resume at the first unit without that line. When every unit is complete and the ledger has a `Final heads:` line but no `PR:` line, run Steps 1 and 2, then go straight to Step 5.
+If `ledger.md` already starts with this plan path, a line `Unit <NN>: complete` means that unit is done. Resume at the first unit without that line. When every unit is complete and the ledger has a `Final heads:` line but no `PR: <url>` line (a `PRs: none` line does not count), run Steps 1 and 2, then go straight to Step 5.
 
 ---
 
@@ -120,11 +120,12 @@ checkpoint.
      command updates them. If an existing PR's base is not the layer below, stop and ask the user
      rather than repair it.
    - **One PR.** Push the top branch with `git push -u origin <top-branch>`. If a PR already heads it
-     (`gh pr list --head <top-branch> --json number`), reuse that PR. Otherwise run
-     `gh pr create --base <base> --head <top-branch> --title "<plan title>" --body-file <file>`, adding
+     (`gh pr list --head <top-branch> --json number`), reuse that PR. Otherwise write its description
+     first (item 4), then run `gh pr create --base <base> --head <top-branch> --title "<plan title>" --body-file <file>`, adding
      `--draft` for a draft. The title is the plan's own title line without its leading `# Plan:`.
 4. Load the `writing-for-people` skill. Then write each description to a file in the scratchpad and
-   apply it with `gh pr edit <number> --body-file <file>`. Take every section from the plan, the ledger,
+   apply it with `gh pr edit <number> --body-file <file>`; on a rerun this replaces the existing
+   description. Take every section from the plan, the ledger,
    and the diff (`unit-<NN>.diff`, or `git diff <parent>..<branch>`), and never invent one. A section with
    nothing to report is one line, such as "Audit clean.". Use these headings, in this order:
 
