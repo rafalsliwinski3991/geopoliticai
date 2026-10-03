@@ -1,14 +1,14 @@
 ---
-description: Implement one or more written plans with TDD and tiered review, then open one sourced stacked PR chain per plan
+description: Implement one or more written plans with TDD and tiered review, then open each plan's sourced pull requests as a stack or one PR
 argument-hint: <plan-path>...
-allowed-tools: Read, Write, Edit, Glob, Grep, Bash, Agent
+allowed-tools: Read, Write, Edit, Glob, Grep, Bash, Agent, Skill
 ---
 
 Plans: $ARGUMENTS
 
 Every argument is a plan path; run them all, in the order given. Each plan is its own run: its own
 tier, run log, pre-flight, stack of unit branches cut from the base branch, final review, and
-stacked PR chain. Steps 1 and 2 cover every plan up front; Steps 3–6 then run for one plan at a time,
+pull requests. Steps 1 and 2 cover every plan up front; Steps 3–6 then run for one plan at a time,
 and the next plan starts from a fresh checkout of the base branch. Step 7 reports on all of them.
 
 You are the lead. You coordinate and write briefs, the ledger, diff files, and pull-request
@@ -26,7 +26,8 @@ missing). Files:
 - `branch.diff` — `git diff <base>...HEAD` for the final review.
 
 If `ledger.md` already starts with this plan path, a line `Unit <NN>: complete` means that unit is
-done; resume at the first unit without one.
+done; resume at the first unit without one. When every unit is complete and the ledger has a
+`Final heads:` line but no `PR:` line, run Steps 1 and 2 as usual, then go straight to Step 6.
 
 ---
 
@@ -91,9 +92,13 @@ for a **standard or full plan**, show the scout's table and blockers and ask whi
 its run should start from. For every plan, show the unit-to-source map and ask for the source of
 any unit that has none. Show each plan's conflict table and operator checklist, and ask whether the
 checklist is done: a live gate whose key or credit is missing stays blocked, and you do not start a
-later unit to get around it. Then ask once, for all plans, whether to proceed and whether the stacked
-PRs of Step 6 open as **drafts** or **ready for review**. Begin implementing only after the user
-answers. If the user does not respond, the run does not start.
+later unit to get around it. Then ask once, for all plans, whether to proceed, and how Step 6 opens each
+plan's pull requests:
+- **a stack**, one PR per unit, or **one PR** for the whole plan, which suits a small or simple plan;
+- or **none**, where the unit branches stay local and unpushed;
+- and, for a stack or one PR, whether it opens as **draft** or **ready for review**.
+
+Begin implementing only after the user answers. If the user does not respond, the run does not start.
 
 ## Step 3 — Implementation
 
@@ -203,23 +208,66 @@ validation and applicable gate. Then rerun the same lens on the fix diff. A find
 the approved plan is a `HALT`; stop and ask the user rather than silently expanding scope. Any other
 residual goes in the ledger and the Step 7 report; there is no second fix wave.
 
-## Step 6 — Stacked pull requests
+Then append `Final heads: <unit-01-branch> <sha>, …, <top-branch> <sha>` to the ledger, from
+`git rev-parse refs/heads/<branch>` for every unit branch. Step 6 checks the branches against this line.
 
-Once the plan's final review is clean, open its chain. The user's checkpoint answer is the
-authorization; ask again only when something below stops the step.
+## Step 6 — Pull requests
 
-1. Confirm `gh auth status` succeeds and `gh stack --help` is available. If the extension is
-   missing, stop and report `gh extension install github/gh-stack`; never install it.
-2. Adopt the plan's unit branches, bottom to top, without touching their commits:
-   `gh stack init --base <base> <unit-01-branch> ... <top-branch>`, then `gh stack view`. Every
-   branch must have its intended parent; if one does not, stop and report rather than submit.
-3. Submit with `gh stack submit --auto` for drafts, or `gh stack submit --auto --open` for ready
-   for review, as the checkpoint decided.
-4. Rewrite every layer's description with `gh pr edit <branch> --body-file <file>` (write the file
-   in the scratchpad). The body is a short summary of the unit from the plan, then a `## Source`
-   section listing every source mapped to that unit, one per line, in exactly this form:
+Once the plan's final review is clean, open its pull requests in the shape the checkpoint chose. The
+checkpoint answer is the authorization; ask again only when something below stops the step. A live or
+smoke gate that is still failing or open does not stop this step: list it under "Checks" in every
+description it concerns. If the answer was **none**, append `PRs: none (checkpoint)` to the ledger and go
+to Step 7. A later run on the same plan resumes here (see the resume rule above) and asks again at its
+checkpoint.
 
-   ```text
+1. Confirm `gh auth status` succeeds. For a stack, also confirm `gh stack --help` is available; if the
+   extension is missing, stop and report `gh extension install github/gh-stack`; never install it.
+2. Confirm the working tree is clean, and that every unit branch is at the SHA on the ledger's
+   `Final heads:` line. Confirm the history is linear: `git merge-base --is-ancestor <base>
+   <unit-01-branch>` succeeds, and `git rev-list --merges <base>..<top-branch>` prints nothing. For each
+   branch, check `git ls-remote --exit-code origin refs/heads/<branch>`. If the remote branch exists at a
+   SHA other than the local branch's, stop and report it; never force-update an existing branch.
+3. Open the pull requests:
+   - **A stack.** Check out the top branch and run `gh stack view`. If it already lists the plan's unit
+     branches in order, skip init. Otherwise adopt them, bottom to top, without touching their commits:
+     `gh stack init --base <base> <unit-01-branch> ... <top-branch>`, which leaves the top branch
+     checked out. Then run `gh stack view`. Every branch must have its intended parent; if one does
+     not, stop and report rather than submit. Submit with `gh stack submit --auto` for drafts, or
+     `gh stack submit --auto --open` for ready for review. On a rerun whose PRs already exist, the same
+     command updates them. If an existing PR's base is not the layer below, stop and ask the user
+     rather than repair it.
+   - **One PR.** Push the top branch with `git push -u origin <top-branch>`. If a PR already heads it
+     (`gh pr list --head <top-branch> --json number`), reuse that PR. Otherwise run
+     `gh pr create --base <base> --head <top-branch> --title "<plan title>" --body-file <file>`, adding
+     `--draft` for a draft. The title is the plan's own title line without its leading `# Plan:`.
+4. Load the `writing-for-people` skill. Then write each description to a file in the scratchpad and
+   apply it with `gh pr edit <number> --body-file <file>`. Take every section from the plan, the ledger,
+   and the diff (`unit-<NN>.diff`, or `git diff <parent>..<branch>`), and never invent one. A section with
+   nothing to report is one line, such as "Audit clean.". Use these headings, in this order:
+
+   ```markdown
+   ## What this PR does
+   <two to four plain sentences: what a user or developer sees change>
+
+   ## Why
+   <the plan path and section, such as `docs/plans/<file>.md` §4.4, and the reason in one or two sentences>
+
+   ## Why this PR exists
+   <"Plan unit <NN>." Then each commit added to the unit during the run, as `<sha> <subject>`, with the
+   failed check or finding that caused it, taken from the ledger>
+
+   ## How to review it
+   1. `<path>`: <what to check there>
+   <one line per file, in the order a reviewer should read them: riskiest first, tests last>
+
+   ## What implement-plan's own review found
+   <the unit's audit verdicts and every Minor the ledger kept, or "Audit clean."; the final-review lens
+   findings on this unit's files and what was done with each>
+
+   ## Checks
+   <the focused validation and gate commands with their result; every live or smoke gate that failed or
+   is still open, from the ledger; or "All gates green.">
+
    ## Source
 
    - Asana: <task URL>
@@ -228,13 +276,27 @@ authorization; ask again only when something below stops the step.
    - Aikido: <issue id> <issue link>
    ```
 
-   A GitHub issue is `Closes` on the last unit that delivers it and `Refs` on every earlier one.
-   `rs-gh-stack-merge` parses these lines to close the sources, so keep the prefixes verbatim.
-   End the body with the pull-request attribution line the harness supplies, if it supplies one.
-5. Record in the ledger, and show, every PR URL with its sources and the final `gh stack view`.
+   **A stack** gets one description per layer, built from that unit.
 
-The step is done when every layer has a PR whose body carries a non-empty `## Source` section. Never
-merge a PR, force-push, or rewrite commits here; `rs-gh-stack-merge` merges the chain.
+   **One PR** gets one description for the whole plan:
+   - "Why this PR exists" says `Plan units 01–<NN> in one PR (checkpoint choice).`, followed by the
+     commits each unit added during the run.
+   - "How to review it" and "What implement-plan's own review found" are grouped by unit, in plan order.
+   - `## Source` lists every unit's sources, with every delivered issue as `Closes`.
+
+   In a stack, a GitHub issue is `Closes` on the last unit that delivers it and `Refs` on every earlier
+   one. A unit the user confirmed at the checkpoint has no source gets the single line
+   `- None (confirmed at checkpoint)`, which `rs-gh-stack-merge` lists as manual.
+
+   `rs-gh-stack-merge` parses the `## Source` lines to close the sources, so keep the heading and the
+   prefixes verbatim. End the body with the pull-request attribution line the harness supplies, if it
+   supplies one.
+5. Record in the ledger one `PR: <url> <sources>` line per pull request, then show each line, plus the
+   final `gh stack view` for a stack.
+
+The step is done when every pull request has a body carrying every heading above and a non-empty
+`## Source` section. Never merge a PR, force-push, or rewrite commits here; `rs-gh-stack-merge` merges
+a stack.
 
 ## Step 7 — Report
 
@@ -244,7 +306,7 @@ lightweight plans, record the lead's final self-review instead.
 
 Report to the user, per plan: the plan path and tier, tasks or commits made, units audited and what
 the audits found, what was fix-forwarded, any `HALT` you hit, the outstanding applicable review
-findings you did **not** act on, the PR URLs with their sources, and the ledger path.
+findings you did **not** act on, the PR URLs with their sources (or "no PRs opened; rerun this command to open them"), and the ledger path.
 
 ---
 
