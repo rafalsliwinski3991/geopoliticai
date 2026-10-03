@@ -38,6 +38,7 @@ Provider trees present: `.claude`, `.opencode`, `.github`.
 | react-frontend | yes | link | yes |
 | swarm | yes | no | no |
 | writing-for-agents | yes | link | yes |
+| writing-for-people | yes | link | yes |
 
 ## Commands
 
