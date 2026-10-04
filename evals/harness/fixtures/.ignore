@@ -1,0 +1,3 @@
+# Frozen copies for the harness eval (read by path in CI). Their contents
+# predate review fixes, so keep them out of everyday ripgrep searches.
+*

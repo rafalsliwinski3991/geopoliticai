@@ -1,0 +1,25 @@
+{
+  "task": "deep_expert",
+  "plan": {
+    "start": "438bc3b4488654fe2b1aa2d5b2272afd62d3bce2",
+    "brainstorm": "docs/brainstorming/2026Sep28_brainstorm_v1_deep-expert-agent.md",
+    "output": "docs/plans/candidate_plan.md"
+  },
+  "implement": {
+    "start": "008e3338d1e49289522ecd35f405679eec922654",
+    "reference_end": "4013371ee21468b9cce3e63b46928f75cc2b29c4",
+    "plan": "docs/plans/2026Sep28_plan_deep-expert_v2.md",
+    "unit_sections": [
+      "### Unit 02: `deep-expert/02-quota-cost` (parent: unit 01)",
+      "### 4.2 Unit 02: quota cost",
+      "### 5.2 Unit 02"
+    ],
+    "unit_files": [
+      "agentic_backend/src/config.py",
+      "agentic_backend/src/db/web/sql.py",
+      "agentic_backend/tests/integration_tests/test_db_web_schema.py",
+      "agentic_backend/tests/unit_tests/db/web/test_sql.py",
+      "agentic_backend/tests/unit_tests/test_config.py"
+    ]
+  }
+}
