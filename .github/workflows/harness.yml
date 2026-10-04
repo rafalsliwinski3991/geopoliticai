@@ -12,6 +12,8 @@ on:
       - "CLAUDE.md"
       - "Makefile"
       - "scripts/ai_tools_inventory.py"
+      - "scripts/log_metrics.py"
+      - "docs/harness_logs/TEMPLATE.md"
       - "ai_tools_inventory.md"
       - "ai_tools_notes.md"
 
@@ -61,21 +63,29 @@ jobs:
           done
 
       # Command ports are existence-checked in CI; bodies remain verified by
-      # hand (the port transform and harness notes are human judgement). The
-      # as-codex and as-opencode commands are Claude-only by design.
+      # hand (the port transform and harness notes are human judgement).
       - name: Claude commands have a port under every harness
         run: |
           missing=0
           for f in .claude/commands/*.md; do
             b=$(basename "$f" .md)
-            case "$b" in
-              rs-implement-plan-as-codex|rs-implement-plan-as-opencode) continue ;;
-            esac
             for p in ".opencode/command/$b.md" ".github/prompts/$b.prompt.md"; do
               if [ ! -f "$p" ]; then
-                echo "Missing port: $p (add it, or extend the Claude-only allowlist)" >&2
+                echo "Missing port: $p (add it)" >&2
                 missing=1
               fi
             done
           done
           exit $missing
+
+      # The run logs moved to one folder; a command copied from an old branch
+      # would quietly bring the retired names back.
+      - name: No harness file names the retired log folders
+        run: |
+          if grep -rsInE "docs/(cc|opencode)_logs" \
+            .claude/commands .claude/agents .claude/skills \
+            .opencode/command .opencode/agents .opencode/agent \
+            .github/prompts .github/agents .github/copilot-instructions.md AGENTS.md; then
+            echo "Use docs/harness_logs/ (see docs/harness_logs/TEMPLATE.md)." >&2
+            exit 1
+          fi

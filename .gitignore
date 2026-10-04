@@ -8,8 +8,8 @@ __pycache__/
 .codex/.tmp/
 .codex/plugins/
 tmp
-docs/cc_logs/
-docs/opencode_logs/
+docs/harness_logs/*
+!docs/harness_logs/TEMPLATE.md
 docs/plan-reviews/
 docs/plans/
 docs/brainstorming/

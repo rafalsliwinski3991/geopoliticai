@@ -78,9 +78,9 @@ rewriting history:
    same parent and dependency information in each ordered task.
 - The plan must say that implementation creates one or more linear commits per
    unit branch, with reviewer fixes remaining on that branch, and
-   that `rs-create-stacked-prs` is used separately to adopt the branches, run
-   `gh stack view`, and submit draft or ready-for-review PRs. Planning does not
-   push, create, merge, or rewrite pull requests.
+   that `rs-implement-plan` opens the pull requests itself, as a stack or one PR,
+   when its checkpoint asks for them (`rs-create-stacked-prs` remains for hand-built
+   branches). Planning does not push, create, merge, or rewrite pull requests.
 
 ## Step 2 — Write the draft plan
 

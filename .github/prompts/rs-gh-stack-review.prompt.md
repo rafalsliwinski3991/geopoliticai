@@ -19,8 +19,10 @@ parent, then post each finding as an inline comment on the exact line of that la
 You change no code: no edits, commits, or pushes. Posting review comments is the only external
 action, and it happens once, after the user confirms.
 
-Run log: `docs/cc_logs/<stack-slug>_stack_review.md` (create `docs/cc_logs/` if missing; it is
+Run log: `docs/harness_logs/<stack-slug>_stack_review.md` (create `docs/harness_logs/` if missing; it is
 gitignored). If it exists, append a new dated section.
+
+Follow `docs/harness_logs/TEMPLATE.md`: header first (`harness: copilot`), one `date` stamp per stage heading, no token numbers. As the last step before the report, run `python3 scripts/log_metrics.py <run log>`; if it prints an error, continue.
 
 ---
 
@@ -131,7 +133,7 @@ Stack review: <stack-slug>, <N> layers reviewed, <M> skipped
 #<pr> <branch> — tier, <X> critical, <Y> informational, <P> posted, <U> in review body
 ...
 Not posted: <count and reason>
-Run log: docs/cc_logs/<stack-slug>_stack_review.md
+Run log: docs/harness_logs/<stack-slug>_stack_review.md
 ```
 
 Say plainly what remains unverified.

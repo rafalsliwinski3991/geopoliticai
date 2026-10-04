@@ -24,8 +24,10 @@ Plan: $1
 You are the **auditor and reviser** and the team lead. You are the only agent in this run that
 writes. Every other agent you spawn is read-only and exists to check the plan, never to change it.
 
-Run log: `docs/cc_logs/<plan-filename-stem>_improve_run.md` (create `docs/cc_logs/` if missing; it is
+Run log: `docs/harness_logs/<plan-filename-stem>_improve_run.md` (create `docs/harness_logs/` if missing; it is
 gitignored). If that file already exists, append a new dated section rather than overwriting it.
+
+Follow `docs/harness_logs/TEMPLATE.md`: header first (`harness: copilot`), one `date` stamp per stage heading, no token numbers. As the last step before the report, run `python3 scripts/log_metrics.py <run log>`; if it prints an error, continue.
 
 ---
 
@@ -97,9 +99,9 @@ implemented as a GitHub stacked pull-request chain without rewriting history:
   the parent of the first remaining unit.
 - The revised plan must state that implementation creates one or more linear commits
   per unit branch, with reviewer fixes remaining on that branch, and that
-  `rs-create-stacked-prs` separately adopts the branches, runs `gh stack view`, and
-  submits draft or ready-for-review PRs. This workflow does not push, create, merge,
-  or rewrite pull requests.
+  `rs-implement-plan` opens the pull requests itself, as a stack or one PR, when its
+  checkpoint asks for them (`rs-create-stacked-prs` remains for hand-built branches).
+  This workflow does not push, create, merge, or rewrite pull requests.
 
 ## Step 2 — Pre-flight scout
 
