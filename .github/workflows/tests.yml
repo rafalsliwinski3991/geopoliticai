@@ -189,9 +189,9 @@ jobs:
       - name: Set up uv
         uses: astral-sh/setup-uv@caf0cab7a618c569241d31dcd442f54681755d39 # v3
 
-      # uvx runs a floating ruff and pytest; deploy/ has no lockfile.
-      - name: Lint and test the VPS scripts
+      # uvx runs a floating ruff and pytest; deploy/ and scripts/ have no lockfile.
+      - name: Lint and test the VPS and harness scripts
         run: |
-          uvx ruff check deploy/
-          uvx pytest deploy/tests
+          uvx ruff check deploy/ scripts/
+          uvx pytest deploy/tests scripts/tests
 

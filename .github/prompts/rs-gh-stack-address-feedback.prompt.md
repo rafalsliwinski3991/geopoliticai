@@ -17,8 +17,10 @@ requested change (by editing code, committing, and pushing to the layer branch) 
 (with a reasoned rebuttal), and post exactly one reply per thread. You never mark a thread resolved
 yourself — the human reviewer closes threads after reading your reply.
 
-Run log: `docs/cc_logs/<stack-slug>_stack_address_feedback.md` (create `docs/cc_logs/` if missing; it
+Run log: `docs/harness_logs/<stack-slug>_stack_address_feedback.md` (create `docs/harness_logs/` if missing; it
 is gitignored). If it exists, append a new dated section.
+
+Follow `docs/harness_logs/TEMPLATE.md`: header first (`harness: copilot`), one `date` stamp per stage heading, no token numbers. As the last step before the report, run `python3 scripts/log_metrics.py <run log>`; if it prints an error, continue.
 
 ---
 
@@ -162,7 +164,7 @@ Stack address-feedback: <stack-slug>, <N> layers, <M> skipped
 #<pr> <branch> — <A> applied, <R> rejected, <P> replies posted, <U> undecidable/manual
 ...
 Pushed commits: <list per layer, or none>
-Run log: docs/cc_logs/<stack-slug>_stack_address_feedback.md
+Run log: docs/harness_logs/<stack-slug>_stack_address_feedback.md
 ```
 
 Say plainly what remains unverified — threads answered without a Context7 check, threads whose code

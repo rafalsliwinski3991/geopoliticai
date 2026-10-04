@@ -12,6 +12,8 @@ on:
       - "CLAUDE.md"
       - "Makefile"
       - "scripts/ai_tools_inventory.py"
+      - "scripts/log_metrics.py"
+      - "docs/harness_logs/TEMPLATE.md"
       - "ai_tools_inventory.md"
       - "ai_tools_notes.md"
 
@@ -75,3 +77,15 @@ jobs:
             done
           done
           exit $missing
+
+      # The run logs moved to one folder; a command copied from an old branch
+      # would quietly bring the retired names back.
+      - name: No harness file names the retired log folders
+        run: |
+          if grep -rsInE "docs/(cc|opencode)_logs" \
+            .claude/commands .claude/agents .claude/skills \
+            .opencode/command .opencode/agents .opencode/agent \
+            .github/prompts .github/agents .github/copilot-instructions.md AGENTS.md; then
+            echo "Use docs/harness_logs/ (see docs/harness_logs/TEMPLATE.md)." >&2
+            exit 1
+          fi

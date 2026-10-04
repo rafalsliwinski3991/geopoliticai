@@ -16,10 +16,10 @@ bodies. Lightweight and standard plans: you are also the only code writer. Full 
 implemented by a fresh `plan-implementer` agent working from a brief file, and you do not edit
 production code or tests. Every review agent is read-only.
 
-Workspace, one directory per plan: `docs/cc_logs/<plan-filename-stem>/` (gitignored; create it if
+Workspace, one directory per plan: `docs/harness_logs/<plan-filename-stem>/` (gitignored; create it if
 missing). Files:
 
-- `ledger.md` — resume map and run log. Trust it and `git log` over your own memory.
+- `ledger.md` — resume map and run log. Trust it and `git log` over your own memory. It is exempt from `docs/harness_logs/TEMPLATE.md`: no header, no metrics table.
 - `unit-<NN>-brief.md`, `unit-<NN>-report.md` — full plan only: that unit's requirements and the
   implementer's report.
 - `unit-<NN>.diff` — `git diff <BASE>..<head>` for that unit, `BASE` being the unit branch's start.

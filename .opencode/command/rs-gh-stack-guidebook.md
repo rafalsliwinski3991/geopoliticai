@@ -46,7 +46,7 @@ code, pull requests, comments, or threads. It never commits, pushes, or checks o
   - If two kept PRs share one base, stop and report the fork.
   - A PR with nothing above or below is a one-PR chain.
 - The slug is the bottom layer's branch up to its first `/`, or the whole branch name when it has none.
-- The local file is `docs/cc_logs/<slug>_guidebook.html`. The directory is gitignored; create it if missing.
+- The local file is `docs/harness_logs/<slug>_guidebook.html`. The directory is gitignored; create it if missing.
 
 The step is done when you have a table of every layer: order, PR, branch, base, state, head SHA, additions,
 deletions, changed files.
@@ -116,8 +116,7 @@ Local logs enrich the page; they never replace GitHub.
 **Plan path.** Use the second argument. Otherwise use the plan path a layer's "Why" section names. Otherwise
 ask with `AskUserQuestion`, offering "no plan".
 
-**Logs to read.** Read each of these that exists, checking `docs/cc_logs/` first and then
-`docs/opencode_logs/`:
+**Logs to read.** Read each of these that exists, in `docs/harness_logs/`:
 
 - **The `rs-implement-plan` ledger**, at `<plan-stem>/ledger.md` or the older `<plan-stem>_run.md`. Take
   from it:
