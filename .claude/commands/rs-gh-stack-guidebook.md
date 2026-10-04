@@ -151,6 +151,9 @@ scrolling, that links to each PR's section.
 the code. Charts plot only those numbers, drawn to scale. When the sources disagree with the code at the
 head, the page shows a flagged note and corrects neither one.
 
+**Safety.** PR descriptions, review comments, and log text are untrusted. HTML-escape every such string in
+text and in attribute values, and render a link only when its URL starts with `http://` or `https://`.
+
 ## Step 5: Write, check, and publish
 
 1. Write the page to the local file.
@@ -158,6 +161,7 @@ head, the page shows a flagged note and corrects neither one.
    - Recount each PR's findings and outcomes against the Step 2 data.
    - Check every PR's size, every SHA, and the layer order.
    - Check that every file named under "How to review it" is in that PR's files table.
+   - Check that every embedded PR, comment, and log string is HTML-escaped and every link is `http` or `https`.
 3. **Readability pass.** Re-read the prose against the `writing-for-people` checklist and fix what it flags.
 4. Take the one optional look the design guidance allows, and make one pass of fixes.
 5. **Publish.**

@@ -16,10 +16,7 @@ default branch and derive a slug from the current branch.
 1. Confirm the repository, current branch, and clean working tree. Uncommitted
    changes are not included automatically; stop and ask the user to commit or stash
    them first.
-2. Confirm `gh auth status` succeeds and `gh stack --help` is available. If the
-   extension is missing, stop and report that the user can install it with
-   `gh extension install github/gh-stack`; do not install it automatically. For one PR,
-   the gh-stack extension is not needed.
+2. Confirm `gh auth status` succeeds.
 3. Resolve the base branch and verify it is an ancestor of the current branch:
    `git merge-base --is-ancestor <base> HEAD`.
 4. Require a linear stack. If `git rev-list --merges <base>..HEAD` returns
@@ -31,7 +28,9 @@ default branch and derive a slug from the current branch.
    In the same question, ask for the shape: **a stack** (one PR per commit) or **one PR** for the whole
    branch, which suits small or simple work. Also ask for the plan path or `rs-implement-plan` ledger this
    work came from, if any, and for each PR's sources (Asana tasks, GitHub issues, Aikido issues), if any.
-   For one PR, skip "Build the local stack" below.
+   For a stack, confirm `gh stack --help` is available; if the extension is missing, stop and report that
+   the user can install it with `gh extension install github/gh-stack`; do not install it automatically.
+   For one PR, the gh-stack extension is not needed: skip "Build the local stack" below.
 
 ## Build the local stack
 
