@@ -1,0 +1,295 @@
+name: Harness Eval
+
+# Advisory and manual: measures the current harness on the frozen deep-expert
+# task and appends the scores to the `eval-history` branch. Gates nothing.
+on:
+  workflow_dispatch:
+    inputs:
+      repeats:
+        description: "Runs per agent (1 is usual; 2-5 to separate a change from noise)"
+        type: number
+        default: 1
+      note:
+        description: "What changed in the harness since the last run"
+        type: string
+        default: ""
+
+concurrency:
+  group: harness-eval
+  cancel-in-progress: false
+
+permissions: {}
+
+env:
+  CLAUDE_CODE_VERSION: "2.1.289"
+  OPENCODE_VERSION: "1.18.34"
+  TASK: evals/harness/fixtures/deep_expert
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    outputs:
+      repeats: ${{ steps.r.outputs.repeats }}
+    steps:
+      - id: r
+        env:
+          N: ${{ inputs.repeats }}
+        run: |
+          python3 -c "import os; n = int(os.environ['N']); assert 1 <= n <= 5, n; print(f'repeats={list(range(1, n + 1))}')" >> "$GITHUB_OUTPUT"
+
+  agent:
+    name: ${{ matrix.subject }} #${{ matrix.repeat }}
+    needs: setup
+    runs-on: ubuntu-latest
+    # Read access only for the checkout below; the token never reaches the
+    # agent's environment, and the checkout is deleted before the agent runs.
+    permissions:
+      contents: read
+    # The agent step has its own 45-minute limit; this one leaves room to
+    # collect and upload a timed-out run.
+    timeout-minutes: 75
+    strategy:
+      fail-fast: false
+      matrix:
+        subject: [plan-opus, impl-sonnet, impl-glm]
+        repeat: ${{ fromJSON(needs.setup.outputs.repeats) }}
+        include:
+          - subject: plan-opus
+            kind: plan
+            harness: claude
+            model: claude-opus-5-5
+          - subject: impl-sonnet
+            kind: implement
+            harness: claude
+            model: claude-sonnet-5-5
+          - subject: impl-glm
+            kind: implement
+            harness: opencode
+            model: opencode-go/glm-5.3-flash
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          path: src
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@caf0cab7a618c569241d31dcd442f54681755d39 # v3
+        with:
+          enable-cache: true
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install the agent CLI
+        env:
+          HARNESS: ${{ matrix.harness }}
+          OPENCODE_GO_API_KEY: ${{ secrets.OPENCODE_GO_API_KEY }}
+        run: |
+          if [ "$HARNESS" = claude ]; then
+            npm install -g "@anthropic-ai/claude-code@$CLAUDE_CODE_VERSION"
+          else
+            npm install -g "opencode-ai@$OPENCODE_VERSION"
+            mkdir -p ~/.local/share/opencode
+            jq -n --arg key "$OPENCODE_GO_API_KEY" '{"opencode-go": {type: "api", key: $key}}' \
+              > ~/.local/share/opencode/auth.json
+          fi
+
+      - name: Build the agent's workspace
+        id: ws
+        env:
+          KIND: ${{ matrix.kind }}
+        run: |
+          tools="$RUNNER_TEMP/tools"
+          mkdir -p "$tools"
+          cp -a src/scripts/harness_eval src/evals/harness/preambles "$tools/"
+          if [ "$KIND" = plan ]; then
+            start=$(jq -r .plan.start "src/$TASK/task.json")
+            fixture=brainstorm.md
+            input=$(jq -r .plan.brainstorm "src/$TASK/task.json")
+            output=$(jq -r .plan.output "src/$TASK/task.json")
+            echo "name=rs-plan-from-brainstorm" >> "$GITHUB_OUTPUT"
+            echo "args=$input $output" >> "$GITHUB_OUTPUT"
+          else
+            start=$(jq -r .implement.start "src/$TASK/task.json")
+            fixture=plan_v2.md
+            input=$(jq -r .implement.plan "src/$TASK/task.json")
+            output=""
+            echo "name=rs-implement-plan" >> "$GITHUB_OUTPUT"
+            echo "args=$input" >> "$GITHUB_OUTPUT"
+          fi
+          base=$(bash src/scripts/harness_eval/prepare.sh "$PWD/src" "$start" \
+            "$TASK/$fixture" "$input" "$RUNNER_TEMP/ws")
+          # The checkout holds the answer key (unit 02's real commit, the
+          # reference plan); the agent must not be able to read it.
+          rm -rf src
+          echo "base=$base" >> "$GITHUB_OUTPUT"
+          echo "output=$output" >> "$GITHUB_OUTPUT"
+
+      - name: Install and baseline the tests
+        id: before
+        if: matrix.kind == 'implement'
+        working-directory: ${{ runner.temp }}/ws/agentic_backend
+        run: |
+          uv sync --locked --dev
+          if uv run make test >/dev/null 2>&1; then echo tests=0; else echo tests=1; fi >> "$GITHUB_OUTPUT"
+
+      - name: Run the agent (Claude Code)
+        id: claude
+        if: matrix.harness == 'claude'
+        timeout-minutes: 45
+        continue-on-error: true
+        working-directory: ${{ runner.temp }}/ws
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          MODEL: ${{ matrix.model }}
+          KIND: ${{ matrix.kind }}
+          PROMPT: /${{ steps.ws.outputs.name }} ${{ steps.ws.outputs.args }}
+        run: |
+          date +%s > "$RUNNER_TEMP/started"
+          claude -p "$PROMPT" \
+            --model "$MODEL" --effort medium \
+            --permission-mode bypassPermissions \
+            --disallowedTools AskUserQuestion \
+            --append-system-prompt "$(cat "$RUNNER_TEMP/tools/preambles/$KIND.md")" \
+            --mcp-config '{"mcpServers": {"context7": {"type": "http", "url": "https://mcp.context7.com/mcp"}}}' \
+            --output-format json > "$RUNNER_TEMP/raw.json"
+
+      - name: Run the agent (OpenCode)
+        id: opencode
+        if: matrix.harness == 'opencode'
+        timeout-minutes: 45
+        continue-on-error: true
+        working-directory: ${{ runner.temp }}/ws
+        env:
+          MODEL: ${{ matrix.model }}
+          KIND: ${{ matrix.kind }}
+          COMMAND: ${{ steps.ws.outputs.name }}
+          ARGS: ${{ steps.ws.outputs.args }}
+        run: |
+          # OPENCODE_CONFIG_CONTENT outranks the project's opencode.jsonc: it
+          # adds the preamble, denies the `question` tool (the repo's own
+          # agents already use that key) so the run never waits, and turns
+          # off the project's local chrome-devtools MCP server.
+          export OPENCODE_CONFIG_CONTENT=$(jq -nc --arg p "$RUNNER_TEMP/tools/preambles/$KIND.md" \
+            '{instructions: [$p], permission: {question: "deny"}, mcp: {"chrome-devtools": {enabled: false}}}')
+          date +%s > "$RUNNER_TEMP/started"
+          opencode run --auto --format json \
+            --model "$MODEL" --command "$COMMAND" "$ARGS" > "$RUNNER_TEMP/raw.jsonl"
+
+      - name: Stop the clock
+        if: always()
+        run: date +%s > "$RUNNER_TEMP/ended"
+
+      - name: Run the hard checks
+        id: after
+        if: always() && steps.before.outcome == 'success'
+        working-directory: ${{ runner.temp }}/ws
+        env:
+          BASE: ${{ steps.ws.outputs.base }}
+        run: |
+          git add -A -N
+          mapfile -t py < <(git diff --name-only --diff-filter=d "$BASE" -- 'agentic_backend/*.py' \
+            | sed 's#^agentic_backend/##')
+          cd agentic_backend
+          if uv run make test >/dev/null 2>&1; then echo tests=0; else echo tests=1; fi >> "$GITHUB_OUTPUT"
+          # Lint judges only the agent's own files, with the app's ruff config.
+          if [ ${#py[@]} -eq 0 ] || { uv run ruff check "${py[@]}" && uv run ruff format --diff "${py[@]}"; } >/dev/null 2>&1; then
+            echo lint=0
+          else
+            echo lint=1
+          fi >> "$GITHUB_OUTPUT"
+
+      - name: Collect the result
+        if: always() && steps.ws.outcome == 'success'
+        working-directory: ${{ runner.temp }}/tools
+        env:
+          CHECKS: ${{ steps.before.outputs.tests }},${{ steps.after.outputs.tests }},${{ steps.after.outputs.lint }}
+          OUTCOME: ${{ matrix.harness == 'claude' && steps.claude.outcome || steps.opencode.outcome }}
+        run: |
+          python3 -m harness_eval.collect \
+            --subject "${{ matrix.subject }}" --kind "${{ matrix.kind }}" \
+            --repeat "${{ matrix.repeat }}" --harness "${{ matrix.harness }}" \
+            --model "${{ matrix.model }}" --raw "$RUNNER_TEMP/raw.json" \
+            --ws "$RUNNER_TEMP/ws" --base "${{ steps.ws.outputs.base }}" \
+            --output "${{ steps.ws.outputs.output }}" \
+            --started-file "$RUNNER_TEMP/started" --ended-file "$RUNNER_TEMP/ended" \
+            --step-timeout-s 2700 --agent-outcome "$OUTCOME" \
+            --checks "$CHECKS" --out "$RUNNER_TEMP/out"
+
+      - name: Upload the result
+        if: always() && steps.ws.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.subject }}-${{ matrix.repeat }}
+          path: ${{ runner.temp }}/out
+          if-no-files-found: error
+
+  judge:
+    needs: agent
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@caf0cab7a618c569241d31dcd442f54681755d39 # v3
+
+      - name: Download the agent results
+        uses: actions/download-artifact@v4
+        with:
+          path: ${{ runner.temp }}/results
+
+      - name: Open the history branch
+        run: |
+          if git ls-remote --exit-code --heads origin eval-history >/dev/null; then
+            git fetch -q origin eval-history
+            git worktree add -q -B eval-history "$RUNNER_TEMP/history" FETCH_HEAD
+          else
+            git worktree add -q --orphan -b eval-history "$RUNNER_TEMP/history"
+          fi
+
+      - name: Judge the outputs
+        working-directory: scripts
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          NOTE: ${{ inputs.note }}
+        run: |
+          uv run --no-project --python 3.12 \
+            --with "google-genai>=1.33,<2" --with "pydantic>=2.9,<3" \
+            python -m harness_eval.judge \
+            --repo "$GITHUB_WORKSPACE" --fixtures "$GITHUB_WORKSPACE/$TASK" \
+            --results "$RUNNER_TEMP/results" --history "$RUNNER_TEMP/history/history.jsonl" \
+            --verdicts "$RUNNER_TEMP/verdicts.json" \
+            --run-id "$GITHUB_RUN_ID" --sha "$GITHUB_SHA" --note "$NOTE" \
+            --summary "$GITHUB_STEP_SUMMARY"
+
+      - name: Save the history
+        working-directory: ${{ runner.temp }}/history
+        run: |
+          git add history.jsonl
+          git -c user.name="github-actions[bot]" \
+            -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+            commit -qm "Harness eval run $GITHUB_RUN_ID"
+          git push -q origin eval-history
+
+      - name: Upload the verdicts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: verdicts
+          path: ${{ runner.temp }}/verdicts.json
+          if-no-files-found: ignore
