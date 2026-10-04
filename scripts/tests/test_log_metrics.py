@@ -129,7 +129,7 @@ def test_metrics_heading_at_end_without_newline_is_replaced_once():
     assert log_metrics.METRICS_RE.sub("", text).count("## Metrics") == 0
 
 
-def test_stage_from_another_harness_is_not_read_from_this_harnesss_records(tmp_path: Path):
+def test_stage_from_another_harness_is_not_read_from_this_harness_records(tmp_path: Path):
     log = tmp_path / "l.md"
     log.write_text(HEADER.format(h="opencode") + "## A — copilot (2026-10-04 14:00–14:05)\n")
     assert log_metrics.main([str(log)]) == 0

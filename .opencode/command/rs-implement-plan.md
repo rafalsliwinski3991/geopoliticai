@@ -75,7 +75,7 @@ For each unit:
 6. Dispatch `plan-unit-auditor` with the brief path, the report path, and the diff path.
 7. Apply the audit result:
    - `HALT`: stop the run, show the finding, and wait.
-   - `FAIL` or an `Important` finding: dispatch `plan-implementer` with the findings, at most twice. After each fix, rewrite `unit-<NN>.diff` from `BASE` to the new HEAD and dispatch `plan-unit-auditor` on that whole unit diff.
+   - `FAIL` or an `Important` finding: dispatch `plan-implementer` with the findings, at most twice. After each fix, rewrite `unit-<NN>.diff` from `BASE` to the new HEAD and dispatch `plan-unit-auditor` on that whole unit diff. If the unit still fails after the second fix, stop and ask the user; do not mark it complete.
    - `Minor`: copy it into the ledger. It does not block the next unit.
    - Gate `FAIL`: the implementer re-runs the gate and appends the tail before you mark the unit complete.
 8. Append `Unit <NN>: complete (commits <base>..<head>, review <clean|N minor>)`.
@@ -89,7 +89,7 @@ After the last unit, write `branch.diff` for `git diff <base>...HEAD`.
 - **Lightweight:** read that diff yourself against the plan's scope. Dispatch `plan-final-review` only if you find a concrete risk.
 - **Standard or full:** dispatch `plan-final-review` once, with the plan path, `branch.diff`, and the ledger.
 
-If it returns findings, write `final-fix-brief.md`: the full findings list, the plan path, the branch, `BASE` (the current HEAD), the focused test commands, and the full gate command. Dispatch one `plan-implementer` with that brief and the report path `final-fix-report.md`. Then rewrite `branch.diff` and dispatch one `plan-unit-auditor` with `final-fix-brief.md`, `final-fix-report.md`, and `branch.diff`. A residual that contradicts the plan is `HALT`. Any other residual goes in the ledger and in the Step 6 report. There is no second fix wave.
+If it returns findings, write `final-fix-brief.md`: the full findings list, the plan path, the branch, `BASE` (the current HEAD), the focused test commands, and the full gate command. Dispatch one `plan-implementer` with that brief and the report path `final-fix-report.md`. Then rewrite `branch.diff` and dispatch one `plan-unit-auditor` with `final-fix-brief.md`, `final-fix-report.md`, and `branch.diff`. A residual that contradicts the plan is `HALT`. A residual `FAIL` or `Important` finding also stops the run: show it and ask the user before Step 5. Only `Minor` residuals go in the ledger and in the Step 6 report. There is no second fix wave.
 
 Then append `Final heads: <unit-01-branch> <sha>, …, <top-branch> <sha>` to the ledger, from
 `git rev-parse refs/heads/<branch>` for every unit branch. Step 5 checks the branches against this line.

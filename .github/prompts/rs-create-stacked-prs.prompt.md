@@ -76,8 +76,9 @@ confirmation question:
 For one PR, the title is the plan's title when there is a plan, and otherwise the subject of the first
 commit. If a PR already heads the branch, reuse it instead of creating one.
 
-The submit command is the only external delivery action in this workflow. After it
-succeeds, show the created or updated PR URLs and the final `gh stack view` output.
+The push and PR creation (`gh stack submit` for a stack, `git push` and `gh pr create` for one PR) are
+the only external delivery actions in this workflow. After they succeed, show the created or updated PR
+URLs, and for a stack the final `gh stack view` output.
 Do not merge PRs, force-push, delete the original branch, or rewrite commits.
 
 ## Descriptions

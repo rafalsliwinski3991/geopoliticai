@@ -201,8 +201,9 @@ Write `branch.diff` first and review that file. Fix substantive findings in one 
 completing the run. For a behavior change, use the TDD rule; in all
 cases rerun the focused validation and applicable gate. Then rerun the same lens on the fix diff. A
 finding that contradicts the approved plan is a `HALT`; stop and ask the user rather than silently
-expanding scope. Any other residual goes in the ledger and the Step 7 report; there is no second fix
-wave.
+expanding scope. Any other residual failure or substantive finding stops the run the same way: show it
+and ask the user before Step 6. Only minor residuals go in the ledger and the Step 7 report; there is no
+second fix wave.
 
 Then append `Final heads: <unit-01-branch> <sha>, …, <top-branch> <sha>` to the ledger, from
 `git rev-parse refs/heads/<branch>` for every unit branch. Step 6 checks the branches against this line.
