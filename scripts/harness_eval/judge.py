@@ -31,6 +31,11 @@ from harness_eval import checks, history
 # Gemini 3.x ignores temperature, so the judge is not deterministic; its noise
 # is part of the `≈` threshold.
 JUDGE_MODEL = "gemini-3.6-flash"
+# Gemini answers 503 during demand spikes. Waits 10, 20, 40, 80, 120 s (about 4.5 min), then the
+# job fails and "Re-run failed jobs" tries again.
+RETRY = types.HttpRetryOptions(
+    attempts=6, initial_delay=10, max_delay=120, http_status_codes=[503]
+)
 CRITERIA = {
     "plan": {
         "decisions": "Covers every settled decision in the brainstorm; none is dropped or reopened.",
@@ -232,7 +237,8 @@ def main() -> None:
     outputs = sorted(r.parent for r in args.results.glob("*/result.json"))
     if not outputs:
         raise SystemExit("no agent produced a result")
-    client = genai.Client()  # reads GEMINI_API_KEY
+    # Reads GEMINI_API_KEY.
+    client = genai.Client(http_options=types.HttpOptions(retry_options=RETRY))
     judged = [judge_output(client, d, task, args.repo, args.fixtures) for d in outputs]
     date = datetime.now(UTC).strftime("%Y-%m-%d")
     rows = [
