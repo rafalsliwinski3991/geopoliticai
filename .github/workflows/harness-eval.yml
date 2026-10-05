@@ -187,7 +187,7 @@ jobs:
         continue-on-error: true
         working-directory: ${{ runner.temp }}/ws
         env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           MODEL: ${{ matrix.model }}
           KIND: ${{ matrix.kind }}
           PROMPT: /${{ steps.ws.outputs.name }} ${{ steps.ws.outputs.args }}
