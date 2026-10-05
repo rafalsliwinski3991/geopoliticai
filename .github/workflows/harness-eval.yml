@@ -275,6 +275,22 @@ jobs:
           if-no-files-found: error
           overwrite: true
 
+      # The agent steps use continue-on-error so the result above is saved and
+      # judged even after a crash or a timeout, which also makes GitHub show
+      # them as green. This last step turns the leg red and prints the reason.
+      - name: Fail the leg if the agent did not finish
+        if: always() && contains(fromJSON('["failure","cancelled"]'), matrix.harness == 'claude' && steps.claude.outcome || steps.opencode.outcome)
+        env:
+          HARNESS: ${{ matrix.harness }}
+        run: |
+          echo "The agent step failed or timed out. Its last output:"
+          if [ "$HARNESS" = claude ]; then
+            jq -r '.result // "(no result field)"' "$RUNNER_TEMP/raw.json" || echo "(no readable raw.json: the step was killed before it wrote one)"
+          else
+            tail -n 5 "$RUNNER_TEMP/raw.jsonl" || echo "(no raw.jsonl)"
+          fi
+          exit 1
+
   judge:
     needs: [setup, agent]
     if: ${{ !cancelled() && needs.setup.result == 'success' }}
