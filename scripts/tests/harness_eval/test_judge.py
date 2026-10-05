@@ -61,6 +61,12 @@ def test_score_applies_caps_and_keeps_reasoning():
     assert by_name["tests"]["reasoning"] == "why tests"
 
 
+def test_score_cap_never_raises_a_lower_score():
+    by_name = {c["name"]: c for c in judge.score("implement", _verdict(1), {"in_scope": 2})}
+    assert by_name["in_scope"]["score"] == 1
+    assert by_name["in_scope"]["cap"] == 2
+
+
 def test_score_reorders_by_name_and_rejects_missing():
     graded = judge.score("implement", _verdict(3, names=list(reversed(IMPLEMENT))), {})
     assert [c["name"] for c in graded] == IMPLEMENT
