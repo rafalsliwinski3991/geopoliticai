@@ -2,6 +2,8 @@ name: Harness Eval
 
 # Advisory and manual: measures the current harness on the frozen deep-expert
 # task and appends the scores to the `eval-history` branch. Gates nothing.
+# Start it from the Actions tab, or comment `/harness_eval` (or
+# `/harness_eval 3` for three repeats) on a pull request from this repository.
 on:
   workflow_dispatch:
     inputs:
@@ -13,9 +15,15 @@ on:
         description: "What changed in the harness since the last run"
         type: string
         default: ""
+  # GitHub runs issue_comment workflows from the default branch, so the
+  # comment trigger works only once this file is on main.
+  issue_comment:
+    types: [created]
 
 concurrency:
-  group: harness-eval
+  # Every comment in the repository starts a run; only the ones that start an
+  # eval may queue behind each other, so a plain comment cannot displace one.
+  group: ${{ (github.event_name == 'workflow_dispatch' || (startsWith(github.event.comment.body, '/harness_eval') && contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association))) && 'harness-eval' || github.run_id }}
   cancel-in-progress: false
 
 permissions: {}
@@ -27,15 +35,42 @@ env:
 
 jobs:
   setup:
+    # The comment path holds the API keys and a write token, so only people
+    # with write access can start it.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.issue.pull_request &&
+      startsWith(github.event.comment.body, '/harness_eval') &&
+      contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association))
     runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
     outputs:
       repeats: ${{ steps.r.outputs.repeats }}
+      sha: ${{ steps.r.outputs.sha }}
     steps:
       - id: r
         env:
-          N: ${{ inputs.repeats }}
+          EVENT: ${{ github.event_name }}
+          INPUT_REPEATS: ${{ inputs.repeats }}
+          BODY: ${{ github.event.comment.body }}
+          PR: ${{ github.event.issue.number }}
+          GH_TOKEN: ${{ github.token }}
         run: |
-          python3 -c "import os; n = int(os.environ['N']); assert 1 <= n <= 5, n; print(f'repeats={list(range(1, n + 1))}')" >> "$GITHUB_OUTPUT"
+          sha=$GITHUB_SHA
+          n=$INPUT_REPEATS
+          if [ "$EVENT" = issue_comment ]; then
+            # "/harness_eval" or "/harness_eval 3"; only the first line counts.
+            read -r word arg _ <<< "$BODY"
+            [ "$word" = /harness_eval ] || { echo "not a /harness_eval command: $word"; exit 1; }
+            n=${arg:-1}
+            # The pull request's own head, never a fork's: this run holds secrets.
+            read -r sha cross < <(gh pr view "$PR" --repo "$GITHUB_REPOSITORY" \
+              --json headRefOid,isCrossRepository -q '[.headRefOid, .isCrossRepository] | @tsv')
+            [ "$cross" = false ] || { echo "pull requests from forks are not run"; exit 1; }
+          fi
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          N=$n python3 -c "import os; n = int(os.environ['N']); assert 1 <= n <= 5, n; print(f'repeats={list(range(1, n + 1))}')" >> "$GITHUB_OUTPUT"
 
   agent:
     name: "${{ matrix.subject }} #${{ matrix.repeat }}"
@@ -70,6 +105,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
+          ref: ${{ needs.setup.outputs.sha }}
           path: src
           fetch-depth: 0
           persist-credentials: false
@@ -237,8 +273,8 @@ jobs:
           overwrite: true
 
   judge:
-    needs: agent
-    if: ${{ !cancelled() }}
+    needs: [setup, agent]
+    if: ${{ !cancelled() && needs.setup.result == 'success' }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -246,6 +282,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
+          ref: ${{ needs.setup.outputs.sha }}
           fetch-depth: 0
 
       - name: Set up uv
@@ -269,7 +306,8 @@ jobs:
         working-directory: scripts
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          NOTE: ${{ inputs.note }}
+          NOTE: ${{ github.event_name == 'issue_comment' && format('PR {0}', github.event.issue.number) || inputs.note }}
+          EVAL_SHA: ${{ needs.setup.outputs.sha }}
         run: |
           uv run --no-project --python 3.12 \
             --with "google-genai>=1.33,<2" --with "pydantic>=2.9,<3" \
@@ -277,7 +315,7 @@ jobs:
             --repo "$GITHUB_WORKSPACE" --fixtures "$GITHUB_WORKSPACE/$TASK" \
             --results "$RUNNER_TEMP/results" --history "$RUNNER_TEMP/history/history.jsonl" \
             --verdicts "$RUNNER_TEMP/verdicts.json" \
-            --run-id "$GITHUB_RUN_ID" --sha "$GITHUB_SHA" --note "$NOTE" \
+            --run-id "$GITHUB_RUN_ID" --sha "$EVAL_SHA" --note "$NOTE" \
             --summary "$GITHUB_STEP_SUMMARY"
 
       - name: Save the history
