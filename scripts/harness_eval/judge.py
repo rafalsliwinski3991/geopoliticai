@@ -31,8 +31,9 @@ from harness_eval import checks, history
 # Gemini 3.x ignores temperature, so the judge is not deterministic; its noise
 # is part of the `≈` threshold.
 JUDGE_MODEL = "gemini-3.6-flash"
-# Gemini answers 503 during demand spikes. Waits 10, 20, 40, 80, 120 s (about 4.5 min), then the
-# job fails and "Re-run failed jobs" tries again.
+# Gemini answers 503 during demand spikes. Waits about 10, 20, 40, 80 and 120 s between the 6
+# attempts (jitter adds up to 1 s to each; about 4.5 min), then the job fails and "Re-run failed
+# jobs" tries again.
 RETRY = types.HttpRetryOptions(
     attempts=6, initial_delay=10, max_delay=120, http_status_codes=[503]
 )
