@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-SCRIPT = Path(__file__).resolve().parents[1] / "harness_eval" / "prepare.sh"
+SCRIPT = Path(__file__).resolve().parents[2] / "harness_eval" / "prepare.sh"
 GIT = ["git", "-c", "user.name=t", "-c", "user.email=t@t"]
 HARNESS = [
     ".claude/commands/x.md",

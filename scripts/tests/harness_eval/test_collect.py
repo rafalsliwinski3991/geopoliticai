@@ -127,7 +127,7 @@ def _run_main(tmp_path: Path, outcome: str, seconds: int) -> dict:
     (tmp_path / "start").write_text("1000")
     (tmp_path / "end").write_text(str(1000 + seconds))
     out = tmp_path / "out"
-    scripts = Path(__file__).resolve().parents[1]
+    scripts = Path(__file__).resolve().parents[2]
     subprocess.run(
         [
             sys.executable, "-m", "harness_eval.collect",
