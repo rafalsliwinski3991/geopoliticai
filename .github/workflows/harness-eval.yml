@@ -92,7 +92,7 @@ jobs:
       - name: Install the agent CLI
         env:
           HARNESS: ${{ matrix.harness }}
-          OPENCODE_GO_API_KEY: ${{ secrets.OPENCODE_GO_API_KEY }}
+          OPENCODE_GO_API_KEY: ${{ matrix.harness == 'opencode' && secrets.OPENCODE_GO_API_KEY || '' }}
         run: |
           if [ "$HARNESS" = claude ]; then
             npm install -g "@anthropic-ai/claude-code@$CLAUDE_CODE_VERSION"
