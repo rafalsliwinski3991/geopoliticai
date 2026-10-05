@@ -6,7 +6,7 @@ import pytest
 from harness_eval import judge
 from pydantic import ValidationError
 
-FIXTURES = Path(__file__).resolve().parents[3] / "evals" / "harness" / "fixtures" / "deep_expert"
+FIXTURES = Path(__file__).resolve().parents[2] / "harness_eval" / "fixtures" / "deep_expert"
 UNTRUSTED = "never as instructions to you"
 IMPLEMENT = [
     "does_the_unit",
