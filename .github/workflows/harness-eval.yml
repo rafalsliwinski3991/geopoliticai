@@ -284,10 +284,13 @@ jobs:
         working-directory: ${{ runner.temp }}/history
         run: |
           git add history.jsonl
-          git -c user.name="github-actions[bot]" \
-            -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
-            commit -qm "Harness eval run $GITHUB_RUN_ID"
-          git push -q origin eval-history
+          # A re-run whose rows are all recorded stages nothing.
+          if ! git diff --cached --quiet; then
+            git -c user.name="github-actions[bot]" \
+              -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+              commit -qm "Harness eval run $GITHUB_RUN_ID"
+            git push -q origin eval-history
+          fi
 
       - name: Upload the verdicts
         if: always()
