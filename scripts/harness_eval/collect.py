@@ -92,7 +92,9 @@ def capture_diff(ws: Path, base: str, out: Path) -> list[str]:
     """Write the candidate diff, committed or not, and return the touched paths."""
     git(ws, "add", "-A", "-N")  # untracked, non-ignored files show in the diff
     (out / "candidate.diff").write_text(git(ws, "diff", "--binary", base))
-    return git(ws, "diff", "--name-only", base).split()
+    # NUL-separated and without rename detection: a rename lists both paths,
+    # and names with spaces or non-ASCII characters stay whole.
+    return git(ws, "diff", "--name-only", "-z", "--no-renames", base).split("\0")[:-1]
 
 
 def read_epoch(path: Path) -> int | None:
@@ -113,7 +115,10 @@ def parse_checks(value: str) -> dict[str, int] | None:
     parts = value.split(",") if value else []
     if len(parts) != len(CHECK_NAMES) or not all(p.strip() for p in parts):
         return None
-    return dict(zip(CHECK_NAMES, (int(p) for p in parts), strict=True))
+    try:
+        return dict(zip(CHECK_NAMES, (int(p) for p in parts), strict=True))
+    except ValueError:
+        return None
 
 
 def main() -> None:

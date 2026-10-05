@@ -109,6 +109,24 @@ def test_capture_diff_includes_untracked_excludes_ignored(tmp_path):
     assert "ignored.txt" not in (out / "candidate.diff").read_text()
 
 
+def test_capture_diff_lists_rename_both_ways_and_odd_names_whole(tmp_path):
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    _git(ws, "init", "-q")
+    (ws / "old.py").write_text("print('some content to keep the rename similar')\n")
+    _git(ws, "add", "-A")
+    _git(ws, "commit", "-q", "-m", "base")
+    base = subprocess.run(
+        ["git", "-C", str(ws), "rev-parse", "HEAD"], capture_output=True, text=True, check=True
+    ).stdout.strip()
+    _git(ws, "mv", "old.py", "new name.py")
+    (ws / "é.py").write_text("x")
+    out = tmp_path / "out"
+    out.mkdir()
+    changed = collect.capture_diff(ws, base, out)
+    assert sorted(changed) == ["new name.py", "old.py", "é.py"]
+
+
 def test_timing_marks_timeout():
     assert collect.timing(0, 2690, 2700) == (44.8, True)
     assert collect.timing(0, 600, 2700) == (10.0, False)
@@ -119,6 +137,7 @@ def test_parse_checks():
     assert collect.parse_checks("0,1,0") == {"tests_before": 0, "tests_after": 1, "lint": 0}
     assert collect.parse_checks(",,") is None
     assert collect.parse_checks("") is None
+    assert collect.parse_checks("0,x,1") is None
 
 
 def _run_main(tmp_path: Path, outcome: str, seconds: int) -> dict:
