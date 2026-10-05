@@ -118,6 +118,7 @@ def test_a_503_is_retried_until_it_clears():
         response = client.models.generate_content(model=judge.JUDGE_MODEL, contents="x")
     finally:
         server.shutdown()
+        server.server_close()
     assert response.text == "{}"
     assert len(calls) == 3
 
