@@ -232,6 +232,7 @@ jobs:
           name: ${{ matrix.subject }}-${{ matrix.repeat }}
           path: ${{ runner.temp }}/out
           if-no-files-found: error
+          overwrite: true
 
   judge:
     needs: agent
@@ -293,3 +294,4 @@ jobs:
           name: verdicts
           path: ${{ runner.temp }}/verdicts.json
           if-no-files-found: ignore
+          overwrite: true
