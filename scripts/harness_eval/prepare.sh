@@ -11,11 +11,15 @@ src=$1 start=$2 fixture=$3 dest=$4 ws=$5
 HARNESS=(.claude .opencode .github/prompts AGENTS.md opencode.jsonc
   scripts/log_metrics.py docs/harness_logs/TEMPLATE.md)
 
-# Fetching a branch brings only its ancestors; fetching by SHA from a plain
-# repo is refused unless the source allows unadvertised objects.
-git -C "$src" branch -f eval-start "$start"
+# Fetching a ref brings only its ancestors; fetching by SHA from a plain
+# repo is refused unless the source allows unadvertised objects. The ref is
+# private to this process and removed on exit, so concurrent runs cannot see
+# each other's SHA and the source repo's own refs are left as they were.
+ref=refs/eval/start-$$
+git -C "$src" update-ref "$ref" "$start"
+trap 'git -C "$src" update-ref -d "$ref"' EXIT
 git init -q "$ws"
-git -C "$ws" fetch -q --no-tags "$src" eval-start
+git -C "$ws" fetch -q --no-tags "$src" "$ref"
 git -C "$ws" checkout -q -b eval-base FETCH_HEAD
 
 for p in "${HARNESS[@]}"; do

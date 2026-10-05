@@ -81,9 +81,16 @@ def test_current_harness_is_overlaid_and_committed(src, tmp_path):
 
 def test_input_is_placed_and_ignored(src, tmp_path):
     repo, a, _ = src
-    proc, ws = _prepare(repo, a, tmp_path)
+    _, ws = _prepare(repo, a, tmp_path)
     assert (ws / "docs/plans/p.md").read_text() == "the plan"
-    assert _git(ws, "diff", "--name-only", proc.stdout.strip()) == ""
+    assert _git(ws, "status", "--porcelain") == ""
+
+
+def test_source_repo_refs_are_left_alone(src, tmp_path):
+    repo, a, _ = src
+    before = _git(repo, "for-each-ref")
+    _prepare(repo, a, tmp_path)
+    assert _git(repo, "for-each-ref") == before
 
 
 def test_run_logs_are_excluded(src, tmp_path):
