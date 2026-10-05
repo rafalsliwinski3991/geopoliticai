@@ -206,8 +206,10 @@ jobs:
             echo lint=1
           fi >> "$GITHUB_OUTPUT"
 
+      # A failed baseline setup is an infrastructure failure, not a bad run:
+      # it leaves no artifact, so the judge records no row for the leg.
       - name: Collect the result
-        if: always() && steps.ws.outcome == 'success'
+        if: always() && steps.ws.outcome == 'success' && steps.before.outcome != 'failure'
         working-directory: ${{ runner.temp }}/tools
         env:
           CHECKS: ${{ steps.before.outputs.tests }},${{ steps.after.outputs.tests }},${{ steps.after.outputs.lint }}
@@ -224,7 +226,7 @@ jobs:
             --checks "$CHECKS" --out "$RUNNER_TEMP/out"
 
       - name: Upload the result
-        if: always() && steps.ws.outcome == 'success'
+        if: always() && steps.ws.outcome == 'success' && steps.before.outcome != 'failure'
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.subject }}-${{ matrix.repeat }}
