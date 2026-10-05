@@ -6,7 +6,7 @@ import pytest
 from harness_eval import judge
 from pydantic import ValidationError
 
-FIXTURES = Path(__file__).resolve().parents[2] / "evals" / "harness" / "fixtures" / "deep_expert"
+FIXTURES = Path(__file__).resolve().parents[3] / "evals" / "harness" / "fixtures" / "deep_expert"
 IMPLEMENT = [
     "does_the_unit",
     "tests",
@@ -121,12 +121,12 @@ def test_section_ignores_hashes_in_code_fences():
 
 
 def test_fixture_unit_sections_are_whole():
-    plan_v2 = (FIXTURES / "plan_v2.md").read_text()
-    s = judge.section(plan_v2, "### 4.2 Unit 02: quota cost")
+    plan = (FIXTURES / "plan.md").read_text()
+    s = judge.section(plan, "### 4.2 Unit 02: quota cost")
     assert len(s.splitlines()) > 80
     assert "increment_site_quota" in s
     for heading in _task()["implement"]["unit_sections"]:
-        assert judge.section(plan_v2, heading).startswith(heading)
+        assert judge.section(plan, heading).startswith(heading)
 
 
 def test_section_missing_heading_raises():

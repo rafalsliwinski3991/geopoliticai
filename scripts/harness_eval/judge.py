@@ -172,7 +172,7 @@ def judge_output(
 ) -> dict[str, Any]:
     result = json.loads((out_dir / "result.json").read_text())
     kind = result["kind"]
-    plan_v2 = (fixtures / "plan_v2.md").read_text()
+    plan = (fixtures / "plan.md").read_text()
     if kind == "plan":
         candidate = (out_dir / "candidate.md").read_text()
         files = git(repo, "ls-tree", "-r", "--name-only", task["plan"]["start"]).splitlines()
@@ -181,7 +181,7 @@ def judge_output(
         prompt = PLAN_PROMPT.format(
             criteria=_criteria_list(kind),
             brainstorm=(fixtures / "brainstorm.md").read_text(),
-            reference=plan_v2,
+            reference=plan,
             candidate=candidate,
         )
     else:
@@ -194,7 +194,7 @@ def judge_output(
         caps = checks.implement_caps(result["checks"], result["changed_files"], imp["unit_files"])
         prompt = IMPLEMENT_PROMPT.format(
             criteria=_criteria_list(kind),
-            unit="\n\n".join(section(plan_v2, h) for h in imp["unit_sections"]),
+            unit="\n\n".join(section(plan, h) for h in imp["unit_sections"]),
             reference=git(repo, "diff", imp["start"], imp["reference_end"]),
             candidate=candidate,
         )
