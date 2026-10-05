@@ -25,6 +25,11 @@ def test_plan_checks_reads_tier_units_and_paths():
     assert c.unresolved == ("src/nope.py",)
 
 
+def test_new_file_exempts_only_its_bare_name():
+    plan = "- Create `src/a/tool.py`.\n- Call `tool.py`, then `src/b/tool.py`."
+    assert checks.plan_checks(plan, []).unresolved == ("src/b/tool.py",)
+
+
 def test_tier_needs_the_word_tier_or_plan():
     assert checks.plan_checks("read the plan in full", []).tier is None
     assert checks.plan_checks("Standard plan", []).tier == "standard"

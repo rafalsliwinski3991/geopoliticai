@@ -14,8 +14,9 @@ PATH_RE = re.compile(
     r"`((?:[\w.-]+/)*[\w.-]+\.(?:py|toml|md|yml|yaml|json|jsonc|txt|lock|sh|ini|cfg|html|ts|js))`"
 )
 # A path on a line that says the file is new is declared new, along with
-# every later mention of the same file name (plans cite `tools.py` after
-# declaring `agents/deep_expert/tools.py` new). "add" is not enough: plans
+# every later mention of its bare file name (plans cite `tools.py` after
+# declaring `agents/deep_expert/tools.py` new; a directory-qualified path
+# is still checked against the repo). "add" is not enough: plans
 # "add" to existing files constantly.
 NEW_RE = re.compile(r"\b(?:new|creat(?:e|es|ed|ing))\b", re.IGNORECASE)
 TIER_RE = re.compile(
@@ -57,7 +58,7 @@ def plan_checks(text: str, files: list[str]) -> PlanChecks:
     unresolved = sorted(
         p for p in cited
         if p not in new
-        and posixpath.basename(p) not in new_names
+        and not ("/" not in p and p in new_names)
         and not p.startswith("docs/")  # gitignored plans, brainstorms, logs
         and not _exists(p, files)
     )
