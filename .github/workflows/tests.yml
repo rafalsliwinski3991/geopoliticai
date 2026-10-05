@@ -190,8 +190,9 @@ jobs:
         uses: astral-sh/setup-uv@caf0cab7a618c569241d31dcd442f54681755d39 # v3
 
       # uvx runs a floating ruff and pytest; deploy/ and scripts/ have no lockfile.
+      # The harness eval's judge imports pydantic and google-genai.
       - name: Lint and test the VPS and harness scripts
         run: |
           uvx ruff check deploy/ scripts/
-          uvx pytest deploy/tests scripts/tests
+          uvx --with pydantic --with google-genai pytest deploy/tests scripts/tests
 
