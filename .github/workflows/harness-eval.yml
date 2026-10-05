@@ -38,7 +38,7 @@ jobs:
           python3 -c "import os; n = int(os.environ['N']); assert 1 <= n <= 5, n; print(f'repeats={list(range(1, n + 1))}')" >> "$GITHUB_OUTPUT"
 
   agent:
-    name: ${{ matrix.subject }} #${{ matrix.repeat }}
+    name: "${{ matrix.subject }} #${{ matrix.repeat }}"
     needs: setup
     runs-on: ubuntu-latest
     # Read access only for the checkout below; the token never reaches the
