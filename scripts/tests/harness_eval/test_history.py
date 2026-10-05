@@ -72,6 +72,13 @@ def test_append_skips_recorded_rows(tmp_path):
     assert history.load(tmp_path / "missing.jsonl") == []
 
 
+def test_append_dedupes_by_key_and_within_one_call(tmp_path):
+    path = tmp_path / "h.jsonl"
+    history.append(path, [_row(repeat=1)])
+    history.append(path, [_row(repeat=1), _row(repeat=2), _row(repeat=2)])
+    assert [r["repeat"] for r in history.load(path)] == [1, 2]
+
+
 def test_render_marks_deltas_and_noise():
     rows = [
         _row("r1", overall=3.0, tokens_total=2_000_000),

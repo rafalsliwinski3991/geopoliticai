@@ -66,7 +66,9 @@ def append(path: Path, rows: Iterable[dict[str, Any]]) -> None:
     seen = {(r["run_id"], r["subject"], r["repeat"]) for r in load(path)}
     with path.open("a") as f:
         for r in rows:
-            if (r["run_id"], r["subject"], r["repeat"]) not in seen:
+            key = (r["run_id"], r["subject"], r["repeat"])
+            if key not in seen:
+                seen.add(key)
                 f.write(json.dumps(r, sort_keys=True) + "\n")
 
 
