@@ -135,10 +135,11 @@ jobs:
       - name: Install and baseline the tests
         id: before
         if: matrix.kind == 'implement'
+        timeout-minutes: 15
         working-directory: ${{ runner.temp }}/ws/agentic_backend
         run: |
           uv sync --locked --dev
-          if uv run make test >/dev/null 2>&1; then echo tests=0; else echo tests=1; fi >> "$GITHUB_OUTPUT"
+          if timeout -k 30 600 uv run make test >/dev/null 2>&1; then echo tests=0; else echo tests=1; fi >> "$GITHUB_OUTPUT"
 
       - name: Run the agent (Claude Code)
         id: claude
@@ -190,6 +191,7 @@ jobs:
       - name: Run the hard checks
         id: after
         if: always() && steps.before.outcome == 'success'
+        timeout-minutes: 15
         working-directory: ${{ runner.temp }}/ws
         env:
           BASE: ${{ steps.ws.outputs.base }}
@@ -198,7 +200,7 @@ jobs:
           mapfile -t py < <(git diff --name-only --diff-filter=d "$BASE" -- 'agentic_backend/*.py' \
             | sed 's#^agentic_backend/##')
           cd agentic_backend
-          if uv run make test >/dev/null 2>&1; then echo tests=0; else echo tests=1; fi >> "$GITHUB_OUTPUT"
+          if timeout -k 30 600 uv run make test >/dev/null 2>&1; then echo tests=0; else echo tests=1; fi >> "$GITHUB_OUTPUT"
           # Lint judges only the agent's own files, with the app's ruff config.
           if [ ${#py[@]} -eq 0 ] || { uv run ruff check "${py[@]}" && uv run ruff format --diff "${py[@]}"; } >/dev/null 2>&1; then
             echo lint=0
