@@ -120,7 +120,7 @@ jobs:
             echo "args=$input $output" >> "$GITHUB_OUTPUT"
           else
             start=$(jq -r .implement.start "src/$TASK/task.json")
-            fixture=plan_v2.md
+            fixture=plan.md
             input=$(jq -r .implement.plan "src/$TASK/task.json")
             output=""
             echo "name=rs-implement-plan" >> "$GITHUB_OUTPUT"
