@@ -81,8 +81,6 @@ jobs:
 
       - name: Set up uv
         uses: astral-sh/setup-uv@caf0cab7a618c569241d31dcd442f54681755d39 # v3
-        with:
-          enable-cache: true
 
       - name: Set up Node
         uses: actions/setup-node@v4
