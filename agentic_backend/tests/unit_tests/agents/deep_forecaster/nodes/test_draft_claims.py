@@ -6,7 +6,7 @@ from typing import Any
 
 import pytest
 
-from agents.deep_forecaster.state import Claim, PassageRef
+from agents.deep_forecaster.models import Claim, EvidenceRef
 from models import LLMInvocationError, Source
 from unit_tests.agents.deep_forecaster.conftest import TODAY, claims, sources
 
@@ -33,7 +33,7 @@ class TestCheckedClaims:
             _valid_claims(), today=TODAY, sources=sources()
         )
         assert len(checked) == 2
-        assert checked[0].passages[0].source == 1
+        assert checked[0].evidence[0].source == 1
 
     @pytest.mark.parametrize("count", [1, 5])
     def test_the_claim_count_is_enforced(self, count: int) -> None:
@@ -41,7 +41,7 @@ class TestCheckedClaims:
             Claim(
                 statement=f"Claim number {n} is distinct.",
                 deadline=date(2027, 1, 1),
-                passages=[PassageRef(source=1, paragraph=1)],
+                evidence=[EvidenceRef(source=1, paragraph=1)],
             )
             for n in range(1, count + 1)
         ]
@@ -53,12 +53,12 @@ class TestCheckedClaims:
             Claim(
                 statement="Alpha happens by 2027.",
                 deadline=date(2027, 1, 1),
-                passages=[PassageRef(source=1, paragraph=1)],
+                evidence=[EvidenceRef(source=1, paragraph=1)],
             ),
             Claim(
                 statement="  alpha   happens BY 2027. ",
                 deadline=date(2027, 2, 1),
-                passages=[PassageRef(source=1, paragraph=1)],
+                evidence=[EvidenceRef(source=1, paragraph=1)],
             ),
         ]
         with pytest.raises(LLMInvocationError):
@@ -73,12 +73,12 @@ class TestCheckedClaims:
             Claim(
                 statement="Alpha happens by 2027.",
                 deadline=deadline,
-                passages=[PassageRef(source=1, paragraph=1)],
+                evidence=[EvidenceRef(source=1, paragraph=1)],
             ),
             Claim(
                 statement="Beta happens by 2028.",
                 deadline=date(2028, 6, 30),
-                passages=[PassageRef(source=1, paragraph=2)],
+                evidence=[EvidenceRef(source=1, paragraph=2)],
             ),
         ]
         with pytest.raises(LLMInvocationError):
@@ -89,12 +89,12 @@ class TestCheckedClaims:
             Claim(
                 statement="  ",
                 deadline=date(2027, 1, 1),
-                passages=[PassageRef(source=1, paragraph=1)],
+                evidence=[EvidenceRef(source=1, paragraph=1)],
             ),
             Claim(
                 statement="Beta happens by 2028.",
                 deadline=date(2028, 6, 30),
-                passages=[PassageRef(source=1, paragraph=2)],
+                evidence=[EvidenceRef(source=1, paragraph=2)],
             ),
         ]
         with pytest.raises(LLMInvocationError):
@@ -105,32 +105,32 @@ class TestCheckedClaims:
             Claim(
                 statement="Alpha happens by 2027.",
                 deadline=date(2027, 1, 1),
-                passages=[],
+                evidence=[],
             ),
             Claim(
                 statement="Beta happens by 2028.",
                 deadline=date(2028, 6, 30),
-                passages=[PassageRef(source=1, paragraph=2)],
+                evidence=[EvidenceRef(source=1, paragraph=2)],
             ),
         ]
         with pytest.raises(LLMInvocationError):
             draft_module.checked_claims(claims_list, today=TODAY, sources=sources())
 
-    def test_a_claim_whose_passages_all_name_nothing_real_is_refused(self) -> None:
+    def test_a_claim_whose_evidence_all_name_nothing_real_is_refused(self) -> None:
         claims_list = [
             Claim(
                 statement="Alpha happens by 2027.",
                 deadline=date(2027, 1, 1),
-                passages=[
-                    PassageRef(source=0, paragraph=1),
-                    PassageRef(source=3, paragraph=1),
-                    PassageRef(source=1, paragraph=99),
+                evidence=[
+                    EvidenceRef(source=0, paragraph=1),
+                    EvidenceRef(source=3, paragraph=1),
+                    EvidenceRef(source=1, paragraph=99),
                 ],
             ),
             Claim(
                 statement="Beta happens by 2028.",
                 deadline=date(2028, 6, 30),
-                passages=[PassageRef(source=1, paragraph=2)],
+                evidence=[EvidenceRef(source=1, paragraph=2)],
             ),
         ]
         with pytest.raises(LLMInvocationError):
@@ -138,41 +138,45 @@ class TestCheckedClaims:
 
 
 @pytest.mark.anyio
-async def test_passages_are_tidied_not_refused(
+async def test_evidence_are_tidied_not_refused(
     monkeypatch: pytest.MonkeyPatch,
     events: list[dict[str, Any]],
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     """A repeat comes back once; dead numbers drop; at most 6 kept; each tidy logged."""
+    # Arrange
     drafted = [
         Claim(
             statement="Alpha happens by 2027.",
             deadline=date(2027, 12, 31),
-            passages=[
-                PassageRef(source=1, paragraph=1),
-                PassageRef(source=1, paragraph=1),
+            evidence=[
+                EvidenceRef(source=1, paragraph=1),
+                EvidenceRef(source=1, paragraph=1),
             ],
         ),
         Claim(
             statement="Beta happens by 2028.",
             deadline=date(2028, 6, 30),
-            passages=[
-                PassageRef(source=1, paragraph=1),
-                PassageRef(source=9, paragraph=1),
-                PassageRef(source=1, paragraph=99),
+            evidence=[
+                EvidenceRef(source=1, paragraph=1),
+                EvidenceRef(source=9, paragraph=1),
+                EvidenceRef(source=1, paragraph=99),
             ],
         ),
     ]
+    # Act
     checked = draft_module.checked_claims(drafted, today=TODAY, sources=sources())
-    assert [ref.paragraph for ref in checked[0].passages] == [1]
-    assert [ref.paragraph for ref in checked[1].passages] == [1]
+    # Assert
+    assert [ref.paragraph for ref in checked[0].evidence] == [1]
+    assert [ref.paragraph for ref in checked[1].evidence] == [1]
 
 
 @pytest.mark.anyio
-async def test_eight_real_passages_are_cut_to_six(
+async def test_eight_real_evidence_are_cut_to_six(
     monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
-    from agents.deep_forecaster.state import Claim as ClaimModel
+    # Arrange
+    from agents.deep_forecaster.models import Claim as ClaimModel
 
     wide = [
         Source("t", "https://carnegieendowment.org/x", "p1\np2\np3\np4\np5\np6\np7\np8")
@@ -181,24 +185,27 @@ async def test_eight_real_passages_are_cut_to_six(
         ClaimModel(
             statement="A claim.",
             deadline=date(2027, 1, 1),
-            passages=[PassageRef(source=1, paragraph=n) for n in range(1, 9)],
+            evidence=[EvidenceRef(source=1, paragraph=n) for n in range(1, 9)],
         ),
         ClaimModel(
             statement="Another claim.",
             deadline=date(2027, 2, 1),
-            passages=[PassageRef(source=1, paragraph=1)],
+            evidence=[EvidenceRef(source=1, paragraph=1)],
         ),
     ]
+    # Act
     checked = draft_module.checked_claims(drafted, today=TODAY, sources=wide)
-    assert len(checked[0].passages) == 6
+    # Assert
+    assert len(checked[0].evidence) == 6
 
 
 @pytest.mark.anyio
 async def test_the_node_emits_the_claims_label_and_checks(
     monkeypatch: pytest.MonkeyPatch, events: list[dict[str, Any]]
 ) -> None:
+    # Arrange
     from agents.deep_forecaster.consts.progress import CLAIMS_LABEL
-    from agents.deep_forecaster.state import DraftedClaims as _Drafted
+    from agents.deep_forecaster.models import DraftedClaims as _Drafted
 
     drafted = _Drafted(claims=_valid_claims())
 
@@ -212,7 +219,9 @@ async def test_the_node_emits_the_claims_label_and_checks(
 
     monkeypatch.setattr(draft_module, "ainvoke_structured", fake_ainvoke)
     state = {"question": "q", "sources": sources()}
+    # Act
     out = await draft_module.draft_claims(state, _runtime(events))
+    # Assert
     assert events[0] == {
         "type": "progress",
         "node": "deep_forecaster",
@@ -225,7 +234,8 @@ async def test_the_node_emits_the_claims_label_and_checks(
 async def test_the_prompts_carry_today_and_every_number(
     monkeypatch: pytest.MonkeyPatch, events: list[dict[str, Any]]
 ) -> None:
-    from agents.deep_forecaster.state import DraftedClaims as _Drafted
+    # Arrange
+    from agents.deep_forecaster.models import DraftedClaims as _Drafted
 
     drafted = _Drafted(claims=_valid_claims())
 
@@ -239,8 +249,10 @@ async def test_the_prompts_carry_today_and_every_number(
 
     monkeypatch.setattr(draft_module, "ainvoke_structured", fake_ainvoke)
     state = {"question": "q", "sources": sources()}
+    # Act
     await draft_module.draft_claims(state, _runtime(events))
     prompt, messages = holder["call"]
+    # Assert
     assert isinstance(prompt, str) and "30 September 2026" in prompt
     human = messages[0]
     assert human.content is not None

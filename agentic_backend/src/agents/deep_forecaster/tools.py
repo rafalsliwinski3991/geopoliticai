@@ -64,8 +64,10 @@ NOT_A_VIDEO_MESSAGE = (
     "`ask_video` takes only YouTube URLs returned by `search_forecaster`."
 )
 UNREADABLE_MESSAGE = "That page could not be fetched or had no usable article text."
-VIDEO_ASKED_AGAIN_MESSAGE = 'The notes on this video already answer a different question:\
+VIDEO_ASKED_AGAIN_MESSAGE = (
+    'The notes on this video already answer a different question:\
 "{question}". Read them in the sources and cite the video\'s URL.'
+)
 NO_SOURCES_LEFT_MESSAGE = (
     "No more sources can be read. Do not read more; return your findings."
 )

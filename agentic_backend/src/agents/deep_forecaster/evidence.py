@@ -12,7 +12,7 @@ from collections.abc import Sequence
 from datetime import date
 
 from agents.deep_forecaster.config import LIMITS
-from agents.deep_forecaster.state import Ballot, Claim
+from agents.deep_forecaster.models import Ballot, Claim
 from models import Source
 
 # Every link the chat UI can make clickable in model-written text: an http(s)
@@ -22,7 +22,9 @@ from models import Source
 # Brackets, parentheses and angle brackets end a match, so an inline link's
 # `)` is not part of its URL; a URL that itself contains `)` is cut short
 # (the known limit of `evals/helpers/judge.py`'s link pattern).
-LINK = re.compile(r"https?://[^\s<>()\[\]]+|www\.[^\s<>()\[\]]+", re.IGNORECASE)
+LINK = re.compile(
+    r"https?://[^\s<>()\[\]]+|(?<![\w@.])www\.[^\s<>()\[\]]+", re.IGNORECASE
+)
 # Sentence punctuation after a bare URL is not part of it (as GFM treats it).
 TRAILING_PUNCTUATION = ".,;:!?'\""
 # A member's reason is shown to other members and printed in the answer
@@ -91,14 +93,33 @@ def render_sources(sources: Sequence[Source]) -> str:
 
 
 def quoted_sources(claims: Sequence[Claim]) -> frozenset[int]:
-    """Return the numbers of the sources the claims' passages are quoted from."""
-    return frozenset(ref.source for claim in claims for ref in claim.passages)
+    """Return the numbers of the sources the claims' evidence refs quote."""
+    return common_quoted(claims)
+
+
+def quoted_sources_by_claim(
+    claims: Sequence[Claim],
+) -> dict[int, frozenset[int]]:
+    """Return, per claim (counting from 1), the sources its evidence refs quote.
+
+    The council's votes check against this per-claim map, not the union:
+    a vote on claim 1 may cite only what claim 1 quotes (review thread, #142).
+    """
+    return {
+        number: frozenset(ref.source for ref in claim.evidence)
+        for number, claim in enumerate(claims, start=1)
+    }
+
+
+def common_quoted(claims: Sequence[Claim]) -> frozenset[int]:
+    """Return the union of every claim's quoted sources."""
+    return frozenset(ref.source for claim in claims for ref in claim.evidence)
 
 
 def render_passages(claims: Sequence[Claim], sources: Sequence[Source]) -> str:
     """Return each claim with its passages copied from the sources, then the sources quoted.
 
-    The text is code's copy of the paragraph each `PassageRef` names, never a
+    The text is code's copy of the paragraph each `EvidenceRef` names, never a
     model's: `draft_claims.checked_claims` has already checked every number.
     """
     blocks = []
@@ -107,7 +128,7 @@ def render_passages(claims: Sequence[Claim], sources: Sequence[Source]) -> str:
             f"Claim {number}: {claim.statement} "
             f"(deadline: {render_deadline(claim.deadline)})"
         ]
-        for ref in claim.passages:
+        for ref in claim.evidence:
             text = paragraphs(sources[ref.source - 1].text)[ref.paragraph - 1]
             lines.append(f'- Source {ref.source}: "{text}"')
         blocks.append("\n".join(lines))

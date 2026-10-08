@@ -8,15 +8,11 @@ from typing import Any
 
 import pytest
 
+from agents.deep_forecaster.models import Ballot, Claim, EvidenceRef, Stance, Vote
 from agents.deep_forecaster.state import (
-    Ballot,
-    Claim,
     ForecastRun,
     ForecastState,
-    PassageRef,
     ResearchOutcome,
-    Stance,
-    Vote,
 )
 from models import Source
 
@@ -60,15 +56,15 @@ def claims() -> list[Claim]:
         Claim(
             statement="Alpha happens by 2027.",
             deadline=date(2027, 12, 31),
-            passages=[
-                PassageRef(source=1, paragraph=1),
-                PassageRef(source=2, paragraph=2),
+            evidence=[
+                EvidenceRef(source=1, paragraph=1),
+                EvidenceRef(source=2, paragraph=2),
             ],
         ),
         Claim(
             statement="Beta happens by 2028.",
             deadline=date(2028, 6, 30),
-            passages=[PassageRef(source=1, paragraph=3)],
+            evidence=[EvidenceRef(source=1, paragraph=3)],
         ),
     ]
 

@@ -35,8 +35,9 @@ from agents.deep_forecaster.config import (
     Seat,
 )
 from agents.deep_forecaster.evidence import render_ballot
+from agents.deep_forecaster.models import Ballot, Verdict
 from agents.deep_forecaster.prompts import ROUND_TWO_INSTRUCTIONS
-from agents.deep_forecaster.state import Ballot, ClaimTally, Verdict
+from agents.deep_forecaster.state import ClaimTally
 from llm import DEFAULT_MAX_RETRIES
 from models import LLMInvocationError
 
@@ -98,13 +99,15 @@ def member_model(seat: Seat, model: str, *, max_retries: int) -> Any:
 
 
 def validate_ballot(
-    ballot: Ballot, *, claims: int, shown: frozenset[int]
+    ballot: Ballot, *, claims: int, quoted_by_claim: Mapping[int, frozenset[int]]
 ) -> str | None:
     """Return why `ballot` cannot be counted, or None when it can (F3).
 
-    `shown` holds the numbers of the sources whose passages the member read
-    (`evidence.quoted_sources`): evidence from any other source is evidence it
-    was not given.
+    `quoted_by_claim` holds, per claim, the numbers of the sources whose
+    passages that claim quotes (`evidence.quoted_sources_by_claim`): a vote on
+    claim 1 may cite only what claim 1 quotes, evidence from another claim's
+    sources is evidence the vote was not given, and a repeated number counts
+    once (review thread, #142).
     """
     if sorted(vote.claim for vote in ballot.votes) != list(range(1, claims + 1)):
         return "not exactly one vote per claim"
@@ -114,9 +117,12 @@ def validate_ballot(
             return "an empty reason"
         if len(reason) > LIMITS.max_reason_chars:
             return "a reason over the length limit"
-        if len(vote.evidence) > LIMITS.max_evidence:
+        if len(vote.evidence) > LIMITS.max_evidences:
             return "more evidence than the limit"
-        if any(number not in shown for number in vote.evidence):
+        if len(set(vote.evidence)) != len(vote.evidence):
+            return "a repeated evidence number"
+        own = quoted_by_claim[vote.claim]
+        if any(number not in own for number in vote.evidence):
             return "evidence it was not given"
         if vote.stance != "unsure" and not vote.evidence:
             return f"a '{vote.stance}' vote without evidence"
@@ -183,14 +189,18 @@ async def convene(
     messages_for: Callable[[int], list[BaseMessage]],
     *,
     claims: int,
-    shown: frozenset[int],
+    quoted_by_claim: Mapping[int, frozenset[int]],
     quorum: int,
 ) -> dict[int, Ballot]:
     """Ask every member in `members` at once; return the counted ballots, or fail below `quorum`."""
     results = await asyncio.gather(
         *(
             _cast(
-                round_number, member, messages_for(member), claims=claims, shown=shown
+                round_number,
+                member,
+                messages_for(member),
+                claims=claims,
+                quoted_by_claim=quoted_by_claim,
             )
             for member in members
         )
@@ -214,7 +224,7 @@ async def _cast(
     messages: list[BaseMessage],
     *,
     claims: int,
-    shown: frozenset[int],
+    quoted_by_claim: Mapping[int, frozenset[int]],
 ) -> Ballot | None:
     """Return one member's counted ballot, or None when it has none this round.
 
@@ -240,7 +250,13 @@ async def _cast(
         async with asyncio.timeout(LIMITS.member_seconds):
             for model, retries, seconds in attempts:
                 ballot, why = await _attempt(
-                    seat, model, retries, seconds, messages, claims=claims, shown=shown
+                    seat,
+                    model,
+                    retries,
+                    seconds,
+                    messages,
+                    claims=claims,
+                    quoted_by_claim=quoted_by_claim,
                 )
                 if ballot is not None:
                     # One line per member, naming the model that voted and
@@ -270,7 +286,7 @@ async def _attempt(
     messages: list[BaseMessage],
     *,
     claims: int,
-    shown: frozenset[int],
+    quoted_by_claim: Mapping[int, frozenset[int]],
 ) -> tuple[Ballot | None, str]:
     """Ask `model` once (with `retries`); return its counted ballot, or None and why not.
 
@@ -289,7 +305,7 @@ async def _attempt(
     # (mypy --strict refuses a returned `Any`).
     if not isinstance(ballot, Ballot):
         return None, "no ballot"
-    problem = validate_ballot(ballot, claims=claims, shown=shown)
+    problem = validate_ballot(ballot, claims=claims, quoted_by_claim=quoted_by_claim)
     if problem is not None:
         return None, problem
     return ballot, ""

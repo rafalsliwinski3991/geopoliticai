@@ -11,7 +11,7 @@ from agents.deep_forecaster.config import COUNCIL, LIMITS
 from agents.deep_forecaster.consts.progress import ROUND_LABEL
 from agents.deep_forecaster.council import convene, round_one_view
 from agents.deep_forecaster.evidence import (
-    quoted_sources,
+    quoted_sources_by_claim,
     render_deadline,
     render_passages,
 )
@@ -30,7 +30,7 @@ async def council_round_1(
         range(1, len(COUNCIL) + 1),
         lambda member: messages,
         claims=len(state["claims"]),
-        shown=quoted_sources(state["claims"]),
+        quoted_by_claim=quoted_sources_by_claim(state["claims"]),
         quorum=LIMITS.quorum,
     )
     return {"ballots_round_1": ballots}
@@ -51,7 +51,7 @@ async def council_round_2(
         sorted(first),
         lambda member: _messages(state, runtime.context, round_one_view(member, first)),
         claims=len(state["claims"]),
-        shown=quoted_sources(state["claims"]),
+        quoted_by_claim=quoted_sources_by_claim(state["claims"]),
         quorum=0,
     )
     return {"ballots_round_2": ballots}

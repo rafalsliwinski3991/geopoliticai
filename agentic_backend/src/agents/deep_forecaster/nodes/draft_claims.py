@@ -13,13 +13,9 @@ from langgraph.runtime import Runtime
 from agents.deep_forecaster.config import CLAIMS_LLM_SETTINGS, LIMITS
 from agents.deep_forecaster.consts.progress import CLAIMS_LABEL
 from agents.deep_forecaster.evidence import paragraphs, render_deadline, render_sources
+from agents.deep_forecaster.models import Claim, DraftedClaims
 from agents.deep_forecaster.prompts import DRAFT_CLAIMS_PROMPT
-from agents.deep_forecaster.state import (
-    Claim,
-    DraftedClaims,
-    ForecastRun,
-    ForecastState,
-)
+from agents.deep_forecaster.state import ForecastRun, ForecastState
 from llm import ainvoke_structured
 from models import LLMInvocationError, Source
 
@@ -51,14 +47,14 @@ async def draft_claims(
 def checked_claims(
     claims: list[Claim], *, today: date, sources: Sequence[Source]
 ) -> list[Claim]:
-    """Return `claims` with each claim's passages tidied, or raise if a claim breaks a rule.
+    """Return `claims` with each claim's evidence refs tidied, or raise if a claim breaks a rule.
 
     The claims themselves are a hard error, never repaired (brainstorm §3:
     invalid claims are a 502): 2-4, distinct, all due after `today`. The
-    passages are tidied instead (correctness review): a number that names no
+    evidence refs are tidied instead (correctness review): a number that names no
     paragraph has no text a member could read, so it is left out, a repeat is
     listed once, and only the first `max_passages` are kept. A claim left
-    with no passage at all is a 502. Every tidy is logged, so the smoke runs
+    with no evidence ref at all is a 502. Every tidy is logged, so the smoke runs
     show how often the drafter miscounts.
     """
     if not LIMITS.min_claims <= len(claims) <= LIMITS.max_claims:
@@ -82,7 +78,7 @@ def checked_claims(
             )
         real = {
             (ref.source, ref.paragraph): ref
-            for ref in claim.passages
+            for ref in claim.evidence
             if 1 <= ref.source <= len(sources)
             and 1 <= ref.paragraph <= counts[ref.source - 1]
         }
@@ -91,12 +87,12 @@ def checked_claims(
             raise LLMInvocationError(
                 "The forecast drafted a claim with no passage its sources contain."
             )
-        if len(kept) < len(claim.passages):
+        if len(kept) < len(claim.evidence):
             logger.warning(
-                "draft_claims: Claim %d kept %d of %d passages",
+                "draft_claims: Claim %d kept %d of %d evidence refs",
                 number,
                 len(kept),
-                len(claim.passages),
+                len(claim.evidence),
             )
-        checked.append(claim.model_copy(update={"passages": kept}))
+        checked.append(claim.model_copy(update={"evidence": kept}))
     return checked

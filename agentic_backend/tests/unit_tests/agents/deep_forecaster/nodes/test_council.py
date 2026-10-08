@@ -39,7 +39,7 @@ class _RecordedConvene:
         messages_for: Any,
         *,
         claims: int,
-        shown: Any,
+        quoted_by_claim: Any,
         quorum: int,
     ) -> dict[int, Any]:
         self.calls.append(
@@ -48,7 +48,7 @@ class _RecordedConvene:
                 "members": list(members),
                 "messages": {member: messages_for(member) for member in members},
                 "claims": claims,
-                "shown": shown,
+                "quoted_by_claim": quoted_by_claim,
                 "quorum": quorum,
             }
         )
@@ -61,15 +61,21 @@ class _RecordedConvene:
 async def test_round_1_convenes_every_member_with_a_quorum(
     monkeypatch: pytest.MonkeyPatch, events: list[dict[str, Any]]
 ) -> None:
+    # Arrange
     recorded = _RecordedConvene()
     monkeypatch.setattr(council_nodes, "convene", recorded)
+    # Act
     forecast_state = state()
     await council_nodes.council_round_1(forecast_state, _runtime(events))
     call = recorded.calls[0]
+    # Assert
     assert call["round"] == 1
     assert call["members"] == list(range(1, 8))
     assert call["quorum"] == 5
-    assert call["shown"] == frozenset({1, 2})
+    assert call["quoted_by_claim"] == {
+        1: frozenset({1, 2}),
+        2: frozenset({1}),
+    }
     system = call["messages"][1][0]
     assert isinstance(system, SystemMessage) and "30 September 2026" in str(
         system.content
@@ -77,11 +83,13 @@ async def test_round_1_convenes_every_member_with_a_quorum(
 
 
 @pytest.mark.anyio
-async def test_members_read_the_passages_not_the_sources(
+async def test_members_read_the_evidence_not_the_sources(
     monkeypatch: pytest.MonkeyPatch, events: list[dict[str, Any]]
 ) -> None:
+    # Arrange
     recorded = _RecordedConvene()
     monkeypatch.setattr(council_nodes, "convene", recorded)
+    # Act
     await council_nodes.council_round_1(state(), _runtime(events))
     human = next(
         message
@@ -89,6 +97,7 @@ async def test_members_read_the_passages_not_the_sources(
         if isinstance(message, HumanMessage)
     )
     text = str(human.content)
+    # Assert
     assert "Alpha one." in text
     assert "Beta two." in text
     assert "Alpha three." in text
@@ -101,11 +110,14 @@ async def test_members_read_the_passages_not_the_sources(
 async def test_round_2_convenes_only_round_1_voters_without_a_quorum(
     monkeypatch: pytest.MonkeyPatch, events: list[dict[str, Any]]
 ) -> None:
+    # Arrange
     recorded = _RecordedConvene()
     monkeypatch.setattr(council_nodes, "convene", recorded)
+    # Act
     forecast_state = state(round_2={1: ballot(["against", "for"])})
     await council_nodes.council_round_2(forecast_state, _runtime(events))
     call = recorded.calls[0]
+    # Assert
     assert call["round"] == 2
     assert call["members"] == list(range(1, 8))
     assert call["quorum"] == 0
@@ -122,10 +134,13 @@ async def test_round_2_convenes_only_round_1_voters_without_a_quorum(
 async def test_each_round_emits_its_own_label(
     monkeypatch: pytest.MonkeyPatch, events: list[dict[str, Any]]
 ) -> None:
+    # Arrange
     recorded = _RecordedConvene()
     monkeypatch.setattr(council_nodes, "convene", recorded)
+    # Act
     forecast_state = state()
     await council_nodes.council_round_1(forecast_state, _runtime(events))
+    # Assert
     assert events[-1] == {
         "type": "progress",
         "node": "deep_forecaster",

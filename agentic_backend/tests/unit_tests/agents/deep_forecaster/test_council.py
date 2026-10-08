@@ -22,14 +22,16 @@ from agents.deep_forecaster.council import (
     round_one_view,
     validate_ballot,
 )
-from agents.deep_forecaster.state import Ballot, Stance, Vote
+from agents.deep_forecaster.models import Ballot, Stance, Vote
 from models import LLMInvocationError
 from unit_tests.agents.deep_forecaster.conftest import ballot
 
 council_module: Any = importlib.import_module("agents.deep_forecaster.council")
 
 
-SHOWN = frozenset({1, 3})
+# What claim 1 and claim 2 quote, per claim: tests give every vote the
+# evidence the claims themselves carry (review thread, #142).
+QUOTED_BY_CLAIM = {1: frozenset({1, 3}), 2: frozenset({1, 3})}
 
 
 def _valid() -> Ballot:
@@ -38,11 +40,15 @@ def _valid() -> Ballot:
 
 class TestValidateBallot:
     def test_a_well_formed_ballot_counts(self) -> None:
-        assert validate_ballot(_valid(), claims=2, shown=SHOWN) is None
+        assert (
+            validate_ballot(_valid(), claims=2, quoted_by_claim=QUOTED_BY_CLAIM) is None
+        )
 
     def test_an_unsure_vote_needs_no_evidence(self) -> None:
         ballot_ = ballot(["unsure", "unsure"], evidence={})
-        assert validate_ballot(ballot_, claims=2, shown=SHOWN) is None
+        assert (
+            validate_ballot(ballot_, claims=2, quoted_by_claim=QUOTED_BY_CLAIM) is None
+        )
 
     @pytest.mark.parametrize(
         "ballot_, why",
@@ -68,7 +74,9 @@ class TestValidateBallot:
         ],
     )
     def test_refusals(self, ballot_: Ballot, why: str) -> None:
-        assert validate_ballot(ballot_, claims=2, shown=SHOWN) == why
+        assert (
+            validate_ballot(ballot_, claims=2, quoted_by_claim=QUOTED_BY_CLAIM) == why
+        )
 
     def test_an_empty_reason(self) -> None:
         ballot_ = Ballot(
@@ -77,7 +85,10 @@ class TestValidateBallot:
                 Vote(claim=2, stance="unsure", reason="ok", evidence=[]),
             ]
         )
-        assert validate_ballot(ballot_, claims=2, shown=SHOWN) == "an empty reason"
+        assert (
+            validate_ballot(ballot_, claims=2, quoted_by_claim=QUOTED_BY_CLAIM)
+            == "an empty reason"
+        )
 
     def test_a_reason_over_the_limit(self) -> None:
         long = "r" * 601
@@ -88,7 +99,7 @@ class TestValidateBallot:
             ]
         )
         assert (
-            validate_ballot(ballot_, claims=2, shown=SHOWN)
+            validate_ballot(ballot_, claims=2, quoted_by_claim=QUOTED_BY_CLAIM)
             == "a reason over the length limit"
         )
 
@@ -104,7 +115,9 @@ class TestValidateBallot:
                 Vote(claim=2, stance="unsure", reason="ok", evidence=[]),
             ]
         )
-        assert validate_ballot(ballot_, claims=2, shown=SHOWN) is None
+        assert (
+            validate_ballot(ballot_, claims=2, quoted_by_claim=QUOTED_BY_CLAIM) is None
+        )
 
 
 def _votes_on_one_claim(members: int, stances: list[str]) -> dict[int, Ballot]:
@@ -241,7 +254,12 @@ class TestConvene:
         monkeypatch.setattr(council_module, "member_model", fake_member_model)
         started = time.monotonic()
         ballots = await convene(
-            1, range(1, 8), lambda member: [], claims=2, shown=SHOWN, quorum=5
+            1,
+            range(1, 8),
+            lambda member: [],
+            claims=2,
+            quoted_by_claim=QUOTED_BY_CLAIM,
+            quorum=5,
         )
         elapsed = time.monotonic() - started
         assert set(ballots) == set(range(1, 8))
@@ -271,7 +289,12 @@ class TestConvene:
         )
         with pytest.raises(LLMInvocationError) as exc:
             await convene(
-                1, range(1, 8), lambda member: [], claims=2, shown=SHOWN, quorum=5
+                1,
+                range(1, 8),
+                lambda member: [],
+                claims=2,
+                quoted_by_claim=QUOTED_BY_CLAIM,
+                quorum=5,
             )
         assert "Only 3 of 7" in str(exc.value) and "needs 5" in str(exc.value)
 
@@ -283,7 +306,12 @@ class TestConvene:
         behavior.update({seat.fallback: "raise" for seat in COUNCIL if seat.fallback})
         self._fakes(monkeypatch, behavior)
         ballots = await convene(
-            2, range(1, 8), lambda member: [], claims=2, shown=SHOWN, quorum=0
+            2,
+            range(1, 8),
+            lambda member: [],
+            claims=2,
+            quoted_by_claim=QUOTED_BY_CLAIM,
+            quorum=0,
         )
         assert ballots == {}
 
@@ -297,13 +325,23 @@ class TestConvene:
         behavior = {"gpt-5-mini": "raise"}
         self._fakes(monkeypatch, behavior)
         await convene(
-            1, range(1, 3), lambda member: [], claims=2, shown=SHOWN, quorum=1
+            1,
+            range(1, 3),
+            lambda member: [],
+            claims=2,
+            quoted_by_claim=QUOTED_BY_CLAIM,
+            quorum=1,
         )
         assert "gpt-5-mini: RuntimeError" in caplog.text
         assert "dropped" in caplog.text
 
         await convene(
-            2, range(1, 3), lambda member: [], claims=2, shown=SHOWN, quorum=1
+            2,
+            range(1, 3),
+            lambda member: [],
+            claims=2,
+            quoted_by_claim=QUOTED_BY_CLAIM,
+            quorum=1,
         )
         assert "kept its round-1 vote" in caplog.text
 
@@ -379,7 +417,7 @@ class TestCastFallback:
         )
         monkeypatch.setattr(council_module, "LIMITS", small)
         # Act
-        result = await _cast(1, 3, [], claims=2, shown=SHOWN)
+        result = await _cast(1, 3, [], claims=2, quoted_by_claim=QUOTED_BY_CLAIM)
         # Assert
         assert result is not None and result.votes[0].claim == 1
         assert calls[(fallback, 2)] == 1
@@ -395,7 +433,7 @@ class TestCastFallback:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         calls = self._patch(monkeypatch, {})
-        result = await _cast(1, 3, [], claims=2, shown=SHOWN)
+        result = await _cast(1, 3, [], claims=2, quoted_by_claim=QUOTED_BY_CLAIM)
         assert result is not None
         seat = COUNCIL[2]
         assert (str(seat.fallback), 2) not in calls
@@ -407,8 +445,8 @@ class TestCastFallback:
     ) -> None:
         behavior = {"gpt-5-mini": "raise", "gemini-3.8-flash": "raise"}
         calls = self._patch(monkeypatch, behavior)
-        first = await _cast(1, 1, [], claims=2, shown=SHOWN)
-        second = await _cast(1, 2, [], claims=2, shown=SHOWN)
+        first = await _cast(1, 1, [], claims=2, quoted_by_claim=QUOTED_BY_CLAIM)
+        second = await _cast(1, 2, [], claims=2, quoted_by_claim=QUOTED_BY_CLAIM)
         assert first is None and second is None
         assert set(calls) == {("gpt-5-mini", 2), ("gemini-3.8-flash", 2)}
 
@@ -431,7 +469,7 @@ class TestCastFallback:
         )
         monkeypatch.setattr(council_module, "LIMITS", small)
         started = time.monotonic()
-        result = await _cast(1, 3, [], claims=2, shown=SHOWN)
+        result = await _cast(1, 3, [], claims=2, quoted_by_claim=QUOTED_BY_CLAIM)
         elapsed = time.monotonic() - started
         assert result is None
         assert elapsed < 0.3
@@ -442,13 +480,18 @@ class TestCastFallback:
 async def test_the_wall_cap_cancels_a_fallback_in_flight(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # Arrange
     free = COUNCIL[2]
     assert free.fallback is not None
     behavior = {free.model: "timeout", free.fallback: "timeout"}
     TestCastFallback()._patch(monkeypatch, behavior)
-    task = asyncio.ensure_future(_cast(1, 3, [], claims=2, shown=SHOWN))
+    # Act
+    task = asyncio.ensure_future(
+        _cast(1, 3, [], claims=2, quoted_by_claim=QUOTED_BY_CLAIM)
+    )
     await asyncio.sleep(0.05)
     task.cancel()
+    # Assert
     with pytest.raises(asyncio.CancelledError):
         await task
 
@@ -511,7 +554,9 @@ class TestMemberClient:
 
 
 def test_every_free_seat_has_a_paid_fallback_from_no_seated_vendor() -> None:
+    # Arrange
     seated_vendors = {seat.model.split("/")[0] for seat in COUNCIL if "/" in seat.model}
+    # Assert
     for seat in COUNCIL:
         if seat.provider == "openrouter":
             assert seat.model.endswith(":free")
