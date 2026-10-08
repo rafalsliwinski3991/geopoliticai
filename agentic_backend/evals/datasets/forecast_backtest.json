@@ -1,88 +1,93 @@
-[
+{
+ "description": "Forecast backtest: forecasts made as of a past date, scored against what actually happened. Same full forecaster graph as deep_forecaster.json (research, draft_claims, council_round_1, council_round_2, tally, write_analysis, verify) but run with ForecastRun.today pinned to the example's as_of date, after a leakage probe asks every voting model (each seat plus its paid fallback) the bare question with no sources. Scores only the example's focal_claim and turns a probe failure (rate limit, retired id) into an invalid run rather than 'the model did not know'.",
+ "cases": [
   {
-    "name": "backtest-sweden-election",
-    "input": {
-      "query": "Give me a forecast: will Sweden's opposition centre-left bloc win a majority of the Riksdag's seats in the 13 September 2026 general election?",
-      "as_of": "2026-08-05",
-      "resolves_on": "2026-09-13",
-      "resolution_source": "https://www.abc.net.au/news/2026-09-17/sweden-election-result/107149110",
-      "sources": [
-        {
-          "title": "Sweden's campaign opens",
-          "url": "https://pre-event.example/sweden-campaign",
-          "text": "Sweden's general election is set for 13 September 2026.\nThe incumbent three-party centre-right coalition has governed since 2022.\nThe opposition centre-left bloc campaigns as a joint list of four parties.\nPublic broadcasting hosts the leaders' debates in the final month.",
-          "author": "Elsa Nyberg"
-        },
-        {
-          "title": "Opinion polls show a close race",
-          "url": "https://pre-event.example/sweden-polls",
-          "text": "Poll aggregates through late summer put the two blocs within a few points.\nNeither bloc has held a double-digit lead at any point this year.\nTurnout in Swedish elections has exceeded 84 percent in recent cycles.",
-          "author": ""
-        },
-        {
-          "title": "Budget disputes strain the coalition",
-          "url": "https://pre-event.example/sweden-budget",
-          "text": "The governing coalition's autumn budget talks exposed disputes over energy prices.\nOne coalition partner has publicly questioned a flagship tax pledge.\nThe Social Democrats campaign on welfare and energy prices.",
-          "author": "Johan Lindqvist"
-        }
-      ],
-      "focal_claim": 1
-    },
-    "output": {
-      "outcome": "Sweden's centre-left bloc won a one-seat majority (175-176 of 349) in the 13 September 2026 general election, ousting the centre-right coalition led by Ulf Kristersson; Magdalena Andersson is set to return as prime minister. Only about 26,000 votes separated the blocs.",
-      "answer": "The council leans towards a change of government in Sweden. The campaign's frame ([Sweden's campaign opens](https://pre-event.example/sweden-campaign)) and the poll aggregate ([Opinion polls show a close race](https://pre-event.example/sweden-polls)) suggest the centre-right's advantage is gone.\n\n## Claim 1: Sweden's opposition centre-left bloc wins a majority of the Riksdag's 349 seats in the 13 September 2026 general election.\nBy 15 October 2026. Council verdict: **ACCEPTED**\n\nMembers weigh the tight polls ([Opinion polls show a close race](https://pre-event.example/sweden-polls)) against the coalition's budget disputes ([Budget disputes strain the coalition](https://pre-event.example/sweden-budget)).\n\n## Claim 2: Sweden's post-election government formation concludes before 1 November 2026.\nBy 1 November 2026. Council verdict: **UNRESOLVED**\n\nFormation timelines rest on the seat count the election produces; the sources say little ([Sweden's campaign opens](https://pre-event.example/sweden-campaign)).\n\n## How the council voted\n\nMembers voting: 7 of 7.\n\nEvidence: 3 sources read from 1 site. The council voted on 4 passages quoted from 2 of them.\n\n### Claim 1: ACCEPTED\n5 of 7 voted for, 1 against, 1 unsure.\n\n- Member 1: for — The polls' tight race plus coalition strain favours the opposition. ([Source 2](https://pre-event.example/sweden-polls), [Source 3](https://pre-event.example/sweden-budget))\n- Member 2: for — Strained budgets and joint campaigning point left. ([Source 3](https://pre-event.example/sweden-budget))\n- Member 3: for — The incumbent's energy disputes cost votes. ([Source 3](https://pre-event.example/sweden-budget))\n- Member 4: against — Incumbents rarely lose on one budget. ([Source 2](https://pre-event.example/sweden-polls))\n- Member 5: unsure — Within the margin of error. ([Source 2](https://pre-event.example/sweden-polls))\n- Member 6: for — High turnout favours challenger blocs. ([Source 2](https://pre-event.example/sweden-polls))\n- Member 7: for — The joint list's discipline beats coalition infighting. ([Source 1](https://pre-event.example/sweden-campaign), [Source 3](https://pre-event.example/sweden-budget))\n\n### Claim 2: UNRESOLVED\n2 of 7 voted for, 1 against, 4 unsure.\n\n- Member 1: unsure — Formation timelines vary.\n- Member 2: for — A one-seat margin still means a quick deal. ([Source 2](https://pre-event.example/sweden-polls))\n- Member 3: unsure — No basis.\n- Member 4: unsure — Thin.\n- Member 5: unsure — No lean.\n- Member 6: for — Sweden forms governments fast. ([Source 2](https://pre-event.example/sweden-polls))\n- Member 7: unsure — Too thin.",
-      "claims": [
-        "Claim 1: Sweden's opposition centre-left bloc wins a majority of the Riksdag's 349 seats in the 13 September 2026 general election. (deadline: 2026-10-15)",
-        "Claim 2: Sweden's post-election government formation concludes before 1 November 2026. (deadline: 2026-11-01)"
-      ],
-      "verdicts": [
-        "Claim 1: ACCEPTED",
-        "Claim 2: UNRESOLVED"
-      ],
-      "leak_probe": "Member 1: I do not know how this turned out.\n\nMember 2: I do not know how this turned out.\n\nMember 3: I do not know how this turned out.\n\nMember 4: I do not know how this turned out.\n\nMember 5: I do not know how this turned out.\n\nMember 6: I do not know how this turned out.\n\nMember 7: I do not know how this turned out.\n\nMember 3 (fallback): I do not know how this turned out.\n\nMember 4 (fallback): I do not know how this turned out.\n\nMember 5 (fallback): I do not know how this turned out.\n\nMember 6 (fallback): I do not know how this turned out.\n\nMember 7 (fallback): I do not know how this turned out."
-    }
+   "name": "backtest-sweden-election",
+   "input": {
+    "query": "Give me a forecast: will Sweden's opposition centre-left bloc win a majority of the Riksdag's seats in the 13 September 2026 general election?",
+    "as_of": "2026-08-05",
+    "resolves_on": "2026-09-13",
+    "resolution_source": "https://www.abc.net.au/news/2026-09-17/sweden-election-result/107149110",
+    "sources": [
+     {
+      "title": "Sweden's campaign opens",
+      "url": "https://pre-event.example/sweden-campaign",
+      "text": "Sweden's general election is set for 13 September 2026.\nThe incumbent three-party centre-right coalition has governed since 2022.\nThe opposition centre-left bloc campaigns as a joint list of four parties.\nPublic broadcasting hosts the leaders' debates in the final month.",
+      "author": "Elsa Nyberg"
+     },
+     {
+      "title": "Opinion polls show a close race",
+      "url": "https://pre-event.example/sweden-polls",
+      "text": "Poll aggregates through late summer put the two blocs within a few points.\nNeither bloc has held a double-digit lead at any point this year.\nTurnout in Swedish elections has exceeded 84 percent in recent cycles.",
+      "author": ""
+     },
+     {
+      "title": "Budget disputes strain the coalition",
+      "url": "https://pre-event.example/sweden-budget",
+      "text": "The governing coalition's autumn budget talks exposed disputes over energy prices.\nOne coalition partner has publicly questioned a flagship tax pledge.\nThe Social Democrats campaign on welfare and energy prices.",
+      "author": "Johan Lindqvist"
+     }
+    ],
+    "focal_claim": 1
+   },
+   "output": {
+    "outcome": "Sweden's centre-left bloc won a one-seat majority (175-176 of 349) in the 13 September 2026 general election, ousting the centre-right coalition led by Ulf Kristersson; Magdalena Andersson is set to return as prime minister. Only about 26,000 votes separated the blocs.",
+    "answer": "The council leans towards a change of government in Sweden. The campaign's frame ([Sweden's campaign opens](https://pre-event.example/sweden-campaign)) and the poll aggregate ([Opinion polls show a close race](https://pre-event.example/sweden-polls)) suggest the centre-right's advantage is gone.\n\n## Claim 1: Sweden's opposition centre-left bloc wins a majority of the Riksdag's 349 seats in the 13 September 2026 general election.\nBy 15 October 2026. Council verdict: **ACCEPTED**\n\nMembers weigh the tight polls ([Opinion polls show a close race](https://pre-event.example/sweden-polls)) against the coalition's budget disputes ([Budget disputes strain the coalition](https://pre-event.example/sweden-budget)).\n\n## Claim 2: Sweden's post-election government formation concludes before 1 November 2026.\nBy 1 November 2026. Council verdict: **UNRESOLVED**\n\nFormation timelines rest on the seat count the election produces; the sources say little ([Sweden's campaign opens](https://pre-event.example/sweden-campaign)).\n\n## How the council voted\n\nMembers voting: 7 of 7.\n\nEvidence: 3 sources read from 1 site. The council voted on 4 passages quoted from 2 of them.\n\n### Claim 1: ACCEPTED\n5 of 7 voted for, 1 against, 1 unsure.\n\n- Member 1: for \u2014 The polls' tight race plus coalition strain favours the opposition. ([Source 2](https://pre-event.example/sweden-polls), [Source 3](https://pre-event.example/sweden-budget))\n- Member 2: for \u2014 Strained budgets and joint campaigning point left. ([Source 3](https://pre-event.example/sweden-budget))\n- Member 3: for \u2014 The incumbent's energy disputes cost votes. ([Source 3](https://pre-event.example/sweden-budget))\n- Member 4: against \u2014 Incumbents rarely lose on one budget. ([Source 2](https://pre-event.example/sweden-polls))\n- Member 5: unsure \u2014 Within the margin of error. ([Source 2](https://pre-event.example/sweden-polls))\n- Member 6: for \u2014 High turnout favours challenger blocs. ([Source 2](https://pre-event.example/sweden-polls))\n- Member 7: for \u2014 The joint list's discipline beats coalition infighting. ([Source 1](https://pre-event.example/sweden-campaign), [Source 3](https://pre-event.example/sweden-budget))\n\n### Claim 2: UNRESOLVED\n2 of 7 voted for, 1 against, 4 unsure.\n\n- Member 1: unsure \u2014 Formation timelines vary.\n- Member 2: for \u2014 A one-seat margin still means a quick deal. ([Source 2](https://pre-event.example/sweden-polls))\n- Member 3: unsure \u2014 No basis.\n- Member 4: unsure \u2014 Thin.\n- Member 5: unsure \u2014 No lean.\n- Member 6: for \u2014 Sweden forms governments fast. ([Source 2](https://pre-event.example/sweden-polls))\n- Member 7: unsure \u2014 Too thin.",
+    "claims": [
+     "Claim 1: Sweden's opposition centre-left bloc wins a majority of the Riksdag's 349 seats in the 13 September 2026 general election. (deadline: 2026-10-15)",
+     "Claim 2: Sweden's post-election government formation concludes before 1 November 2026. (deadline: 2026-11-01)"
+    ],
+    "verdicts": [
+     "Claim 1: ACCEPTED",
+     "Claim 2: UNRESOLVED"
+    ],
+    "leak_probe": "Member 1: I do not know how this turned out.\n\nMember 2: I do not know how this turned out.\n\nMember 3: I do not know how this turned out.\n\nMember 4: I do not know how this turned out.\n\nMember 5: I do not know how this turned out.\n\nMember 6: I do not know how this turned out.\n\nMember 7: I do not know how this turned out.\n\nMember 3 (fallback): I do not know how this turned out.\n\nMember 4 (fallback): I do not know how this turned out.\n\nMember 5 (fallback): I do not know how this turned out.\n\nMember 6 (fallback): I do not know how this turned out.\n\nMember 7 (fallback): I do not know how this turned out."
+   },
+   "description": "Sweden's September 2026 general election, forecast as of 5 August 2026 (a real outcome, asked through synthetic sources marked as such). The focal claim (the centre-left bloc wins a majority) is ACCEPTED, and the example checks the factual verdict against the recorded resolution as well as the usual citation and prose-vs-tally judges."
   },
   {
-    "name": "backtest-mecca-pact",
-    "input": {
-      "query": "Give me a forecast: will Saudi Arabia, Turkey and Pakistan sign a joint defence agreement by 30 September 2026?",
-      "as_of": "2026-07-25",
-      "resolves_on": "2026-09-15",
-      "resolution_source": "https://www.bbc.com/news/articles/c30418m4mj4o",
-      "sources": [
-        {
-          "title": "A trilateral meeting is prepared",
-          "url": "https://pre-event.example/mecca-prep",
-          "text": "The three capitals announced a joint defence summit.\nA bilateral defence pact between two of them already exists.\nTheir foreign ministers met earlier this year on joint security.",
-          "author": "Yusuf Demir"
-        },
-        {
-          "title": "The war's pressure grows",
-          "url": "https://pre-event.example/mecca-pressure",
-          "text": "Missile fire has reached the gulf's oil exporters.\nRegional states say security can no longer depend on outside powers.\nAnalysts expect closer defence ties among the four main states.",
-          "author": "Leyla Karim"
-        },
-        {
-          "title": "What the draft is said to say",
-          "url": "https://pre-event.example/mecca-expected",
-          "text": "The draft is described as a mutual-defence pledge without troop commitments.\nOfficials call it purely defensive in briefings.\nA signing is expected at the summit itself.",
-          "author": ""
-        }
-      ],
-      "focal_claim": 1
-    },
-    "output": {
-      "outcome": "On 7 August 2026 Saudi Arabia, Turkey and Pakistan signed the Mecca Joint Defence Agreement in Mecca, stipulating that an armed attack on any one of the three is an attack on all; Turkey's foreign minister called it technically the same as NATO's Article 5.",
-      "answer": "The council expects the trilateral defence pact to be signed. The announced summit ([A trilateral meeting is prepared](https://pre-event.example/mecca-prep)) and the war's pressure ([The war's pressure grows](https://pre-event.example/mecca-pressure)) make it near-certain; the text is expected to stay declaratory.\n\n## Claim 1: Saudi Arabia, Turkey and Pakistan sign a joint defence agreement by 30 September 2026.\nBy 30 September 2026. Council verdict: **ACCEPTED**\n\nThe announced summit and prepared signing ([What the pact is expected to say](https://pre-event.example/mecca-expected)) decide this claim.\n\n## Claim 2: The agreement's text includes troop commitments from any party.\nBy 31 October 2026. Council verdict: **REJECTED**\n\nBriefings describe a defensive pledge without troop commitments ([What the pact is expected to say](https://pre-event.example/mecca-expected)).\n\n## How the council voted\n\nMembers voting: 7 of 7.\n\nEvidence: 3 sources read from 1 site. The council voted on 3 passages quoted from 2 of them.\n\n### Claim 1: ACCEPTED\n7 of 7 voted for, 0 against, 0 unsure.\n\n- Member 1: for — The summit is announced for a signing. ([Source 1](https://pre-event.example/mecca-prep), [Source 3](https://pre-event.example/mecca-expected))\n- Member 2: for — The bilateral pact expands to trilateral. ([Source 1](https://pre-event.example/mecca-prep))\n- Member 3: for — The war's pressure accelerates it. ([Source 2](https://pre-event.example/mecca-pressure))\n- Member 4: for — The signing is expected at the summit. ([Source 3](https://pre-event.example/mecca-expected))\n- Member 5: for — The ministers' earlier meeting paved it. ([Source 1](https://pre-event.example/mecca-prep))\n- Member 6: for — Analysts expect exactly this. ([Source 2](https://pre-event.example/mecca-pressure))\n- Member 7: for — Prepared summit plus draft. ([Source 1](https://pre-event.example/mecca-prep), [Source 3](https://pre-event.example/mecca-expected))\n\n### Claim 2: REJECTED\n1 of 7 voted for, 5 against, 1 unsure.\n\n- Member 1: against — Briefings say purely defensive. ([Source 3](https://pre-event.example/mecca-expected))\n- Member 2: against — No troop commitments expected. ([Source 3](https://pre-event.example/mecca-expected))\n- Member 3: unsure — No basis.\n- Member 4: against — The draft has no troop pledges. ([Source 3](https://pre-event.example/mecca-expected))\n- Member 5: against — Defensive framing only. ([Source 3](https://pre-event.example/mecca-expected))\n- Member 6: unsure — No lean.\n- Member 7: against — No troop commitments. ([Source 3](https://pre-event.example/mecca-expected))",
-      "claims": [
-        "Claim 1: Saudi Arabia, Turkey and Pakistan sign a joint defence agreement by 30 September 2026. (deadline: 2026-09-30)",
-        "Claim 2: The agreement's text includes troop commitments from any party. (deadline: 2026-10-31)"
-      ],
-      "verdicts": [
-        "Claim 1: ACCEPTED",
-        "Claim 2: REJECTED"
-      ],
-      "leak_probe": "Member 1: I do not know how this turned out.\n\nMember 2: I do not know how this turned out.\n\nMember 3: I do not know how this turned out.\n\nMember 4: I do not know how this turned out.\n\nMember 5: I do not know how this turned out.\n\nMember 6: I do not know how this turned out.\n\nMember 7: I do not know how this turned out.\n\nMember 3 (fallback): I do not know how this turned out.\n\nMember 4 (fallback): I do not know how this turned out.\n\nMember 5 (fallback): I do not know how this turned out.\n\nMember 6 (fallback): I do not know how this turned out.\n\nMember 7 (fallback): I do not know how this turned out."
-    }
+   "name": "backtest-mecca-pact",
+   "input": {
+    "query": "Give me a forecast: will Saudi Arabia, Turkey and Pakistan sign a joint defence agreement by 30 September 2026?",
+    "as_of": "2026-07-25",
+    "resolves_on": "2026-09-15",
+    "resolution_source": "https://www.bbc.com/news/articles/c30418m4mj4o",
+    "sources": [
+     {
+      "title": "A trilateral meeting is prepared",
+      "url": "https://pre-event.example/mecca-prep",
+      "text": "The three capitals announced a joint defence summit.\nA bilateral defence pact between two of them already exists.\nTheir foreign ministers met earlier this year on joint security.",
+      "author": "Yusuf Demir"
+     },
+     {
+      "title": "The war's pressure grows",
+      "url": "https://pre-event.example/mecca-pressure",
+      "text": "Missile fire has reached the gulf's oil exporters.\nRegional states say security can no longer depend on outside powers.\nAnalysts expect closer defence ties among the four main states.",
+      "author": "Leyla Karim"
+     },
+     {
+      "title": "What the draft is said to say",
+      "url": "https://pre-event.example/mecca-expected",
+      "text": "The draft is described as a mutual-defence pledge without troop commitments.\nOfficials call it purely defensive in briefings.\nA signing is expected at the summit itself.",
+      "author": ""
+     }
+    ],
+    "focal_claim": 1
+   },
+   "output": {
+    "outcome": "On 7 August 2026 Saudi Arabia, Turkey and Pakistan signed the Mecca Joint Defence Agreement in Mecca, stipulating that an armed attack on any one of the three is an attack on all; Turkey's foreign minister called it technically the same as NATO's Article 5.",
+    "answer": "The council expects the trilateral defence pact to be signed. The announced summit ([A trilateral meeting is prepared](https://pre-event.example/mecca-prep)) and the war's pressure ([The war's pressure grows](https://pre-event.example/mecca-pressure)) make it near-certain; the text is expected to stay declaratory.\n\n## Claim 1: Saudi Arabia, Turkey and Pakistan sign a joint defence agreement by 30 September 2026.\nBy 30 September 2026. Council verdict: **ACCEPTED**\n\nThe announced summit and prepared signing ([What the pact is expected to say](https://pre-event.example/mecca-expected)) decide this claim.\n\n## Claim 2: The agreement's text includes troop commitments from any party.\nBy 31 October 2026. Council verdict: **REJECTED**\n\nBriefings describe a defensive pledge without troop commitments ([What the pact is expected to say](https://pre-event.example/mecca-expected)).\n\n## How the council voted\n\nMembers voting: 7 of 7.\n\nEvidence: 3 sources read from 1 site. The council voted on 3 passages quoted from 2 of them.\n\n### Claim 1: ACCEPTED\n7 of 7 voted for, 0 against, 0 unsure.\n\n- Member 1: for \u2014 The summit is announced for a signing. ([Source 1](https://pre-event.example/mecca-prep), [Source 3](https://pre-event.example/mecca-expected))\n- Member 2: for \u2014 The bilateral pact expands to trilateral. ([Source 1](https://pre-event.example/mecca-prep))\n- Member 3: for \u2014 The war's pressure accelerates it. ([Source 2](https://pre-event.example/mecca-pressure))\n- Member 4: for \u2014 The signing is expected at the summit. ([Source 3](https://pre-event.example/mecca-expected))\n- Member 5: for \u2014 The ministers' earlier meeting paved it. ([Source 1](https://pre-event.example/mecca-prep))\n- Member 6: for \u2014 Analysts expect exactly this. ([Source 2](https://pre-event.example/mecca-pressure))\n- Member 7: for \u2014 Prepared summit plus draft. ([Source 1](https://pre-event.example/mecca-prep), [Source 3](https://pre-event.example/mecca-expected))\n\n### Claim 2: REJECTED\n1 of 7 voted for, 5 against, 1 unsure.\n\n- Member 1: against \u2014 Briefings say purely defensive. ([Source 3](https://pre-event.example/mecca-expected))\n- Member 2: against \u2014 No troop commitments expected. ([Source 3](https://pre-event.example/mecca-expected))\n- Member 3: unsure \u2014 No basis.\n- Member 4: against \u2014 The draft has no troop pledges. ([Source 3](https://pre-event.example/mecca-expected))\n- Member 5: against \u2014 Defensive framing only. ([Source 3](https://pre-event.example/mecca-expected))\n- Member 6: unsure \u2014 No lean.\n- Member 7: against \u2014 No troop commitments. ([Source 3](https://pre-event.example/mecca-expected))",
+    "claims": [
+     "Claim 1: Saudi Arabia, Turkey and Pakistan sign a joint defence agreement by 30 September 2026. (deadline: 2026-09-30)",
+     "Claim 2: The agreement's text includes troop commitments from any party. (deadline: 2026-10-31)"
+    ],
+    "verdicts": [
+     "Claim 1: ACCEPTED",
+     "Claim 2: REJECTED"
+    ],
+    "leak_probe": "Member 1: I do not know how this turned out.\n\nMember 2: I do not know how this turned out.\n\nMember 3: I do not know how this turned out.\n\nMember 4: I do not know how this turned out.\n\nMember 5: I do not know how this turned out.\n\nMember 6: I do not know how this turned out.\n\nMember 7: I do not know how this turned out.\n\nMember 3 (fallback): I do not know how this turned out.\n\nMember 4 (fallback): I do not know how this turned out.\n\nMember 5 (fallback): I do not know how this turned out.\n\nMember 6 (fallback): I do not know how this turned out.\n\nMember 7 (fallback): I do not know how this turned out."
+   },
+   "description": "The Mecca Joint Defence Agreement signed 7 August 2026, forecast as of 25 July 2026. The focal claim (the pact gets signed) is ACCEPTED while its secondary claim is REJECTED, so the run must score only claim 1 and must not silently know a signed outcome without sources: the leakage probe's models may not already know the outcome."
   }
-]
+ ]
+}
