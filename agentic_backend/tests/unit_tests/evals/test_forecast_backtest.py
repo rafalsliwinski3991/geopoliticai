@@ -41,6 +41,9 @@ def test_leak_probe_asks_every_model_that_can_vote(
     assert len(member_lines) == 7
     assert all("(fallback)" not in line for line in member_lines)
     assert "unavailable" not in probe
+    assert sorted(call[1] for call in recorded) == sorted(
+        seat.model for seat in config_module.COUNCIL
+    )
     assert all(call[2] == 2 for call in recorded)
 
 

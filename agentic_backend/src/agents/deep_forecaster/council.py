@@ -234,12 +234,10 @@ async def _cast(
     """
     seat = COUNCIL[member - 1]
     started = time.monotonic()
-    failures: list[str] = []
     try:
         async with asyncio.timeout(LIMITS.member_seconds):
             ballot, why = await _attempt(
                 seat,
-                seat.model,
                 messages,
                 claims=claims,
                 quoted_by_claim=quoted_by_claim,
@@ -248,37 +246,35 @@ async def _cast(
                 # One line per member, naming the model that voted (the smoke
                 # runs measure per-seat latency and drop rates from these).
                 logger.info(
-                    "council round %d: Member %d voted via %s after %.0f s%s",
+                    "council round %d: Member %d voted via %s after %.0f s",
                     round_number,
                     member,
                     seat.model,
                     time.monotonic() - started,
-                    f" ({'; '.join(failures)})" if failures else "",
                 )
                 return ballot
-            failures.append(f"{seat.model}: {why}")
+            failure = f"{seat.model}: {why}"
     except TimeoutError:
-        failures.append("the member's time limit")
-    _dropped(round_number, member, "; ".join(failures), started)
+        failure = f"{seat.model}: the member's time limit"
+    _dropped(round_number, member, failure, started)
     return None
 
 
 async def _attempt(
     seat: Seat,
-    model: str,
     messages: list[BaseMessage],
     *,
     claims: int,
     quoted_by_claim: Mapping[int, frozenset[int]],
 ) -> tuple[Ballot | None, str]:
-    """Ask `model` once (with the client's retries); return its counted ballot, or None and why not.
+    """Ask the seat's model once (with the client's retries); return its counted ballot, or None and why not.
 
     Cancellation by the member's own timeout or by
     the wall cap is a `BaseException`, so it passes through.
     """
     try:
         ballot = await member_model(
-            seat, model, max_retries=DEFAULT_MAX_RETRIES
+            seat, seat.model, max_retries=DEFAULT_MAX_RETRIES
         ).ainvoke(messages)
     except Exception as exc:  # noqa: BLE001 - a failed attempt has no ballot (Q9)
         # The body, logged only: the smoke runs need to tell a rejected
@@ -286,7 +282,7 @@ async def _attempt(
         logger.error(
             "council: Member %d's attempt on %s failed: %s: %s",
             COUNCIL.index(seat) + 1,
-            model,
+            seat.model,
             type(exc).__name__,
             str(exc)[:400],
         )
@@ -302,7 +298,7 @@ async def _attempt(
 
 
 def _dropped(round_number: int, member: int, why: str, started: float) -> None:
-    """Log a member without a ballot this round, with each model's failure (Q21: logs only)."""
+    """Log a member without a ballot this round, with its model's failure (Q21: logs only)."""
     outcome = "kept its round-1 vote" if round_number == 2 else "dropped"
     logger.warning(
         "council round %d: Member %d %s after %.0f s: %s",

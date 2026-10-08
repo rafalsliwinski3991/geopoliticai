@@ -307,8 +307,7 @@ async def test_a_forecast_runs_every_step_once_inside_a_checkpointed_parent(
             script = scripted.get(self.model)
             count = counters[self.model]
             if script is not None and (
-                ("always" in script)
-                or (script.get("fail_first") and count == 1)
+                (script.get("fail_first") and count == 1)
                 or (script.get("fail_second") and count >= 2)
             ):
                 member_calls.append((self.model, self.max_retries, "failed"))

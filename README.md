@@ -110,12 +110,12 @@ from that dump.
 
 **Operator-side spend caps (not code, and not optional):** configure hard
 spend caps in the OpenAI and Brave dashboards, a credit limit on the
-production OpenRouter key (it pays for the forecaster's paid fallback
+production OpenRouter key (it pays for the forecaster's five OpenRouter
 seats), and a budget alert on a billed Gemini project, before going live —
 they are the only control that still holds when the application-layer quota
 (`DAILY_RESEARCH_TURNS` and its site-wide ceiling) is wrong. Keep the
-OpenRouter balance positive: a negative balance returns 402 even for free
-models, which would drop all five free seats. Record the configured figures
+OpenRouter balance positive: a negative balance returns 402, which would
+drop all five OpenRouter seats. Record the configured figures
 here next to the deploy order.
 
 The chat SPA's build stage (`npm ci`) reaches a registry at deploy time, which
