@@ -77,12 +77,19 @@ class ResearchRun:
     # so parallel scouts cannot overshoot the cap (plan review).
     reserved: int = 0
     candidates: dict[str, Candidate] = field(default_factory=dict)
+    # Which forecaster's search returned each candidate; a video's notes are
+    # titled with it, so the record says whose page pointed at the video
+    # (review thread, #140).
+    found_by: dict[str, str] = field(default_factory=dict)
+    # The question each recorded video already answered, so `ask_video` can
+    # say so instead of presenting old notes as a new question's answer (review thread, #140).
+    video_questions: dict[str, str] = field(default_factory=dict)
     sources: dict[str, Source] = field(default_factory=dict)
     # One in-flight read per URL, as the deep expert's (review thread, #129):
     # a second concurrent call waits, then finds the source recorded.
     read_locks: dict[str, asyncio.Lock] = field(default_factory=dict)
     search_gate: asyncio.Semaphore = field(
-        default_factory=lambda: asyncio.Semaphore(LIMITS.search_concurrency)
+        default_factory=lambda: asyncio.Semaphore(LIMITS.max_search_concurrency)
     )
 
     def has_room(self) -> bool:

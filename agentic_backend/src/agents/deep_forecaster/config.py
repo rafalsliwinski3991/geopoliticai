@@ -79,21 +79,21 @@ class ForecastLimits:
     per-attempt `timeout_seconds` alone would not bound a step. Each equals
     its call's per-attempt timeout, so a slow attempt ends as the node's 504
     and only a fast failure (a quick 429) is retried inside the budget.
-    `search_concurrency` caps parallel Brave requests across scouts; Brave's
+    `max_search_concurrency` caps parallel Brave requests across scouts; Brave's
     rate limit is unverified.
 
     `max_passage_chars` cuts one quoted paragraph, so a member's prompt stays
     near 10k tokens (4 claims x 6 passages x 1,200 characters). Up to 7
     members x 4 claims of reasons, each with its source links, are printed in
     the answer, which the delivery layer clips at 50,000 characters
-    (`api.MAX_ANSWER_CHARS`): with `max_reason_chars` and `max_evidence`,
+    (`api.MAX_ANSWER_CHARS`): with `max_reason_chars` and `max_evidences`,
     28 x (600 + 5 links of ~100) is ~31,000.
     """
 
     max_searches: int = 24
     max_sources: int = 20
     max_videos: int = 2
-    search_concurrency: int = 3
+    max_search_concurrency: int = 3
     research_seconds: float = 330.0
     claims_seconds: float = 120.0
     member_seconds: float = 100.0
@@ -105,7 +105,7 @@ class ForecastLimits:
     max_passages: int = 6
     max_passage_chars: int = 1_200
     max_reason_chars: int = 600
-    max_evidence: int = 5
+    max_evidences: int = 5
     wall_seconds: float = 840.0
 
 

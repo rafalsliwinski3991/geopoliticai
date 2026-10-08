@@ -25,16 +25,20 @@ def test_every_template_fills_with_its_documented_fields() -> None:
 
 
 def test_every_prompt_that_reads_pages_carries_the_untrusted_rule() -> None:
+    # Assert
     assert _UNTRUSTED_RULE in LEAD_SYSTEM_PROMPT
     assert _UNTRUSTED_RULE in SCOUT_PROMPT
 
 
 def test_video_prompt_names_the_not_discussed_reply() -> None:
+    # Arrange
     filled = VIDEO_PROMPT.format(
         question="Russia and NATO", not_discussed=VIDEO_NOT_DISCUSSED
     )
+    # Assert
     assert VIDEO_NOT_DISCUSSED in filled
 
 
 def test_lead_prompt_delegates_with_the_task_tool() -> None:
+    # Assert
     assert "Delegate with the `task` tool" in LEAD_SYSTEM_PROMPT

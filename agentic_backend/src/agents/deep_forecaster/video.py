@@ -35,11 +35,17 @@ class VideoUnavailableError(Exception):
 async def watch_video(url: str, question: str) -> str:
     """Return Gemini's notes on what the public video at `url` says about `question`.
 
-    Raises `VideoUnavailableError` for a provider or transport failure.
+    Raises `VideoUnavailableError` for a provider or transport failure, and
+    for a missing `GEMINI_API_KEY`, so the scout sees the documented soft
+    stop instead of a hard `KeyError` (review thread, #140).
     """
     static = VIDEO_SETTINGS.processing == "static"
     try:
-        async with genai.Client(api_key=os.environ["GEMINI_API_KEY"]).aio as client:
+        api_key = os.environ["GEMINI_API_KEY"]
+    except KeyError as exc:
+        raise VideoUnavailableError("GEMINI_API_KEY is not set") from exc
+    try:
+        async with genai.Client(api_key=api_key).aio as client:
             response = await client.models.generate_content(
                 model=VIDEO_SETTINGS.model,
                 contents=types.Content(

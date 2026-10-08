@@ -26,6 +26,23 @@ from models import (
 
 research_module: Any = importlib.import_module("agents.deep_forecaster.nodes.research")
 
+# The twelve forecaster ids the research brief must carry, from
+# `agents.deep_forecaster.consts.forecasters` (repo layout review, #140).
+FORECASTER_IDS = [
+    "wojczal",
+    "salonius_pasternak",
+    "aydin",
+    "inbar",
+    "bew",
+    "gomart",
+    "yan",
+    "gabuev",
+    "chun",
+    "suzuki",
+    "chellaney",
+    "sidiropoulos",
+]
+
 NO_CHECKPOINTER_CONFIG = {
     "configurable": {"thread_id": "", "checkpoint_ns": "", "checkpoint_id": None}
 }
@@ -80,6 +97,7 @@ def _record_one_source(run: ResearchRun) -> None:
 async def test_research_returns_the_sources_in_read_order(
     monkeypatch: pytest.MonkeyPatch, events: list[dict[str, Any]]
 ) -> None:
+    # Arrange
     def mutate(run: ResearchRun) -> None:
         run.searches += 2
         run.sources["https://a.example/1"] = Source(
@@ -112,7 +130,9 @@ async def test_research_returns_the_sources_in_read_order(
 async def test_no_source_read_is_no_sources_error(
     monkeypatch: pytest.MonkeyPatch, events: list[dict[str, Any]]
 ) -> None:
+    # Arrange
     _patch_agent(monkeypatch, lambda run: _FakeAgent(run))
+    # Act
     with pytest.raises(NoSourcesError):
         await research_module.research({"question": "q"}, _runtime(events))
 
@@ -121,11 +141,13 @@ async def test_no_source_read_is_no_sources_error(
 async def test_every_search_failing_is_a_search_outage(
     monkeypatch: pytest.MonkeyPatch, events: list[dict[str, Any]]
 ) -> None:
+    # Act
     def mutate(run: ResearchRun) -> None:
         run.searches = 2
         run.failed_searches = 2
 
     _patch_agent(monkeypatch, lambda run: _FakeAgent(run, mutate=mutate))
+    # Act
     with pytest.raises(SearchUnavailableError):
         await research_module.research({"question": "q"}, _runtime(events))
 
@@ -134,6 +156,7 @@ async def test_every_search_failing_is_a_search_outage(
 async def test_some_failed_searches_with_nothing_read_is_no_sources(
     monkeypatch: pytest.MonkeyPatch, events: list[dict[str, Any]]
 ) -> None:
+    # Arrange
     def mutate(run: ResearchRun) -> None:
         run.searches = 3
         run.failed_searches = 1
@@ -147,6 +170,7 @@ async def test_some_failed_searches_with_nothing_read_is_no_sources(
 async def test_failed_searches_are_counted_for_the_answer(
     monkeypatch: pytest.MonkeyPatch, events: list[dict[str, Any]]
 ) -> None:
+    # Arrange
     def mutate(run: ResearchRun) -> None:
         run.searches = 3
         run.failed_searches = 1
@@ -155,7 +179,9 @@ async def test_failed_searches_are_counted_for_the_answer(
         )
 
     _patch_agent(monkeypatch, lambda run: _FakeAgent(run, mutate=mutate))
+    # Act
     out = await research_module.research({"question": "q"}, _runtime(events))
+    # Assert
     assert out["research"] == ResearchOutcome(3, 1, False)
 
 
@@ -163,6 +189,7 @@ async def test_failed_searches_are_counted_for_the_answer(
 async def test_the_time_box_keeps_what_was_read(
     monkeypatch: pytest.MonkeyPatch, events: list[dict[str, Any]]
 ) -> None:
+    # Arrange
     import agents.deep_forecaster.config as config
 
     def mutate(run: ResearchRun) -> None:
@@ -188,9 +215,11 @@ async def test_an_inner_timeout_is_llm_invocation_error(
     monkeypatch: pytest.MonkeyPatch, events: list[dict[str, Any]]
 ) -> None:
     fake = _FakeAgent(ResearchRun(writer=events.append), fail=TimeoutError("inner"))
+    # Arrange
     _patch_agent(
         monkeypatch, lambda run: _FakeAgent(run, fail=fake.fail, mutate=fake.mutate)
     )
+    # Act
     with pytest.raises(LLMInvocationError):
         await research_module.research({"question": "q"}, _runtime(events))
 
@@ -202,9 +231,11 @@ async def test_a_search_outage_propagates(
     fake = _FakeAgent(
         ResearchRun(writer=events.append), fail=SearchUnavailableError("outage")
     )
+    # Arrange
     _patch_agent(
         monkeypatch, lambda run: _FakeAgent(run, fail=fake.fail, mutate=fake.mutate)
     )
+    # Act
     with pytest.raises(SearchUnavailableError):
         await research_module.research({"question": "q"}, _runtime(events))
 
@@ -214,9 +245,11 @@ async def test_an_arbitrary_failure_is_llm_invocation_error(
     monkeypatch: pytest.MonkeyPatch, events: list[dict[str, Any]]
 ) -> None:
     fake = _FakeAgent(ResearchRun(writer=events.append), fail=RuntimeError("bug"))
+    # Arrange
     _patch_agent(
         monkeypatch, lambda run: _FakeAgent(run, fail=fake.fail, mutate=fake.mutate)
     )
+    # Act
     with pytest.raises(LLMInvocationError):
         await research_module.research({"question": "q"}, _runtime(events))
 
@@ -225,6 +258,7 @@ async def test_an_arbitrary_failure_is_llm_invocation_error(
 async def test_the_lead_gets_the_question_and_no_checkpointer(
     monkeypatch: pytest.MonkeyPatch, events: list[dict[str, Any]]
 ) -> None:
+    # Arrange
     def mutate(run: ResearchRun) -> None:
         run.searches = 1
         run.sources["https://a.example/1"] = Source(
@@ -239,10 +273,12 @@ async def test_the_lead_gets_the_question_and_no_checkpointer(
         return agent
 
     _patch_agent(monkeypatch, factory)
+    # Act
     await research_module.research(
         {"question": "Will Russia attack?"}, _runtime(events)
     )
     agent_input, config = created[0].calls[0]
+    # Assert
     assert isinstance(agent_input["messages"][0], HumanMessage)
     assert agent_input["messages"][0].content == "Will Russia attack?"
     assert config == research_module.NO_CHECKPOINTER_CONFIG
@@ -253,6 +289,7 @@ async def test_build_research_agent_wires_the_recorded_shape(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Records `create_deep_agent`'s kwargs, as `deep_expert/test_graph.py:131` does."""
+    # Arrange
     monkeypatch.setenv("OPENAI_API_KEY", "test")
     recorded: dict[str, Any] = {}
 
@@ -264,6 +301,7 @@ async def test_build_research_agent_wires_the_recorded_shape(
     monkeypatch.setattr(research_module, "create_deep_agent", fake_create_deep_agent)
     run = ResearchRun(writer=lambda event: None)
     agent = research_module.build_research_agent(run)
+    # Assert
     assert agent is not None
     subagents = recorded["subagents"]
     assert len(subagents) == 1
@@ -284,6 +322,7 @@ async def test_build_research_agent_wires_the_recorded_shape(
     assert isinstance(recorded["middleware"][0], FilesystemMiddleware)
     assert isinstance(scout["middleware"][0], FilesystemMiddleware)
     system_prompt = recorded["system_prompt"]
+    # Act
     for forecaster_id in FORECASTER_IDS:
         assert forecaster_id in system_prompt
     assert "24 searches" in system_prompt
@@ -345,6 +384,7 @@ async def test_a_real_lead_and_scout_record_a_source_without_nested_checkpoints(
     monkeypatch: pytest.MonkeyPatch, events: list[dict[str, Any]]
 ) -> None:
     """Real `create_deep_agent`: lead → task → scout search/read → source recorded."""
+    # Arrange
     monkeypatch.setenv("OPENAI_API_KEY", "test")
     monkeypatch.setenv("BRAVE_SEARCH_KEY", "test")
     tools_module: Any = importlib.import_module("agents.deep_forecaster.tools")
@@ -455,6 +495,7 @@ async def test_a_real_lead_and_scout_record_a_source_without_nested_checkpoints(
 async def test_a_real_research_loop_stops_at_the_time_box_and_keeps_its_source(
     monkeypatch: pytest.MonkeyPatch, events: list[dict[str, Any]]
 ) -> None:
+    # Arrange
     monkeypatch.setenv("OPENAI_API_KEY", "test")
     monkeypatch.setenv("BRAVE_SEARCH_KEY", "test")
     tools_module: Any = importlib.import_module("agents.deep_forecaster.tools")
@@ -553,6 +594,8 @@ async def test_a_real_research_loop_stops_at_the_time_box_and_keeps_its_source(
     builder.add_edge("research", END)
     parent = builder.compile()
 
+    # Act
     result = await parent.ainvoke({"sources": []})
+    # Assert
     assert result["sources"][0].url == URL
     assert result["research"].timed_out is True

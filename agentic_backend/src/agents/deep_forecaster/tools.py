@@ -7,7 +7,7 @@ node returns those records, never the agent's own text.
 
 - `search_forecaster` searches one forecaster's own domains, with the
   forecaster's name prefixed to the query. One call is one Brave request; a
-  failed one is a message, and at most `search_concurrency` run at once.
+  failed one is a message, and at most `max_search_concurrency` run at once.
 - `read_source` reads an article a search in this run returned, never a video,
   and shows the page's own byline.
 - `ask_video` hands a YouTube URL a search returned to Gemini. Its answer is
@@ -24,6 +24,7 @@ arbitrary URL, and Gemini receives only a URL a Brave search returned.
 from __future__ import annotations
 
 import logging
+import re
 from dataclasses import replace
 from urllib.parse import parse_qs, urlparse
 
@@ -63,6 +64,8 @@ NOT_A_VIDEO_MESSAGE = (
     "`ask_video` takes only YouTube URLs returned by `search_forecaster`."
 )
 UNREADABLE_MESSAGE = "That page could not be fetched or had no usable article text."
+VIDEO_ASKED_AGAIN_MESSAGE = 'The notes on this video already answer a different question:\
+"{question}". Read them in the sources and cite the video\'s URL.'
 NO_SOURCES_LEFT_MESSAGE = (
     "No more sources can be read. Do not read more; return your findings."
 )
@@ -75,6 +78,7 @@ SEARCH_FAILED_MESSAGE = (
     "That search failed. Try it once more, or continue with what you have."
 )
 VIDEO_TITLE = "Gemini's notes on the video: {title}"
+VIDEO_ID_RE = re.compile(r"^[A-Za-z0-9_-]{11}$")
 logger = logging.getLogger(__name__)
 
 
@@ -98,6 +102,11 @@ def _watch_url(url: str) -> str | None:
     parsed = urlparse(url)
     ids = parse_qs(parsed.query).get("v")
     if parsed.path != "/watch" or not ids:
+        return None
+    # A decoded id may itself carry `&`/`=` (query-string tricks), which would
+    # build a different URL, break the one-notes-per-video dedupe and cite a
+    # video the page never was (review thread, #140).
+    if VIDEO_ID_RE.fullmatch(ids[0]) is None:
         return None
     return f"https://www.youtube.com/watch?v={ids[0]}"
 
@@ -150,6 +159,9 @@ def build_tools(run: ResearchRun) -> list[BaseTool]:
             return SEARCH_FAILED_MESSAGE
         for candidate in candidates:
             run.candidates.setdefault(candidate.url, candidate)
+            # First finder wins; a search result belongs to the forecaster
+            # whose brief produced the query (review thread, #140).
+            run.found_by.setdefault(candidate.url, profile.name)
         logger.info(
             "forecast search %d (%s): %d candidates",
             run.searches,
@@ -211,41 +223,54 @@ def build_tools(run: ResearchRun) -> list[BaseTool]:
         if not question:
             return EMPTY_QUESTION_MESSAGE
         # Keyed by the canonical URL, which is also what Gemini receives and
-        # what the source records; the writer copies URLs from the sources.
+        # what the source records; the writer copies URLs from the sources. A
+        # re-ask of a recorded video gets the old question pointed at, so its
+        # notes never pose as this question's answer (review thread, #140).
         async with run.lock_for(video):
             source = run.sources.get(video)
-            if source is None:
-                if run.videos >= LIMITS.max_videos:
-                    return NO_VIDEOS_LEFT_MESSAGE
-                if not run.has_room():
-                    return NO_SOURCES_LEFT_MESSAGE
-                run.videos += 1
-                run.progress(
-                    VIDEO_PROGRESS_LABEL.format(used=run.videos, cap=LIMITS.max_videos)
-                )
-                run.reserved += 1
-                try:
-                    notes = await watch_video(video, question)
-                except VideoUnavailableError:
-                    logger.warning("ask_video failed", exc_info=True)
-                    return VIDEO_UNAVAILABLE_MESSAGE
-                finally:
-                    run.reserved -= 1
-                if not notes:
-                    return VIDEO_UNAVAILABLE_MESSAGE
-                # Matched loosely: a reply that drops the final period is
-                # still "not discussed", never a junk source (correctness review).
-                if notes.casefold().startswith(
-                    VIDEO_NOT_DISCUSSED.casefold().rstrip(".")
-                ):
-                    return VIDEO_OFF_TOPIC_MESSAGE
-                source = Source(
-                    title=VIDEO_TITLE.format(title=candidate.title),
-                    url=video,
-                    text=notes[: FORECASTER_SOURCES.max_source_chars],
-                )
-                run.sources[video] = source
-                run.progress(READ_PROGRESS_LABEL.format(count=len(run.sources)))
+            if source is not None:
+                requested = run.video_questions.get(video)
+                if requested != question:
+                    return VIDEO_ASKED_AGAIN_MESSAGE.format(
+                        question=requested or question
+                    )
+                return _shown(source)
+            if run.videos >= LIMITS.max_videos:
+                return NO_VIDEOS_LEFT_MESSAGE
+            if not run.has_room():
+                return NO_SOURCES_LEFT_MESSAGE
+            run.videos += 1
+            run.progress(
+                VIDEO_PROGRESS_LABEL.format(used=run.videos, cap=LIMITS.max_videos)
+            )
+            run.reserved += 1
+            try:
+                notes = await watch_video(video, question)
+            except VideoUnavailableError:
+                logger.warning("ask_video failed", exc_info=True)
+                return VIDEO_UNAVAILABLE_MESSAGE
+            finally:
+                run.reserved -= 1
+            if not notes:
+                return VIDEO_UNAVAILABLE_MESSAGE
+            # Matched loosely: a reply that drops the final period is
+            # still "not discussed", never a junk source (correctness review).
+            if notes.casefold().startswith(VIDEO_NOT_DISCUSSED.casefold().rstrip(".")):
+                return VIDEO_OFF_TOPIC_MESSAGE
+            watch_by = run.found_by.get(url)
+            title = (
+                f"{candidate.title} (watched for {watch_by})"
+                if watch_by
+                else candidate.title
+            )
+            source = Source(
+                title=VIDEO_TITLE.format(title=title),
+                url=video,
+                text=notes[: FORECASTER_SOURCES.max_source_chars],
+            )
+            run.sources[video] = source
+            run.video_questions[video] = question
+            run.progress(READ_PROGRESS_LABEL.format(count=len(run.sources)))
         return _shown(source)
 
     return [search_forecaster, read_source, ask_video]
