@@ -2,18 +2,22 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
 from typing import Any, cast
 
+import httpx
 import pytest
+from google.genai import errors, types
 from langgraph.store.memory import InMemoryStore
 
+import agents.deep_forecaster.video as video_module
+from agents.deep_forecaster.config import VIDEO_SETTINGS
 from agents.deep_forecaster.video import (
     NOTES_NAMESPACE,
+    VideoUnavailableError,
     _notes_key,
     watch_video,
 )
-
-video_module: Any = __import__("agents.deep_forecaster.video", fromlist=["watch_video"])
 
 
 class _GeminiRecorder:
@@ -194,4 +198,145 @@ def test_the_notes_key_normalises_the_question() -> None:
     ) == _notes_key("https://www.youtube.com/watch?v=abc", "russia and nato")
     assert _notes_key("https://www.youtube.com/watch?v=abc", "q") != _notes_key(
         "https://www.youtube.com/watch?v=xyz", "q"
+    )
+
+
+# --- `_ask_gemini` itself (restored per review thread, #151) -----------------
+
+
+class _FakeModels:
+    """Records `generate_content` kwargs; returns or raises as configured."""
+
+    def __init__(
+        self, text: str = "  notes  ", fail: BaseException | None = None
+    ) -> None:
+        self.recorded: dict[str, Any] | None = None
+        self.text = text
+        self.fail = fail
+
+    async def generate_content(self, **kwargs: Any) -> Any:
+        if self.fail is not None:
+            raise self.fail
+        self.recorded = kwargs
+        return SimpleNamespace(
+            text=self.text, usage_metadata=SimpleNamespace(prompt_token_count=117)
+        )
+
+
+class _FakeClient:
+    """The patched `genai.Client`: an async-context-manager `.aio`."""
+
+    def __init__(self, models: _FakeModels, **kwargs: Any) -> None:
+        self.models = models
+        self.kwargs = kwargs
+
+    @property
+    def aio(self) -> Any:
+        class _Aio:
+            def __init__(self, client: _FakeClient) -> None:
+                self.client = client
+
+            async def __aenter__(self) -> _FakeClient:
+                return self.client
+
+            async def __aexit__(self, *exc: object) -> None:
+                return None
+
+        return _Aio(self)
+
+
+def _patch_gemini(monkeypatch: pytest.MonkeyPatch, models: _FakeModels) -> None:
+    from google import genai as google_genai
+
+    monkeypatch.setattr(
+        google_genai, "Client", lambda **kwargs: _FakeClient(models, **kwargs)
+    )
+    monkeypatch.setenv("GEMINI_API_KEY", "test-key")
+
+
+@pytest.mark.anyio
+async def test_ask_gemini_sends_the_url_at_low_fps_without_media_processing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Arrange
+    models = _FakeModels()
+    _patch_gemini(monkeypatch, models)
+    # Act
+    notes = await video_module._ask_gemini(
+        "https://www.youtube.com/watch?v=abcdefghijk", "Russia and NATO"
+    )
+    # Assert
+    assert notes == "notes"
+    recorded = models.recorded
+    assert recorded is not None
+    parts = recorded["contents"].parts
+    assert parts[0].file_data.file_uri == "https://www.youtube.com/watch?v=abcdefghijk"
+    # `media_processing` for a YouTube URL is a 400: nothing is sent at all.
+    assert all(part.media_processing is None for part in parts)
+    assert parts[0].video_metadata.fps == VIDEO_SETTINGS.fps
+    config = recorded["config"]
+    assert config.media_resolution == types.MediaResolution.MEDIA_RESOLUTION_LOW
+    assert config.max_output_tokens == VIDEO_SETTINGS.max_output_tokens
+    assert config.thinking_config.thinking_level == types.ThinkingLevel.LOW
+    assert config.http_options.timeout == 120_000
+    assert "Russia and NATO" in parts[1].text
+    assert recorded["model"] == VIDEO_SETTINGS.model
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    "fail",
+    [
+        errors.ClientError(429, {"error": {"message": "quota"}}),
+        errors.ServerError(503, {"error": {"message": "busy"}}),
+        httpx.ReadTimeout("slow"),
+    ],
+)
+async def test_provider_and_transport_failures_are_video_unavailable(
+    fail: BaseException, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Arrange
+    models = _FakeModels(fail=fail)
+    _patch_gemini(monkeypatch, models)
+    # Act + Assert
+    with pytest.raises(VideoUnavailableError):
+        await video_module._ask_gemini(
+            "https://www.youtube.com/watch?v=abcdefghijk", "q"
+        )
+
+
+@pytest.mark.anyio
+async def test_a_programming_error_propagates(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Arrange
+    models = _FakeModels(fail=TypeError("bug"))
+    _patch_gemini(monkeypatch, models)
+    # Act + Assert
+    with pytest.raises(TypeError):
+        await video_module._ask_gemini(
+            "https://www.youtube.com/watch?v=abcdefghijk", "q"
+        )
+
+
+@pytest.mark.anyio
+async def test_an_empty_and_a_stripped_reply_pass_through(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Arrange
+    models = _FakeModels(text="")
+    _patch_gemini(monkeypatch, models)
+    # Act + Assert
+    assert (
+        await video_module._ask_gemini(
+            "https://www.youtube.com/watch?v=abcdefghijk", "q"
+        )
+        == ""
+    )
+    models_stripped = _FakeModels(text="  notes  ")
+    _patch_gemini(monkeypatch, models_stripped)
+    # Act + Assert
+    assert (
+        await video_module._ask_gemini(
+            "https://www.youtube.com/watch?v=abcdefghijk", "q"
+        )
+        == "notes"
     )

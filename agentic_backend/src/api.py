@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import os
@@ -292,9 +293,21 @@ async def lifespan(_app: FastAPI) -> AsyncGenerator[None, None]:
         yield
     finally:
         graph = _default_graph
+        # A sweeper stuck on the database must not skip closing the pool
+        # (review thread, #151): bounded wait, and the pool closes in its own
+        # finally, whatever the sweeper did.
         if store is not None:
-            await store.stop_ttl_sweeper()
-        await pool.close()
+            try:
+                async with asyncio.timeout(5.0):
+                    await store.stop_ttl_sweeper()
+            except TimeoutError:
+                logger.warning(
+                    "the TTL sweeper did not stop within 5 s; closing the pool anyway"
+                )
+        try:
+            await pool.close()
+        except RuntimeError:
+            logger.warning("the pool was already closed", exc_info=True)
 
 
 app = FastAPI(title="GeopoliticAI API", version="1.0.0", lifespan=lifespan)

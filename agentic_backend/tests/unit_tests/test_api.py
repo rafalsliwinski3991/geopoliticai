@@ -1808,13 +1808,9 @@ async def test_assert_agentic_schema_refuses_a_missing_table(
     pool: Any = _FakeGuardPool(row)
     # Act
     with pytest.raises(RuntimeError, match="search_path") as refusal:
-<<<<<<< HEAD
-        # Arrange
-        await api._assert_checkpointer_schema(pool)
-=======
+        # Act
+        # Assert: the raise is the assertion
         await api._assert_agentic_schema(pool)
->>>>>>> fc7268b (Cache Gemini's video notes for 30 days)
-    # Assert
     assert refusal.type is RuntimeError
 
 
@@ -1826,7 +1822,6 @@ async def test_lifespan_checks_the_migration_before_the_checkpointer_setup(
     the checkpointer's tables are still in `public`, or it builds an empty
     second set. A refactor that reorders these calls silently restores the
     history-loss bug."""
-    # Arrange
     # Arrange
     calls: list[str] = []
     monkeypatch.setattr(api, "init_environment", lambda: None)
@@ -2460,7 +2455,7 @@ async def test_a_forecast_reaches_the_browser_once(
 
     FORECAST_ANSWER = "Forecast answer [a](https://reuters.com/x)."
 
-    async def fake_forecast(query: str) -> str:
+    async def fake_forecast(query: str, store: Any = None) -> str:
         return FORECAST_ANSWER
 
     monkeypatch.setattr(classify_module, "ainvoke_structured", decide)

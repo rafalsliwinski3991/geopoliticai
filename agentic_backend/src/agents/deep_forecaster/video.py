@@ -15,6 +15,7 @@ as a hard error (guidance review).
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import logging
 import os
@@ -39,6 +40,19 @@ class VideoUnavailableError(Exception):
     """Gemini refused, rate-limited, failed or timed out on one video (F2)."""
 
 
+# Per-key request coalescing (review thread, #151): `aget` then call then
+# `aput` is not atomic across requests, so two forecasts asking the same
+# video and question at once would both miss and both pay Gemini. The
+# second caller waits, then re-checks the cache and either finds the first
+# caller's notes or becomes the owner that calls Gemini.
+_CACHE_LOCKS: dict[str, asyncio.Lock] = {}
+
+
+def _cache_lock(key: str) -> asyncio.Lock:
+    """Return the coalescing lock for one cache key."""
+    return _CACHE_LOCKS.setdefault(key, asyncio.Lock())
+
+
 def _notes_key(url: str, question: str) -> str:
     """Return the cache key for one canonical video URL and one question.
 
@@ -49,40 +63,64 @@ def _notes_key(url: str, question: str) -> str:
     return hashlib.sha256(f"{url}\n{normalised}".encode()).hexdigest()
 
 
+async def _cached_notes(store: BaseStore, key: str) -> str | None:
+    """Return the cached notes for `key`, or None (a database error never fails)."""
+    try:
+        item = await store.aget(NOTES_NAMESPACE, key)
+    except psycopg.Error:
+        logger.warning("ask_video: notes cache unreadable", exc_info=True)
+        return None
+    if item is not None:
+        logger.info("ask_video: cached notes")
+        return str(item.value["notes"])
+    return None
+
+
+async def _store_notes(
+    store: BaseStore, key: str, url: str, question: str, notes: str
+) -> None:
+    """Write `notes` into the cache; a database error never fails a forecast."""
+    try:
+        await store.aput(
+            NOTES_NAMESPACE,
+            key,
+            # jsonb refuses NUL, which a model's text can carry.
+            {"url": url, "question": question, "notes": notes.replace("\x00", "")},
+        )
+    except psycopg.Error:
+        logger.warning("ask_video: notes not cached", exc_info=True)
+
+
 async def watch_video(url: str, question: str, store: BaseStore | None = None) -> str:
     """Return Gemini's notes on what the public video at `url` says about `question`.
 
     With a store, notes cached for the same video and question are returned
-    without calling Gemini, and new non-empty notes are cached. A database
-    failure on either side is logged and skipped: the cache only saves Gemini
-    time, and an error there must not fail a forecast that has already been
-    charged and already has its notes (framework review). Raises
-    `VideoUnavailableError` for a provider or transport failure, and
-    for a missing `GEMINI_API_KEY`, so the scout sees the documented soft
-    stop instead of a hard `KeyError` (review thread, #140).
+    without calling Gemini, and new non-empty notes are cached. Concurrent
+    callers of the same video and question coalesce: the first inside the
+    key's lock calls Gemini, the second re-checks and finds the notes
+    (review thread, #151). A database failure on either side is logged and
+    skipped: the cache only saves Gemini time, and an error there must not
+    fail a forecast that has already been charged and already has its notes
+    (framework review). Raises `VideoUnavailableError` for a provider or
+    transport failure, and for a missing `GEMINI_API_KEY`, so the scout
+    sees the documented soft stop instead of a hard `KeyError` (thread #140).
     """
     key = _notes_key(url, question)
-    if store is not None:
-        try:
-            item = await store.aget(NOTES_NAMESPACE, key)
-        except psycopg.Error:
-            logger.warning("ask_video: notes cache unreadable", exc_info=True)
-            item = None
-        if item is not None:
-            logger.info("ask_video: cached notes")
-            return str(item.value["notes"])
-    notes = await _ask_gemini(url, question)
-    if store is not None and notes:
-        try:
-            await store.aput(
-                NOTES_NAMESPACE,
-                key,
-                # jsonb refuses NUL, which a model's text can carry.
-                {"url": url, "question": question, "notes": notes.replace("\x00", "")},
-            )
-        except psycopg.Error:
-            logger.warning("ask_video: notes not cached", exc_info=True)
-    return notes
+    if store is None:
+        return await _ask_gemini(url, question)
+    hit = await _cached_notes(store, key)
+    if hit is not None:
+        return hit
+    async with _cache_lock(key):
+        # Re-check under the lock: the pre-check outside raced a caller that
+        # had already taken the key and was inside Gemini.
+        hit = await _cached_notes(store, key)
+        if hit is not None:
+            return hit
+        notes = await _ask_gemini(url, question)
+        if notes:
+            await _store_notes(store, key, url, question, notes)
+        return notes
 
 
 async def _ask_gemini(url: str, question: str) -> str:
