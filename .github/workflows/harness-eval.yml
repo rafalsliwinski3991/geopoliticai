@@ -3,7 +3,9 @@ name: Harness Eval
 # Advisory and manual: measures the current harness on the frozen deep-expert
 # task and appends the scores to the `eval-history` branch. Gates nothing.
 # Start it from the Actions tab, or comment `/harness_eval` (or
-# `/harness_eval 3` for three repeats) on a pull request from this repository.
+# `/harness_eval 3` for three repeats, `/harness_eval 1 impl-glm` for one leg)
+# on a pull request from this repository. Every leg except impl-glm spends the
+# Claude Code subscription's usage limit; run only the legs you need.
 on:
   workflow_dispatch:
     inputs:
@@ -11,6 +13,10 @@ on:
         description: "Runs per agent (1 is usual; 2-5 to separate a change from noise)"
         type: number
         default: 1
+      subjects:
+        description: "Legs to run, comma-separated: plan-opus, impl-sonnet, impl-glm (only impl-glm spends no Claude usage)"
+        type: string
+        default: "plan-opus,impl-sonnet,impl-glm"
       note:
         description: "What changed in the harness since the last run"
         type: string
@@ -46,31 +52,54 @@ jobs:
     permissions:
       pull-requests: read
     outputs:
-      repeats: ${{ steps.r.outputs.repeats }}
+      matrix: ${{ steps.r.outputs.matrix }}
       sha: ${{ steps.r.outputs.sha }}
     steps:
       - id: r
         env:
           EVENT: ${{ github.event_name }}
           INPUT_REPEATS: ${{ inputs.repeats }}
+          INPUT_SUBJECTS: ${{ inputs.subjects }}
           BODY: ${{ github.event.comment.body }}
           PR: ${{ github.event.issue.number }}
           GH_TOKEN: ${{ github.token }}
         run: |
           sha=$GITHUB_SHA
           n=$INPUT_REPEATS
+          subjects=$INPUT_SUBJECTS
           if [ "$EVENT" = issue_comment ]; then
-            # "/harness_eval" or "/harness_eval 3"; only the first line counts.
-            read -r word arg _ <<< "$BODY"
+            # "/harness_eval", "/harness_eval 3", or "/harness_eval 1 impl-glm,impl-sonnet";
+            # only the first line counts.
+            read -r word arg subj _ <<< "$BODY"
             [ "$word" = /harness_eval ] || { echo "not a /harness_eval command: $word"; exit 1; }
             n=${arg:-1}
+            subjects=${subj:-plan-opus,impl-sonnet,impl-glm}
             # The pull request's own head, never a fork's: this run holds secrets.
             read -r sha cross < <(gh pr view "$PR" --repo "$GITHUB_REPOSITORY" \
               --json headRefOid,isCrossRepository -q '[.headRefOid, .isCrossRepository] | @tsv')
             [ "$cross" = false ] || { echo "pull requests from forks are not run"; exit 1; }
           fi
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
-          N=$n python3 -c "import os; n = int(os.environ['N']); assert 1 <= n <= 5, n; print(f'repeats={list(range(1, n + 1))}')" >> "$GITHUB_OUTPUT"
+          N=$n SUBJECTS=$subjects python3 - >> "$GITHUB_OUTPUT" <<'PY'
+          import json, os
+
+          LEGS = {
+              "plan-opus": ("plan", "claude", "claude-opus-5-5"),
+              "impl-sonnet": ("implement", "claude", "claude-sonnet-5-5"),
+              "impl-glm": ("implement", "opencode", "opencode-go/glm-5.3-flash"),
+          }
+          n = int(os.environ["N"])
+          assert 1 <= n <= 5, n
+          chosen = [x.strip() for x in os.environ["SUBJECTS"].split(",") if x.strip()]
+          assert chosen and len(set(chosen)) == len(chosen), chosen
+          assert all(x in LEGS for x in chosen), f"unknown leg in {chosen}; known: {list(LEGS)}"
+          include = [
+              {"subject": x, "kind": LEGS[x][0], "harness": LEGS[x][1], "model": LEGS[x][2], "repeat": r}
+              for x in chosen
+              for r in range(1, n + 1)
+          ]
+          print("matrix=" + json.dumps({"include": include}))
+          PY
 
   agent:
     name: "${{ matrix.subject }} #${{ matrix.repeat }}"
@@ -85,22 +114,7 @@ jobs:
     timeout-minutes: 75
     strategy:
       fail-fast: false
-      matrix:
-        subject: [plan-opus, impl-sonnet, impl-glm]
-        repeat: ${{ fromJSON(needs.setup.outputs.repeats) }}
-        include:
-          - subject: plan-opus
-            kind: plan
-            harness: claude
-            model: claude-opus-5-5
-          - subject: impl-sonnet
-            kind: implement
-            harness: claude
-            model: claude-sonnet-5-5
-          - subject: impl-glm
-            kind: implement
-            harness: opencode
-            model: opencode-go/glm-5.3-flash
+      matrix: ${{ fromJSON(needs.setup.outputs.matrix) }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
