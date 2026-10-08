@@ -1,8 +1,12 @@
 import json
+from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
+from threading import Thread
 from types import SimpleNamespace
 
 import pytest
+from google import genai
+from google.genai import types
 from harness_eval import judge
 from pydantic import ValidationError
 
@@ -77,6 +81,46 @@ def test_score_reorders_by_name_and_rejects_missing():
 def test_ask_raises_on_empty_text():
     with pytest.raises(RuntimeError, match="SAFETY"):
         judge.ask(FakeClient(text=None), "prompt")
+
+
+def test_a_503_is_retried_until_it_clears():
+    calls = []
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_POST(self):
+            calls.append(self.path)
+            self.rfile.read(int(self.headers["Content-Length"]))
+            ok = len(calls) > 2
+            body = json.dumps(
+                {"candidates": [{"content": {"parts": [{"text": "{}"}]}}]}
+                if ok
+                else {"error": {"code": 503, "message": "busy", "status": "UNAVAILABLE"}}
+            ).encode()
+            self.send_response(200 if ok else 503)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *args):
+            pass
+
+    server = HTTPServer(("127.0.0.1", 0), Handler)
+    Thread(target=server.serve_forever, daemon=True).start()
+    retry = judge.RETRY.model_copy(update={"initial_delay": 0.01, "max_delay": 0.01})
+    client = genai.Client(
+        api_key="test",
+        http_options=types.HttpOptions(
+            base_url=f"http://127.0.0.1:{server.server_port}", retry_options=retry
+        ),
+    )
+    try:
+        response = client.models.generate_content(model=judge.JUDGE_MODEL, contents="x")
+    finally:
+        server.shutdown()
+        server.server_close()
+    assert response.text == "{}"
+    assert len(calls) == 3
 
 
 def _out_dir(tmp_path, diff, checks):
