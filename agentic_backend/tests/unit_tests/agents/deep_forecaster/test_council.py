@@ -296,7 +296,7 @@ class TestConvene:
         assert "Only 3 of 7" in str(exc.value) and "needs 5" in str(exc.value)
 
     @pytest.mark.anyio
-    async def test_a_failed_member_is_absent_while_quorum_holds(
+    async def test_failed_members_are_absent_while_quorum_holds(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         # Arrange
