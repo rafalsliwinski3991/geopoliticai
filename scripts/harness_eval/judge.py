@@ -28,9 +28,10 @@ from pydantic import BaseModel, Field
 
 from harness_eval import checks, history
 
-# Gemini 3.x ignores temperature, so the judge is not deterministic; its noise
-# is part of the `≈` threshold.
-JUDGE_MODEL = "gemini-3.6-flash"
+# The cheapest generally available Gemini model: the eval is run for cost, and the
+# flash tier answered 503 for ten minutes straight. The judge is not deterministic;
+# its noise is part of the `≈` threshold.
+JUDGE_MODEL = "gemini-2.5-flash-lite"
 # Gemini answers 503 during demand spikes. Waits about 10, 20, 40, 80 and 120 s between the 6
 # attempts (jitter adds up to 1 s to each; about 4.5 min), then the job fails and "Re-run failed
 # jobs" tries again.
