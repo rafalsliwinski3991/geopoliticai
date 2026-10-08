@@ -43,6 +43,7 @@ def recorder(monkeypatch: pytest.MonkeyPatch) -> _GeminiRecorder:
 async def test_a_cached_question_never_reaches_gemini(
     recorder: _GeminiRecorder,
 ) -> None:
+    # Arrange
     store = InMemoryStore()
     # Act
     first = await watch_video(
@@ -63,6 +64,7 @@ async def test_a_cached_question_never_reaches_gemini(
 async def test_another_question_or_video_is_a_miss(
     recorder: _GeminiRecorder,
 ) -> None:
+    # Arrange
     store = InMemoryStore()
     # Act
     await watch_video("https://www.youtube.com/watch?v=abc", "Russia and NATO", store)
@@ -74,6 +76,7 @@ async def test_another_question_or_video_is_a_miss(
 
 @pytest.mark.anyio
 async def test_empty_notes_are_not_cached(recorder: _GeminiRecorder) -> None:
+    # Arrange
     recorder.notes = ""
     store = InMemoryStore()
     # Act
@@ -88,6 +91,7 @@ async def test_empty_notes_are_not_cached(recorder: _GeminiRecorder) -> None:
 async def test_not_discussed_is_cached(recorder: _GeminiRecorder) -> None:
     from agents.deep_forecaster.prompts import VIDEO_NOT_DISCUSSED
 
+    # Arrange
     recorder.notes = VIDEO_NOT_DISCUSSED
     store = InMemoryStore()
     # Act
@@ -102,6 +106,7 @@ async def test_not_discussed_is_cached(recorder: _GeminiRecorder) -> None:
 async def test_without_a_store_gemini_is_always_called(
     recorder: _GeminiRecorder,
 ) -> None:
+    # Arrange: no store at all, so every question must miss the cache.
     # Act
     await watch_video("https://www.youtube.com/watch?v=abc", "q")
     await watch_video("https://www.youtube.com/watch?v=abc", "q")
@@ -113,6 +118,7 @@ async def test_without_a_store_gemini_is_always_called(
 async def test_a_database_failure_is_a_miss(recorder: _GeminiRecorder) -> None:
     import psycopg
 
+    # Arrange
     class _DeadStore:
         async def aget(self, namespace: Any, key: str) -> Any:
             raise psycopg.OperationalError("pool gone")
@@ -136,6 +142,7 @@ async def test_a_write_failure_still_returns_notes(
 
     import psycopg
 
+    # Arrange
     class _ReadOnlyStore:
         async def aget(self, namespace: Any, key: str) -> Any:
             return None
@@ -157,10 +164,12 @@ async def test_a_write_failure_still_returns_notes(
 async def test_a_non_psycopg_error_propagates(
     recorder: _GeminiRecorder,
 ) -> None:
+    # Arrange
     class _BrokenStore:
         async def aget(self, namespace: Any, key: str) -> Any:
             raise RuntimeError("bug")
 
+    # Act + Assert
     with pytest.raises(RuntimeError, match="bug"):
         await watch_video(
             "https://www.youtube.com/watch?v=abc", "q", cast(Any, _BrokenStore())
@@ -172,6 +181,7 @@ async def test_a_nul_is_stripped_before_caching(
     recorder: _GeminiRecorder,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # Arrange
     recorder.notes = "bad\x00note"
     stored: dict[str, Any] = {}
 
@@ -192,6 +202,7 @@ async def test_a_nul_is_stripped_before_caching(
 
 
 def test_the_notes_key_normalises_the_question() -> None:
+    # Arrange (nothing to set up: the key's normalisation is the whole test)
     # Act + Assert
     assert _notes_key(
         "https://www.youtube.com/watch?v=abc", "  Russia   and NATO "
