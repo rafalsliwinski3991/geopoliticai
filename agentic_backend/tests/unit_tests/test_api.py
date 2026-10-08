@@ -130,6 +130,7 @@ def _owning_thread(monkeypatch: pytest.MonkeyPatch) -> None:
 
 @pytest.mark.anyio
 async def test_health(client: httpx.AsyncClient) -> None:
+    # Arrange
     # Act
     response = await client.get("/api/health")
     # Assert
@@ -157,6 +158,7 @@ async def test_unknown_legacy_field_is_ignored(client: httpx.AsyncClient) -> Non
 
 @pytest.mark.anyio
 async def test_sync_route_is_gone(client: httpx.AsyncClient) -> None:
+    # Arrange
     # Act
     response = await client.post(
         "/api/run_pipeline", json={"query": "x", "thread_id": "t-1"}
@@ -217,6 +219,7 @@ async def test_forwarded_progress_reaches_the_browser_verbatim(
     ) -> AsyncIterator[tuple[str, dict[str, str]]]:
         yield ("progress", SEARCH_PROGRESS)
 
+    # Act
     with patch("api._astream_answer", stream):
         response = await client.post(
             "/api/run_pipeline/stream", json={"query": "x", "thread_id": "t-1"}
@@ -430,7 +433,8 @@ async def test_pending_pause_returns_none_without_a_checkpointer(
 
     # Arrange
     monkeypatch.setattr(api, "graph", build_graph())
-    # Act + Assert
+    # Act
+    # Assert
     assert await api._pending_pause("t-1") is None
 
 
@@ -478,6 +482,7 @@ async def test_an_approve_resume_proceeds_at_the_cap(
 ) -> None:
     """Approving a pending report is free: the quota must never strand it."""
 
+    # Arrange
     async def pending(thread_id: str) -> dict[str, Any] | None:
         return {
             "outline": ["Section one"],
@@ -509,6 +514,7 @@ async def test_an_approve_resume_proceeds_at_the_cap(
     monkeypatch.setattr(api, "classify_resume_intent", intent)
     monkeypatch.setattr(api, "quota_used", exhausted)
     monkeypatch.setattr(api, "increment_quota", increment)
+    # Act
     with patch("api._astream_answer", stream):
         response = await client.post(
             "/api/run_pipeline/stream", json={"resume": "go ahead", "thread_id": "t-1"}
@@ -707,6 +713,7 @@ async def test_rate_limit_keys_on_the_authenticated_user(
 def test_resolve_client_id_falls_back_to_the_rightmost_forwarded() -> None:
     """The unauthenticated fallback keeps the right-most-entry rule."""
 
+    # Arrange
     stub = cast(
         Any,
         type(
@@ -715,7 +722,12 @@ def test_resolve_client_id_falls_back_to_the_rightmost_forwarded() -> None:
             {"headers": {"x-forwarded-for": "a, b, 203.0.113.5"}, "client": None},
         )(),
     )
-    assert api._resolve_client_id(stub) == "203.0.113.5"
+    # Act
+    resolved_anonymous = api._resolve_client_id(stub)
+    resolved_authenticated = api._resolve_client_id(stub, auth.Identity(user_id=7))
+    # Assert
+    assert resolved_anonymous == "203.0.113.5"
+    assert resolved_authenticated == "user:7"
     assert api._resolve_client_id(stub, auth.Identity(user_id=7)) == "user:7"
 
 
@@ -742,6 +754,7 @@ async def test_stream_error_has_no_result(client: httpx.AsyncClient) -> None:
 
 @pytest.mark.anyio
 async def test_thread_id_is_required(client: httpx.AsyncClient) -> None:
+    # Arrange
     # Act
     response = await client.post("/api/run_pipeline/stream", json={"query": "x"})
     # Assert
@@ -750,6 +763,7 @@ async def test_thread_id_is_required(client: httpx.AsyncClient) -> None:
 
 @pytest.mark.anyio
 async def test_thread_id_shape_is_validated(client: httpx.AsyncClient) -> None:
+    # Arrange
     # Act
     response = await client.post(
         "/api/run_pipeline/stream", json={"query": "x", "thread_id": "../../etc"}
@@ -760,7 +774,9 @@ async def test_thread_id_shape_is_validated(client: httpx.AsyncClient) -> None:
 
 @pytest.mark.anyio
 async def test_query_validation(client: httpx.AsyncClient) -> None:
-    # Act + Assert
+    # Arrange
+    # Act
+    # Assert
     assert (
         await client.post(
             "/api/run_pipeline/stream", json={"query": "", "thread_id": "t-1"}
@@ -984,6 +1000,7 @@ async def test_stream_without_a_token_is_401_and_the_graph_is_never_touched(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """One test asserts the negative: no header, no graph, no 200."""
+    # Arrange
     api._rate_limit_store.clear()
     api.app.state.pool = None
     client = httpx.AsyncClient(
@@ -997,9 +1014,11 @@ async def test_stream_without_a_token_is_401_and_the_graph_is_never_touched(
     monkeypatch.setattr(api, "claim_thread", boom)
     monkeypatch.setattr(api, "_astream_answer", boom)
 
+    # Act
     response = await client.post(
         "/api/run_pipeline/stream", json={"query": "x", "thread_id": "t-1"}
     )
+    # Assert
     assert response.status_code == 401
 
 
@@ -1007,6 +1026,7 @@ async def test_stream_without_a_token_is_401_and_the_graph_is_never_touched(
 async def test_stream_with_an_expired_token_is_401(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # Arrange
     api._rate_limit_store.clear()
     api.app.state.pool = None
     client = _client_with_token(_mint_token(user_id=1, expired=True))
@@ -1018,9 +1038,11 @@ async def test_stream_with_an_expired_token_is_401(
     monkeypatch.setattr(api, "claim_thread", boom)
     monkeypatch.setattr(api, "_astream_answer", boom)
 
+    # Act
     response = await client.post(
         "/api/run_pipeline/stream", json={"query": "x", "thread_id": "t-1"}
     )
+    # Assert
     assert response.status_code == 401
 
 
@@ -1030,6 +1052,7 @@ async def test_another_users_thread_is_403_and_the_graph_is_never_invoked(
 ) -> None:
     """The thread ownership check runs before anything expensive happens."""
 
+    # Arrange
     async def deny(*args: Any, **kwargs: Any) -> bool:
         return False
 
@@ -1040,9 +1063,11 @@ async def test_another_users_thread_is_403_and_the_graph_is_never_invoked(
     monkeypatch.setattr(api, "claim_thread", deny)
     monkeypatch.setattr(api, "_astream_answer", boom)
 
+    # Act
     response = await client.post(
         "/api/run_pipeline/stream", json={"query": "x", "thread_id": "t-1"}
     )
+    # Assert
     assert response.status_code == 403
 
 
@@ -1121,6 +1146,7 @@ async def test_a_resume_of_an_unknown_thread_is_403_without_upserting(
 async def test_get_threads_returns_only_the_callers_rows(
     client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    # Arrange
     seen_kwargs: dict[str, Any] = {}
 
     async def list_threads(pool: Any, *, user_id: int) -> list[ThreadRow]:
@@ -1134,6 +1160,7 @@ async def test_get_threads_returns_only_the_callers_rows(
         ]
 
     monkeypatch.setattr(api, "list_threads", list_threads)
+    # Act
     response = await client.get("/api/threads")
     # Assert
     assert response.status_code == 200
@@ -1150,6 +1177,7 @@ async def test_get_threads_returns_only_the_callers_rows(
 async def test_get_thread_403_for_a_thread_the_caller_does_not_own(
     client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    # Arrange
     async def deny(*args: Any, **kwargs: Any) -> bool:
         return False
 
@@ -1159,7 +1187,9 @@ async def test_get_thread_403_for_a_thread_the_caller_does_not_own(
 
     monkeypatch.setattr(api, "owns_thread", deny)
     monkeypatch.setattr(api, "_thread_messages", boom)
+    # Act
     response = await client.get("/api/threads/t-1")
+    # Assert
     assert response.status_code == 403
 
 
@@ -1167,6 +1197,7 @@ async def test_get_thread_403_for_a_thread_the_caller_does_not_own(
 async def test_get_thread_returns_the_callers_messages(
     client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    # Arrange
     async def own(*args: Any, **kwargs: Any) -> bool:
         return True
 
@@ -1175,6 +1206,7 @@ async def test_get_thread_returns_the_callers_messages(
 
     monkeypatch.setattr(api, "owns_thread", own)
     monkeypatch.setattr(api, "_thread_messages", messages)
+    # Act
     response = await client.get("/api/threads/t-1")
     # Assert
     assert response.status_code == 200
@@ -1188,6 +1220,7 @@ async def test_get_thread_returns_the_callers_messages(
 async def test_admin_thread_endpoint_with_is_staff_false_is_403(
     client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    # Arrange
     async def not_staff(*args: Any, **kwargs: Any) -> bool:
         return False
 
@@ -1197,7 +1230,9 @@ async def test_admin_thread_endpoint_with_is_staff_false_is_403(
 
     monkeypatch.setattr(api, "is_staff", not_staff)
     monkeypatch.setattr(api, "_thread_messages", boom)
+    # Act
     response = await client.get("/api/admin/threads/t-1")
+    # Assert
     assert response.status_code == 403
 
 
@@ -1205,6 +1240,7 @@ async def test_admin_thread_endpoint_with_is_staff_false_is_403(
 async def test_admin_thread_endpoint_with_is_staff_true_returns_messages(
     client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    # Arrange
     async def staff(*args: Any, **kwargs: Any) -> bool:
         return True
 
@@ -1213,6 +1249,7 @@ async def test_admin_thread_endpoint_with_is_staff_true_returns_messages(
 
     monkeypatch.setattr(api, "is_staff", staff)
     monkeypatch.setattr(api, "_thread_messages", messages)
+    # Act
     response = await client.get("/api/admin/threads/t-1")
     # Assert
     assert response.status_code == 200
@@ -1229,6 +1266,7 @@ async def test_the_21st_research_turn_is_429_mid_stream(
     """The cap is enforced in the counted branch: a research turn over it is
     refused with a 429 error frame on an HTTP 200, never a result."""
 
+    # Arrange
     async def increment(
         pool: Any, *, user_id: int, limit: int, cost: int = 1
     ) -> int | None:
@@ -1243,6 +1281,7 @@ async def test_the_21st_research_turn_is_429_mid_stream(
         yield ("token", "never")
 
     monkeypatch.setattr(api, "increment_quota", increment)
+    # Act
     with patch("api._astream_answer", stream):
         response = await client.post(
             "/api/run_pipeline/stream", json={"query": "x", "thread_id": "t-1"}
@@ -1262,6 +1301,7 @@ async def test_a_chat_routed_turn_proceeds_at_the_cap(
     """Chat is free (Q5b): an exhausted user may still chat, and the counted
     branch — the only place a turn is refused — never fires."""
 
+    # Arrange
     async def exhausted(pool: Any, *, user_id: int) -> int:
         return DAILY_RESEARCH_TURNS
 
@@ -1280,6 +1320,7 @@ async def test_a_chat_routed_turn_proceeds_at_the_cap(
 
     monkeypatch.setattr(api, "quota_used", exhausted)
     monkeypatch.setattr(api, "increment_quota", increment)
+    # Act
     with patch("api._astream_answer", stream):
         response = await client.post(
             "/api/run_pipeline/stream",
@@ -1298,6 +1339,7 @@ async def test_a_turn_refused_by_the_site_ceiling_does_not_charge_the_user(
     """The site increment commits before the user's: a turn the site refuses
     costs the caller nothing, with no advisory read that a race could open."""
 
+    # Arrange
     increments: list[int] = []
 
     async def increment(
@@ -1319,6 +1361,7 @@ async def test_a_turn_refused_by_the_site_ceiling_does_not_charge_the_user(
         yield ("token", "never")
 
     monkeypatch.setattr(api, "increment_quota", increment)
+    # Act
     with patch("api._astream_answer", stream):
         response = await client.post(
             "/api/run_pipeline/stream", json={"query": "x", "thread_id": "t-1"}
@@ -1338,6 +1381,7 @@ async def test_a_chat_routed_turn_does_not_increment_the_quota(
 ) -> None:
     """`other` is not a research destination; the increment never fires."""
 
+    # Arrange
     increments: list[int] = []
 
     async def increment(
@@ -1353,6 +1397,7 @@ async def test_a_chat_routed_turn_does_not_increment_the_quota(
     ) -> AsyncIterator[tuple[str, str]]:
         yield ("token", "Hello.")
 
+    # Act
     with patch("api._astream_answer", stream):
         response = await client.post(
             "/api/run_pipeline/stream",
@@ -1375,6 +1420,7 @@ async def test_a_research_routed_turn_increments_exactly_once(
     branch, which is the whole point: implementing only the _astream_answer
     half ships an unlimited quota with a green suite.
     """
+    # Arrange
     from langchain_core.messages import AIMessage
 
     calls: list[tuple[Any, ...]] = []
@@ -1413,6 +1459,7 @@ async def test_a_research_routed_turn_increments_exactly_once(
 
     monkeypatch.setattr(api, "graph", _FakeGraph())
 
+    # Act
     response = await client.post(
         "/api/run_pipeline/stream", json={"query": "x", "thread_id": "t-1"}
     )
@@ -1433,6 +1480,7 @@ async def test_a_turn_that_fails_after_routing_still_increments_once(
 ) -> None:
     """The model call the turn paid for already happened; the money is spent."""
 
+    # Arrange
     increments: list[int] = []
 
     async def increment(
@@ -1450,6 +1498,7 @@ async def test_a_turn_that_fails_after_routing_still_increments_once(
         raise NoSourcesError("down")
         yield ("token", "never")
 
+    # Act
     with patch("api._astream_answer", stream):
         response = await client.post(
             "/api/run_pipeline/stream", json={"query": "x", "thread_id": "t-1"}
@@ -1467,6 +1516,7 @@ async def test_a_turn_at_the_cap_ends_with_a_429_error_frame(
 ) -> None:
     """A concurrent turn took the last one before this turn's increment."""
 
+    # Arrange
     async def increment(
         pool: Any, *, user_id: int, limit: int, cost: int = 1
     ) -> int | None:
@@ -1480,6 +1530,7 @@ async def test_a_turn_at_the_cap_ends_with_a_429_error_frame(
         yield ("counted", None)
         yield ("token", "free answer")
 
+    # Act
     with patch("api._astream_answer", stream):
         response = await client.post(
             "/api/run_pipeline/stream", json={"query": "x", "thread_id": "t-1"}
@@ -1495,6 +1546,7 @@ async def test_a_turn_at_the_cap_ends_with_a_429_error_frame(
 async def test_get_threads_reports_the_quota_block(
     client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    # Arrange
     async def list_threads(pool: Any, *, user_id: int) -> list[ThreadRow]:
         return []
 
@@ -1503,6 +1555,7 @@ async def test_get_threads_reports_the_quota_block(
 
     monkeypatch.setattr(api, "list_threads", list_threads)
     monkeypatch.setattr(api, "quota_used", quota_used)
+    # Act
     response = await client.get("/api/threads")
     # Assert
     assert response.status_code == 200
@@ -1523,6 +1576,7 @@ async def test_a_client_that_disconnects_mid_stream_is_still_counted(
     abort the fetch mid-answer and the turn was free. This test pins the
     counting to the earliest frame.
     """
+    # Arrange
     increments: list[int] = []
 
     async def increment(
@@ -1540,6 +1594,7 @@ async def test_a_client_that_disconnects_mid_stream_is_still_counted(
         yield ("token", "partial answer")
         # (in production the run continues long past the first token)
 
+    # Act
     with patch("api._astream_answer", stream):
         async with client.stream(
             "POST", "/api/run_pipeline/stream", json={"query": "x", "thread_id": "t-1"}
@@ -1559,6 +1614,7 @@ async def test_a_resume_run_counts_nothing_new(
 ) -> None:
     """One report is one count, taken when it was requested: classify does not
     re-run on a resume, so approving a pending outline is free."""
+    # Arrange
     increments: list[int] = []
 
     async def increment(
@@ -1591,6 +1647,7 @@ async def test_a_resume_run_counts_nothing_new(
         yield ("pause", {"outline": ["Section one"]})
         yield ("token", "The report.")
 
+    # Act
     with patch("api._astream_answer", stream):
         response = await client.post(
             "/api/run_pipeline/stream", json={"resume": "go ahead", "thread_id": "t-1"}
@@ -1649,8 +1706,8 @@ async def test_require_migrated_checkpointer_schema_passes_when_public_is_clean(
 ):
     # Arrange: a fresh or already-migrated database — no public.checkpoints.
     pool: Any = _FakeGuardPool({"stray": None, "target": "agentic"})
-    # Act + Assert
-    await api._require_migrated_checkpointer_schema(pool)
+    # Act
+    await api._require_migrated_checkpointer_schema(pool)  # assert: no raise
 
 
 @pytest.mark.anyio
@@ -1658,35 +1715,41 @@ async def test_require_migrated_checkpointer_schema_refuses_a_public_target() ->
     # Arrange: no `agentic` schema yet, or search_path never reached the
     # connection — setup() would build its tables in `public`.
     pool: Any = _FakeGuardPool({"stray": None, "target": "public"})
-    # Act + Assert
-    with pytest.raises(RuntimeError, match="make migrate-agentic"):
+    # Act
+    with pytest.raises(RuntimeError, match="make migrate-agentic") as refusal:
         await api._require_migrated_checkpointer_schema(pool)
+    # Assert
+    assert refusal.type is RuntimeError
 
 
 @pytest.mark.anyio
 async def test_require_migrated_checkpointer_schema_refuses_a_stray_table() -> None:
     # Arrange: the pre-migration state — public.checkpoints still exists.
     pool: Any = _FakeGuardPool({"stray": {"oid": 16384}})
-    # Act + Assert
-    with pytest.raises(RuntimeError, match="make migrate-agentic"):
+    # Act
+    with pytest.raises(RuntimeError, match="make migrate-agentic") as refusal:
         await api._require_migrated_checkpointer_schema(pool)
+    # Assert
+    assert refusal.type is RuntimeError
 
 
 @pytest.mark.anyio
 async def test_assert_checkpointer_schema_passes_when_setup_created_it() -> None:
     # Arrange: setup() did its job where search_path should have put it.
     pool: Any = _FakeGuardPool({"expected": {"oid": 16385}})
-    # Act + Assert
-    await api._assert_checkpointer_schema(pool)
+    # Act
+    await api._assert_checkpointer_schema(pool)  # assert: no raise
 
 
 @pytest.mark.anyio
 async def test_assert_checkpointer_schema_refuses_a_missing_table() -> None:
     # Arrange: the pool's options did not reach the connection.
     pool: Any = _FakeGuardPool({"expected": None})
-    # Act + Assert
-    with pytest.raises(RuntimeError, match="search_path"):
+    # Act
+    with pytest.raises(RuntimeError, match="search_path") as refusal:
         await api._assert_checkpointer_schema(pool)
+    # Assert
+    assert refusal.type is RuntimeError
 
 
 @pytest.mark.anyio
@@ -1816,7 +1879,9 @@ async def test_unexpected_stream_failure_log_names_the_thread_and_user(
 async def test_thread_routes_422_on_a_malformed_thread_id(
     client: httpx.AsyncClient, route: str, thread_id: str
 ) -> None:
+    # Act
     response = await client.get(route + thread_id)
+    # Assert
     assert response.status_code == 422
 
 
@@ -1826,6 +1891,7 @@ async def test_a_deep_turn_spends_the_deep_cost_from_both_counters(
 ) -> None:
     """A deep turn costs DEEP_RESEARCH_TURN_COST units from both counters."""
 
+    # Arrange
     calls: list[tuple[Any, ...]] = []
 
     async def increment(
@@ -1847,6 +1913,7 @@ async def test_a_deep_turn_spends_the_deep_cost_from_both_counters(
         yield ("counted", "deep")
         yield ("token", "never")
 
+    # Act
     with patch("api._astream_answer", stream):
         response = await client.post(
             "/api/run_pipeline/stream", json={"query": "x", "thread_id": "t-1"}
@@ -1864,6 +1931,7 @@ async def test_a_deep_turn_spends_the_deep_cost_from_both_counters(
 async def test_a_geopolitical_turn_still_spends_one(
     client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    # Arrange
     increments: list[int] = []
     site_costs: list[int] = []
 
@@ -1886,6 +1954,7 @@ async def test_a_geopolitical_turn_still_spends_one(
         yield ("counted", "geopolitical")
         yield ("token", "never")
 
+    # Act
     with patch("api._astream_answer", stream):
         response = await client.post(
             "/api/run_pipeline/stream", json={"query": "x", "thread_id": "t-1"}
@@ -1902,6 +1971,7 @@ async def test_a_deep_turn_short_of_quota_is_refused_before_the_site_is_charged(
 ) -> None:
     """The advisory headroom read refuses a deep turn that cannot fit."""
 
+    # Arrange
     async def exhausted(pool: Any, *, user_id: int) -> int:
         return DAILY_RESEARCH_TURNS - 3
 
@@ -1928,6 +1998,7 @@ async def test_a_deep_turn_short_of_quota_is_refused_before_the_site_is_charged(
         yield ("counted", "deep")
         yield ("token", "never")
 
+    # Act
     with patch("api._astream_answer", stream):
         response = await client.post(
             "/api/run_pipeline/stream", json={"query": "x", "thread_id": "t-1"}
@@ -1950,6 +2021,7 @@ async def test_a_deep_turn_exactly_at_the_headroom_is_counted(
 ) -> None:
     """The boundary `left == cost` is affordable, not refused (`left < cost`)."""
 
+    # Arrange
     async def exactly_affordable(pool: Any, *, user_id: int) -> int:
         return DAILY_RESEARCH_TURNS - DEEP_RESEARCH_TURN_COST
 
@@ -1975,6 +2047,7 @@ async def test_a_deep_turn_exactly_at_the_headroom_is_counted(
         yield ("counted", "deep")
         yield ("token", "never")
 
+    # Act
     with patch("api._astream_answer", stream):
         response = await client.post(
             "/api/run_pipeline/stream", json={"query": "x", "thread_id": "t-1"}
@@ -1995,6 +2068,7 @@ async def test_a_deep_turn_losing_a_race_gets_the_generic_limit_message(
     """A deep turn that passes the headroom read but loses the upsert race
     gets the generic 429; the site slot it took belongs to this run's refusal."""
 
+    # Arrange
     async def fresh(pool: Any, *, user_id: int) -> int:
         return 0
 
@@ -2016,6 +2090,7 @@ async def test_a_deep_turn_losing_a_race_gets_the_generic_limit_message(
         yield ("counted", "deep")
         yield ("token", "never")
 
+    # Act
     with patch("api._astream_answer", stream):
         response = await client.post(
             "/api/run_pipeline/stream", json={"query": "x", "thread_id": "t-1"}
@@ -2034,6 +2109,7 @@ async def test_a_forecast_spends_the_forecast_cost_from_both_counters(
 ) -> None:
     """A forecast costs FORECAST_TURN_COST units from both counters."""
 
+    # Arrange
     calls: list[tuple[Any, ...]] = []
 
     async def increment(
@@ -2055,6 +2131,7 @@ async def test_a_forecast_spends_the_forecast_cost_from_both_counters(
         yield ("counted", "forecast")
         yield ("token", "never")
 
+    # Act
     with patch("api._astream_answer", stream):
         response = await client.post(
             "/api/run_pipeline/stream", json={"query": "x", "thread_id": "t-1"}
@@ -2074,6 +2151,7 @@ async def test_a_forecast_short_of_quota_is_refused_before_the_site_is_charged(
 ) -> None:
     """The advisory headroom read refuses a forecast that cannot fit."""
 
+    # Arrange
     async def exhausted(pool: Any, *, user_id: int) -> int:
         return 1
 
@@ -2100,6 +2178,7 @@ async def test_a_forecast_short_of_quota_is_refused_before_the_site_is_charged(
         yield ("counted", "forecast")
         yield ("token", "never")
 
+    # Act
     with patch("api._astream_answer", stream):
         response = await client.post(
             "/api/run_pipeline/stream", json={"query": "x", "thread_id": "t-1"}
@@ -2122,6 +2201,7 @@ async def test_a_forecast_on_a_fresh_day_is_counted(
 ) -> None:
     """The boundary `left == cost` is affordable, not refused (`left < cost`)."""
 
+    # Arrange
     async def fresh(pool: Any, *, user_id: int) -> int:
         return 0
 
@@ -2147,6 +2227,7 @@ async def test_a_forecast_on_a_fresh_day_is_counted(
         yield ("counted", "forecast")
         yield ("token", "never")
 
+    # Act
     with patch("api._astream_answer", stream):
         response = await client.post(
             "/api/run_pipeline/stream", json={"query": "x", "thread_id": "t-1"}
@@ -2164,6 +2245,7 @@ async def test_a_forecast_on_a_fresh_day_is_counted(
 async def test_a_geopolitical_turn_skips_the_headroom_read(
     client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    # Arrange
     reads: list[int] = []
 
     async def read(pool: Any, *, user_id: int) -> int:
@@ -2188,6 +2270,7 @@ async def test_a_geopolitical_turn_skips_the_headroom_read(
         yield ("counted", "geopolitical")
         yield ("token", "never")
 
+    # Act
     with patch("api._astream_answer", stream):
         response = await client.post(
             "/api/run_pipeline/stream", json={"query": "x", "thread_id": "t-1"}
@@ -2204,6 +2287,7 @@ async def test_a_deep_turn_reaches_the_browser_once(
     """The real graph: the deep answer arrives as one `notice`, never a token,
     and the counted event carries the destination."""
 
+    # Arrange
     import importlib
 
     from agents.deep_expert.consts.progress import PLANNING_PROGRESS
@@ -2226,6 +2310,7 @@ async def test_a_deep_turn_reaches_the_browser_once(
     monkeypatch.setattr(deep_node, "research", fake_research)
     monkeypatch.setattr(api, "graph", graph_module.build_graph())
 
+    # Act
     events = [
         event
         async for event in api._astream_answer(

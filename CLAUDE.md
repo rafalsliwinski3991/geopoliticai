@@ -46,7 +46,11 @@ partial state dictionaries without mutation. Preserve shared-to-agent imports.
 
 Unit tests mirror `agentic_backend/src/`: test `src/<path>/<name>.py` in
 `tests/unit_tests/<path>/test_<name>.py`, and give every test
-subdirectory an empty `__init__.py`. Frontend unit tests are Vitest in
+subdirectory an empty `__init__.py`. Every test is written in
+arrange/act/assert sections, marked with `# Arrange`, `# Act`, and
+`# Assert` comments in that order (a test that asserts module surgery
+with no arrangement or action may carry `# Assert` alone); a missing
+section is a review-blocking defect. Frontend unit tests are Vitest in
 `frontend/chat/` (`npm test` from `frontend/chat/`), not in the Python suite. Each agent's
 compiled graph gets its
 own `tests/unit_tests/agents/<name>/test_graph.py`.
