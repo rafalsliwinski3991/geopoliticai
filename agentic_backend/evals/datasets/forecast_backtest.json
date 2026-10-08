@@ -1,422 +1,88 @@
 [
- {
-  "name": "backtest-sweden-election",
-  "input": {
-   "query": "Give me a forecast: will Sweden's opposition centre-left bloc win a majority of the Riksdag's seats in the 13 September 2026 general election?",
-   "as_of": "2026-08-05",
-   "resolves_on": "2026-09-13",
-   "resolution_source": "https://www.abc.net.au/news/2026-09-17/sweden-election-result/107149110",
-   "sources": [
-    {
-     "title": "Sweden's campaign opens",
-     "url": "https://pre-event.example/sweden-campaign",
-     "text": "Sweden's general election is set for 13 September 2026.\nThe incumbent three-party centre-right coalition has governed since 2022.\nThe opposition centre-left bloc campaigns as a joint list of four parties.\nPublic broadcasting hosts the leaders' debates in the final month.",
-     "author": "Elsa Nyberg"
+  {
+    "name": "backtest-sweden-election",
+    "input": {
+      "query": "Give me a forecast: will Sweden's opposition centre-left bloc win a majority of the Riksdag's seats in the 13 September 2026 general election?",
+      "as_of": "2026-08-05",
+      "resolves_on": "2026-09-13",
+      "resolution_source": "https://www.abc.net.au/news/2026-09-17/sweden-election-result/107149110",
+      "sources": [
+        {
+          "title": "Sweden's campaign opens",
+          "url": "https://pre-event.example/sweden-campaign",
+          "text": "Sweden's general election is set for 13 September 2026.\nThe incumbent three-party centre-right coalition has governed since 2022.\nThe opposition centre-left bloc campaigns as a joint list of four parties.\nPublic broadcasting hosts the leaders' debates in the final month.",
+          "author": "Elsa Nyberg"
+        },
+        {
+          "title": "Opinion polls show a close race",
+          "url": "https://pre-event.example/sweden-polls",
+          "text": "Poll aggregates through late summer put the two blocs within a few points.\nNeither bloc has held a double-digit lead at any point this year.\nTurnout in Swedish elections has exceeded 84 percent in recent cycles.",
+          "author": ""
+        },
+        {
+          "title": "Budget disputes strain the coalition",
+          "url": "https://pre-event.example/sweden-budget",
+          "text": "The governing coalition's autumn budget talks exposed disputes over energy prices.\nOne coalition partner has publicly questioned a flagship tax pledge.\nThe Social Democrats campaign on welfare and energy prices.",
+          "author": "Johan Lindqvist"
+        }
+      ],
+      "focal_claim": 1
     },
-    {
-     "title": "Opinion polls show a close race",
-     "url": "https://pre-event.example/sweden-polls",
-     "text": "Poll aggregates through late summer put the two blocs within a few points.\nNeither bloc has held a double-digit lead at any point this year.\nTurnout in Swedish elections has exceeded 84 percent in recent cycles.",
-     "author": ""
-    },
-    {
-     "title": "Budget disputes strain the coalition",
-     "url": "https://pre-event.example/sweden-budget",
-     "text": "The governing coalition's autumn budget talks exposed disputes over energy prices.\nOne coalition partner has publicly questioned a flagship tax pledge.\nThe Social Democrats campaign on welfare and energy prices.",
-     "author": "Johan Lindqvist"
+    "output": {
+      "outcome": "Sweden's centre-left bloc won a one-seat majority (175-176 of 349) in the 13 September 2026 general election, ousting the centre-right coalition led by Ulf Kristersson; Magdalena Andersson is set to return as prime minister. Only about 26,000 votes separated the blocs.",
+      "answer": "The council leans towards a change of government in Sweden. The campaign's frame ([Sweden's campaign opens](https://pre-event.example/sweden-campaign)) and the poll aggregate ([Opinion polls show a close race](https://pre-event.example/sweden-polls)) suggest the centre-right's advantage is gone.\n\n## Claim 1: Sweden's opposition centre-left bloc wins a majority of the Riksdag's 349 seats in the 13 September 2026 general election.\nBy 15 October 2026. Council verdict: **ACCEPTED**\n\nMembers weigh the tight polls ([Opinion polls show a close race](https://pre-event.example/sweden-polls)) against the coalition's budget disputes ([Budget disputes strain the coalition](https://pre-event.example/sweden-budget)).\n\n## Claim 2: Sweden's post-election government formation concludes before 1 November 2026.\nBy 1 November 2026. Council verdict: **UNRESOLVED**\n\nFormation timelines rest on the seat count the election produces; the sources say little ([Sweden's campaign opens](https://pre-event.example/sweden-campaign)).\n\n## How the council voted\n\nMembers voting: 7 of 7.\n\nEvidence: 3 sources read from 1 site. The council voted on 4 passages quoted from 2 of them.\n\n### Claim 1: ACCEPTED\n5 of 7 voted for, 1 against, 1 unsure.\n\n- Member 1: for — The polls' tight race plus coalition strain favours the opposition. ([Source 2](https://pre-event.example/sweden-polls), [Source 3](https://pre-event.example/sweden-budget))\n- Member 2: for — Strained budgets and joint campaigning point left. ([Source 3](https://pre-event.example/sweden-budget))\n- Member 3: for — The incumbent's energy disputes cost votes. ([Source 3](https://pre-event.example/sweden-budget))\n- Member 4: against — Incumbents rarely lose on one budget. ([Source 2](https://pre-event.example/sweden-polls))\n- Member 5: unsure — Within the margin of error. ([Source 2](https://pre-event.example/sweden-polls))\n- Member 6: for — High turnout favours challenger blocs. ([Source 2](https://pre-event.example/sweden-polls))\n- Member 7: for — The joint list's discipline beats coalition infighting. ([Source 1](https://pre-event.example/sweden-campaign), [Source 3](https://pre-event.example/sweden-budget))\n\n### Claim 2: UNRESOLVED\n2 of 7 voted for, 1 against, 4 unsure.\n\n- Member 1: unsure — Formation timelines vary.\n- Member 2: for — A one-seat margin still means a quick deal. ([Source 2](https://pre-event.example/sweden-polls))\n- Member 3: unsure — No basis.\n- Member 4: unsure — Thin.\n- Member 5: unsure — No lean.\n- Member 6: for — Sweden forms governments fast. ([Source 2](https://pre-event.example/sweden-polls))\n- Member 7: unsure — Too thin.",
+      "claims": [
+        "Claim 1: Sweden's opposition centre-left bloc wins a majority of the Riksdag's 349 seats in the 13 September 2026 general election. (deadline: 2026-10-15)",
+        "Claim 2: Sweden's post-election government formation concludes before 1 November 2026. (deadline: 2026-11-01)"
+      ],
+      "verdicts": [
+        "Claim 1: ACCEPTED",
+        "Claim 2: UNRESOLVED"
+      ],
+      "leak_probe": "Member 1: I do not know how this turned out.\n\nMember 2: I do not know how this turned out.\n\nMember 3: I do not know how this turned out.\n\nMember 4: I do not know how this turned out.\n\nMember 5: I do not know how this turned out.\n\nMember 6: I do not know how this turned out.\n\nMember 7: I do not know how this turned out.\n\nMember 3 (fallback): I do not know how this turned out.\n\nMember 4 (fallback): I do not know how this turned out.\n\nMember 5 (fallback): I do not know how this turned out.\n\nMember 6 (fallback): I do not know how this turned out.\n\nMember 7 (fallback): I do not know how this turned out."
     }
-   ]
   },
-  "output": {
-   "outcome": "Sweden's centre-left bloc won a one-seat majority (175-176 of 349) in the 13 September 2026 general election, ousting the centre-right coalition led by Ulf Kristersson; Magdalena Andersson is set to return as prime minister. Only about 26,000 votes separated the blocs.",
-   "answer": "The council leans towards a change of government in Sweden. The campaign's frame ([Sweden's campaign opens](https://pre-event.example/sweden-campaign)) and the poll aggregate ([Opinion polls show a close race](https://pre-event.example/sweden-polls)) suggest the centre-right's advantage is gone.\n\n## Claim 1: Sweden's opposition centre-left bloc wins a majority of the Riksdag's 349 seats in the 13 September 2026 general election.\nBy 15 October 2026. Council verdict: **ACCEPTED**\n\nMembers weigh the tight polls ([Opinion polls show a close race](https://pre-event.example/sweden-polls)) against the coalition's budget disputes ([Budget disputes strain the coalition](https://pre-event.example/sweden-budget)).\n\n## Claim 2: Sweden's post-election government formation concludes before 1 November 2026.\nBy 1 November 2026. Council verdict: **UNRESOLVED**\n\nFormation timelines rest on the seat count the election produces; the sources say little ([Sweden's campaign opens](https://pre-event.example/sweden-campaign)).\n\n## How the council voted\n\nMembers voting: 7 of 7.\n\nEvidence: 3 sources read from 1 site. The council voted on 4 passages quoted from 2 of them.\n\n### Claim 1: ACCEPTED\n5 of 7 voted for, 1 against, 1 unsure.\n\n- Member 1: for \u2014 The polls' tight race plus coalition strain favours the opposition. ([Source 2](https://pre-event.example/sweden-polls), [Source 3](https://pre-event.example/sweden-budget))\n- Member 2: for \u2014 Strained budgets and joint campaigning point left. ([Source 3](https://pre-event.example/sweden-budget))\n- Member 3: for \u2014 The incumbent's energy disputes cost votes. ([Source 3](https://pre-event.example/sweden-budget))\n- Member 4: against \u2014 Incumbents rarely lose on one budget. ([Source 2](https://pre-event.example/sweden-polls))\n- Member 5: unsure \u2014 Within the margin of error. ([Source 2](https://pre-event.example/sweden-polls))\n- Member 6: for \u2014 High turnout favours challenger blocs. ([Source 2](https://pre-event.example/sweden-polls))\n- Member 7: for \u2014 The joint list's discipline beats coalition infighting. ([Source 1](https://pre-event.example/sweden-campaign), [Source 3](https://pre-event.example/sweden-budget))\n\n### Claim 2: UNRESOLVED\n2 of 7 voted for, 1 against, 4 unsure.\n\n- Member 1: unsure \u2014 Formation timelines vary.\n- Member 2: for \u2014 A one-seat margin still means a quick deal. ([Source 2](https://pre-event.example/sweden-polls))\n- Member 3: unsure \u2014 No basis.\n- Member 4: unsure \u2014 Thin.\n- Member 5: unsure \u2014 No lean.\n- Member 6: for \u2014 Sweden forms governments fast. ([Source 2](https://pre-event.example/sweden-polls))\n- Member 7: unsure \u2014 Too thin.",
-   "claims": [
-    "Claim 1: Sweden's opposition centre-left bloc wins a majority of the Riksdag's 349 seats in the 13 September 2026 general election. (deadline: 2026-10-15)",
-    "Claim 2: Sweden's post-election government formation concludes before 1 November 2026. (deadline: 2026-11-01)"
-   ],
-   "verdicts": [
-    "Claim 1: ACCEPTED",
-    "Claim 2: UNRESOLVED"
-   ],
-   "leak_probe": "Member 1: I do not know how this turned out.\n\nMember 2: I do not know how this turned out.\n\nMember 3: I do not know how this turned out.\n\nMember 4: I do not know how this turned out.\n\nMember 5: I do not know how this turned out.\n\nMember 6: I do not know how this turned out.\n\nMember 7: I do not know how this turned out.\n\nMember 3 (fallback): I do not know how this turned out.\n\nMember 4 (fallback): I do not know how this turned out.\n\nMember 5 (fallback): I do not know how this turned out.\n\nMember 6 (fallback): I do not know how this turned out.\n\nMember 7 (fallback): I do not know how this turned out."
-  }
- },
- {
-  "name": "backtest-morocco-election",
-  "input": {
-   "query": "Give me a forecast: will Morocco's Authenticity and Modernity Party win the most seats in the 23 September 2026 legislative election?",
-   "as_of": "2026-08-20",
-   "resolves_on": "2026-09-23",
-   "resolution_source": "https://www.maroc.ma/en/news/2026-elections-final-results-perfectly-match-previously-announced-preliminary-results-interior",
-   "sources": [
-    {
-     "title": "Morocco sets its legislative election",
-     "url": "https://pre-event.example/morocco-date",
-     "text": "Morocco's House of Representatives election is scheduled for 23 September 2026.\nThe Authenticity and Modernity Party has led recent polls of party preference.\nThe Justice and Development Party seeks a return to its earlier strength.",
-     "author": "Karim Belhaj"
+  {
+    "name": "backtest-mecca-pact",
+    "input": {
+      "query": "Give me a forecast: will Saudi Arabia, Turkey and Pakistan sign a joint defence agreement by 30 September 2026?",
+      "as_of": "2026-07-25",
+      "resolves_on": "2026-09-15",
+      "resolution_source": "https://www.bbc.com/news/articles/c30418m4mj4o",
+      "sources": [
+        {
+          "title": "A trilateral meeting is prepared",
+          "url": "https://pre-event.example/mecca-prep",
+          "text": "The three capitals announced a joint defence summit.\nA bilateral defence pact between two of them already exists.\nTheir foreign ministers met earlier this year on joint security.",
+          "author": "Yusuf Demir"
+        },
+        {
+          "title": "The war's pressure grows",
+          "url": "https://pre-event.example/mecca-pressure",
+          "text": "Missile fire has reached the gulf's oil exporters.\nRegional states say security can no longer depend on outside powers.\nAnalysts expect closer defence ties among the four main states.",
+          "author": "Leyla Karim"
+        },
+        {
+          "title": "What the draft is said to say",
+          "url": "https://pre-event.example/mecca-expected",
+          "text": "The draft is described as a mutual-defence pledge without troop commitments.\nOfficials call it purely defensive in briefings.\nA signing is expected at the summit itself.",
+          "author": ""
+        }
+      ],
+      "focal_claim": 1
     },
-    {
-     "title": "Campaign finance and lists",
-     "url": "https://pre-event.example/morocco-lists",
-     "text": "Candidate lists were filed with the interior ministry in August.\nLocal notables dominate the electoral lists in rural districts.\nTurnout in recent Moroccan legislative elections has ranged near 50 percent.",
-     "author": ""
-    },
-    {
-     "title": "Coalition arithmetic before the vote",
-     "url": "https://pre-event.example/morocco-coalition",
-     "text": "Two of the larger parties have floated a post-election alliance.\nThe palace's role in choosing a prime minister from the largest bloc is unchanged.\nAnalysts expect a coalition rather than a single-party government.",
-     "author": "Salma Idrissi"
+    "output": {
+      "outcome": "On 7 August 2026 Saudi Arabia, Turkey and Pakistan signed the Mecca Joint Defence Agreement in Mecca, stipulating that an armed attack on any one of the three is an attack on all; Turkey's foreign minister called it technically the same as NATO's Article 5.",
+      "answer": "The council expects the trilateral defence pact to be signed. The announced summit ([A trilateral meeting is prepared](https://pre-event.example/mecca-prep)) and the war's pressure ([The war's pressure grows](https://pre-event.example/mecca-pressure)) make it near-certain; the text is expected to stay declaratory.\n\n## Claim 1: Saudi Arabia, Turkey and Pakistan sign a joint defence agreement by 30 September 2026.\nBy 30 September 2026. Council verdict: **ACCEPTED**\n\nThe announced summit and prepared signing ([What the pact is expected to say](https://pre-event.example/mecca-expected)) decide this claim.\n\n## Claim 2: The agreement's text includes troop commitments from any party.\nBy 31 October 2026. Council verdict: **REJECTED**\n\nBriefings describe a defensive pledge without troop commitments ([What the pact is expected to say](https://pre-event.example/mecca-expected)).\n\n## How the council voted\n\nMembers voting: 7 of 7.\n\nEvidence: 3 sources read from 1 site. The council voted on 3 passages quoted from 2 of them.\n\n### Claim 1: ACCEPTED\n7 of 7 voted for, 0 against, 0 unsure.\n\n- Member 1: for — The summit is announced for a signing. ([Source 1](https://pre-event.example/mecca-prep), [Source 3](https://pre-event.example/mecca-expected))\n- Member 2: for — The bilateral pact expands to trilateral. ([Source 1](https://pre-event.example/mecca-prep))\n- Member 3: for — The war's pressure accelerates it. ([Source 2](https://pre-event.example/mecca-pressure))\n- Member 4: for — The signing is expected at the summit. ([Source 3](https://pre-event.example/mecca-expected))\n- Member 5: for — The ministers' earlier meeting paved it. ([Source 1](https://pre-event.example/mecca-prep))\n- Member 6: for — Analysts expect exactly this. ([Source 2](https://pre-event.example/mecca-pressure))\n- Member 7: for — Prepared summit plus draft. ([Source 1](https://pre-event.example/mecca-prep), [Source 3](https://pre-event.example/mecca-expected))\n\n### Claim 2: REJECTED\n1 of 7 voted for, 5 against, 1 unsure.\n\n- Member 1: against — Briefings say purely defensive. ([Source 3](https://pre-event.example/mecca-expected))\n- Member 2: against — No troop commitments expected. ([Source 3](https://pre-event.example/mecca-expected))\n- Member 3: unsure — No basis.\n- Member 4: against — The draft has no troop pledges. ([Source 3](https://pre-event.example/mecca-expected))\n- Member 5: against — Defensive framing only. ([Source 3](https://pre-event.example/mecca-expected))\n- Member 6: unsure — No lean.\n- Member 7: against — No troop commitments. ([Source 3](https://pre-event.example/mecca-expected))",
+      "claims": [
+        "Claim 1: Saudi Arabia, Turkey and Pakistan sign a joint defence agreement by 30 September 2026. (deadline: 2026-09-30)",
+        "Claim 2: The agreement's text includes troop commitments from any party. (deadline: 2026-10-31)"
+      ],
+      "verdicts": [
+        "Claim 1: ACCEPTED",
+        "Claim 2: REJECTED"
+      ],
+      "leak_probe": "Member 1: I do not know how this turned out.\n\nMember 2: I do not know how this turned out.\n\nMember 3: I do not know how this turned out.\n\nMember 4: I do not know how this turned out.\n\nMember 5: I do not know how this turned out.\n\nMember 6: I do not know how this turned out.\n\nMember 7: I do not know how this turned out.\n\nMember 3 (fallback): I do not know how this turned out.\n\nMember 4 (fallback): I do not know how this turned out.\n\nMember 5 (fallback): I do not know how this turned out.\n\nMember 6 (fallback): I do not know how this turned out.\n\nMember 7 (fallback): I do not know how this turned out."
     }
-   ]
-  },
-  "output": {
-   "outcome": "In Morocco's 23 September 2026 legislative election the Authenticity and Modernity Party (PAM) won the most seats with 97, ahead of the National Rally of Independents (66) and Istiqlal (65); final results matched the preliminary ones.",
-   "answer": "The council expects Morocco's Authenticity and Modernity Party to lead the seat count. Party-preference polls ([Morocco sets its legislative election](https://pre-event.example/morocco-date)) and coalition arithmetic ([Coalition arithmetic before the vote](https://pre-event.example/morocco-coalition)) point that way.\n\n## Claim 1: Morocco's Authenticity and Modernity Party wins the most seats in the 23 September 2026 legislative election.\nBy 15 October 2026. Council verdict: **ACCEPTED**\n\nThe polling lead ([Morocco sets its legislative election](https://pre-event.example/morocco-date)) is weighed against the rival party's ground game and coalition talk ([Coalition arithmetic before the vote](https://pre-event.example/morocco-coalition)).\n\n## Claim 2: The election's official turnout exceeds 55 percent.\nBy 1 November 2026. Council verdict: **UNRESOLVED**\n\nTurnout history ([Campaign finance and lists](https://pre-event.example/morocco-lists)) leaves the threshold claim unsettled.\n\n## How the council voted\n\nMembers voting: 7 of 7.\n\nEvidence: 3 sources read from 1 site. The council voted on 3 passages quoted from 3 of them.\n\n### Claim 1: ACCEPTED\n4 of 7 voted for, 2 against, 1 unsure.\n\n- Member 1: for \u2014 Party-preference polls put PAM ahead. ([Source 1](https://pre-event.example/morocco-date))\n- Member 2: for \u2014 The polling lead is stable. ([Source 1](https://pre-event.example/morocco-date))\n- Member 3: unsure \u2014 Coalition talk blurs the ranking. ([Source 3](https://pre-event.example/morocco-coalition))\n- Member 4: against \u2014 PJD's ground game can overtake. ([Source 1](https://pre-event.example/morocco-date))\n- Member 5: for \u2014 Rural list dominance favours the larger party. ([Source 2](https://pre-event.example/morocco-lists), [Source 3](https://pre-event.example/morocco-coalition))\n- Member 6: for \u2014 The palace's arithmetic favours stability. ([Source 3](https://pre-event.example/morocco-coalition))\n- Member 7: unsure \u2014 One poll cycle is not a trend. ([Source 1](https://pre-event.example/morocco-date))\n\n### Claim 2: UNRESOLVED\n1 of 7 voted for, 2 against, 4 unsure.\n\n- Member 1: unsure \u2014 Turnout swings widely. ([Source 2](https://pre-event.example/morocco-lists))\n- Member 2: against \u2014 Notable-driven lists depress turnout. ([Source 2](https://pre-event.example/morocco-lists))\n- Member 3: unsure \u2014 No lean.\n- Member 4: unsure \u2014 Thin.\n- Member 5: for \u2014 Recent turnouts were higher. ([Source 2](https://pre-event.example/morocco-lists))\n- Member 6: against \u2014 Past turnout near 50. ([Source 2](https://pre-event.example/morocco-lists))\n- Member 7: unsure \u2014 No basis.",
-   "claims": [
-    "Claim 1: Morocco's Authenticity and Modernity Party wins the most seats in the 23 September 2026 legislative election. (deadline: 2026-10-15)",
-    "Claim 2: The election's official turnout exceeds 55 percent. (deadline: 2026-11-01)"
-   ],
-   "verdicts": [
-    "Claim 1: ACCEPTED",
-    "Claim 2: UNRESOLVED"
-   ],
-   "leak_probe": "Member 1: I do not know how this turned out.\n\nMember 2: I do not know how this turned out.\n\nMember 3: I do not know how this turned out.\n\nMember 4: I do not know how this turned out.\n\nMember 5: I do not know how this turned out.\n\nMember 6: I do not know how this turned out.\n\nMember 7: I do not know how this turned out.\n\nMember 3 (fallback): I do not know how this turned out.\n\nMember 4 (fallback): I do not know how this turned out.\n\nMember 5 (fallback): I do not know how this turned out.\n\nMember 6 (fallback): I do not know how this turned out.\n\nMember 7 (fallback): I do not know how this turned out."
   }
- },
- {
-  "name": "backtest-russia-sanctions-act",
-  "input": {
-   "query": "Give me a forecast: will the United States enact new Russia sanctions legislation before 1 October 2026?",
-   "as_of": "2026-08-10",
-   "resolves_on": "2026-09-30",
-   "resolution_source": "https://cepr.net/publications/sanctions-watch-september-2026/",
-   "sources": [
-    {
-     "title": "Sanctions bill advances in Congress",
-     "url": "https://pre-event.example/us-bill",
-     "text": "A sweeping Russia sanctions bill has cleared its committees.\nThe bill mandates tariffs on the largest importers of Russian oil.\nThe administration's position on signing has shifted publicly twice this year.",
-     "author": "Dana Reyes"
-    },
-    {
-     "title": "Importers keep buying Russian crude",
-     "url": "https://pre-event.example/crude-flows",
-     "text": "Three of the five largest importers of Russian crude have expanded purchases this year.\nSecondary-sanctions threats have not changed their declared policy.\nRefiners in Asia cite price and reliability.",
-     "author": ""
-    },
-    {
-     "title": "Congress's calendar favours passage",
-     "url": "https://pre-event.example/calendar",
-     "text": "Leadership has scheduled the bill for floor votes in September.\nA veto-proof margin is reported in early whip counts.\nCompanion language extends an existing Iran sanctions act.",
-     "author": "Peter Nunn"
-    }
-   ]
-  },
-  "output": {
-   "outcome": "On 18 September 2026 President Trump signed the Lindsey O. Graham Sanctioning Russia and Iran Act of 2026, the most significant Russia sanctions legislation Congress has approved in years; it mandates tariffs of up to 100 percent on the top importers of Russian crude.",
-   "answer": "The council expects the sanctions bill to be enacted. Its committee passage and the floor calendar ([Congress's calendar favours passage](https://pre-event.example/calendar)) are decisive; the importers' behaviour ([Importers keep buying Russian crude](https://pre-event.example/crude-flows)) is not.\n\n## Claim 1: The United States enacts new Russia sanctions legislation before 1 October 2026.\nBy 1 October 2026. Council verdict: **ACCEPTED**\n\nScheduled votes and whip counts ([Congress's calendar favours passage](https://pre-event.example/calendar)) decide this claim.\n\n## Claim 2: The new law's tariffs are applied to at least one importer of Russian crude before 1 December 2026.\nBy 1 December 2026. Council verdict: **UNRESOLVED**\n\nThe importers' purchases ([Importers keep buying Russian crude](https://pre-event.example/crude-flows)) and the law's waiver authority leave enforcement unsettled.\n\n## How the council voted\n\nMembers voting: 7 of 7.\n\nEvidence: 3 sources read from 1 site. The council voted on 4 passages quoted from 3 of them.\n\n### Claim 1: ACCEPTED\n7 of 7 voted for, 0 against, 0 unsure.\n\n- Member 1: for \u2014 Scheduled floor votes and whip counts. ([Source 3](https://pre-event.example/calendar))\n- Member 2: for \u2014 Committee passage plus the calendar. ([Source 1](https://pre-event.example/us-bill), [Source 3](https://pre-event.example/calendar))\n- Member 3: for \u2014 The margin is veto-proof. ([Source 3](https://pre-event.example/calendar))\n- Member 4: for \u2014 Both chambers are scheduled to act. ([Source 1](https://pre-event.example/us-bill))\n- Member 5: for \u2014 The administration's shift removed the obstacle. ([Source 1](https://pre-event.example/us-bill))\n- Member 6: for \u2014 Companion Iran language broadens support. ([Source 3](https://pre-event.example/calendar))\n- Member 7: for \u2014 The bill's design fits the year's pattern. ([Source 1](https://pre-event.example/us-bill), [Source 2](https://pre-event.example/crude-flows))\n\n### Claim 2: UNRESOLVED\n1 of 7 voted for, 3 against, 3 unsure.\n\n- Member 1: unsure \u2014 Waiver authority is broad. ([Source 3](https://pre-event.example/calendar))\n- Member 2: against \u2014 Enforcement lags enactment. ([Source 2](https://pre-event.example/crude-flows))\n- Member 3: unsure \u2014 Depends on enforcement.\n- Member 4: unsure \u2014 No basis.\n- Member 5: against \u2014 National-interest waivers swallow it. ([Source 3](https://pre-event.example/calendar))\n- Member 6: unsure \u2014 Thin.\n- Member 7: unsure \u2014 No lean.",
-   "claims": [
-    "Claim 1: The United States enacts new Russia sanctions legislation before 1 October 2026. (deadline: 2026-10-01)",
-    "Claim 2: The new law's tariffs are applied to at least one importer of Russian crude before 1 December 2026. (deadline: 2026-12-01)"
-   ],
-   "verdicts": [
-    "Claim 1: ACCEPTED",
-    "Claim 2: UNRESOLVED"
-   ],
-   "leak_probe": "Member 1: I do not know how this turned out.\n\nMember 2: I do not know how this turned out.\n\nMember 3: I do not know how this turned out.\n\nMember 4: I do not know how this turned out.\n\nMember 5: I do not know how this turned out.\n\nMember 6: I do not know how this turned out.\n\nMember 7: I do not know how this turned out.\n\nMember 3 (fallback): I do not know how this turned out.\n\nMember 4 (fallback): I do not know how this turned out.\n\nMember 5 (fallback): I do not know how this turned out.\n\nMember 6 (fallback): I do not know how this turned out.\n\nMember 7 (fallback): I do not know how this turned out."
-  }
- },
- {
-  "name": "backtest-eu-sanctions-removal",
-  "input": {
-   "query": "Give me a forecast: will the EU remove the two disputed individuals from its Russia sanctions list as part of the autumn 2026 renewal?",
-   "as_of": "2026-08-15",
-   "resolves_on": "2026-09-30",
-   "resolution_source": "https://cepr.net/publications/sanctions-watch-september-2026/",
-   "sources": [
-    {
-     "title": "Sanctions renewal talks stall",
-     "url": "https://pre-event.example/eu-stall",
-     "text": "Member states extended the renewal deadline by a week over two names.\nThe list includes figures tied to sanctioned business groups.\nRenewals normally run six months; a longer extension has been floated.",
-     "author": "Lena Weber"
-    },
-    {
-     "title": "The legal mechanics of listing",
-     "url": "https://pre-event.example/eu-mechanics",
-     "text": "Delisting requires unanimity in the council.\nCourts have annulled some listings on evidentiary grounds in past years.\nA pardon abroad can accompany a delisting deal.",
-     "author": ""
-    },
-    {
-     "title": "Trade-offs in the package",
-     "url": "https://pre-event.example/eu-tradeoffs",
-     "text": "Diplomats describe a package: two removals traded for a three-year regime.\nThe broader regime's length was the sticking point for one member.\nThe decision is expected within the renewal window.",
-     "author": "Marco Bianchi"
-    }
-   ]
-  },
-  "output": {
-   "outcome": "In mid-September 2026 the EU reached a compromise: Usmanov and Fridman were removed from the sanctions list while the broader individual sanctions regime was extended for three years instead of the usual six months.",
-   "answer": "The council expects a package: removals traded for a longer regime. The diplomat accounts ([Trade-offs in the package](https://pre-event.example/eu-tradeoffs)) and the deadline pressure ([Sanctions renewal talks stall](https://pre-event.example/eu-stall)) make the trade the likely outcome.\n\n## Claim 1: The EU removes the two disputed individuals from its Russia sanctions list as part of the autumn 2026 renewal.\nBy 15 October 2026. Council verdict: **ACCEPTED**\n\nThe package logic ([Trade-offs in the package](https://pre-event.example/eu-tradeoffs)) outweighs unanimity risk ([The legal mechanics of listing](https://pre-event.example/eu-mechanics)).\n\n## Claim 2: The EU extends its Russia sanctions regime by more than one year at the autumn 2026 renewal.\nBy 15 October 2026. Council verdict: **ACCEPTED**\n\nThe floated length ([Trade-offs in the package](https://pre-event.example/eu-tradeoffs)) matches the stated sticking point.\n\n## How the council voted\n\nMembers voting: 7 of 7.\n\nEvidence: 3 sources read from 1 site. The council voted on 3 passages quoted from 2 of them.\n\n### Claim 1: ACCEPTED\n4 of 7 voted for, 2 against, 1 unsure.\n\n- Member 1: for \u2014 The package logic is explicit. ([Source 3](https://pre-event.example/eu-tradeoffs))\n- Member 2: against \u2014 Unanimity makes removals hard. ([Source 2](https://pre-event.example/eu-mechanics))\n- Member 3: for \u2014 The trade is already described by diplomats. ([Source 1](https://pre-event.example/eu-stall), [Source 3](https://pre-event.example/eu-tradeoffs))\n- Member 4: unsure \u2014 Names can survive the package. ([Source 1](https://pre-event.example/eu-stall))\n- Member 5: for \u2014 The renewal window forces a deal. ([Source 1](https://pre-event.example/eu-stall), [Source 3](https://pre-event.example/eu-tradeoffs))\n- Member 6: against \u2014 Courts have upheld these listings. ([Source 2](https://pre-event.example/eu-mechanics))\n- Member 7: for \u2014 The package pattern fits recent practice. ([Source 2](https://pre-event.example/eu-mechanics), [Source 3](https://pre-event.example/eu-tradeoffs))\n\n### Claim 2: ACCEPTED\n5 of 7 voted for, 1 against, 1 unsure.\n\n- Member 1: for \u2014 A three-year regime has been floated. ([Source 3](https://pre-event.example/eu-tradeoffs))\n- Member 2: for \u2014 Longer regimes follow court losses. ([Source 2](https://pre-event.example/eu-mechanics))\n- Member 3: for \u2014 One member's price is the length. ([Source 3](https://pre-event.example/eu-tradeoffs))\n- Member 4: unsure \u2014 No lean.\n- Member 5: for \u2014 The floated length fits. ([Source 3](https://pre-event.example/eu-tradeoffs))\n- Member 6: unsure \u2014 No basis.\n- Member 7: for \u2014 The regime's length was the stated sticking point. ([Source 3](https://pre-event.example/eu-tradeoffs))",
-   "claims": [
-    "Claim 1: The EU removes the two disputed individuals from its Russia sanctions list as part of the autumn 2026 renewal. (deadline: 2026-10-15)",
-    "Claim 2: The EU extends its Russia sanctions regime by more than one year at the autumn 2026 renewal. (deadline: 2026-10-15)"
-   ],
-   "verdicts": [
-    "Claim 1: ACCEPTED",
-    "Claim 2: ACCEPTED"
-   ],
-   "leak_probe": "Member 1: I do not know how this turned out.\n\nMember 2: I do not know how this turned out.\n\nMember 3: I do not know how this turned out.\n\nMember 4: I do not know how this turned out.\n\nMember 5: I do not know how this turned out.\n\nMember 6: I do not know how this turned out.\n\nMember 7: I do not know how this turned out.\n\nMember 3 (fallback): I do not know how this turned out.\n\nMember 4 (fallback): I do not know how this turned out.\n\nMember 5 (fallback): I do not know how this turned out.\n\nMember 6 (fallback): I do not know how this turned out.\n\nMember 7 (fallback): I do not know how this turned out."
-  }
- },
- {
-  "name": "backtest-libya-elections-deal",
-  "input": {
-   "query": "Give me a forecast: will Libya's rival factions sign a UN-brokered agreement to hold national elections by 30 September 2026?",
-   "as_of": "2026-08-05",
-   "resolves_on": "2026-09-30",
-   "resolution_source": "https://www.aljazeera.com/news/2026/8/30/rival-libya-factions-sign-deal-to-hold-national-elections-within-two-years",
-   "sources": [
-    {
-     "title": "The committee initialles a draft",
-     "url": "https://pre-event.example/libya-draft",
-     "text": "A UN-backed committee initialed a draft election framework in Tunis.\nThe draft sets a single executive authority to oversee the vote.\nLibya's rival administrations have split the country since 2014.",
-     "author": "Nadia Fathi"
-    },
-    {
-     "title": "Rival institutions must approve",
-     "url": "https://pre-event.example/libya-approval",
-     "text": "The House of Representatives and the High Council of State must approve the deal.\nA failure triggers a constitutional-adoption path with international backing.\nPast election attempts stalled over who may run.",
-     "author": ""
-    },
-    {
-     "title": "Mediators set a signing ceremony",
-     "url": "https://pre-event.example/libya-ceremony",
-     "text": "The UN mission announced a signing ceremony in Tripoli.\nDelegations from both governments confirmed attendance.\nAn interim-governance dispute remains unresolved.",
-     "author": "Faraj Idris"
-    }
-   ]
-  },
-  "output": {
-   "outcome": "On 30 August 2026 representatives of Libya's rival governments signed a UN-brokered deal in Tripoli to hold legislative and presidential elections within 24 months under a single executive authority, after the '4+4 committee' initialed a draft in Tunis on 20 August.",
-   "answer": "The council expects the agreement to be signed. The announced ceremony ([Mediators set a signing ceremony](https://pre-event.example/libya-ceremony)) follows the initialed draft ([The committee initialles a draft](https://pre-event.example/libya-draft)).\n\n## Claim 1: Libya's rival factions sign a UN-brokered agreement to hold national elections by 30 September 2026.\nBy 30 September 2026. Council verdict: **ACCEPTED**\n\nThe announced ceremony ([Mediators set a signing ceremony](https://pre-event.example/libya-ceremony)) decides this claim.\n\n## Claim 2: The two chambers approve the agreement within a month of signing.\nBy 31 October 2026. Council verdict: **UNRESOLVED**\n\nChamber approval rests on the constitutional path ([Rival institutions must approve](https://pre-event.example/libya-approval)); the interim dispute is unresolved.\n\n## How the council voted\n\nMembers voting: 7 of 7.\n\nEvidence: 3 sources read from 1 site. The council voted on 3 passages quoted from 3 of them.\n\n### Claim 1: ACCEPTED\n7 of 7 voted for, 0 against, 0 unsure.\n\n- Member 1: for \u2014 The ceremony is announced with both delegations. ([Source 3](https://pre-event.example/libya-ceremony))\n- Member 2: for \u2014 The draft is initialed. ([Source 1](https://pre-event.example/libya-draft))\n- Member 3: for \u2014 Both administrations confirmed. ([Source 3](https://pre-event.example/libya-ceremony))\n- Member 4: for \u2014 The signing date is set. ([Source 3](https://pre-event.example/libya-ceremony))\n- Member 5: for \u2014 The constitutional path pressures approval. ([Source 2](https://pre-event.example/libya-approval))\n- Member 6: for \u2014 International backing raises the cost of walking away. ([Source 2](https://pre-event.example/libya-approval), [Source 3](https://pre-event.example/libya-ceremony))\n- Member 7: for \u2014 Draft plus ceremony is a signing. ([Source 1](https://pre-event.example/libya-draft))\n\n### Claim 2: UNRESOLVED\n2 of 7 voted for, 3 against, 2 unsure.\n\n- Member 1: unsure \u2014 Chambers' approval is the hard part. ([Source 2](https://pre-event.example/libya-approval))\n- Member 2: against \u2014 Approval deadlines have slipped before. ([Source 2](https://pre-event.example/libya-approval))\n- Member 3: unsure \u2014 No basis.\n- Member 4: against \u2014 The interim dispute blocks chambers. ([Source 2](https://pre-event.example/libya-approval))\n- Member 5: unsure \u2014 No lean.\n- Member 6: unsure \u2014 Thin.\n- Member 7: unsure \u2014 No lean.",
-   "claims": [
-    "Claim 1: Libya's rival factions sign a UN-brokered agreement to hold national elections by 30 September 2026. (deadline: 2026-09-30)",
-    "Claim 2: The two chambers approve the agreement within a month of signing. (deadline: 2026-10-31)"
-   ],
-   "verdicts": [
-    "Claim 1: ACCEPTED",
-    "Claim 2: UNRESOLVED"
-   ],
-   "leak_probe": "Member 1: I do not know how this turned out.\n\nMember 2: I do not know how this turned out.\n\nMember 3: I do not know how this turned out.\n\nMember 4: I do not know how this turned out.\n\nMember 5: I do not know how this turned out.\n\nMember 6: I do not know how this turned out.\n\nMember 7: I do not know how this turned out.\n\nMember 3 (fallback): I do not know how this turned out.\n\nMember 4 (fallback): I do not know how this turned out.\n\nMember 5 (fallback): I do not know how this turned out.\n\nMember 6 (fallback): I do not know how this turned out.\n\nMember 7 (fallback): I do not know how this turned out."
-  }
- },
- {
-  "name": "backtest-venezuela-oil-deal",
-  "input": {
-   "query": "Give me a forecast: will Venezuela's authorities sign an oil agreement with the United States by 30 September 2026?",
-   "as_of": "2026-08-01",
-   "resolves_on": "2026-09-30",
-   "resolution_source": "https://cepr.net/publications/sanctions-watch-september-2026/",
-   "sources": [
-    {
-     "title": "Talks over oil concessions",
-     "url": "https://pre-event.example/venezuela-talks",
-     "text": "Venezuela's authorities have negotiated access to state oil fields with an American-backed company.\nThe talks follow a change of government in January.\nTreasury has widened licences for the state oil company this year.",
-     "author": "Camila Orta"
-    },
-    {
-     "title": "The military backdrop",
-     "url": "https://pre-event.example/venezuela-backdrop",
-     "text": "An American military deployment in the Caribbean continues.\nThe former president's abduction in January remains the reference point of politics.\nSanctions on the oil sector remain largely in place.",
-     "author": ""
-    },
-    {
-     "title": "A package is drafted",
-     "url": "https://pre-event.example/venezuela-draft",
-     "text": "The draft grants century-long concessions over multiple fields.\nThe American side gains an ownership stake in the operating company.\nEconomists call the terms one-sided.",
-     "author": "Rafael Sandoval"
-    }
-   ]
-  },
-  "output": {
-   "outcome": "In the final days of August 2026 the Trump administration announced 'the biggest oil deal in world history' with Venezuela's government: century-long concessions over 17 oil fields to a company majority-owned by an ally of the US envoy, with the US gaining an ownership stake and preferential access.",
-   "answer": "The council expects the oil agreement to be signed. The licensing moves ([Talks over oil concessions](https://pre-event.example/venezuela-talks)) and the drafted package ([A package is drafted](https://pre-event.example/venezuela-draft)) point to a deal.\n\n## Claim 1: Venezuela's authorities sign an oil agreement with the United States by 30 September 2026.\nBy 30 September 2026. Council verdict: **ACCEPTED**\n\nThe drafted package ([A package is drafted](https://pre-event.example/venezuela-draft)) and the widened licences ([Talks over oil concessions](https://pre-event.example/venezuela-talks)) decide this claim.\n\n## Claim 2: The agreement includes American ownership in a Venezuelan oil company.\nBy 31 October 2026. Council verdict: **ACCEPTED**\n\nThe draft names the stake ([A package is drafted](https://pre-event.example/venezuela-draft)).\n\n## How the council voted\n\nMembers voting: 7 of 7.\n\nEvidence: 3 sources read from 1 site. The council voted on 3 passages quoted from 2 of them.\n\n### Claim 1: ACCEPTED\n6 of 7 voted for, 1 against, 0 unsure.\n\n- Member 1: for \u2014 Licensing plus a drafted package. ([Source 1](https://pre-event.example/venezuela-talks), [Source 3](https://pre-event.example/venezuela-draft))\n- Member 2: for \u2014 The talks are advanced. ([Source 1](https://pre-event.example/venezuela-talks))\n- Member 3: for \u2014 The military backdrop leaves few options. ([Source 2](https://pre-event.example/venezuela-backdrop))\n- Member 4: for \u2014 A drafted package rarely evaporates. ([Source 3](https://pre-event.example/venezuela-draft))\n- Member 5: unsure \u2014 Timing under pressure is unpredictable. ([Source 2](https://pre-event.example/venezuela-backdrop))\n- Member 6: for \u2014 The licences widen the deal's path. ([Source 1](https://pre-event.example/venezuela-talks))\n- Member 7: for \u2014 Economists' read of the draft. ([Source 3](https://pre-event.example/venezuela-draft))\n\n### Claim 2: ACCEPTED\n5 of 7 voted for, 1 against, 1 unsure.\n\n- Member 1: for \u2014 The stake is in the draft. ([Source 3](https://pre-event.example/venezuela-draft))\n- Member 2: unsure \u2014 Details can change. ([Source 3](https://pre-event.example/venezuela-draft))\n- Member 3: for \u2014 The draft names the stake. ([Source 3](https://pre-event.example/venezuela-draft))\n- Member 4: for \u2014 The stake is named. ([Source 3](https://pre-event.example/venezuela-draft))\n- Member 5: unsure \u2014 No lean.\n- Member 6: for \u2014 The draft's terms. ([Source 3](https://pre-event.example/venezuela-draft))\n- Member 7: unsure \u2014 No lean.",
-   "claims": [
-    "Claim 1: Venezuela's authorities sign an oil agreement with the United States by 30 September 2026. (deadline: 2026-09-30)",
-    "Claim 2: The agreement includes American ownership in a Venezuelan oil company. (deadline: 2026-10-31)"
-   ],
-   "verdicts": [
-    "Claim 1: ACCEPTED",
-    "Claim 2: ACCEPTED"
-   ],
-   "leak_probe": "Member 1: I do not know how this turned out.\n\nMember 2: I do not know how this turned out.\n\nMember 3: I do not know how this turned out.\n\nMember 4: I do not know how this turned out.\n\nMember 5: I do not know how this turned out.\n\nMember 6: I do not know how this turned out.\n\nMember 7: I do not know how this turned out.\n\nMember 3 (fallback): I do not know how this turned out.\n\nMember 4 (fallback): I do not know how this turned out.\n\nMember 5 (fallback): I do not know how this turned out.\n\nMember 6 (fallback): I do not know how this turned out.\n\nMember 7 (fallback): I do not know how this turned out."
-  }
- },
- {
-  "name": "backtest-iran-us-mou",
-  "input": {
-   "query": "Give me a forecast: will the United States and Iran finalize a memorandum of understanding ending their war by 30 September 2026?",
-   "as_of": "2026-08-25",
-   "resolves_on": "2026-09-30",
-   "resolution_source": "https://iranview24.com/en/baghaei-iran-us-presidents-sign-islamabad-mou-digitally-as-war-ending-deal-finalized/",
-   "sources": [
-    {
-     "title": "Mediators shuttle between the sides",
-     "url": "https://pre-event.example/iran-mediation",
-     "text": "Pakistan and Qatar have relayed negotiating texts between the sides since spring.\nAn earlier memorandum collapsed within weeks amid renewed strikes.\nBoth sides say they want the strait's shipping to resume.",
-     "author": "Hana Rashid"
-    },
-    {
-     "title": "The strait's traffic stays suppressed",
-     "url": "https://pre-event.example/hormuz-traffic",
-     "text": "Commercial transits through the strait remain far below normal.\nInsurers and shippers await a navigational framework.\nA regional state has proposed a temporary corridor design.",
-     "author": ""
-    },
-    {
-     "title": "Texts converge on a narrow deal",
-     "url": "https://pre-event.example/iran-text",
-     "text": "The current draft covers ending the war and lifting the blockade first.\nThe nuclear file and sanctions are deferred to later talks.\nA signing by digital means is under discussion.",
-     "author": "Omar Zayd"
-    }
-   ]
-  },
-  "output": {
-   "outcome": "Iran's foreign ministry spokesman said on 24 September 2026 that the Iran-US memorandum of understanding was finalized and signed digitally by the two presidents, ending the war begun on 28 February; the naval blockade was lifted and oil sanctions relief began, with 60 days of nuclear and sanctions talks to follow.",
-   "answer": "The council expects the memorandum to be finalized. The narrow draft ([Texts converge on a narrow deal](https://pre-event.example/iran-text)) and the mediators' shuttle ([Mediators shuttle between the sides](https://pre-event.example/iran-mediation)) make a signature likely; the strait's traffic ([The strait's traffic stays suppressed](https://pre-event.example/hormuz-traffic)) is not expected to recover as fast.\n\n## Claim 1: The United States and Iran finalize a memorandum of understanding ending their war by 30 September 2026.\nBy 30 September 2026. Council verdict: **ACCEPTED**\n\nThe narrow draft's scope ([Texts converge on a narrow deal](https://pre-event.example/iran-text)) outweighs the first attempt's collapse ([Mediators shuttle between the sides](https://pre-event.example/iran-mediation)).\n\n## Claim 2: Commercial shipping through the strait returns to normal levels by 30 September 2026.\nBy 30 September 2026. Council verdict: **UNRESOLVED**\n\nTraffic normalization needs a navigational framework the sources say is still pending ([The strait's traffic stays suppressed](https://pre-event.example/hormuz-traffic)).\n\n## How the council voted\n\nMembers voting: 7 of 7.\n\nEvidence: 3 sources read from 1 site. The council voted on 3 passages quoted from 3 of them.\n\n### Claim 1: ACCEPTED\n5 of 7 voted for, 1 against, 1 unsure.\n\n- Member 1: for \u2014 The narrow deal is signed by digital means. ([Source 3](https://pre-event.example/iran-text))\n- Member 2: for \u2014 Mediators hold texts. ([Source 1](https://pre-event.example/iran-mediation))\n- Member 3: for \u2014 The collapsed first attempt taught sequencing. ([Source 1](https://pre-event.example/iran-mediation), [Source 3](https://pre-event.example/iran-text))\n- Member 4: for \u2014 The draft's scope is narrow and signable. ([Source 3](https://pre-event.example/iran-text))\n- Member 5: against \u2014 The first memorandum failed the same way. ([Source 1](https://pre-event.example/iran-mediation))\n- Member 6: for \u2014 Both sides declare they want shipping back. ([Source 2](https://pre-event.example/hormuz-traffic), [Source 3](https://pre-event.example/iran-text))\n- Member 7: for \u2014 The digital-signing discussion is concrete. ([Source 3](https://pre-event.example/iran-text))\n\n### Claim 2: UNRESOLVED\n0 of 7 voted for, 4 against, 3 unsure.\n\n- Member 1: against \u2014 Traffic stays suppressed. ([Source 2](https://pre-event.example/hormuz-traffic))\n- Member 2: unsure \u2014 No basis.\n- Member 3: against \u2014 Verification takes months. ([Source 2](https://pre-event.example/hormuz-traffic))\n- Member 4: unsure \u2014 No lean.\n- Member 5: unsure \u2014 No lean.\n- Member 6: unsure \u2014 Thin.\n- Member 7: unsure \u2014 No lean.",
-   "claims": [
-    "Claim 1: The United States and Iran finalize a memorandum of understanding ending their war by 30 September 2026. (deadline: 2026-09-30)",
-    "Claim 2: Commercial shipping through the strait returns to normal levels by 30 September 2026. (deadline: 2026-09-30)"
-   ],
-   "verdicts": [
-    "Claim 1: ACCEPTED",
-    "Claim 2: UNRESOLVED"
-   ],
-   "leak_probe": "Member 1: I do not know how this turned out.\n\nMember 2: I do not know how this turned out.\n\nMember 3: I do not know how this turned out.\n\nMember 4: I do not know how this turned out.\n\nMember 5: I do not know how this turned out.\n\nMember 6: I do not know how this turned out.\n\nMember 7: I do not know how this turned out.\n\nMember 3 (fallback): I do not know how this turned out.\n\nMember 4 (fallback): I do not know how this turned out.\n\nMember 5 (fallback): I do not know how this turned out.\n\nMember 6 (fallback): I do not know how this turned out.\n\nMember 7 (fallback): I do not know how this turned out."
-  }
- },
- {
-  "name": "backtest-mecca-pact",
-  "input": {
-   "query": "Give me a forecast: will Saudi Arabia, Turkey and Pakistan sign a joint defence agreement by 30 September 2026?",
-   "as_of": "2026-07-25",
-   "resolves_on": "2026-09-15",
-   "resolution_source": "https://www.bbc.com/news/articles/c30418m4mj4o",
-   "sources": [
-    {
-     "title": "A trilateral meeting is prepared",
-     "url": "https://pre-event.example/mecca-prep",
-     "text": "The three capitals announced a joint defence summit.\nA bilateral defence pact between two of them already exists.\nTheir foreign ministers met earlier this year on joint security.",
-     "author": "Yusuf Demir"
-    },
-    {
-     "title": "The war's pressure grows",
-     "url": "https://pre-event.example/mecca-pressure",
-     "text": "Missile fire has reached the gulf's oil exporters.\nRegional states say security can no longer depend on outside powers.\nAnalysts expect closer defence ties among the four main states.",
-     "author": "Leyla Karim"
-    },
-    {
-     "title": "What the pact is expected to say",
-     "url": "https://pre-event.example/mecca-expected",
-     "text": "The draft is described as a mutual-defence pledge without troop commitments.\nOfficials call it purely defensive in briefings.\nA signing is expected at the summit itself.",
-     "author": ""
-    }
-   ]
-  },
-  "output": {
-   "outcome": "On 7 August 2026 Saudi Arabia, Turkey and Pakistan signed the Mecca Joint Defence Agreement in Mecca, stipulating that an armed attack on any one of the three is an attack on all; Turkey's foreign minister called it technically the same as NATO's Article 5.",
-   "answer": "The council expects the trilateral defence pact to be signed. The announced summit ([A trilateral meeting is prepared](https://pre-event.example/mecca-prep)) and the war's pressure ([The war's pressure grows](https://pre-event.example/mecca-pressure)) make it near-certain; the text is expected to stay declaratory.\n\n## Claim 1: Saudi Arabia, Turkey and Pakistan sign a joint defence agreement by 30 September 2026.\nBy 30 September 2026. Council verdict: **ACCEPTED**\n\nThe announced summit and prepared signing ([What the pact is expected to say](https://pre-event.example/mecca-expected)) decide this claim.\n\n## Claim 2: The agreement's text includes troop commitments from any party.\nBy 31 October 2026. Council verdict: **REJECTED**\n\nBriefings describe a defensive pledge without troop commitments ([What the pact is expected to say](https://pre-event.example/mecca-expected)).\n\n## How the council voted\n\nMembers voting: 7 of 7.\n\nEvidence: 3 sources read from 1 site. The council voted on 3 passages quoted from 2 of them.\n\n### Claim 1: ACCEPTED\n7 of 7 voted for, 0 against, 0 unsure.\n\n- Member 1: for \u2014 The summit is announced for a signing. ([Source 1](https://pre-event.example/mecca-prep), [Source 3](https://pre-event.example/mecca-expected))\n- Member 2: for \u2014 The bilateral pact expands to trilateral. ([Source 1](https://pre-event.example/mecca-prep))\n- Member 3: for \u2014 The war's pressure accelerates it. ([Source 2](https://pre-event.example/mecca-pressure))\n- Member 4: for \u2014 The signing is expected at the summit. ([Source 3](https://pre-event.example/mecca-expected))\n- Member 5: for \u2014 The ministers' earlier meeting paved it. ([Source 1](https://pre-event.example/mecca-prep))\n- Member 6: for \u2014 Analysts expect exactly this. ([Source 2](https://pre-event.example/mecca-pressure))\n- Member 7: for \u2014 Prepared summit plus draft. ([Source 1](https://pre-event.example/mecca-prep), [Source 3](https://pre-event.example/mecca-expected))\n\n### Claim 2: REJECTED\n1 of 7 voted for, 5 against, 1 unsure.\n\n- Member 1: against \u2014 Briefings say purely defensive. ([Source 3](https://pre-event.example/mecca-expected))\n- Member 2: against \u2014 No troop commitments expected. ([Source 3](https://pre-event.example/mecca-expected))\n- Member 3: unsure \u2014 No basis.\n- Member 4: against \u2014 The draft has no troop pledges. ([Source 3](https://pre-event.example/mecca-expected))\n- Member 5: against \u2014 Defensive framing only. ([Source 3](https://pre-event.example/mecca-expected))\n- Member 6: unsure \u2014 No lean.\n- Member 7: against \u2014 No troop commitments. ([Source 3](https://pre-event.example/mecca-expected))",
-   "claims": [
-    "Claim 1: Saudi Arabia, Turkey and Pakistan sign a joint defence agreement by 30 September 2026. (deadline: 2026-09-30)",
-    "Claim 2: The agreement's text includes troop commitments from any party. (deadline: 2026-10-31)"
-   ],
-   "verdicts": [
-    "Claim 1: ACCEPTED",
-    "Claim 2: REJECTED"
-   ],
-   "leak_probe": "Member 1: I do not know how this turned out.\n\nMember 2: I do not know how this turned out.\n\nMember 3: I do not know how this turned out.\n\nMember 4: I do not know how this turned out.\n\nMember 5: I do not know how this turned out.\n\nMember 6: I do not know how this turned out.\n\nMember 7: I do not know how this turned out.\n\nMember 3 (fallback): I do not know how this turned out.\n\nMember 4 (fallback): I do not know how this turned out.\n\nMember 5 (fallback): I do not know how this turned out.\n\nMember 6 (fallback): I do not know how this turned out.\n\nMember 7 (fallback): I do not know how this turned out."
-  }
- },
- {
-  "name": "backtest-us-envoys-kyiv",
-  "input": {
-   "query": "Give me a forecast: will American presidential envoys visit Kyiv before 15 September 2026?",
-   "as_of": "2026-08-05",
-   "resolves_on": "2026-09-15",
-   "resolution_source": "https://www.bbc.com/news/articles/cx2zqp46g8eo",
-   "sources": [
-    {
-     "title": "Washington's envoys take the talks east",
-     "url": "https://pre-event.example/envoys-plan",
-     "text": "The American president's negotiators have met both sides in third countries all summer.\nA trip to the warring capitals is being planned, officials say.\nThe negotiating file includes economic projects as well as security ones.",
-     "author": "Grace Odell"
-    },
-    {
-     "title": "The capitals' strike patterns",
-     "url": "https://pre-event.example/envoys-strikes",
-     "text": "Long-range strikes on both capitals continue.\nA temporary halt on capital strikes has been floated as a confidence measure.\nThe fronts elsewhere see no pause.",
-     "author": ""
-    },
-    {
-     "title": "Both sides signal receptivity",
-     "url": "https://pre-event.example/envoys-signal",
-     "text": "One side's leader has offered a halt on capital strikes during the visit.\nThe other side's officials call a capital-trip 'possible'.\nEuropean allies press for direct talks.",
-     "author": "Ivan Polt"
-    }
-   ]
-  },
-  "output": {
-   "outcome": "US envoys met Putin in Moscow on 5-6 September 2026 and travelled to Kyiv the next day for their first such visit, amid a three-day mutual halt on strikes against the two capitals.",
-   "answer": "The council expects the envoys to travel. The confirmed planning ([Washington's envoys take the talks east](https://pre-event.example/envoys-plan)) and both sides' receptivity ([Both sides signal receptivity](https://pre-event.example/envoys-signal)) make the visit likely; a lasting capital-strike halt is not.\n\n## Claim 1: American presidential envoys visit Kyiv before 15 September 2026.\nBy 15 September 2026. Council verdict: **ACCEPTED**\n\nOfficials' planning ([Washington's envoys take the talks east](https://pre-event.example/envoys-plan)) and the offered halt during the visit ([Both sides signal receptivity](https://pre-event.example/envoys-signal)) decide this claim.\n\n## Claim 2: A halt on strikes against the two capitals lasts longer than one week.\nBy 30 September 2026. Council verdict: **REJECTED**\n\nPast halts lasted days ([The capitals' strike patterns](https://pre-event.example/envoys-strikes)).\n\n## How the council voted\n\nMembers voting: 7 of 7.\n\nEvidence: 3 sources read from 1 site. The council voted on 3 passages quoted from 3 of them.\n\n### Claim 1: ACCEPTED\n6 of 7 voted for, 0 against, 1 unsure.\n\n- Member 1: for \u2014 Officials confirm the plan. ([Source 1](https://pre-event.example/envoys-plan))\n- Member 2: for \u2014 Both sides signal receptivity. ([Source 3](https://pre-event.example/envoys-signal))\n- Member 3: for \u2014 The trip is planned and prepared. ([Source 1](https://pre-event.example/envoys-plan), [Source 3](https://pre-event.example/envoys-signal))\n- Member 4: unsure \u2014 Security can scrub a trip. ([Source 2](https://pre-event.example/envoys-strikes))\n- Member 5: for \u2014 The visit is the file's next step. ([Source 1](https://pre-event.example/envoys-plan))\n- Member 6: for \u2014 Receptivity on both sides. ([Source 3](https://pre-event.example/envoys-signal))\n- Member 7: for \u2014 The offer of a halt during the visit. ([Source 3](https://pre-event.example/envoys-signal))\n\n### Claim 2: REJECTED\n0 of 7 voted for, 5 against, 2 unsure.\n\n- Member 1: against \u2014 Three-day halts are the pattern. ([Source 2](https://pre-event.example/envoys-strikes))\n- Member 2: unsure \u2014 No basis.\n- Member 3: against \u2014 The fronts see no pause. ([Source 2](https://pre-event.example/envoys-strikes))\n- Member 4: unsure \u2014 No lean.\n- Member 5: against \u2014 Past halts lasted days. ([Source 2](https://pre-event.example/envoys-strikes))\n- Member 6: unsure \u2014 Thin.\n- Member 7: against \u2014 No basis for a week-plus. ([Source 2](https://pre-event.example/envoys-strikes))",
-   "claims": [
-    "Claim 1: American presidential envoys visit Kyiv before 15 September 2026. (deadline: 2026-09-15)",
-    "Claim 2: A halt on strikes against the two capitals lasts longer than one week. (deadline: 2026-09-30)"
-   ],
-   "verdicts": [
-    "Claim 1: ACCEPTED",
-    "Claim 2: REJECTED"
-   ],
-   "leak_probe": "Member 1: I do not know how this turned out.\n\nMember 2: I do not know how this turned out.\n\nMember 3: I do not know how this turned out.\n\nMember 4: I do not know how this turned out.\n\nMember 5: I do not know how this turned out.\n\nMember 6: I do not know how this turned out.\n\nMember 7: I do not know how this turned out.\n\nMember 3 (fallback): I do not know how this turned out.\n\nMember 4 (fallback): I do not know how this turned out.\n\nMember 5 (fallback): I do not know how this turned out.\n\nMember 6 (fallback): I do not know how this turned out.\n\nMember 7 (fallback): I do not know how this turned out."
-  }
- },
- {
-  "name": "backtest-syria-designation",
-  "input": {
-   "query": "Give me a forecast: will the United States lift the terror designation on Syria's new government by 30 September 2026?",
-   "as_of": "2026-08-20",
-   "resolves_on": "2026-09-30",
-   "resolution_source": "https://cepr.net/publications/sanctions-watch-september-2026/",
-   "sources": [
-    {
-     "title": "The designation review",
-     "url": "https://pre-event.example/syria-review",
-     "text": "Washington has reviewed a decades-old terror designation covering the new government.\nThe foreign ministry has petitioned for its removal since spring.\nRegional airlines have waited on the designation for route planning.",
-     "author": "Amal Haddad"
-    },
-    {
-     "title": "Sanctions easing so far",
-     "url": "https://pre-event.example/syria-easing",
-     "text": "Several sanctions on the country were eased earlier this year.\nBanks still treat the remaining designations as binding.\nAn energy delegation visited the capital last month.",
-     "author": ""
-    },
-    {
-     "title": "The package's last steps",
-     "url": "https://pre-event.example/syria-package",
-     "text": "Officials describe the designation's removal as agreed in principle.\nA public announcement is prepared for autumn.\nCongress has been notified, which the law requires.",
-     "author": "Waleed Nasser"
-    }
-   ]
-  },
-  "output": {
-   "outcome": "In September 2026 Syria's president announced a new era following the lifting of the US terror designation on the new government, after months of review and partial sanctions easing earlier in the year.",
-   "answer": "The council expects the designation to be lifted. The agreed-in-principle removal ([The package's last steps](https://pre-event.example/syria-package)) follows the year's easing ([Sanctions easing so far](https://pre-event.example/syria-easing)); the banking package is less certain.\n\n## Claim 1: The United States lifts the terror designation on Syria's new government by 30 September 2026.\nBy 30 September 2026. Council verdict: **ACCEPTED**\n\nCongressional notification and a prepared announcement ([The package's last steps](https://pre-event.example/syria-package)) decide this claim.\n\n## Claim 2: The designation's removal is announced together with a sanctions package for the country's banks.\nBy 31 October 2026. Council verdict: **UNRESOLVED**\n\nThe banks' caution ([Sanctions easing so far](https://pre-event.example/syria-easing)) leaves the package unsettled.\n\n## How the council voted\n\nMembers voting: 7 of 7.\n\nEvidence: 3 sources read from 1 site. The council voted on 3 passages quoted from 3 of them.\n\n### Claim 1: ACCEPTED\n6 of 7 voted for, 0 against, 1 unsure.\n\n- Member 1: for \u2014 Agreed in principle plus congressional notification. ([Source 3](https://pre-event.example/syria-package))\n- Member 2: for \u2014 The review's direction is clear. ([Source 1](https://pre-event.example/syria-review))\n- Member 3: for \u2014 Notification means a decision is made. ([Source 3](https://pre-event.example/syria-package))\n- Member 4: for \u2014 The petition plus easing pattern. ([Source 1](https://pre-event.example/syria-review), [Source 2](https://pre-event.example/syria-easing))\n- Member 5: unsure \u2014 Announcements slip. ([Source 3](https://pre-event.example/syria-package))\n- Member 6: for \u2014 The prepared announcement. ([Source 3](https://pre-event.example/syria-package))\n- Member 7: for \u2014 The year's easing pattern continues. ([Source 2](https://pre-event.example/syria-easing))\n\n### Claim 2: UNRESOLVED\n1 of 7 voted for, 2 against, 4 unsure.\n\n- Member 1: unsure \u2014 The banking package is separate. ([Source 2](https://pre-event.example/syria-easing))\n- Member 2: unsure \u2014 No basis.\n- Member 3: unsure \u2014 No lean.\n- Member 4: against \u2014 Banks' caution suggests the package lags. ([Source 2](https://pre-event.example/syria-easing))\n- Member 5: unsure \u2014 No lean.\n- Member 6: unsure \u2014 Thin.\n- Member 7: unsure \u2014 No lean.",
-   "claims": [
-    "Claim 1: The United States lifts the terror designation on Syria's new government by 30 September 2026. (deadline: 2026-09-30)",
-    "Claim 2: The designation's removal is announced together with a sanctions package for the country's banks. (deadline: 2026-10-31)"
-   ],
-   "verdicts": [
-    "Claim 1: ACCEPTED",
-    "Claim 2: UNRESOLVED"
-   ],
-   "leak_probe": "Member 1: I do not know how this turned out.\n\nMember 2: I do not know how this turned out.\n\nMember 3: I do not know how this turned out.\n\nMember 4: I do not know how this turned out.\n\nMember 5: I do not know how this turned out.\n\nMember 6: I do not know how this turned out.\n\nMember 7: I do not know how this turned out.\n\nMember 3 (fallback): I do not know how this turned out.\n\nMember 4 (fallback): I do not know how this turned out.\n\nMember 5 (fallback): I do not know how this turned out.\n\nMember 6 (fallback): I do not know how this turned out.\n\nMember 7 (fallback): I do not know how this turned out."
-  }
- }
 ]

@@ -1,16 +1,23 @@
 """Forecast backtest: forecasts made as of a past date, scored against what happened (F6).
 
 Each example is a question that resolved between 2026-07-01 and 2026-09-30.
-Its hand-written sources state only what was public on its `as_of` date, and
-its outcome is confirmed from `input.resolution_source`. The forecast runs as
-of `as_of` (`ForecastRun.today`), so its claims fall after that date. A
-leakage probe asks every model that can vote (each seat and each free seat's
-paid fallback, 12 models) the question with no sources (the free models'
-training cutoffs are unpublished, and gpt-5-mini's alone predates every
-question); if any model already knows the outcome,
-`outcome_unknown_without_sources` fails and that question must be replaced.
-The probe's five paid calls are a few hundred tokens each. About ten
-questions is a smoke signal, not a measurement.
+Its hand-written sources state only what was public on its `as_of` date and
+are synthetic (any resemblance to real reporting on that date is incidental);
+a future recording of real, as-of-public articles can replace them. The forecast runs as of `as_of` (`ForecastRun.today`), so its claims
+fall after that date. A leakage probe asks every model that can vote (each
+seat and each free seat's paid fallback, 12 models: seven paid calls, five
+free) the question with no sources (the free models' training cutoffs are
+unpublished, and gpt-5-mini's alone predates every question):
+- a model that already knows the outcome fails
+  `outcome_unknown_without_sources`, and that question must be replaced;
+- a model that cannot answer at all (an error, a rate limit, a retired id)
+  makes the whole run invalid (`ProbeUnavailableError` exits non-zero), so a
+  hidden probe failure can never read as ignorance (review thread, #150).
+
+The judges score only the example's `focal_claim` (claim number): the other
+claims' outcomes are not in the dataset, so scoring them would make the model
+judge guess (review thread, #150). Two questions now is a smoke signal, not a
+measurement.
 """
 
 from __future__ import annotations
@@ -26,6 +33,12 @@ from evals.helpers.run import run
 from evals.judges.forecast_backtest import judges
 
 DATASET_PATH = Path(__file__).parent / "datasets" / "forecast_backtest.json"
+
+
+class ProbeUnavailableError(Exception):
+    """One probing model could not answer at all, so the run proves nothing (F6)."""
+
+
 LEAK_PROBE_PROMPT = """Answer from your own knowledge only; you have no \
 sources. If you know how the following turned out, state the outcome and when \
 it happened. If you do not know, reply exactly: I do not know how this turned out."""
@@ -56,7 +69,13 @@ async def leak_probe(query: str) -> str:
         asks.append(ask(f"Member {member}", seat, seat.model))
         if seat.fallback is not None:
             asks.append(ask(f"Member {member} (fallback)", seat, seat.fallback))
-    return "\n\n".join(await asyncio.gather(*asks))
+    replies = await asyncio.gather(*asks)
+    dead = [line.split(":")[0] for line in replies if "unavailable" in line]
+    if dead:
+        raise ProbeUnavailableError(
+            "the leakage probe could not reach: " + ", ".join(dead)
+        )
+    return "\n\n".join(replies)
 
 
 async def run_forecast_backtest(input: dict[str, Any]) -> dict[str, Any]:

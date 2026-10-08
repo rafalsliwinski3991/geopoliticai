@@ -15,11 +15,12 @@ Question:
 What happened:
 {outcome}
 
-The council's claims:
+The focal claim and its verdict:
 {claims}
-
-Its verdicts:
 {verdicts}
+
+Only the focal claim is scored (its outcome is the one this dataset records;
+the other claims' outcomes are unknown, so scoring them would make you guess).
 
 An ACCEPTED claim that came true, or a REJECTED claim that did not, points the
 right way. The reverse points the wrong way. An UNRESOLVED claim points neither way.
@@ -53,24 +54,50 @@ Give a concise explanation.
 """
 
 
+def _focal(input: dict[str, Any], output: dict[str, Any]) -> tuple[str, str]:
+    """Return the focal claim's claim line and verdict line.
+
+    The dataset records the outcome of one claim (the question's own):
+    secondary claims can settle on their own dates, and scoring them would
+    make this judge guess (review thread, #150).
+    """
+    focal = int(input.get("focal_claim", 1))
+    claims = [line for line in output.get("claims") or [] if f"Claim {focal}:" in line]
+    verdicts = [
+        line
+        for line in output.get("verdicts") or []
+        if line.startswith(f"Claim {focal}:")
+    ]
+    return "\n".join(claims), "\n".join(verdicts)
+
+
 def _outcome_view(
     input: dict[str, Any], output: dict[str, Any], expected: dict[str, Any]
-) -> dict[str, Any]:
+) -> dict[str, Any] | None:
+    claims, verdicts = _focal(input, output)
+    if not claims or not verdicts:
+        return None
     return {
         "question": input["query"],
         "outcome": expected["outcome"],
-        "claims": "\n".join(output.get("claims") or []),
-        "verdicts": "\n".join(output.get("verdicts") or []),
+        "claims": claims,
+        "verdicts": verdicts,
     }
 
 
 def _leakage_view(
     input: dict[str, Any], output: dict[str, Any], expected: dict[str, Any]
-) -> dict[str, Any]:
+) -> dict[str, Any] | None:
+    # A missing or empty probe is never a pass: `leak_probe` raises
+    # `ProbeUnavailableError` when a member cannot answer, so an absent key
+    # only appears on a broken run and the judge must mark it not applicable
+    # (review thread, #150).
+    if not (output.get("leak_probe") or "").strip():
+        return None
     return {
         "question": input["query"],
         "outcome": expected["outcome"],
-        "probe": output.get("leak_probe") or "",
+        "probe": output["leak_probe"],
     }
 
 
