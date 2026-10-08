@@ -23,7 +23,6 @@ from langchain_core.messages import HumanMessage
 from langgraph.runtime import Runtime
 
 from agents.deep_expert.graph import NO_CHECKPOINTER_CONFIG
-from agents.deep_forecaster.caps import run_under_cap
 from agents.deep_forecaster.config import LIMITS, RESEARCH_LLM_SETTINGS
 from agents.deep_forecaster.consts.forecasters import FORECASTERS
 from agents.deep_forecaster.consts.progress import RESEARCH_LABEL
@@ -38,6 +37,7 @@ from agents.deep_forecaster.state import (
     ResearchOutcome,
     ResearchRun,
 )
+from agents.deep_forecaster.time_limits import run_under_time_limits
 from agents.deep_forecaster.tools import build_tools
 from llm import build_chat_model
 from models import (
@@ -144,12 +144,12 @@ async def _run_agent(agent: Any, question: str) -> bool:
 
     The box ending is not an error (user decision 2026-09-30): the forecast
     continues on what was read, and the answer's evidence line says so. The
-    box is a dedicated-task cancel (`caps.run_under_cap`): the pregel runner
+    box is a dedicated-task cancel (`time_limits.run_under_time_limits`): the pregel runner
     absorbs a `CancelledError` raised inside its own loop, so the frame's
     `asyncio.timeout` alone does not end a hung agent (smoke gate F3, run 1).
     """
     try:
-        _, timed_out = await run_under_cap(
+        _, timed_out = await run_under_time_limits(
             agent.ainvoke(
                 {"messages": [HumanMessage(question)]}, config=NO_CHECKPOINTER_CONFIG
             ),

@@ -36,15 +36,13 @@ from config import (
     DAILY_RESEARCH_TURNS_ALL_USERS,
     DEEP_RESEARCH_TURN_COST,
     FORECAST_TURN_COST,
-    MAX_ANSWER_CHARS,
     bind_log_context,
     init_environment,
     require_env,
 )
-
-# Re-exported module attribute: the transport cap comes from `config.py`,
-# and the checkpointer-integration tests read `api.MAX_ANSWER_CHARS`.
-MAX_ANSWER_CHARS = MAX_ANSWER_CHARS
+from config import (
+    MAX_ANSWER_CHARS as _MAX_ANSWER_CHARS,
+)
 from db.web.sql import (
     MAX_THREAD_ID_LENGTH,
     claim_thread,
@@ -79,6 +77,10 @@ RATE_LIMIT_REQUESTS = 20
 RATE_LIMIT_WINDOW_SECONDS = 60
 MAX_TRACKED_CLIENTS = 10_000
 THREAD_ID_PATTERN = r"^[A-Za-z0-9_-]+$"
+
+# Re-exported module attribute, not an import alias: the transport cap comes
+# from `config.py`, and the checkpointer tests read `api.MAX_ANSWER_CHARS`.
+MAX_ANSWER_CHARS = _MAX_ANSWER_CHARS
 ThreadIdPath = Annotated[
     str,
     Path(min_length=1, max_length=MAX_THREAD_ID_LENGTH, pattern=THREAD_ID_PATTERN),

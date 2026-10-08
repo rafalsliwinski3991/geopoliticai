@@ -25,7 +25,6 @@ from langgraph.errors import NodeTimeoutError
 from langgraph.graph import END, START, StateGraph
 
 from agents.deep_expert.graph import NO_CHECKPOINTER_CONFIG
-from agents.deep_forecaster.caps import run_under_cap
 from agents.deep_forecaster.config import LIMITS
 from agents.deep_forecaster.nodes import (
     council_round_1,
@@ -37,6 +36,7 @@ from agents.deep_forecaster.nodes import (
     write_analysis,
 )
 from agents.deep_forecaster.state import ForecastRun, ForecastState
+from agents.deep_forecaster.time_limits import run_under_time_limits
 from models import LLMInvocationError, PipelineError, ResearchLimitError
 
 # (name, node, LangGraph node timeout). Research carries its own soft time
@@ -74,13 +74,13 @@ async def forecast(query: str) -> str:
     Takes no writer: each step emits its own progress through the graph's
     `runtime.stream_writer`, which reaches the orchestrator's `custom` stream
     under the child namespace (measured, plan §1). The wall cap is a
-    dedicated-task cancel (`caps.run_under_cap`): the pregel runner absorbs a
+    dedicated-task cancel (`time_limits.run_under_time_limits`): the pregel runner absorbs a
     `CancelledError` raised inside its own loop, so the frame's
     `asyncio.timeout` alone does not bound a hung run (smoke gate F3, run 1).
     """
     run = ForecastRun()
     try:
-        result, capped = await run_under_cap(
+        result, capped = await run_under_time_limits(
             build_graph().ainvoke(
                 {"question": query}, config=NO_CHECKPOINTER_CONFIG, context=run
             ),
