@@ -1,106 +1,108 @@
 [
- {
-  "name": "forecast-strait-closure",
-  "input": {
-   "query": "Give me a forecast: will Vestria close the Tarn Strait to Norland's shipping before the end of 2027?",
-   "sources": [
-    {
-     "title": "Vestria tightens Tarn Strait patrols",
-     "url": "https://forecasters.example/vestria-patrols",
-     "text": "Vestria's navy announced expanded patrols of the Tarn Strait last month.\nOfficials in Vestria's capital described the patrols as routine traffic monitoring.\nShipping firms report no change in transit times through the strait.\nThe strait carries most of Norland's seaborne trade with southern partners.\nVestria's foreign ministry denied any plan to restrict passage.",
-     "author": "Mara Quist"
+  {
+    "name": "forecast-strait-closure",
+    "input": {
+      "query": "Give me a forecast: will Vestria close the Tarn Strait to Norland's shipping before the end of 2027?",
+      "sources": [
+        {
+          "title": "Vestria tightens Tarn Strait patrols",
+          "url": "https://forecasters.example/vestria-patrols",
+          "text": "Vestria's navy announced expanded patrols of the Tarn Strait last month.\nOfficials in Vestria's capital described the patrols as routine traffic monitoring.\nShipping firms report no change in transit times through the strait.\nThe strait carries most of Norland's seaborne trade with southern partners.\nVestria's foreign ministry denied any plan to restrict passage.",
+          "author": "Mara Quist"
+        },
+        {
+          "title": "Norland trades through the strait",
+          "url": "https://forecasters.example/norland-trade",
+          "text": "Norland's trade ministry counts the Tarn Strait among its four critical sea lanes.\nHalf of Norland's container traffic passes the strait each quarter.\nNorland has funded a mutual escort programme with two neighbouring states.",
+          "author": "Tomas Rehl"
+        },
+        {
+          "title": "Analysts doubt a closure",
+          "url": "https://forecasters.example/analyst-doubt",
+          "text": "Two risk desks told clients a full closure would cost Vestria more than Norland.\nA blockade would invite a naval escort coalition within weeks.\nVestria's last attempted closure in the 1990s lasted nine days.",
+          "author": "Ilka Bren"
+        },
+        {
+          "title": "Vestria's parliament debates the strait",
+          "url": "https://forecasters.example/vestria-debate",
+          "text": "The opposition filed a motion to restrict strait access during disputes.\nThe motion failed by a wide margin in committee.\nThe defence minister called closure talk 'a fantasy of the press'.",
+          "author": ""
+        },
+        {
+          "title": "Insurers price strait risk",
+          "url": "https://forecasters.example/insurer-risk",
+          "text": "War-risk premiums for Tarn Strait transits rose 12 percent this year.\nUnderwriters still rate a full closure as a tail risk.\nNo major insurer has suspended strait coverage.",
+          "author": "Petar Voss"
+        }
+      ],
+      "as_of": "2026-10-05"
     },
-    {
-     "title": "Norland trades through the strait",
-     "url": "https://forecasters.example/norland-trade",
-     "text": "Norland's trade ministry counts the Tarn Strait among its four critical sea lanes.\nHalf of Norland's container traffic passes the strait each quarter.\nNorland has funded a mutual escort programme with two neighbouring states.",
-     "author": "Tomas Rehl"
-    },
-    {
-     "title": "Analysts doubt a closure",
-     "url": "https://forecasters.example/analyst-doubt",
-     "text": "Two risk desks told clients a full closure would cost Vestria more than Norland.\nA blockade would invite a naval escort coalition within weeks.\nVestria's last attempted closure in the 1990s lasted nine days.",
-     "author": "Ilka Bren"
-    },
-    {
-     "title": "Vestria's parliament debates the strait",
-     "url": "https://forecasters.example/vestria-debate",
-     "text": "The opposition filed a motion to restrict strait access during disputes.\nThe motion failed by a wide margin in committee.\nThe defence minister called closure talk 'a fantasy of the press'.",
-     "author": ""
-    },
-    {
-     "title": "Insurers price strait risk",
-     "url": "https://forecasters.example/insurer-risk",
-     "text": "War-risk premiums for Tarn Strait transits rose 12 percent this year.\nUnderwriters still rate a full closure as a tail risk.\nNo major insurer has suspended strait coverage.",
-     "author": "Petar Voss"
+    "output": {
+      "answer": "The council does not expect Vestria to close the Tarn Strait. Its own history ([Analysts doubt a closure](https://forecasters.example/analyst-doubt)) and its ministers' words ([Vestria's parliament debates the strait](https://forecasters.example/vestria-debate)) point to calibrated patrols instead.\n\n## Claim 1: Vestria closes the Tarn Strait to Norland's shipping before the end of 2027.\nBy 31 December 2027. Council verdict: **REJECTED**\n\nMembers read Vestria's 1990s closure as a warning ([Analysts doubt a closure](https://forecasters.example/analyst-doubt)) and the minister's dismissal ([Vestria's parliament debates the strait](https://forecasters.example/vestria-debate)).\n\n## Claim 2: Vestria's parliament passes a strait-restriction motion before the end of 2026.\nBy 31 December 2026. Council verdict: **ACCEPTED**\n\nThe committee's rejection was not final ([Vestria's parliament debates the strait](https://forecasters.example/vestria-debate)): five members expect backbench pressure and the autumn elections to revive motions.\n\n## Claim 3: War-risk premiums for Tarn Strait transits double before the end of 2027.\nBy 31 December 2027. Council verdict: **UNRESOLVED**\n\nInsurers raised premiums 12 percent ([Insurers price strait risk](https://forecasters.example/insurer-risk)) but still rate closure a tail risk, leaving the council unsure.\n\n## How the council voted\n\nMembers voting: 7 of 7.\n\nEvidence: 5 sources read from 1 site. The council voted on 9 passages quoted from 5 of them.\n\n### Claim 1: REJECTED\n0 of 7 voted for, 7 against, 0 unsure.\n\n- Member 1: against — The sources show restraint, not closure plans. ([Source 1](https://forecasters.example/vestria-patrols), [Source 3](https://forecasters.example/analyst-doubt))\n- Member 2: against — Restraint pattern holds. ([Source 1](https://forecasters.example/vestria-patrols), [Source 3](https://forecasters.example/analyst-doubt))\n- Member 3: against — Escort coalition risk deters closure. ([Source 2](https://forecasters.example/norland-trade), [Source 3](https://forecasters.example/analyst-doubt))\n- Member 4: against — The minister's own words rule it out. ([Source 4](https://forecasters.example/vestria-debate))\n- Member 5: against — Cost asymmetry deters closure. ([Source 3](https://forecasters.example/analyst-doubt))\n- Member 6: against — The past closure failed in nine days. ([Source 3](https://forecasters.example/analyst-doubt))\n- Member 7: against — Routine patrols, no closure signals. ([Source 1](https://forecasters.example/vestria-patrols))\n\n### Claim 2: ACCEPTED\n5 of 7 voted for, 1 against, 1 unsure.\n\n- Member 1: for — Backbench pressure and the elections can revive the motion. ([Source 4](https://forecasters.example/vestria-debate))\n- Member 2: for — The margin was too narrow to kill a seasonal motion. ([Source 4](https://forecasters.example/vestria-debate))\n- Member 3: for — The election calendar favors a revival. ([Source 4](https://forecasters.example/vestria-debate))\n- Member 4: against — The committee's defeat is decisive this session. ([Source 4](https://forecasters.example/vestria-debate))\n- Member 5: for — Precedent: the party brings motions twice a year. ([Source 4](https://forecasters.example/vestria-debate))\n- Member 6: for — The motion may return after elections. ([Source 4](https://forecasters.example/vestria-debate))\n- Member 7: unsure — Too thin to lean.\n\n### Claim 3: UNRESOLVED\n0 of 7 voted for, 0 against, 7 unsure.\n\n- Member 1: unsure — Premiums could move either way.\n- Member 2: unsure — Too thin to lean.\n- Member 3: unsure — Thin evidence.\n- Member 4: unsure — No lean.\n- Member 5: unsure — Underwriters disagree.\n- Member 6: unsure — No basis.\n- Member 7: unsure — Too thin.",
+      "claims": [
+        "Claim 1: Vestria closes the Tarn Strait to Norland's shipping before the end of 2027. (deadline: 2027-12-31)",
+        "Claim 2: Vestria's parliament passes a strait-restriction motion before the end of 2026. (deadline: 2026-12-31)",
+        "Claim 3: War-risk premiums for Tarn Strait transits double before the end of 2027. (deadline: 2027-12-31)"
+      ],
+      "verdicts": [
+        "Claim 1: REJECTED",
+        "Claim 2: ACCEPTED",
+        "Claim 3: UNRESOLVED"
+      ],
+      "unanimous_share": 0.6666666666666666
     }
-   ]
   },
-  "output": {
-   "answer": "The council does not expect Vestria to close the Tarn Strait. Its own history ([Analysts doubt a closure](https://forecasters.example/analyst-doubt)) and its ministers' words ([Vestria's parliament debates the strait](https://forecasters.example/vestria-debate)) point to calibrated patrols instead.\n\n## Claim 1: Vestria closes the Tarn Strait to Norland's shipping before the end of 2027.\nBy 31 December 2027. Council verdict: **REJECTED**\n\nMembers read Vestria's 1990s closure as a warning ([Analysts doubt a closure](https://forecasters.example/analyst-doubt)) and the minister's dismissal ([Vestria's parliament debates the strait](https://forecasters.example/vestria-debate)).\n\n## Claim 2: Vestria's parliament passes a strait-restriction motion before the end of 2026.\nBy 31 December 2026. Council verdict: **ACCEPTED**\n\nThe committee's rejection ([Vestria's parliament debates the strait](https://forecasters.example/vestria-debate)) decided this claim for most members.\n\n## Claim 3: War-risk premiums for Tarn Strait transits double before the end of 2027.\nBy 31 December 2027. Council verdict: **UNRESOLVED**\n\nInsurers raised premiums 12 percent ([Insurers price strait risk](https://forecasters.example/insurer-risk)) but still rate closure a tail risk, leaving the council unsure.\n\n## How the council voted\n\nMembers voting: 7 of 7.\n\nEvidence: 5 sources read from 1 site. The council voted on 9 passages quoted from 5 of them.\n\n### Claim 1: REJECTED\n0 of 7 voted for, 7 against, 0 unsure.\n\n- Member 1: against \u2014 The sources show restraint, not closure plans. ([Source 1](https://forecasters.example/vestria-patrols), [Source 3](https://forecasters.example/analyst-doubt))\n- Member 2: against \u2014 Restraint pattern holds. ([Source 1](https://forecasters.example/vestria-patrols), [Source 3](https://forecasters.example/analyst-doubt))\n- Member 3: against \u2014 Escort coalition risk deters closure. ([Source 2](https://forecasters.example/norland-trade), [Source 3](https://forecasters.example/analyst-doubt))\n- Member 4: against \u2014 The minister's own words rule it out. ([Source 4](https://forecasters.example/vestria-debate))\n- Member 5: against \u2014 Cost asymmetry deters closure. ([Source 3](https://forecasters.example/analyst-doubt))\n- Member 6: against \u2014 The past closure failed in nine days. ([Source 3](https://forecasters.example/analyst-doubt))\n- Member 7: against \u2014 Routine patrols, no closure signals. ([Source 1](https://forecasters.example/vestria-patrols))\n\n### Claim 2: ACCEPTED\n0 of 7 voted for, 4 against, 3 unsure.\n\n- Member 1: against \u2014 The motion failed in committee. ([Source 4](https://forecasters.example/vestria-debate))\n- Member 2: against \u2014 Committee defeat is decisive. ([Source 4](https://forecasters.example/vestria-debate))\n- Member 3: for \u2014 Backbench pressure may revive the motion. ([Source 4](https://forecasters.example/vestria-debate))\n- Member 4: against \u2014 Committee margin too wide. ([Source 4](https://forecasters.example/vestria-debate))\n- Member 5: against \u2014 Failed motion. ([Source 4](https://forecasters.example/vestria-debate))\n- Member 6: for \u2014 The motion may return after elections. ([Source 4](https://forecasters.example/vestria-debate))\n- Member 7: against \u2014 Committee defeat. ([Source 4](https://forecasters.example/vestria-debate))\n\n### Claim 3: UNRESOLVED\n0 of 7 voted for, 0 against, 7 unsure.\n\n- Member 1: unsure \u2014 Premiums could move either way.\n- Member 2: unsure \u2014 Too thin to lean.\n- Member 3: unsure \u2014 Thin evidence.\n- Member 4: unsure \u2014 No lean.\n- Member 5: unsure \u2014 Underwriters disagree.\n- Member 6: unsure \u2014 No basis.\n- Member 7: unsure \u2014 Too thin.",
-   "claims": [
-    "Claim 1: Vestria closes the Tarn Strait to Norland's shipping before the end of 2027. (deadline: 2027-12-31)",
-    "Claim 2: Vestria's parliament passes a strait-restriction motion before the end of 2026. (deadline: 2026-12-31)",
-    "Claim 3: War-risk premiums for Tarn Strait transits double before the end of 2027. (deadline: 2027-12-31)"
-   ],
-   "verdicts": [
-    "Claim 1: REJECTED",
-    "Claim 2: ACCEPTED",
-    "Claim 3: UNRESOLVED"
-   ],
-   "unanimous_share": 0.6666666666666666
-  }
- },
- {
-  "name": "forecast-alliance-exit",
-  "input": {
-   "query": "Give me a forecast: will Norland announce its withdrawal from the Northern Alliance by 30 June 2028?",
-   "sources": [
-    {
-     "title": "Norland's government wobbles on the alliance",
-     "url": "https://forecasters.example/norland-wobble",
-     "text": "The ruling coalition's junior partner wants a referendum on the Northern Alliance.\nThe prime minister has repeatedly called membership a pillar of security.\nPolls show a stable 60 percent for staying.",
-     "author": "Aino Virta"
+  {
+    "name": "forecast-alliance-exit",
+    "input": {
+      "query": "Give me a forecast: will Norland announce its withdrawal from the Northern Alliance by 30 June 2028?",
+      "sources": [
+        {
+          "title": "Norland's government wobbles on the alliance",
+          "url": "https://forecasters.example/norland-wobble",
+          "text": "The ruling coalition's junior partner wants a referendum on the Northern Alliance.\nThe prime minister has repeatedly called membership a pillar of security.\nPolls show a stable 60 percent for staying.",
+          "author": "Aino Virta"
+        },
+        {
+          "title": "Alliance members meet in the capital",
+          "url": "https://forecasters.example/alliance-summit",
+          "text": "The alliance's foreign ministers met without Norland's delegation.\nThe communique reaffirmed the mutual defence clause.\nMembership applications from two states are pending.",
+          "author": "Bram Holt"
+        },
+        {
+          "title": "Trade ties inside the alliance",
+          "url": "https://forecasters.example/alliance-trade",
+          "text": "Intra-alliance trade is Norland's largest export market.\nA withdrawal would trigger a two-year negotiated exit.\nBusiness lobbies campaign for staying.",
+          "author": ""
+        },
+        {
+          "title": "Referendum bill stalls",
+          "url": "https://forecasters.example/referendum-bill",
+          "text": "The referendum bill failed its second reading last week.\nThe speaker scheduled no new vote before the autumn recess.",
+          "author": "Kerttu Salo"
+        },
+        {
+          "title": "Defence planners game an exit",
+          "url": "https://forecasters.example/exit-scenarios",
+          "text": "Internal papers seen by reporters model a two-year withdrawal.\nPlanners assume allied exercises continue regardless.\nThe paper's scenarios end before 2028.",
+          "author": "Rurik Aalto"
+        }
+      ],
+      "as_of": "2026-10-04"
     },
-    {
-     "title": "Alliance members meet in the capital",
-     "url": "https://forecasters.example/alliance-summit",
-     "text": "The alliance's foreign ministers met without Norland's delegation.\nThe communique reaffirmed the mutual defence clause.\nMembership applications from two states are pending.",
-     "author": "Bram Holt"
-    },
-    {
-     "title": "Trade ties inside the alliance",
-     "url": "https://forecasters.example/alliance-trade",
-     "text": "Intra-alliance trade is Norland's largest export market.\nA withdrawal would trigger a two-year negotiated exit.\nBusiness lobbies campaign for staying.",
-     "author": ""
-    },
-    {
-     "title": "Referendum bill stalls",
-     "url": "https://forecasters.example/referendum-bill",
-     "text": "The referendum bill failed its second reading last week.\nThe speaker scheduled no new vote before the autumn recess.",
-     "author": "Kerttu Salo"
-    },
-    {
-     "title": "Defence planners game an exit",
-     "url": "https://forecasters.example/exit-scenarios",
-     "text": "Internal papers seen by reporters model a two-year withdrawal.\nPlanners assume allied exercises continue regardless.\nThe paper's scenarios end before 2028.",
-     "author": "Rurik Aalto"
+    "output": {
+      "answer": "The council cannot settle whether Norland leaves the alliance. The coalition's wobble ([Norland's government wobbles on the alliance](https://forecasters.example/norland-wobble)) is real, but the stalled bill ([Referendum bill stalls](https://forecasters.example/referendum-bill)) and stable polls anchor most members to staying for now.\n\n## Claim 1: Norland announces its withdrawal from the Northern Alliance by 30 June 2028.\nBy 30 June 2028. Council verdict: **UNRESOLVED**\n\nMembers split between the coalition's fragility ([Norland's government wobbles on the alliance](https://forecasters.example/norland-wobble)) and trade dependence ([Trade ties inside the alliance](https://forecasters.example/alliance-trade)).\n\n## Claim 2: Norland holds a referendum on alliance membership before 30 June 2028.\nBy 30 June 2028. Council verdict: **REJECTED**\n\nThe bill's second-reading defeat ([Referendum bill stalls](https://forecasters.example/referendum-bill)) decided this claim.\n\n## Claim 3: Allied exercises involving Norland's forces end before 30 June 2028.\nBy 30 June 2028. Council verdict: **UNRESOLVED**\n\nPlanners assume exercises continue ([Defence planners game an exit](https://forecasters.example/exit-scenarios)), and the sources say nothing more.\n\n## How the council voted\n\nMembers voting: 7 of 7.\n\nEvidence: 5 sources read from 1 site. The council voted on 7 passages quoted from 4 of them.\n\n### Claim 1: UNRESOLVED\n0 of 7 voted for, 3 against, 4 unsure.\n\n- Member 1: unsure — The coalition is fragile but the prime minister is firm. ([Source 1](https://forecasters.example/norland-wobble))\n- Member 2: against — Stable polls favour staying. ([Source 1](https://forecasters.example/norland-wobble))\n- Member 3: against — Trade dependence deters exit. ([Source 3](https://forecasters.example/alliance-trade))\n- Member 4: unsure — Fragile coalition, firm prime minister. ([Source 1](https://forecasters.example/norland-wobble))\n- Member 5: unsure — Scenarios exist but end before 2028. ([Source 5](https://forecasters.example/exit-scenarios))\n- Member 6: against — The exit clause takes two years. ([Source 3](https://forecasters.example/alliance-trade))\n- Member 7: unsure — The coalition wobble is real but weak. ([Source 1](https://forecasters.example/norland-wobble))\n\n### Claim 2: REJECTED\n0 of 7 voted for, 5 against, 2 unsure.\n\n- Member 1: against — The bill failed its second reading. ([Source 4](https://forecasters.example/referendum-bill))\n- Member 2: against — No vote is scheduled. ([Source 4](https://forecasters.example/referendum-bill))\n- Member 3: against — The bill stalled. ([Source 4](https://forecasters.example/referendum-bill))\n- Member 4: against — The bill stalled. ([Source 4](https://forecasters.example/referendum-bill))\n- Member 5: against — No referendum path. ([Source 4](https://forecasters.example/referendum-bill))\n- Member 6: against — The bill failed. ([Source 4](https://forecasters.example/referendum-bill))\n- Member 7: against — The second reading failed. ([Source 4](https://forecasters.example/referendum-bill))\n\n### Claim 3: UNRESOLVED\n0 of 7 voted for, 0 against, 7 unsure.\n\n- Member 1: unsure — One paper's scenarios. ([Source 5](https://forecasters.example/exit-scenarios))\n- Member 2: unsure — Planners assume exercises continue. ([Source 5](https://forecasters.example/exit-scenarios))\n- Member 3: unsure — No basis to judge.\n- Member 4: unsure — Thin.\n- Member 5: unsure — Planners assume exercises continue. ([Source 5](https://forecasters.example/exit-scenarios))\n- Member 6: unsure — No lean.\n- Member 7: unsure — Too thin.",
+      "claims": [
+        "Claim 1: Norland announces its withdrawal from the Northern Alliance by 30 June 2028. (deadline: 2028-06-30)",
+        "Claim 2: Norland holds a referendum on alliance membership before 30 June 2028. (deadline: 2028-06-30)",
+        "Claim 3: Allied exercises involving Norland's forces end before 30 June 2028. (deadline: 2028-06-30)"
+      ],
+      "verdicts": [
+        "Claim 1: UNRESOLVED",
+        "Claim 2: REJECTED",
+        "Claim 3: UNRESOLVED"
+      ],
+      "unanimous_share": 0.6666666666666666
     }
-   ]
-  },
-  "output": {
-   "answer": "The council cannot settle whether Norland leaves the alliance. The coalition's wobble ([Norland's government wobbles on the alliance](https://forecasters.example/norland-wobble)) is real, but the stalled bill ([Referendum bill stalls](https://forecasters.example/referendum-bill)) and stable polls anchor most members to staying for now.\n\n## Claim 1: Norland announces its withdrawal from the Northern Alliance by 30 June 2028.\nBy 30 June 2028. Council verdict: **UNRESOLVED**\n\nMembers split between the coalition's fragility ([Norland's government wobbles on the alliance](https://forecasters.example/norland-wobble)) and trade dependence ([Trade ties inside the alliance](https://forecasters.example/alliance-trade)).\n\n## Claim 2: Norland holds a referendum on alliance membership before 30 June 2028.\nBy 30 June 2028. Council verdict: **REJECTED**\n\nThe bill's second-reading defeat ([Referendum bill stalls](https://forecasters.example/referendum-bill)) decided this claim.\n\n## Claim 3: Allied exercises involving Norland's forces end before 30 June 2028.\nBy 30 June 2028. Council verdict: **UNRESOLVED**\n\nPlanners assume exercises continue ([Defence planners game an exit](https://forecasters.example/exit-scenarios)), and the sources say nothing more.\n\n## How the council voted\n\nMembers voting: 7 of 7.\n\nEvidence: 5 sources read from 1 site. The council voted on 7 passages quoted from 4 of them.\n\n### Claim 1: UNRESOLVED\n0 of 7 voted for, 3 against, 4 unsure.\n\n- Member 1: unsure \u2014 The coalition is fragile but the prime minister is firm. ([Source 1](https://forecasters.example/norland-wobble))\n- Member 2: against \u2014 Stable polls favour staying. ([Source 1](https://forecasters.example/norland-wobble))\n- Member 3: against \u2014 Trade dependence deters exit. ([Source 3](https://forecasters.example/alliance-trade))\n- Member 4: unsure \u2014 Fragile coalition, firm prime minister. ([Source 1](https://forecasters.example/norland-wobble))\n- Member 5: unsure \u2014 Scenarios exist but end before 2028. ([Source 5](https://forecasters.example/exit-scenarios))\n- Member 6: against \u2014 The exit clause takes two years. ([Source 3](https://forecasters.example/alliance-trade))\n- Member 7: unsure \u2014 The coalition wobble is real but weak. ([Source 1](https://forecasters.example/norland-wobble))\n\n### Claim 2: REJECTED\n0 of 7 voted for, 5 against, 2 unsure.\n\n- Member 1: against \u2014 The bill failed its second reading. ([Source 4](https://forecasters.example/referendum-bill))\n- Member 2: against \u2014 No vote is scheduled. ([Source 4](https://forecasters.example/referendum-bill))\n- Member 3: against \u2014 The bill stalled. ([Source 4](https://forecasters.example/referendum-bill))\n- Member 4: against \u2014 The bill stalled. ([Source 4](https://forecasters.example/referendum-bill))\n- Member 5: against \u2014 No referendum path. ([Source 4](https://forecasters.example/referendum-bill))\n- Member 6: against \u2014 The bill failed. ([Source 4](https://forecasters.example/referendum-bill))\n- Member 7: against \u2014 The second reading failed. ([Source 4](https://forecasters.example/referendum-bill))\n\n### Claim 3: UNRESOLVED\n0 of 7 voted for, 0 against, 7 unsure.\n\n- Member 1: unsure \u2014 One paper's scenarios. ([Source 5](https://forecasters.example/exit-scenarios))\n- Member 2: unsure \u2014 Planners assume exercises continue. ([Source 5](https://forecasters.example/exit-scenarios))\n- Member 3: unsure \u2014 No basis to judge.\n- Member 4: unsure \u2014 Thin.\n- Member 5: unsure \u2014 Planners assume exercises continue. ([Source 5](https://forecasters.example/exit-scenarios))\n- Member 6: unsure \u2014 No lean.\n- Member 7: unsure \u2014 Too thin.",
-   "claims": [
-    "Claim 1: Norland announces its withdrawal from the Northern Alliance by 30 June 2028. (deadline: 2028-06-30)",
-    "Claim 2: Norland holds a referendum on alliance membership before 30 June 2028. (deadline: 2028-06-30)",
-    "Claim 3: Allied exercises involving Norland's forces end before 30 June 2028. (deadline: 2028-06-30)"
-   ],
-   "verdicts": [
-    "Claim 1: UNRESOLVED",
-    "Claim 2: REJECTED",
-    "Claim 3: UNRESOLVED"
-   ],
-   "unanimous_share": 0.6666666666666666
   }
- }
 ]

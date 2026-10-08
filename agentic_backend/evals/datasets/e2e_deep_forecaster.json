@@ -1,0 +1,9 @@
+[
+  {
+    "name": "e2e-strait-shipping-live",
+    "input": {
+      "query": "Will the European Commission adopt a binding regulation that ends the sale of new combustion-engine cars in the EU before 31 December 2029, after today's legal challenges?"
+    },
+    "output": {}
+  }
+]

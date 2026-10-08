@@ -65,4 +65,8 @@ jobs:
       - name: Run e2e evals
         if: ${{ !cancelled() && steps.sync.outcome == 'success' }}
         working-directory: agentic_backend
-        run: uv run python -m evals.e2e
+        run: uv run python -m evals.e2e_orchestrator
+      - name: Run the deep-forecaster e2e eval
+        if: ${{ !cancelled() && steps.sync.outcome == 'success' }}
+        working-directory: agentic_backend
+        run: uv run python -m evals.e2e_deep_forecaster

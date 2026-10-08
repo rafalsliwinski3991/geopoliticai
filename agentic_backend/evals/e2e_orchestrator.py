@@ -1,4 +1,10 @@
-"""e2e eval: multi-turn conversations through the orchestrator, typed replies included."""
+"""e2e_orchestrator eval: multi-turn conversations through the orchestrator, typed replies included.
+
+Named `e2e_orchestrator` (user decision 2026-10-08, review thread #149) so
+every end-to-end eval carries its agent in its module name —
+`e2e_deep_forecaster` launches the whole deep forecaster with live page
+reading.
+"""
 
 from __future__ import annotations
 
@@ -9,10 +15,10 @@ from uuid import uuid4
 
 from evals.helpers.graph import load_sources, pending_pause, recorded_sources
 from evals.helpers.run import run
-from evals.judges.e2e import judges
+from evals.judges.e2e_orchestrator import judges
 from models import Source
 
-DATASET_PATH = Path(__file__).parent / "datasets" / "e2e.json"
+DATASET_PATH = Path(__file__).parent / "datasets" / "e2e_orchestrator.json"
 # 4x the deep wall cap (480 s): two deep turns, an expert turn, and classifier calls. Retune if wall_seconds changes.
 TIMEOUT_SECONDS = 1_920
 

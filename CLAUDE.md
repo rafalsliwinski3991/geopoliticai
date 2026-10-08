@@ -147,16 +147,22 @@ From the root, use `make logs-SERVICE` and `make services`. Manual quality work
 is `agentic_backend/evals/`: one script per eval, run from `agentic_backend/` as
 `uv run python -m evals.<name>`, with judges in `evals/judges/`, shared
 AX/Phoenix code in `evals/helpers/`, and `{name, input, output}` examples in
-`evals/datasets/`. Evals never call Brave; expert, deep_expert, and e2e examples
-carry synthetic sources, never fetched article text. `recorded_sources` patches both the expert's
-retrieval node and the deep expert's tools. The `deep_expert` eval judges its `deep_answer` with
-the expert's three judges and compares it with the expert's `answer` from a live run on the
-same recorded sources. Evals are advisory, outside
+`evals/datasets/`. Evals never call Brave except `e2e_deep_forecaster`, whose one example runs
+Brave, page reading, and the council live (user decision 2026-10-08); expert,
+deep_expert, and the recorded e2e examples carry synthetic sources, never
+fetched article text. `recorded_sources` patches the expert's retrieval node,
+the deep expert's tools, and the deep forecaster's tools. The `deep_expert`
+eval judges its `deep_answer` with the expert's three judges and compares it
+with the expert's `answer` from a live run on the same recorded sources. The
+`deep_forecaster` eval's fixture carries an `as_of` date each run passes as
+the forecast's `today`. Evals are advisory, outside
 pytest (their helpers, judges, and datasets are unit-tested), and reachable in
 CI only through the dispatch-only `evals.yml` workflow, which gates no merge; a
 run exits non-zero on a task crash, a judge error, or a judge average below its
 minimum (`evals/helpers/judge.py`). The eval scripts require `OPENAI_API_KEY`
-and `OPENROUTER_API_KEY` and record their scores to
+and `OPENROUTER_API_KEY` (the deep forecaster and its live e2e also require
+`GEMINI_API_KEY`; the e2e live run also uses the deployment's
+`BRAVE_SEARCH_KEY`) and record their scores to
 Arize AX or local Phoenix depending on
 `ARIZE_PLATFORM`: `AX` uses `ARIZE_SPACE_ID` and `ARIZE_API_KEY`, while
 `PHOENIX` (the default) uses `PHOENIX_COLLECTOR_ENDPOINT` and sends no API key.

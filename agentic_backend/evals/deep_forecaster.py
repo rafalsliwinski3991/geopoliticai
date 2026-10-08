@@ -14,6 +14,7 @@ the judges can read the claims and the tally as well as the answer.
 from __future__ import annotations
 
 import asyncio
+from datetime import date
 from pathlib import Path
 from typing import Any
 
@@ -70,7 +71,9 @@ async def run_deep_forecaster(input: dict[str, Any]) -> dict[str, Any]:
         state = await build_graph().ainvoke(
             {"question": input["query"]},
             config=NO_CHECKPOINTER_CONFIG,
-            context=ForecastRun(),
+            # The example's as-of date keeps the claims' deadlines in the
+            # example's future as the eval ages (review thread, #149).
+            context=ForecastRun(today=date.fromisoformat(input["as_of"])),
         )
     return forecast_output(state)
 

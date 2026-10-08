@@ -1,10 +1,15 @@
-"""Unit tests for `evals.judges.e2e` code checks and views."""
+"""Unit tests for `evals.judges.e2e_orchestrator` code checks and views."""
 
 from __future__ import annotations
 
 from typing import Any
 
-from evals.judges.e2e import _turns_view, _without_outlines, judges, turns_handled
+from evals.judges.e2e_orchestrator import (
+    _turns_view,
+    _without_outlines,
+    judges,
+    turns_handled,
+)
 
 
 def _turn(
