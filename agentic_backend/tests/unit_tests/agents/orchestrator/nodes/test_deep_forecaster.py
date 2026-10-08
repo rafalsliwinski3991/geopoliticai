@@ -21,6 +21,7 @@ async def test_the_node_receives_the_query_and_writes_exactly_one_notice(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     # Arrange
+    # Arrange
     received: dict[str, Any] = {}
     events: list[dict[str, Any]] = []
 

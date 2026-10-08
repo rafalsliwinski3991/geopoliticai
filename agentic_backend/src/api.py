@@ -6,6 +6,7 @@ import json
 import logging
 import os
 import time
+from asyncio import Lock as AsyncLock
 from collections import deque
 from contextlib import asynccontextmanager
 from threading import Lock
@@ -160,6 +161,16 @@ graph: Any = _default_graph
 
 _rate_limit_store: dict[str, deque[float]] = {}
 _rate_limit_lock = Lock()
+# One costly-turn commit at a time per user (review thread, #148): the advisory
+# headroom read cannot be raced, but the site upsert can, so a burst of
+# concurrent forecast requests must not each take `cost` site units before the
+# user's own upsert disqualifies all but one (see `_astream_answer`).
+_costly_turn_locks: dict[int, AsyncLock] = {}
+
+
+def _costly_turn_lock(user_id: int) -> AsyncLock:
+    """Return the per-user lock serializing a counted turn's quota commit."""
+    return _costly_turn_locks.setdefault(user_id, AsyncLock())
 
 
 async def _require_migrated_checkpointer_schema(
@@ -632,69 +643,77 @@ async def run_pipeline_stream_endpoint(
                     # A value of None (the pre-change shape, still used by test
                     # fakes) is an ordinary one-unit research turn.
                     cost, refusal = COSTLY_DESTINATIONS.get(value, ONE_UNIT)
-                    if cost > 1:
-                        # Advisory headroom check before the site is charged
-                        # (plan review): without it, a user at 17/20 retrying a
-                        # costly request (deep or forecast) spends its cost in
-                        # site units per refused retry, and a few dozen retries
-                        # exhaust the 500-unit site ceiling for everyone. The
-                        # user upsert below still decides; this read only stops
-                        # the obviously unaffordable turn early. Refused, not
-                        # downgraded to an expert answer (Q8A).
-                        left = DAILY_RESEARCH_TURNS - await quota_used(
-                            pool, user_id=identity.user_id
-                        )
-                        if left < cost:
+                    # One commit at a time per user (review thread, #148): the
+                    # advisory headroom read cannot be raced, but the site
+                    # upsert can — a burst of concurrent forecast requests must
+                    # not each take `cost` site units before the user's own
+                    # upsert disqualifies all but one. The later burst members
+                    # re-run the headroom read after the winner commits.
+                    async with _costly_turn_lock(identity.user_id):
+                        if cost > 1:
+                            # Advisory headroom check before the site is
+                            # charged (plan review): without it, a user at
+                            # 17/20 retrying a costly request (deep or
+                            # forecast) spends its cost in site units per
+                            # refused retry, and a few dozen retries exhaust
+                            # the 500-unit site ceiling for everyone. The
+                            # user upsert below still decides; this read only
+                            # stops the obviously unaffordable turn early.
+                            # Refused, not downgraded (Q8A).
+                            left = DAILY_RESEARCH_TURNS - await quota_used(
+                                pool, user_id=identity.user_id
+                            )
+                            if left < cost:
+                                yield _sse(
+                                    {
+                                        "type": "error",
+                                        "status": 429,
+                                        "message": refusal.format(
+                                            cost=cost, left=max(0, left)
+                                        ),
+                                    }
+                                )
+                                return
+                        # The site ceiling is committed before the caller is
+                        # charged: a turn the site refuses must not cost the
+                        # user their own turn, and unlike an advisory pre-read
+                        # the conditional upsert cannot be raced open — the
+                        # database decides, so no concurrent turn can still
+                        # take the last slot between a read and this write.
+                        if not await increment_site_quota(
+                            pool, limit=DAILY_RESEARCH_TURNS_ALL_USERS, cost=cost
+                        ):
+                            # The site-wide ceiling: the operator's bill has a
+                            # second, coarser bound no single account controls.
+                            # Chat turns never reach this branch (Q5b).
                             yield _sse(
                                 {
                                     "type": "error",
                                     "status": 429,
-                                    "message": refusal.format(
-                                        cost=cost, left=max(0, left)
-                                    ),
+                                    "message": "The site has used today's research capacity.",
                                 }
                             )
                             return
-                    # The site ceiling is committed before the caller is
-                    # charged: a turn the site refuses must not cost the
-                    # user their own turn, and unlike an advisory pre-read
-                    # the conditional upsert cannot be raced open — the
-                    # database decides, so no concurrent turn can still
-                    # take the last slot between a read and this write.
-                    if not await increment_site_quota(
-                        pool, limit=DAILY_RESEARCH_TURNS_ALL_USERS, cost=cost
-                    ):
-                        # The site-wide ceiling: the operator's bill has a
-                        # second, coarser bound no single account controls.
-                        # Chat turns never reach this branch (Q5b).
-                        yield _sse(
-                            {
-                                "type": "error",
-                                "status": 429,
-                                "message": "The site has used today's research capacity.",
-                            }
-                        )
-                        return
-                    if not await increment_quota(
-                        pool,
-                        user_id=identity.user_id,
-                        limit=DAILY_RESEARCH_TURNS,
-                        cost=cost,
-                    ):
-                        # A concurrent turn took the last one (for a costly
-                        # turn: took units between the headroom read and here). The
-                        # site slot just taken belongs to this run's own
-                        # refusal: the user is not charged for a turn the
-                        # endpoint ends before it produces an answer, and the
-                        # site count stays honest about the run that did happen.
-                        yield _sse(
-                            {
-                                "type": "error",
-                                "status": 429,
-                                "message": "Daily research limit reached.",
-                            }
-                        )
-                        return
+                        if not await increment_quota(
+                            pool,
+                            user_id=identity.user_id,
+                            limit=DAILY_RESEARCH_TURNS,
+                            cost=cost,
+                        ):
+                            # A concurrent turn took the last one (for a costly
+                            # turn: took units between the headroom read and here). The
+                            # site slot just taken belongs to this run's own
+                            # refusal: the user is not charged for a turn the
+                            # endpoint ends before it produces an answer, and the
+                            # site count stays honest about the run that did happen.
+                            yield _sse(
+                                {
+                                    "type": "error",
+                                    "status": 429,
+                                    "message": "Daily research limit reached.",
+                                }
+                            )
+                            return
                     continue
                 if kind not in ("token", "notice"):
                     # An event kind this layer does not know. Ignoring it is
