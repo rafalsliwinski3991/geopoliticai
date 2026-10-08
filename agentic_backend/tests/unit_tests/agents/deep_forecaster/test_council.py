@@ -397,6 +397,7 @@ class TestCast:
     ) -> None:
         import logging
 
+        # Arrange
         caplog.set_level(logging.INFO, logger=council_module.__name__)
         seat = COUNCIL[member - 1]
         calls = self._patch(monkeypatch, {})
@@ -420,6 +421,7 @@ class TestCast:
     ) -> None:
         import logging
 
+        # Arrange
         caplog.set_level(logging.WARNING, logger=council_module.__name__)
         seat = COUNCIL[2]
         calls = self._patch(monkeypatch, {seat.model: behavior})
@@ -438,6 +440,7 @@ class TestCast:
     ) -> None:
         import logging
 
+        # Arrange
         caplog.set_level(logging.WARNING, logger=council_module.__name__)
         seat = COUNCIL[2]
         self._patch(monkeypatch, {seat.model: "timeout"})
@@ -445,8 +448,10 @@ class TestCast:
         small = dataclasses.replace(config.LIMITS, member_seconds=0.1)
         monkeypatch.setattr(council_module, "LIMITS", small)
         started = time.monotonic()
+        # Act
         result = await _cast(1, 3, [], claims=2, quoted_by_claim=QUOTED_BY_CLAIM)
         elapsed = time.monotonic() - started
+        # Assert
         assert result is None
         assert elapsed < 0.3
         assert "the member's time limit" in caplog.text
@@ -493,13 +498,16 @@ class TestMemberClient:
         return recorded
 
     def test_member_clients_by_provider(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # Arrange
         monkeypatch.setenv("GEMINI_API_KEY", "gemini-key")
         monkeypatch.setenv("OPENROUTER_API_KEY", "router-key")
         recorded = self._recorded(monkeypatch)
+        # Act
         member_client(COUNCIL[0], COUNCIL[0].model)
         member_client(COUNCIL[1], COUNCIL[1].model)
         router_seat = COUNCIL[2]
         member_client(router_seat, router_seat.model)
+        # Assert
         openai_client = recorded[0]
         gemini_client = recorded[1]
         router_client = recorded[2]
@@ -520,8 +528,18 @@ class TestMemberClient:
             assert kwargs["streaming"] is False
         assert openai_client["max_retries"] == 2
         assert router_client["max_retries"] == 2
+
+    def test_the_member_client_carries_the_max_retries_override(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Arrange
+        monkeypatch.setenv("GEMINI_API_KEY", "gemini-key")
+        monkeypatch.setenv("OPENROUTER_API_KEY", "router-key")
+        recorded = self._recorded(monkeypatch)
+        # Act
         member_client(COUNCIL[0], COUNCIL[0].model, max_retries=0)
-        assert recorded[-1]["max_retries"] == 0
+        # Assert
+        assert recorded[0]["max_retries"] == 0
 
 
 def test_the_roster_is_one_paid_seat_per_vendor() -> None:

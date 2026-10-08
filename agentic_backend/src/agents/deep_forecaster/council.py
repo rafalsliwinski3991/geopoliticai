@@ -86,7 +86,7 @@ def member_model(seat: Seat, model: str, *, max_retries: int) -> Any:
     """Return the ballot-producing chain for `model` on `seat`'s endpoint.
 
     Structured output goes through tool calling, which every roster model
-    and fallback advertises; five of seven seats do not advertise
+    advertises; five of seven seats do not advertise
     `structured_outputs` (Q4). `TAG_NOSTREAM` keeps every ballot out of
     `stream_mode="messages"`.
     """

@@ -43,7 +43,7 @@ WRITE_LLM_SETTINGS = LLMSettings(
     max_output_tokens=16_384,
     reasoning_effort="low",
 )
-# A ballot is short, but the free reasoning models spend output tokens thinking.
+# A ballot is short, but the reasoning members spend output tokens thinking.
 MEMBER_MAX_OUTPUT_TOKENS = 8_192
 
 
