@@ -1,9 +1,13 @@
-[
+{
+ "description": "Live end-to-end deep forecaster: the expensive, non-deterministic sibling of deep_forecaster.json. One case, nothing recorded \u2014 Brave search runs for real, every page is fetched and read with trafilatura, and the whole forecaster graph (research, draft_claims, council_round_1, council_round_2, tally, write_analysis, verify) spends live model money across all seven council seats. No reference answer exists for a live search, so judges score shape and self-consistency only (claims_checkable, prose_matches_tally); the reference-verdict scoring stays in deep_forecaster.json.",
+ "cases": [
   {
-    "name": "e2e-strait-shipping-live",
-    "input": {
-      "query": "Will the European Commission adopt a binding regulation that ends the sale of new combustion-engine cars in the EU before 31 December 2029, after today's legal challenges?"
-    },
-    "output": {}
+   "name": "e2e-strait-shipping-live",
+   "input": {
+    "query": "Will the European Commission adopt a binding regulation that ends the sale of new combustion-engine cars in the EU before 31 December 2029, after today's legal challenges?"
+   },
+   "output": {},
+   "description": "Will the European Commission adopt a binding regulation ending new combustion-engine car sales in the EU before 31 December 2029 \u2014 asked with live retrieval only. The research node must find and read its own current sources, so the judges only require that the drafted claims are checkable forecasts with cited sources and that the final analysis prose never contradicts the council's tally."
   }
-]
+ ]
+}

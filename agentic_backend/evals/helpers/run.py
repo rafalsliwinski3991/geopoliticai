@@ -32,10 +32,24 @@ logger = logging.getLogger("agent")
 
 
 def load_examples(path: Path) -> list[dict[str, Any]]:
-    """Load `[{name, input, output}]` and return the platform's `{input, output}` pairs."""
+    """Load a dataset and return the platform's `{input, output}` pairs.
+
+    Two shapes are accepted (review thread, #149): the legacy `[{name, input,
+    output}]` list and the documented wrapper `{"description": str, "cases":
+    [...]}`, which carries the dataset's purpose for a new developer.
+    """
     raw: object = json.loads(path.read_text(encoding="utf-8"))
+    description: object = None
+    if isinstance(raw, dict):
+        description = raw.get("description")
+        if not isinstance(description, str) or not description.strip():
+            raise ValueError(f"{path.name}: a wrapper dataset needs a description")
+        raw = raw.get("cases")
     if not isinstance(raw, list) or not raw:
-        raise ValueError(f"{path.name} must contain a non-empty list of examples")
+        raise ValueError(
+            f"{path.name} must be a non-empty list of examples or "
+            '{{"description": str, "cases": [...]}}'
+        )
     names: set[str] = set()
     for example in raw:
         if not (
@@ -50,6 +64,10 @@ def load_examples(path: Path) -> list[dict[str, Any]]:
         if example["name"] in names:
             raise ValueError(f"{path.name}: duplicate example name {example['name']!r}")
         names.add(example["name"])
+        if "description" in example and not isinstance(example["description"], str):
+            raise ValueError(
+                f"{path.name}: example {example['name']!r}'s description must be a string"
+            )
     return [{"input": example["input"], "output": example["output"]} for example in raw]
 
 
