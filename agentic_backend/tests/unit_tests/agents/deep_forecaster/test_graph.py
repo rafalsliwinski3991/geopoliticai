@@ -289,11 +289,10 @@ async def test_a_forecast_runs_every_step_once_inside_a_checkpointed_parent(
     member_calls: list[tuple[str, int, str]] = []
     model_reads: list[str] = []
     scripted = {
-        # Member 3's free model fails round 1; its fallback votes there.
-        "nvidia/nemotron-3-ultra-550b-a55b:free": {"fail_first": True},
-        # Member 7's free model fails round 2, and so does its fallback.
-        "inclusionai/ling-3.0-flash-sante:free": {"fail_second": True},
-        "inclusionai/ling-3.0-flash": {"always": True},
+        # Member 3's model fails round 1; the seat is dropped and sits round 2 out.
+        "nvidia/nemotron-3-ultra-550b-a55b": {"fail_first": True},
+        # Member 7's model fails round 2, and it keeps its round-1 vote.
+        "inclusionai/ling-3.0-flash": {"fail_second": True},
     }
     counters: dict[str, int] = {}
 
@@ -373,9 +372,9 @@ async def test_a_forecast_runs_every_step_once_inside_a_checkpointed_parent(
     assert labels == expected_labels
     assert "### Claim 1: ACCEPTED" in answer_text
     assert "### Claim 2: UNRESOLVED" in answer_text
-    assert "Members voting: 7 of 7." in answer_text
+    assert "Members voting: 6 of 7 (1 unavailable)." in answer_text
     assert (
-        "Round 2: 1 of 7 kept their round-1 vote because they did not answer."
+        "Round 2: 1 of 6 kept their round-1 vote because they did not answer."
         in answer_text
     )
     assert (
@@ -383,13 +382,12 @@ async def test_a_forecast_runs_every_step_once_inside_a_checkpointed_parent(
         "quoted from 2 of them." in answer_text
     )
     assert "- Member 7 (round-1 vote):" in answer_text
-    # 16 member calls: round 1 is 7 seats plus member 3's fallback; round 2 is
-    # 6 answers plus member 7's free model and its fallback; 3 calls fail.
-    assert len(member_calls) == 16
-    assert len([call for call in member_calls if call[2] == "failed"]) == 3
+    # 13 member calls: round 1 is 7 seats with member 3 failing; round 2 is the
+    # 6 round-1 voters with member 7 failing; 2 calls fail.
+    assert len(member_calls) == 13
+    assert len([call for call in member_calls if call[2] == "failed"]) == 2
     assert {call[0] for call in member_calls if call[2] == "failed"} == {
-        "nvidia/nemotron-3-ultra-550b-a55b:free",
-        "inclusionai/ling-3.0-flash-sante:free",
+        "nvidia/nemotron-3-ultra-550b-a55b",
         "inclusionai/ling-3.0-flash",
     }
     # No member read the text of a paragraph no claim points at.

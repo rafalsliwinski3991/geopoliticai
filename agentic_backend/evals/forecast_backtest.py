@@ -47,8 +47,8 @@ it happened. If you do not know, reply exactly: I do not know how this turned ou
 async def leak_probe(query: str) -> str:
     """Ask every model that can vote the question with no sources; no reply may know the outcome.
 
-    That is each seat's own model and, for a free seat, its paid fallback,
-    which votes whenever the free model fails (plan unit 04).
+    That is each seat's own model (plan unit 04). All seats are paid models
+    (user decision 2026-10-08), so the free seats' fallback asks are gone.
     """
     from langchain_core.messages import HumanMessage, SystemMessage
 
@@ -64,11 +64,10 @@ async def leak_probe(query: str) -> str:
         except Exception as exc:  # noqa: BLE001 - an unavailable model cannot leak
             return f"{label}: unavailable ({type(exc).__name__})"
 
-    asks = []
-    for member, seat in enumerate(COUNCIL, start=1):
-        asks.append(ask(f"Member {member}", seat, seat.model))
-        if seat.fallback is not None:
-            asks.append(ask(f"Member {member} (fallback)", seat, seat.fallback))
+    asks = [
+        ask(f"Member {member}", seat, seat.model)
+        for member, seat in enumerate(COUNCIL, start=1)
+    ]
     replies = await asyncio.gather(*asks)
     dead = [line.split(":")[0] for line in replies if "unavailable" in line]
     if dead:

@@ -38,12 +38,8 @@ def test_leak_probe_asks_every_model_that_can_vote(
     # Assert
     lines = probe.split("\n\n")
     member_lines = [line for line in lines if line.startswith("Member ")]
-    fallback_lines = [
-        line for line in lines if line.startswith("Member ") and "(fallback)" in line
-    ]
-    plain_lines = [line for line in member_lines if "(fallback)" not in line]
-    assert len(plain_lines) == 7
-    assert len(fallback_lines) == 5
+    assert len(member_lines) == 7
+    assert all("(fallback)" not in line for line in member_lines)
     assert "unavailable" not in probe
     assert all(call[2] == 2 for call in recorded)
 

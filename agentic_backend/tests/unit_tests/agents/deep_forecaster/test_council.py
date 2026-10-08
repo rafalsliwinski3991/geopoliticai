@@ -23,6 +23,7 @@ from agents.deep_forecaster.council import (
     validate_ballot,
 )
 from agents.deep_forecaster.models import Ballot, Stance, Vote
+from llm import DEFAULT_MAX_RETRIES
 from models import LLMInvocationError
 from unit_tests.agents.deep_forecaster.conftest import ballot
 
@@ -270,13 +271,9 @@ class TestConvene:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         behavior = {
-            "nvidia/nemotron-3-ultra-550b-a55b:free": "raise",
             "nvidia/nemotron-3-ultra-550b-a55b": "raise",
-            "qwen/qwen3.8-27b:free": "slow",
             "qwen/qwen3.8-27b": "slow",
-            "poolside/laguna-s-2.1:free": "invalid",
             "poolside/laguna-s-2.1": "invalid",
-            "dots-studio/dots-3-note-preview:free": "none",
             "deepseek/deepseek-v4-flash": "none",
         }
         self._fakes(monkeypatch, behavior)
@@ -303,7 +300,6 @@ class TestConvene:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         behavior = {seat.model: "raise" for seat in COUNCIL}
-        behavior.update({seat.fallback: "raise" for seat in COUNCIL if seat.fallback})
         self._fakes(monkeypatch, behavior)
         ballots = await convene(
             2,
@@ -346,7 +342,7 @@ class TestConvene:
         assert "kept its round-1 vote" in caplog.text
 
 
-class TestCastFallback:
+class TestCast:
     def _patch(
         self,
         monkeypatch: pytest.MonkeyPatch,
@@ -392,66 +388,50 @@ class TestCastFallback:
         return calls
 
     @pytest.mark.anyio
-    @pytest.mark.parametrize(
-        "free_behavior",
-        ["raise", "none", "invalid", "timeout"],
-    )
-    async def test_a_failed_free_model_asks_its_paid_fallback(
+    @pytest.mark.parametrize("member", range(1, 8))
+    async def test_every_seat_casts_one_attempt_with_the_client_s_retries(
         self,
-        free_behavior: str,
+        member: int,
         monkeypatch: pytest.MonkeyPatch,
         caplog: pytest.LogCaptureFixture,
     ) -> None:
         import logging
 
         caplog.set_level(logging.INFO, logger=council_module.__name__)
-        seat = COUNCIL[2]
-        free_model = seat.model
-        fallback = str(seat.fallback)
-        behavior = {free_model: free_behavior}
-        calls = self._patch(monkeypatch, behavior)
-        caplog.set_level(logging.INFO, logger=council_module.__name__)
+        seat = COUNCIL[member - 1]
+        calls = self._patch(monkeypatch, {})
+        # Act
+        result = await _cast(1, member, [], claims=2, quoted_by_claim=QUOTED_BY_CLAIM)
+        # Assert
+        assert result is not None and result.votes[0].claim == 1
+        assert set(calls) == {(seat.model, DEFAULT_MAX_RETRIES)}
+        assert "voted via" in caplog.text and seat.model in caplog.text
 
-        small = dataclasses.replace(
-            config.LIMITS, free_attempt_seconds=0.05, member_seconds=1
-        )
-        monkeypatch.setattr(council_module, "LIMITS", small)
+    @pytest.mark.anyio
+    @pytest.mark.parametrize(
+        "behavior",
+        ["raise", "none", "invalid"],
+    )
+    async def test_a_failed_attempt_is_dropped_without_a_second_try(
+        self,
+        behavior: str,
+        monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        import logging
+
+        caplog.set_level(logging.WARNING, logger=council_module.__name__)
+        seat = COUNCIL[2]
+        calls = self._patch(monkeypatch, {seat.model: behavior})
         # Act
         result = await _cast(1, 3, [], claims=2, quoted_by_claim=QUOTED_BY_CLAIM)
         # Assert
-        assert result is not None and result.votes[0].claim == 1
-        assert calls[(fallback, 2)] == 1
-        if free_behavior == "timeout":
-            assert calls.get((free_model, 0)) == 1
-        else:
-            assert calls[(free_model, 0)] == 1
-        assert "voted via" in caplog.text and fallback in caplog.text
+        assert result is None
+        assert set(calls) == {(seat.model, DEFAULT_MAX_RETRIES)}
+        assert "dropped" in caplog.text
 
     @pytest.mark.anyio
-    @pytest.mark.anyio
-    async def test_a_free_model_that_votes_never_calls_the_fallback(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        calls = self._patch(monkeypatch, {})
-        result = await _cast(1, 3, [], claims=2, quoted_by_claim=QUOTED_BY_CLAIM)
-        assert result is not None
-        seat = COUNCIL[2]
-        assert (str(seat.fallback), 2) not in calls
-        assert (seat.model, 0) in calls
-
-    @pytest.mark.anyio
-    async def test_paid_seats_have_one_attempt(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        behavior = {"gpt-5-mini": "raise", "gemini-3.8-flash": "raise"}
-        calls = self._patch(monkeypatch, behavior)
-        first = await _cast(1, 1, [], claims=2, quoted_by_claim=QUOTED_BY_CLAIM)
-        second = await _cast(1, 2, [], claims=2, quoted_by_claim=QUOTED_BY_CLAIM)
-        assert first is None and second is None
-        assert set(calls) == {("gpt-5-mini", 2), ("gemini-3.8-flash", 2)}
-
-    @pytest.mark.anyio
-    async def test_the_member_timeout_bounds_both_attempts(
+    async def test_the_member_timeout_bounds_the_attempt(
         self,
         monkeypatch: pytest.MonkeyPatch,
         caplog: pytest.LogCaptureFixture,
@@ -459,14 +439,10 @@ class TestCastFallback:
         import logging
 
         caplog.set_level(logging.WARNING, logger=council_module.__name__)
-        free = COUNCIL[2]
-        assert free.fallback is not None
-        behavior = {free.model: "timeout", free.fallback: "timeout"}
-        self._patch(monkeypatch, behavior)
+        seat = COUNCIL[2]
+        self._patch(monkeypatch, {seat.model: "timeout"})
 
-        small = dataclasses.replace(
-            config.LIMITS, member_seconds=0.1, free_attempt_seconds=0.05
-        )
+        small = dataclasses.replace(config.LIMITS, member_seconds=0.1)
         monkeypatch.setattr(council_module, "LIMITS", small)
         started = time.monotonic()
         result = await _cast(1, 3, [], claims=2, quoted_by_claim=QUOTED_BY_CLAIM)
@@ -477,14 +453,13 @@ class TestCastFallback:
 
 
 @pytest.mark.anyio
-async def test_the_wall_cap_cancels_a_fallback_in_flight(
+async def test_the_wall_cap_cancels_an_attempt_in_flight(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     # Arrange
-    free = COUNCIL[2]
-    assert free.fallback is not None
-    behavior = {free.model: "timeout", free.fallback: "timeout"}
-    TestCastFallback()._patch(monkeypatch, behavior)
+    seat = COUNCIL[2]
+    behavior = {seat.model: "timeout"}
+    TestCast()._patch(monkeypatch, behavior)
     # Act
     task = asyncio.ensure_future(
         _cast(1, 3, [], claims=2, quoted_by_claim=QUOTED_BY_CLAIM)
@@ -523,45 +498,37 @@ class TestMemberClient:
         recorded = self._recorded(monkeypatch)
         member_client(COUNCIL[0], COUNCIL[0].model)
         member_client(COUNCIL[1], COUNCIL[1].model)
-        free_seat = COUNCIL[2]
-        member_client(free_seat, free_seat.model)
-        assert free_seat.fallback is not None
-        member_client(free_seat, free_seat.fallback)
+        router_seat = COUNCIL[2]
+        member_client(router_seat, router_seat.model)
         openai_client = recorded[0]
         gemini_client = recorded[1]
-        free_client = recorded[2]
-        fallback_client = recorded[3]
+        router_client = recorded[2]
         assert "base_url" not in openai_client
         assert (
             gemini_client["base_url"]
             == "https://generativelanguage.googleapis.com/v1beta/openai/"
         )
         assert gemini_client["api_key"] == "gemini-key"
-        assert free_client["base_url"] == "https://openrouter.ai/api/v1"
-        assert free_client["api_key"] == "router-key"
-        assert fallback_client["base_url"] == "https://openrouter.ai/api/v1"
+        assert router_client["base_url"] == "https://openrouter.ai/api/v1"
+        assert router_client["api_key"] == "router-key"
         assert gemini_client["disabled_params"] == {"parallel_tool_calls": None}
-        assert free_client["disabled_params"] == {"parallel_tool_calls": None}
+        assert router_client["disabled_params"] == {"parallel_tool_calls": None}
         assert "disabled_params" not in openai_client
         for kwargs in recorded:
             assert kwargs["timeout"] == 100.0
             assert kwargs["max_completion_tokens"] == 8_192
             assert kwargs["streaming"] is False
         assert openai_client["max_retries"] == 2
-        assert free_client["max_retries"] == 2
+        assert router_client["max_retries"] == 2
         member_client(COUNCIL[0], COUNCIL[0].model, max_retries=0)
         assert recorded[-1]["max_retries"] == 0
 
 
-def test_every_free_seat_has_a_paid_fallback_from_no_seated_vendor() -> None:
+def test_the_roster_is_one_paid_seat_per_vendor() -> None:
     # Arrange
-    seated_vendors = {seat.model.split("/")[0] for seat in COUNCIL if "/" in seat.model}
+    vendors = [seat.model.split("/")[0] for seat in COUNCIL if "/" in seat.model]
     # Assert
+    assert len(vendors) == len(set(vendors))
     for seat in COUNCIL:
         if seat.provider == "openrouter":
-            assert seat.model.endswith(":free")
-            assert seat.fallback is not None and not seat.fallback.endswith(":free")
-            vendor = seat.fallback.split("/")[0]
-            assert vendor not in seated_vendors or vendor == seat.model.split("/")[0]
-        else:
-            assert seat.fallback is None
+            assert not seat.model.endswith(":free")
