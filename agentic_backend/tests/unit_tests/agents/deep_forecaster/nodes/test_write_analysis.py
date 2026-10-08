@@ -8,11 +8,8 @@ from typing import Any
 import pytest
 
 from agents.deep_forecaster.consts.progress import WRITE_LABEL
-from agents.deep_forecaster.state import (
-    Analysis,
-    ClaimDiscussion,
-    ClaimTally,
-)
+from agents.deep_forecaster.models import Analysis, ClaimDiscussion
+from agents.deep_forecaster.state import ClaimTally
 from unit_tests.agents.deep_forecaster.conftest import ballot, runtime, state
 
 write_analysis_module: Any = importlib.import_module(
@@ -24,6 +21,7 @@ write_analysis_module: Any = importlib.import_module(
 async def test_the_writer_reads_verdicts_votes_and_sources(
     monkeypatch: pytest.MonkeyPatch, events: list[dict[str, Any]]
 ) -> None:
+    # Arrange
     returned = Analysis(
         overview="Overview.",
         claims=[

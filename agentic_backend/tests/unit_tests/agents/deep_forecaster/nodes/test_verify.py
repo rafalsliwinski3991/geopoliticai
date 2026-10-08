@@ -9,17 +9,15 @@ from typing import Any
 import pytest
 
 from agents.deep_forecaster.council import count_votes
-from agents.deep_forecaster.state import (
+from agents.deep_forecaster.models import (
     Analysis,
     Ballot,
     Claim,
     ClaimDiscussion,
-    ClaimTally,
-    ForecastState,
-    PassageRef,
-    ResearchOutcome,
+    EvidenceRef,
     Vote,
 )
+from agents.deep_forecaster.state import ClaimTally, ForecastState, ResearchOutcome
 from models import LLMInvocationError, Source
 from unit_tests.agents.deep_forecaster.conftest import ballot, runtime, state
 
@@ -82,12 +80,15 @@ def checked(forecast_state: Any, analysis_: Analysis | None = None) -> str:
 async def test_the_answer_renders_the_tally_and_every_vote(
     events: list[dict[str, Any]],
 ) -> None:
+    # Arrange
+    # Arrange
     first = six_voters()
     forecast_state: Any = state(round_1=first, round_2=dict(first))
     forecast_state["tally"] = VOTING6_TALLY
     forecast_state["analysis"] = analysis()
     out = await verify_module.verify(forecast_state, runtime(events))
     answer = out["answer"]
+    # Act
     for part in (
         "The council leans yes.",
         "## Claim 1: Alpha happens by 2027.",
@@ -101,6 +102,7 @@ async def test_the_answer_renders_the_tally_and_every_vote(
         "- Member 2: against — Reason 1. ([Source 2](https://reuters.com/b))",
     ):
         assert part in answer, part
+    # Assert
     assert "Round 2:" not in answer
 
 
@@ -108,6 +110,8 @@ async def test_the_answer_renders_the_tally_and_every_vote(
 async def test_seven_voting_shows_no_unavailable_count(
     events: list[dict[str, Any]],
 ) -> None:
+    # Arrange
+    # Arrange
     forecast_state: Any = state(
         round_2={member: ballot(["for", "unsure"]) for member in range(1, 8)}
     )
@@ -118,7 +122,9 @@ async def test_seven_voting_shows_no_unavailable_count(
         ),
     )
     forecast_state["analysis"] = analysis()
+    # Act
     out = await verify_module.verify(forecast_state, runtime(events))
+    # Assert
     answer = out["answer"]
     assert "Members voting: 7 of 7." in answer
     assert "unavailable" not in answer
@@ -126,6 +132,8 @@ async def test_seven_voting_shows_no_unavailable_count(
 
 @pytest.mark.anyio
 async def test_a_reason_is_flattened_to_one_line(events: list[dict[str, Any]]) -> None:
+    # Arrange
+    # Arrange
     one = Ballot(
         votes=[
             Vote(
@@ -141,7 +149,9 @@ async def test_a_reason_is_flattened_to_one_line(events: list[dict[str, Any]]) -
     forecast_state: Any = state(round_1=first, round_2=dict(first))
     forecast_state["tally"] = VOTING6_TALLY
     forecast_state["analysis"] = analysis()
+    # Act
     out = await verify_module.verify(forecast_state, runtime(events))
+    # Assert
     answer = out["answer"]
     assert (
         "- Member 1: for — Line one. Line two, see (link removed) for more." in answer
@@ -151,12 +161,16 @@ async def test_a_reason_is_flattened_to_one_line(events: list[dict[str, Any]]) -
 
 @pytest.mark.anyio
 async def test_a_carried_vote_is_marked(events: list[dict[str, Any]]) -> None:
+    # Arrange
+    # Arrange
     first = six_voters()
     second = {member: one for member, one in first.items() if member != 4}
     forecast_state: Any = state(round_1=first, round_2=second)
     forecast_state["tally"] = VOTING6_TALLY
     forecast_state["analysis"] = analysis()
+    # Act
     out = await verify_module.verify(forecast_state, runtime(events))
+    # Assert
     answer = out["answer"]
     assert (
         "Round 2: 1 of 6 kept their round-1 vote because they did not answer." in answer
@@ -173,7 +187,7 @@ async def test_a_carried_vote_is_marked(events: list[dict[str, Any]]) -> None:
                 Claim(
                     statement="S.",
                     deadline=date(2027, 12, 31),
-                    passages=[PassageRef(source=1, paragraph=1)],
+                    evidence=[EvidenceRef(source=1, paragraph=1)],
                 )
             ],
             ResearchOutcome(1, 0, False),
@@ -191,11 +205,11 @@ async def test_a_carried_vote_is_marked(events: list[dict[str, Any]]) -> None:
                 Claim(
                     statement="S.",
                     deadline=date(2027, 12, 31),
-                    passages=[
-                        PassageRef(source=1, paragraph=1),
-                        PassageRef(source=3, paragraph=1),
-                        PassageRef(source=1, paragraph=2),
-                        PassageRef(source=3, paragraph=2),
+                    evidence=[
+                        EvidenceRef(source=1, paragraph=1),
+                        EvidenceRef(source=3, paragraph=1),
+                        EvidenceRef(source=1, paragraph=2),
+                        EvidenceRef(source=3, paragraph=2),
                     ],
                 )
             ],
@@ -210,7 +224,7 @@ async def test_a_carried_vote_is_marked(events: list[dict[str, Any]]) -> None:
                 Claim(
                     statement="S.",
                     deadline=date(2027, 12, 31),
-                    passages=[PassageRef(source=1, paragraph=1)],
+                    evidence=[EvidenceRef(source=1, paragraph=1)],
                 )
             ],
             ResearchOutcome(11, 3, True),
@@ -225,7 +239,7 @@ async def test_a_carried_vote_is_marked(events: list[dict[str, Any]]) -> None:
                 Claim(
                     statement="S.",
                     deadline=date(2027, 12, 31),
-                    passages=[PassageRef(source=1, paragraph=1)],
+                    evidence=[EvidenceRef(source=1, paragraph=1)],
                 )
             ],
             ResearchOutcome(1, 0, False),
@@ -240,16 +254,21 @@ def test_the_evidence_line_reports_the_counts(
     research_: ResearchOutcome,
     expected: str,
 ) -> None:
+    # Arrange
+    # Act
     line = verify_module.evidence_line(sources_, research_, claims_)
+    # Assert
     assert line.startswith(expected)
 
 
 def test_a_link_differing_only_in_form_is_accepted() -> None:
+    # Arrange
+    # Arrange
     sources_ = [Source("X", "https://carnegieendowment.org/x", "One.")]
     claim = Claim(
         statement="S.",
         deadline=date(2027, 12, 31),
-        passages=[PassageRef(source=1, paragraph=1)],
+        evidence=[EvidenceRef(source=1, paragraph=1)],
     )
     analysis_ = Analysis(
         overview=(
@@ -258,12 +277,33 @@ def test_a_link_differing_only_in_form_is_accepted() -> None:
         ),
         claims=[
             ClaimDiscussion(
-                claim=1, discussion="Also http://carnegieendowment.org/x. Done."
+                claim=1, discussion="Also https://carnegieendowment.org/x. Done."
             )
         ],
     )
+    # Act
     answer = checked(_state_for(sources_, [claim], {1: ballot(["for"])}), analysis_)
+    # Assert
     assert "Council verdict: **ACCEPTED**" in answer
+
+
+def test_an_http_citation_does_not_valid_against_an_https_source() -> None:
+    # Arrange
+    sources_ = [Source("X", "https://carnegieendowment.org/x", "One.")]
+    claim = Claim(
+        statement="S.",
+        deadline=date(2027, 12, 31),
+        evidence=[EvidenceRef(source=1, paragraph=1)],
+    )
+    analysis_ = Analysis(
+        overview="Read [A](http://carnegieendowment.org/x).",
+        claims=[ClaimDiscussion(claim=1, discussion="Done.")],
+    )
+    # Act
+    with pytest.raises(LLMInvocationError, match="never read"):
+        # Arrange
+        checked(_state_for(sources_, [claim], {1: ballot(["for"])}), analysis_)
+    # Assert: the raise is the assertion.
 
 
 @pytest.mark.parametrize(
@@ -276,35 +316,43 @@ def test_a_link_differing_only_in_form_is_accepted() -> None:
     ],
 )
 def test_every_clickable_link_form_is_checked(link: str) -> None:
+    # Arrange
     sources_ = [Source("X", "https://carnegieendowment.org/x", "One.")]
     claim = Claim(
         statement="S.",
         deadline=date(2027, 12, 31),
-        passages=[PassageRef(source=1, paragraph=1)],
+        evidence=[EvidenceRef(source=1, paragraph=1)],
     )
+    # Arrange
     analysis_ = Analysis(
         overview=f"Read [A](https://carnegieendowment.org/x) and {link}.",
         claims=[ClaimDiscussion(claim=1, discussion="Discussion.")],
     )
+    # Act
     with pytest.raises(
         LLMInvocationError, match="links to a page the forecast never read"
     ):
         checked(_state_for(sources_, [claim], {1: ballot(["for"])}), analysis_)
+    # Assert: the raise is the assertion.
 
 
 @pytest.mark.parametrize("link", ["[x](//evil.example)", "[x](ftp://evil.example)"])
 def test_a_non_clickable_link_form_is_not_checked(link: str) -> None:
+    # Arrange
+    # Arrange
     sources_ = [Source("X", "https://carnegieendowment.org/x", "One.")]
     claim = Claim(
         statement="S.",
         deadline=date(2027, 12, 31),
-        passages=[PassageRef(source=1, paragraph=1)],
+        evidence=[EvidenceRef(source=1, paragraph=1)],
     )
     analysis_ = Analysis(
         overview=f"Read [A](https://carnegieendowment.org/x) and {link}.",
         claims=[ClaimDiscussion(claim=1, discussion="Discussion.")],
     )
+    # Act
     answer = checked(_state_for(sources_, [claim], {1: ballot(["for"])}), analysis_)
+    # Assert
     assert "Council verdict: **ACCEPTED**" in answer
 
 
@@ -312,11 +360,15 @@ def test_a_non_clickable_link_form_is_not_checked(link: str) -> None:
 async def test_an_all_carried_round_two_is_disclosed(
     events: list[dict[str, Any]],
 ) -> None:
+    # Arrange
+    # Act
     first = six_voters()
     forecast_state: Any = state(round_1=first, round_2={})
     forecast_state["tally"] = count_votes(2, first)
     forecast_state["analysis"] = analysis()
+    # Act
     out = await verify_module.verify(forecast_state, runtime(events))
+    # Assert
     answer = out["answer"]
     assert (
         "Round 2: 6 of 6 kept their round-1 vote because they did not answer." in answer
@@ -333,6 +385,7 @@ async def test_an_all_carried_round_two_is_disclosed(
     ],
 )
 def test_a_broken_claim_section_list_raises(sections: list[int]) -> None:
+    # Arrange
     analysis_ = Analysis(
         overview="Overview. [A](https://carnegieendowment.org/a)",
         claims=[
@@ -348,10 +401,13 @@ def test_a_broken_claim_section_list_raises(sections: list[int]) -> None:
     with pytest.raises(
         LLMInvocationError, match="did not discuss every claim exactly once"
     ):
+        # Act
         checked(forecast_state, analysis_)
+    # Assert: the raise is the assertion.
 
 
 def test_an_empty_overview_raises() -> None:
+    # Arrange
     first = six_voters()
     forecast_state = state(round_1=first, round_2=dict(first))
     forecast_state["tally"] = VOTING6_TALLY
@@ -367,10 +423,14 @@ def test_an_empty_overview_raises() -> None:
         ],
     )
     with pytest.raises(LLMInvocationError, match="left a section empty"):
+        # Arrange
+        # Act
         checked(forecast_state, analysis_)
+    # Assert: the raise is the assertion.
 
 
 def test_an_analysis_with_no_link_at_all_raises() -> None:
+    # Arrange
     first = six_voters()
     forecast_state = state(round_1=first, round_2=dict(first))
     forecast_state["tally"] = VOTING6_TALLY
@@ -382,10 +442,14 @@ def test_an_analysis_with_no_link_at_all_raises() -> None:
         ],
     )
     with pytest.raises(LLMInvocationError, match="cited none of the sources"):
+        # Arrange
+        # Act
         checked(forecast_state, analysis_)
+    # Assert: the raise is the assertion.
 
 
 def test_a_link_to_an_unread_url_raises() -> None:
+    # Arrange
     first = six_voters()
     forecast_state = state(round_1=first, round_2=dict(first))
     forecast_state["tally"] = VOTING6_TALLY
@@ -401,7 +465,9 @@ def test_a_link_to_an_unread_url_raises() -> None:
     with pytest.raises(
         LLMInvocationError, match="links to a page the forecast never read"
     ):
+        # Act
         checked(forecast_state, analysis_)
+    # Assert: the raise is the assertion.
 
 
 def _state_for(

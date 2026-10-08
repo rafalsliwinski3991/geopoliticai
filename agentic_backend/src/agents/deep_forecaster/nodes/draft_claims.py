@@ -12,7 +12,12 @@ from langgraph.runtime import Runtime
 
 from agents.deep_forecaster.config import CLAIMS_LLM_SETTINGS, LIMITS
 from agents.deep_forecaster.consts.progress import CLAIMS_LABEL
-from agents.deep_forecaster.evidence import paragraphs, render_deadline, render_sources
+from agents.deep_forecaster.evidence import (
+    links_in,
+    paragraphs,
+    render_deadline,
+    render_sources,
+)
 from agents.deep_forecaster.models import Claim, DraftedClaims
 from agents.deep_forecaster.prompts import DRAFT_CLAIMS_PROMPT
 from agents.deep_forecaster.state import ForecastRun, ForecastState
@@ -72,6 +77,13 @@ def checked_claims(
         if key in seen:
             raise LLMInvocationError("The forecast drafted the same claim twice.")
         seen.add(key)
+        # The statement goes into the answer's heading as plain text: a link
+        # in it would be a citation the forecast never read, and a newline
+        # would inject a heading (review thread, #143).
+        if "\n" in claim.statement or links_in(claim.statement):
+            raise LLMInvocationError(
+                "The forecast wrote a claim statement with a link or a line break."
+            )
         if claim.deadline <= today:
             raise LLMInvocationError(
                 "The forecast drafted a claim whose deadline is not in the future."

@@ -77,6 +77,32 @@ class Vote(BaseModel):
     )
 
 
+class ClaimDiscussion(BaseModel):
+    """The writer's section on one claim (Q12)."""
+
+    claim: int = Field(description="The claim's number.")
+    discussion: str = Field(
+        description=(
+            "Markdown: the strongest reasons members gave on each side and where "
+            "they disagreed, with inline links to sources."
+        )
+    )
+
+
+class Analysis(BaseModel):
+    """`write_analysis`' structured output; `nodes.verify` checks it and renders it."""
+
+    overview: str = Field(
+        description=(
+            "Markdown: the forecast in two to four paragraphs, with inline "
+            "links to sources."
+        )
+    )
+    claims: list[ClaimDiscussion] = Field(
+        description="One entry per claim, in claim order."
+    )
+
+
 class Ballot(BaseModel):
     """One member's votes in one round; `council.validate_ballot` decides if it counts."""
 

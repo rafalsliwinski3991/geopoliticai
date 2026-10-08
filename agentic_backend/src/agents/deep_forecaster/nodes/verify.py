@@ -20,6 +20,7 @@ from urllib.parse import urlsplit
 from langgraph.runtime import Runtime
 
 from agents.deep_forecaster.config import COUNCIL
+from agents.deep_forecaster.consts.editorial import CARRIED_VOTE, VOTE_LIST_HEADING
 from agents.deep_forecaster.consts.forecasters import FORECASTER_SOURCES, VIDEO_DOMAINS
 from agents.deep_forecaster.consts.progress import VERIFY_LABEL
 from agents.deep_forecaster.council import final_ballots
@@ -29,20 +30,16 @@ from agents.deep_forecaster.evidence import (
     render_deadline,
     render_reason,
 )
+from agents.deep_forecaster.models import Analysis, Ballot, Claim
 from agents.deep_forecaster.state import (
-    Analysis,
-    Ballot,
-    Claim,
     ClaimTally,
     ForecastRun,
     ForecastState,
     ResearchOutcome,
 )
+from config import MAX_ANSWER_CHARS
 from models import LLMInvocationError, Source
 from search import allowed_domain
-
-VOTE_LIST_HEADING = "## How the council voted"
-CARRIED_VOTE = " (round-1 vote)"
 
 
 async def verify(state: ForecastState, runtime: Runtime[ForecastRun]) -> dict[str, Any]:
@@ -70,14 +67,17 @@ def _host(url: str) -> str:
 def _normalized(url: str) -> str:
     """Return `url` without the differences a writer introduces when copying it.
 
-    Scheme, `www.`, host case, a trailing slash and the fragment are dropped;
-    a scheme-less `www.` link is read as https.
+    The scheme is kept (review thread, #143): `http://host/path` cannot
+    validate against a source read at `https://host/path`, so a model-written
+    citation can never inside-import readers to an insecure URL the forecast
+    did not read. Host case, `www.`, a trailing slash and the fragment are
+    normalized; a scheme-less `www.` link is read as https.
     """
     url = url if "://" in url else f"https://{url}"
     parts = urlsplit(url)
     path = parts.path.rstrip("/")
     query = f"?{parts.query}" if parts.query else ""
-    return f"{_host(url)}{path}{query}"
+    return f"{parts.scheme}://{_host(url)}{path}{query}"
 
 
 def _site(url: str) -> str:
@@ -100,7 +100,7 @@ def evidence_line(
     """
     sites = {_site(source.url) for source in sources}
     videos = sum(1 for source in sources if _site(source.url) in VIDEO_DOMAINS)
-    passages = sum(len(claim.passages) for claim in claims)
+    passages = sum(len(claim.evidence) for claim in claims)
     line = (
         f"Evidence: {_counted(len(sources), 'source')} read from "
         f"{_counted(len(sites), 'site')}"
@@ -153,7 +153,15 @@ def checked_answer(
             f"\n\n{section.discussion.strip()}"
         )
     parts.append(_vote_list(tally, ballots, revised, sources, research, claims))
-    return "\n\n".join(parts)
+    answer = "\n\n".join(parts)
+    # A vote list the delivery layer's clip cuts off is a design failure
+    # (review thread, #143): the reader must see every verdict.
+    if len(answer) > MAX_ANSWER_CHARS:
+        raise LLMInvocationError(
+            f"The answer is {len(answer)} characters; it exceeds "
+            f"the delivery cap ({MAX_ANSWER_CHARS}) and its vote list would be cut."
+        )
+    return answer
 
 
 def _vote_list(

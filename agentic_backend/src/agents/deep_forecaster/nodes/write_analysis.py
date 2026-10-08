@@ -16,8 +16,9 @@ from agents.deep_forecaster.evidence import (
     render_deadline,
     render_sources,
 )
+from agents.deep_forecaster.models import Analysis
 from agents.deep_forecaster.prompts import WRITE_SYSTEM_PROMPT
-from agents.deep_forecaster.state import Analysis, ForecastRun, ForecastState
+from agents.deep_forecaster.state import ForecastRun, ForecastState
 from llm import ainvoke_structured
 
 

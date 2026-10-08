@@ -24,7 +24,7 @@ from typing_extensions import NotRequired, TypedDict
 
 from agents.deep_forecaster.config import LIMITS
 from agents.deep_forecaster.consts.progress import PROGRESS_NODE
-from agents.deep_forecaster.models import Ballot, Claim, Verdict
+from agents.deep_forecaster.models import Analysis, Ballot, Claim, Verdict
 from models import Candidate, Source
 
 logger = logging.getLogger(__name__)
@@ -45,32 +45,6 @@ class ClaimTally:
     against: int
     unsure: int
     voting: int
-
-
-class ClaimDiscussion(BaseModel):
-    """The writer's section on one claim (Q12)."""
-
-    claim: int = Field(description="The claim's number.")
-    discussion: str = Field(
-        description=(
-            "Markdown: the strongest reasons members gave on each side and where "
-            "they disagreed, with inline links to sources."
-        )
-    )
-
-
-class Analysis(BaseModel):
-    """`write_analysis`' structured output; `nodes.verify` checks it and renders it."""
-
-    overview: str = Field(
-        description=(
-            "Markdown: the forecast in two to four paragraphs, with inline "
-            "links to sources."
-        )
-    )
-    claims: list[ClaimDiscussion] = Field(
-        description="One entry per claim, in claim order."
-    )
 
 
 @dataclass(frozen=True)

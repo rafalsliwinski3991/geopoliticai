@@ -261,3 +261,32 @@ async def test_the_prompts_carry_today_and_every_number(
         assert number in text
     assert "https://carnegieendowment.org/a" in text
     assert "https://reuters.com/b" in text
+
+
+@pytest.mark.anyio
+async def test_a_statement_with_a_link_or_a_line_break_is_refused() -> None:
+    """A heading-boundary guard: statements render as single plain lines in the view."""
+    bad_second = Claim(
+        statement="See [x](https://reuters.com/y) today.",
+        deadline=date(2027, 1, 1),
+        evidence=[EvidenceRef(source=1, paragraph=1)],
+    )
+    filler = Claim(
+        statement="The other claim stands.",
+        deadline=date(2028, 1, 1),
+        evidence=[EvidenceRef(source=1, paragraph=1)],
+    )
+    for bad in (
+        bad_second,
+        Claim(
+            statement="Two\nlines.",
+            deadline=date(2027, 1, 1),
+            evidence=[EvidenceRef(source=1, paragraph=1)],
+        ),
+    ):
+        with pytest.raises(LLMInvocationError, match="link or a line break"):
+            draft_module.checked_claims(
+                [filler, bad],
+                today=TODAY,
+                sources=sources(),
+            )

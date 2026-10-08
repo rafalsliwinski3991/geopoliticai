@@ -36,10 +36,15 @@ from config import (
     DAILY_RESEARCH_TURNS_ALL_USERS,
     DEEP_RESEARCH_TURN_COST,
     FORECAST_TURN_COST,
+    MAX_ANSWER_CHARS,
     bind_log_context,
     init_environment,
     require_env,
 )
+
+# Re-exported module attribute: the transport cap comes from `config.py`,
+# and the checkpointer-integration tests read `api.MAX_ANSWER_CHARS`.
+MAX_ANSWER_CHARS = MAX_ANSWER_CHARS
 from db.web.sql import (
     MAX_THREAD_ID_LENGTH,
     claim_thread,
@@ -70,7 +75,6 @@ ALLOWED_ORIGINS = [
     "http://localhost:3001",
 ]
 MAX_QUERY_LENGTH = 2_000
-MAX_ANSWER_CHARS = 50_000
 RATE_LIMIT_REQUESTS = 20
 RATE_LIMIT_WINDOW_SECONDS = 60
 MAX_TRACKED_CLIENTS = 10_000

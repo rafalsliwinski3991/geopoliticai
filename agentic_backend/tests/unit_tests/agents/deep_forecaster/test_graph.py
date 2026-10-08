@@ -13,12 +13,8 @@ from langgraph.errors import NodeTimeoutError
 from langgraph.graph import END, START, StateGraph
 from typing_extensions import TypedDict
 
-from agents.deep_forecaster.state import (
-    Analysis,
-    ClaimDiscussion,
-    ForecastRun,
-    ResearchRun,
-)
+from agents.deep_forecaster.models import Analysis, ClaimDiscussion
+from agents.deep_forecaster.state import ForecastRun, ResearchRun
 from models import LLMInvocationError, NoSourcesError, ResearchLimitError, Source
 from unit_tests.agents.deep_forecaster.conftest import ballot, claims
 
@@ -270,7 +266,7 @@ async def test_a_forecast_runs_every_step_once_inside_a_checkpointed_parent(
     async def fake_claims(
         system: Any, messages: Any, schema: Any, **kwargs: Any
     ) -> Any:
-        return importlib.import_module("agents.deep_forecaster.state").DraftedClaims(
+        return importlib.import_module("agents.deep_forecaster.models").DraftedClaims(
             claims=claims()
         )
 
