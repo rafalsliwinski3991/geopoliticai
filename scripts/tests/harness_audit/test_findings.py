@@ -8,7 +8,6 @@ from harness_audit import findings
 from harness_audit.findings import Finding
 
 SCRIPTS_DIR = Path(findings.__file__).resolve().parent.parent
-REPO_ROOT = SCRIPTS_DIR.parent
 
 
 def test_load_returns_sorted_findings(tmp_path):
@@ -57,24 +56,32 @@ def test_failed_runs_raise(tmp_path, raw_text):
     # Arrange
     raw = tmp_path / "raw.json"
     raw.write_text(raw_text)
-    # Act / Assert
+    # Act
     with pytest.raises(findings.AuditFailed):
         findings.load(raw)
+    # Assert
+    assert raw.read_text() == raw_text
 
 
 def test_a_missing_file_raises(tmp_path):
-    # Act / Assert
+    # Arrange
+    absent = tmp_path / "absent.json"
+    # Act
     with pytest.raises(findings.AuditFailed):
-        findings.load(tmp_path / "absent.json")
+        findings.load(absent)
+    # Assert
+    assert not absent.exists()
 
 
 def test_a_top_level_json_list_raises(tmp_path):
     # Arrange
     raw = tmp_path / "raw.json"
     raw.write_text("[]")
-    # Act / Assert
+    # Act
     with pytest.raises(findings.AuditFailed):
         findings.load(raw)
+    # Assert
+    assert raw.read_text() == "[]"
 
 
 def _finding(**overrides):
@@ -96,9 +103,12 @@ def _finding(**overrides):
     ],
 )
 def test_bad_findings_raise(item):
-    # Act / Assert
+    # Arrange
+    # Act
     with pytest.raises(findings.AuditFailed):
         findings.parse(item)
+    # Assert
+    assert set(findings.FIELDS) == {"kind", "file", "line", "quote", "problem", "fix"}
 
 
 def test_schema_matches_the_code():
@@ -147,6 +157,7 @@ def test_verify_keeps_confirmed_findings(tmp_path):
     confirmed = [
         Finding(kind=2, file="a.md", line=2, quote="beta", problem="p", fix="f"),
         Finding(kind=2, file="link/s.md", line=1, quote="skill text", problem="p", fix="f"),
+        Finding(kind=2, file="a.md", line=1, quote="alpha\nbeta", problem="p", fix="f"),
     ]
     # Act
     kept, dropped = findings.verify(confirmed, repo)
@@ -162,6 +173,10 @@ def test_verify_keeps_confirmed_findings(tmp_path):
         ({"file": "untracked.md", "line": 1, "quote": "q"}, "not a tracked file"),
         ({"file": "a.md", "line": 9, "quote": "q"}, "line 9 is past the end (3 lines)"),
         ({"file": "a.md", "line": 1, "quote": "beta"}, "the quote is not on that line"),
+        # Only the first line of this quote is in the checkout; a forged second
+        # line must drop the finding, not ride on the confirmed first line.
+        ({"file": "a.md", "line": 2, "quote": "beta\nforged text"}, "the quote is not on that line"),
+        ({"file": "a.md", "line": 3, "quote": "gamma\npast the end"}, "the quote is not on that line"),
     ],
 )
 def test_verify_drops_unconfirmed_findings(tmp_path, spec, reason):
@@ -187,6 +202,7 @@ def test_verify_drops_unconfirmed_findings(tmp_path, spec, reason):
 
 def test_main_writes_findings_and_fails_loudly(tmp_path):
     # Arrange
+    repo = _init_repo(tmp_path)
     raw = tmp_path / "raw.json"
     raw.write_text(
         json.dumps(
@@ -194,29 +210,32 @@ def test_main_writes_findings_and_fails_loudly(tmp_path):
                 "subtype": "success",
                 "structured_output": {
                     "findings": [
-                        {"kind": 2, "file": "a.md", "line": 1, "quote": "q", "problem": "p", "fix": "f"}
+                        # a.md line 1 quotes "alpha", which the checkout confirms.
+                        {"kind": 2, "file": "a.md", "line": 1, "quote": "alpha", "problem": "p", "fix": "f"},
+                        # This quote is not on line 2 ("beta"), so it is dropped.
+                        {"kind": 2, "file": "a.md", "line": 2, "quote": "q", "problem": "p", "fix": "f"},
                     ]
                 },
             }
         )
     )
-
-    # a.md does not exist in this repository, so the one finding lands in
-    # "dropped"; the run still succeeds and writes the output file.
     out = tmp_path / "out.json"
 
     # Act
     result = subprocess.run(
         [sys.executable, "-m", "harness_audit.findings", "--raw", str(raw),
-         "--repo", str(REPO_ROOT), "--out", str(out)],
+         "--repo", str(repo), "--out", str(out)],
         cwd=str(SCRIPTS_DIR), capture_output=True, text=True, check=False,
     )
     # Assert
     assert result.returncode == 0, result.stderr
     data = json.loads(out.read_text())
-    assert data["findings"] == []
+    assert data["findings"] == [
+        {"kind": 2, "file": "a.md", "line": 1, "quote": "alpha", "problem": "p", "fix": "f"}
+    ]
     assert len(data["dropped"]) == 1
-    assert "0 findings, 1 dropped" in result.stdout
+    assert data["dropped"][0]["reason"] == "the quote is not on that line"
+    assert "1 findings, 1 dropped" in result.stdout
 
     # Arrange
     bad = tmp_path / "bad.json"
@@ -225,7 +244,7 @@ def test_main_writes_findings_and_fails_loudly(tmp_path):
     # Act
     result = subprocess.run(
         [sys.executable, "-m", "harness_audit.findings", "--raw", str(bad),
-         "--repo", str(REPO_ROOT), "--out", str(absent)],
+         "--repo", str(repo), "--out", str(absent)],
         cwd=str(SCRIPTS_DIR), capture_output=True, text=True, check=False,
     )
     # Assert

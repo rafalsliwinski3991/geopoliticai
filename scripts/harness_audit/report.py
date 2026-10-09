@@ -15,6 +15,7 @@ import argparse
 import json
 import re
 import subprocess
+import sys
 from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
@@ -39,6 +40,8 @@ MAX_BODY_BYTES = 60_000
 TRUNCATED = "\n\n…truncated: the run's Summary lists every finding.\n"
 ZWSP = "\u200b"
 ISSUE_REF_RE = re.compile(r"#(\d)")
+# Absolute issue and pull-request URLs must not survive as clickable links either.
+ISSUE_URL_RE = re.compile(r"(/(?:issues|pull)/)(\d)")
 
 
 @dataclass(frozen=True)
@@ -48,8 +51,14 @@ class Actions:
 
 
 def neutral(text: str) -> str:
-    """Break `@name` mentions and `#123` references with a zero-width space."""
-    return ISSUE_REF_RE.sub(f"#{ZWSP}\\1", text.replace("@", f"@{ZWSP}"))
+    """Break `@name` mentions, `#123` references, and issue/pull URLs with a zero-width space."""
+    broken_urls = ISSUE_URL_RE.sub(f"\\1{ZWSP}\\2", text)
+    return ISSUE_REF_RE.sub(f"#{ZWSP}\\1", broken_urls.replace("@", f"@{ZWSP}"))
+
+
+def oneline(text: str) -> str:
+    """Collapse whitespace so model text cannot inject Markdown structure."""
+    return " ".join(text.split())
 
 
 def title(target: str, sha: str, count: int) -> str:
@@ -65,16 +74,20 @@ def body(found: list[Finding], target: str, sha: str, run_url: str) -> str:
             continue
         lines += [f"## {kind}. {heading}", ""]
         for f in group:
-            lines.append(f"- [ ] `{f.file}:{f.line}` {neutral(f.problem)}")
+            lines.append(f"- [ ] `{f.file}:{f.line}` {neutral(oneline(f.problem))}")
             lines += [f"  > {neutral(q)}" for q in f.quote.splitlines()]
-            lines += [f"  Fix: {neutral(f.fix)}", ""]
+            lines += [f"  Fix: {neutral(oneline(f.fix))}", ""]
     return "\n".join(lines)
 
 
 def dropped_note(dropped: list[dict[str, Any]]) -> str:
     if not dropped:
         return ""
-    rows = "".join(f"- `{d['file']}:{d['line']}` ({d['reason']})\n" for d in dropped)
+    rows = ""
+    for d in dropped:
+        # The model chose the path, so it may not be a plain tracked path.
+        file_name = oneline(neutral(d["file"])).replace("`", "'")
+        rows += f"- `{file_name}:{d['line']}` ({d['reason']})\n"
     return f"\n### Dropped: not confirmed by the checkout\n\n{rows}"
 
 
@@ -96,9 +109,14 @@ def decide(open_issues: Iterable[dict[str, Any]], target: str, found: list[Findi
 
 
 def gh(*args: str, stdin: str | None = None) -> str:
-    return subprocess.run(
-        ["gh", *args], input=stdin, check=True, capture_output=True, text=True
-    ).stdout
+    try:
+        return subprocess.run(
+            ["gh", *args], input=stdin, check=True, capture_output=True, text=True
+        ).stdout
+    except subprocess.CalledProcessError as e:
+        # The traceback does not carry gh's message; print it before failing.
+        print(f"gh {' '.join(args[:2])} failed: {e.stderr.strip()}", file=sys.stderr)
+        raise
 
 
 def main() -> None:
@@ -129,7 +147,11 @@ def main() -> None:
         ).strip()
         comment = f"Superseded by {url}."
     else:
-        comment = f"Resolved in `{args.sha[:7]}`: the audit found nothing."
+        # Dropped claims are refuted, not open findings, so the issue closes;
+        # say how many were dropped rather than claiming the audit found nothing.
+        dropped_count = len(data["dropped"])
+        suffix = f" ({dropped_count} dropped)" if dropped_count else ""
+        comment = f"Resolved in `{args.sha[:7]}`: no confirmed findings{suffix}."
     failed = []
     for number in actions.close:
         try:

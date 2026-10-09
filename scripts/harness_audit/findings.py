@@ -95,9 +95,11 @@ def problem_with(f: Finding, repo: Path, tracked: set[str]) -> str | None:
     lines = target.read_text(errors="replace").splitlines()
     if f.line > len(lines):
         return f"line {f.line} is past the end ({len(lines)} lines)"
-    first = f.quote.strip().splitlines()[0].strip()
-    if first not in lines[f.line - 1]:
-        return "the quote is not on that line"
+    # Every line of a multi-line quote must sit on the consecutive checkout
+    # lines starting at the cited line, or the quote is not confirmed there.
+    for i, quote_line in enumerate(q.strip() for q in f.quote.strip().splitlines()):
+        if f.line - 1 + i >= len(lines) or quote_line not in lines[f.line - 1 + i]:
+            return "the quote is not on that line"
     return None
 
 
