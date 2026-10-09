@@ -98,14 +98,11 @@ def test_decide():
 class _FakeGh:
     """Records gh calls; `issue list` finds issue #5, `issue create` mints #9."""
 
-    def __init__(self, fail_on=""):
+    def __init__(self):
         self.calls = []
-        self.fail_on = fail_on
 
     def __call__(self, *args, stdin=None):
         self.calls.append(tuple(args))
-        if self.fail_on and self.fail_on in args:
-            raise subprocess.CalledProcessError(1, "gh", stderr="boom")
         if "issue" in args and "list" in args:
             return '[{"number": 5, "title": "Harness audit: PR #175 @ a (3 findings)"}]'
         if "issue" in args and "create" in args:

@@ -85,8 +85,6 @@ def clip(text: str) -> str:
         return text
     limit = MAX_BODY_BYTES - len(TRUNCATED.encode())
     head = payload[:limit].decode(errors="ignore")
-    if len(head.encode()) > limit:
-        head = head[:-1]
     return head + TRUNCATED
 
 
