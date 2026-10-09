@@ -1,5 +1,5 @@
 {
- "description": "Forecast backtest: forecasts made as of a past date, scored against what actually happened. Same full forecaster graph as deep_forecaster.json (research, draft_claims, council_round_1, council_round_2, tally, write_analysis, verify) but run with ForecastRun.today pinned to the example's as_of date, after a leakage probe asks every voting model (each seat plus its paid fallback) the bare question with no sources. Scores only the example's focal_claim and turns a probe failure (rate limit, retired id) into an invalid run rather than 'the model did not know'.",
+ "description": "Forecast backtest: forecasts made as of a past date, scored against what actually happened. Same full forecaster graph as deep_forecaster.json (research, draft_claims, council_round_1, council_round_2, tally, write_analysis, verify) but run with ForecastRun.today pinned to the example's as_of date, after a leakage probe asks every voting model (each seat's model) the bare question with no sources. Scores only the example's focal_claim and turns a probe failure (rate limit, retired id) into an invalid run rather than 'the model did not know'.",
  "cases": [
   {
    "name": "backtest-sweden-election",
@@ -41,7 +41,7 @@
      "Claim 1: ACCEPTED",
      "Claim 2: UNRESOLVED"
     ],
-    "leak_probe": "Member 1: I do not know how this turned out.\n\nMember 2: I do not know how this turned out.\n\nMember 3: I do not know how this turned out.\n\nMember 4: I do not know how this turned out.\n\nMember 5: I do not know how this turned out.\n\nMember 6: I do not know how this turned out.\n\nMember 7: I do not know how this turned out.\n\nMember 3 (fallback): I do not know how this turned out.\n\nMember 4 (fallback): I do not know how this turned out.\n\nMember 5 (fallback): I do not know how this turned out.\n\nMember 6 (fallback): I do not know how this turned out.\n\nMember 7 (fallback): I do not know how this turned out."
+    "leak_probe": "Member 1: I do not know how this turned out.\n\nMember 2: I do not know how this turned out.\n\nMember 3: I do not know how this turned out.\n\nMember 4: I do not know how this turned out.\n\nMember 5: I do not know how this turned out.\n\nMember 6: I do not know how this turned out.\n\nMember 7: I do not know how this turned out."
    },
    "description": "Sweden's September 2026 general election, forecast as of 5 August 2026 (a real outcome, asked through synthetic sources marked as such). The focal claim (the centre-left bloc wins a majority) is ACCEPTED, and the example checks the factual verdict against the recorded resolution as well as the usual citation and prose-vs-tally judges."
   },
@@ -85,7 +85,7 @@
      "Claim 1: ACCEPTED",
      "Claim 2: REJECTED"
     ],
-    "leak_probe": "Member 1: I do not know how this turned out.\n\nMember 2: I do not know how this turned out.\n\nMember 3: I do not know how this turned out.\n\nMember 4: I do not know how this turned out.\n\nMember 5: I do not know how this turned out.\n\nMember 6: I do not know how this turned out.\n\nMember 7: I do not know how this turned out.\n\nMember 3 (fallback): I do not know how this turned out.\n\nMember 4 (fallback): I do not know how this turned out.\n\nMember 5 (fallback): I do not know how this turned out.\n\nMember 6 (fallback): I do not know how this turned out.\n\nMember 7 (fallback): I do not know how this turned out."
+    "leak_probe": "Member 1: I do not know how this turned out.\n\nMember 2: I do not know how this turned out.\n\nMember 3: I do not know how this turned out.\n\nMember 4: I do not know how this turned out.\n\nMember 5: I do not know how this turned out.\n\nMember 6: I do not know how this turned out.\n\nMember 7: I do not know how this turned out."
    },
    "description": "The Mecca Joint Defence Agreement signed 7 August 2026, forecast as of 25 July 2026. The focal claim (the pact gets signed) is ACCEPTED while its secondary claim is REJECTED, so the run must score only claim 1 and must not silently know a signed outcome without sources: the leakage probe's models may not already know the outcome."
   }

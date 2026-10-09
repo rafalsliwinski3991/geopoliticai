@@ -296,6 +296,28 @@ class TestConvene:
         assert "Only 3 of 7" in str(exc.value) and "needs 5" in str(exc.value)
 
     @pytest.mark.anyio
+    async def test_failed_members_are_absent_while_quorum_holds(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Arrange
+        behavior = {
+            COUNCIL[2].model: "raise",
+            COUNCIL[5].model: "none",
+        }
+        self._fakes(monkeypatch, behavior)
+        # Act
+        ballots = await convene(
+            1,
+            range(1, 8),
+            lambda member: [],
+            claims=2,
+            quoted_by_claim=QUOTED_BY_CLAIM,
+            quorum=5,
+        )
+        # Assert
+        assert set(ballots) == {1, 2, 4, 5, 7}
+
+    @pytest.mark.anyio
     async def test_no_quorum_returns_whatever_voted(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
@@ -430,7 +452,7 @@ class TestCast:
         # Assert
         assert result is None
         assert set(calls) == {(seat.model, DEFAULT_MAX_RETRIES)}
-        assert "dropped" in caplog.text
+        assert f"{seat.model}: " in caplog.text and "dropped" in caplog.text
 
     @pytest.mark.anyio
     async def test_the_member_timeout_bounds_the_attempt(
@@ -444,7 +466,6 @@ class TestCast:
         caplog.set_level(logging.WARNING, logger=council_module.__name__)
         seat = COUNCIL[2]
         self._patch(monkeypatch, {seat.model: "timeout"})
-
         small = dataclasses.replace(config.LIMITS, member_seconds=0.1)
         monkeypatch.setattr(council_module, "LIMITS", small)
         started = time.monotonic()
@@ -542,10 +563,9 @@ class TestMemberClient:
         assert recorded[0]["max_retries"] == 0
 
 
-def test_the_roster_is_one_paid_seat_per_vendor() -> None:
-    # Arrange
-    vendors = [seat.model.split("/")[0] for seat in COUNCIL if "/" in seat.model]
+def test_the_openrouter_roster_is_one_paid_seat_per_vendor() -> None:
     # Assert
+    vendors = [seat.model.split("/")[0] for seat in COUNCIL if "/" in seat.model]
     assert len(vendors) == len(set(vendors))
     for seat in COUNCIL:
         if seat.provider == "openrouter":

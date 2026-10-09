@@ -47,8 +47,8 @@ it happened. If you do not know, reply exactly: I do not know how this turned ou
 async def leak_probe(query: str) -> str:
     """Ask every model that can vote the question with no sources; no reply may know the outcome.
 
-    That is each seat's own model (plan unit 04). All seats are paid models
-    (user decision 2026-10-08), so the free seats' fallback asks are gone.
+    That is each seat's own model (plan unit 04); every seat is a paid model
+    (user decision 2026-10-08), so no other model can vote.
     """
     from langchain_core.messages import HumanMessage, SystemMessage
 

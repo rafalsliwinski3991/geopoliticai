@@ -360,3 +360,32 @@ p { margin: 0 0 1em; max-width: 68ch; }
   .meter i { transition: width 0.3s ease; }
   .threads a { display: block; }
 
+  /* ── Message content: the sanitized Markdown in .say, mostly a forecast's
+     answer (overview, `## Claim n: <statement>` sections, the vote list) ── */
+  .content { overflow-wrap: break-word; }
+  .content h1,
+  .content h2 {
+    font: 300 var(--s-md)/1.25 var(--display);
+    letter-spacing: -0.005em;
+    margin: 1.5em 0 0.55em;
+    text-wrap: balance;
+  }
+  .content h1:first-child,
+  .content h2:first-child,
+  .content h3:first-child { margin-top: 0; }
+  .content h3 {
+    font: 500 var(--s-sm)/1.4 var(--label);
+    letter-spacing: 0.02em;
+    margin: 1.5em 0 0.4em;
+  }
+  .content ul,
+  .content ol { margin: 0 0 0.85em; padding-inline-start: 1.4em; }
+  .content li { margin: 0 0 0.4em; }
+  .content li:last-child { margin-bottom: 0; }
+  .content a {
+    text-decoration: underline;
+    text-decoration-color: rgba(22, 50, 63, 0.65);
+    text-underline-offset: 2px;
+  }
+  .content a:hover { color: var(--annot); text-decoration-color: var(--annot); }
+

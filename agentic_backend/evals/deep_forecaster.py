@@ -1,11 +1,9 @@
 """Deep forecaster eval: one whole forecast per example, from recorded sources.
 
-The council's members are called live (OpenAI, Gemini, and OpenRouter's free
-models), so a run spends the OpenRouter account's shared free budget (F8):
-about 13 free requests per example (10 council calls, 3 model judges). A free
-call that fails is retried once on its seat's paid fallback, so a run can
-also spend credits on the key it uses: at most 10 paid calls per example, a
-few cents at the prices listed on 2026-10-01. Brave and Gemini's video
+The council's members are called live (OpenAI, Gemini, and OpenRouter's paid
+models): 14 council calls per example, 10 of them on the OpenRouter key's
+credits, a few cents at the prices listed on 2026-10-08. The 3 model judges
+spend the OpenRouter account's shared free budget (F8). Brave and Gemini's video
 reading are never called: every search returns the recorded set, and no
 recorded source is a video. The whole graph is invoked, not `forecast()`, so
 the judges can read the claims and the tally as well as the answer.
