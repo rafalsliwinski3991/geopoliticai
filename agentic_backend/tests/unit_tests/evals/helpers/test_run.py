@@ -35,11 +35,71 @@ def test_load_examples_returns_pairs_without_names(tmp_path: Path) -> None:
     assert examples == [{"input": {"q": 1}, "output": {"a": 2}}]
 
 
+def test_load_examples_reads_the_documented_wrapper(tmp_path: Path) -> None:
+    # Arrange
+    path = tmp_path / "x.json"
+    path.write_text(
+        json.dumps(
+            {
+                "description": "what this dataset is for",
+                "cases": [
+                    {
+                        "name": "a",
+                        "description": "what this case is about",
+                        "input": {"q": 1},
+                        "output": {"a": 2},
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    # Act
+    examples = run_mod.load_examples(path)
+
+    # Assert
+    assert examples == [{"input": {"q": 1}, "output": {"a": 2}}]
+
+
+@pytest.mark.parametrize(
+    "wrapper",
+    [
+        {"description": "", "cases": [{"name": "a", "input": {}, "output": {}}]},
+        {"cases": [{"name": "a", "input": {}, "output": {}}]},
+    ],
+)
+def test_load_examples_rejects_a_wrapper_without_a_description(
+    tmp_path: Path, wrapper: dict[str, Any]
+) -> None:
+    # Arrange
+    path = tmp_path / "x.json"
+    path.write_text(json.dumps(wrapper), encoding="utf-8")
+
+    # Act + Assert
+    with pytest.raises(ValueError, match="wrapper dataset needs a description"):
+        run_mod.load_examples(path)
+
+
+def test_load_examples_rejects_a_non_string_case_description(tmp_path: Path) -> None:
+    # Arrange
+    path = tmp_path / "x.json"
+    path.write_text(
+        json.dumps([{"name": "a", "description": 5, "input": {}, "output": {}}]),
+        encoding="utf-8",
+    )
+
+    # Act + Assert
+    with pytest.raises(ValueError, match="description must be a string"):
+        run_mod.load_examples(path)
+
+
 @pytest.mark.parametrize(
     ("content", "message"),
     [
-        ('{"name": "a"}', "must contain a non-empty list"),
-        ("[]", "must contain a non-empty list"),
+        ('{"name": "a"}', "wrapper dataset needs a description"),
+        ('{"description": "doc", "cases": null}', "non-empty list"),
+        ("[]", "non-empty list"),
         ('[{"input": {}, "output": {}}]', "needs a string name"),
         ('[{"name": "a", "output": {}}]', "needs a string name"),
         ('[{"name": "a", "input": [], "output": {}}]', "needs a string name"),

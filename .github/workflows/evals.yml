@@ -10,6 +10,7 @@ jobs:
     env:
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
       ARIZE_PLATFORM: AX
       ARIZE_COLLECTOR_ENDPOINT: ${{ secrets.ARIZE_COLLECTOR_ENDPOINT }}
       ARIZE_SPACE_ID: ${{ secrets.ARIZE_SPACE_ID }}
@@ -51,6 +52,11 @@ jobs:
         working-directory: agentic_backend
         run: uv run python -m evals.deep_expert
 
+      - name: Run deep forecaster evals
+        if: ${{ !cancelled() && steps.sync.outcome == 'success' }}
+        working-directory: agentic_backend
+        run: uv run python -m evals.deep_forecaster
+
       - name: Run reporter evals
         if: ${{ !cancelled() && steps.sync.outcome == 'success' }}
         working-directory: agentic_backend
@@ -59,4 +65,8 @@ jobs:
       - name: Run e2e evals
         if: ${{ !cancelled() && steps.sync.outcome == 'success' }}
         working-directory: agentic_backend
-        run: uv run python -m evals.e2e
+        run: uv run python -m evals.e2e_orchestrator
+      - name: Run the deep-forecaster e2e eval
+        if: ${{ !cancelled() && steps.sync.outcome == 'success' }}
+        working-directory: agentic_backend
+        run: uv run python -m evals.e2e_deep_forecaster
