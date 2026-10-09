@@ -49,7 +49,9 @@ NO_CHECKPOINTER_CONFIG = {
 
 
 def _runtime(events: list[dict[str, Any]]) -> SimpleNamespace:
-    return SimpleNamespace(context=ForecastRun(), stream_writer=events.append)
+    return SimpleNamespace(
+        context=ForecastRun(), stream_writer=events.append, store=None
+    )
 
 
 class _FakeAgent:
@@ -599,3 +601,33 @@ async def test_a_real_research_loop_stops_at_the_time_box_and_keeps_its_source(
     # Assert
     assert result["sources"][0].url == URL
     assert result["research"].timed_out is True
+
+
+@pytest.mark.anyio
+async def test_research_hands_the_runtime_store_to_its_tools(
+    monkeypatch: pytest.MonkeyPatch, events: list[dict[str, Any]]
+) -> None:
+    # Arrange
+    sentinel: object = object()
+    holder: dict[str, ResearchRun] = {}
+    runtime = SimpleNamespace(
+        context=ForecastRun(), stream_writer=events.append, store=sentinel
+    )
+
+    def factory(run: ResearchRun) -> Any:
+        holder["run"] = run
+
+        class _SourceAgent:
+            async def ainvoke(self, agent_input: Any, *, config: Any = None) -> Any:
+                run.sources["https://a.example/1"] = Source(
+                    "A", "https://a.example/1", "One."
+                )
+                return {"messages": []}
+
+        return _SourceAgent()
+
+    _patch_agent(monkeypatch, factory)
+    # Act
+    await research_module.research({"question": "q"}, runtime)
+    # Assert
+    assert holder["run"].store is sentinel

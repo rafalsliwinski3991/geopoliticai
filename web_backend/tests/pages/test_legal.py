@@ -54,6 +54,8 @@ class PrivacyPageTests(TestCase):
         self.assertContains(response, "OpenRouter")
         self.assertContains(response, "a paid model in place of a free one")
         self.assertContains(response, "Google")
+        self.assertContains(response, "Video notes")
+        self.assertContains(response, "30 days after they are written")
         self.assertContains(response, "uodo.gov.pl")
 
 

@@ -13,9 +13,17 @@ compatibility files. `agentic_backend/src/` is the Python import root. Shared mo
 `db/web/sql.py`; they never import agents except `api.py`, the delivery layer, which imports
 the compiled orchestrator graph and the reporter's resume classifier. There is
 no `database.py` or `prompt_logs` path; `agentic_backend/` reaches Postgres
-only through the LangGraph checkpointer and the Django-owned `chat_threads`/
-`quota`/`site_quota` statements in `db/web/sql.py` (schema owned by `web_backend`'s
-migrations; guarded by `agentic_backend/tests/integration_tests/`).
+through the LangGraph checkpointer and store and the Django-owned
+`chat_threads`/`quota`/`site_quota` statements in `db/web/sql.py` (schema
+owned by `web_backend`'s migrations; guarded by
+`agentic_backend/tests/integration_tests/`). The store is schema `agentic`'s
+`store`/`store_migrations` tables, created by `AsyncPostgresStore.setup()` at
+startup (outside Alembic, guarded by `_assert_agentic_schema`); it holds the
+video-notes cache for `ask_video`, whose items expire with `api.STORE_TTL`
+(30 days) and the TTL sweeper clears. The forecaster's video cache comes
+through the parent's store: `orchestrator.nodes.deep_forecaster` reads
+`runtime.store` and passes it into `forecast()`; concurrent asks of the same
+video and question coalesce on a per-key lock in `video.watch_video`.
 
 `web_backend/` is a second Python service (its own `pyproject.toml`, `uv.lock`, `Dockerfile`,
 and `manage.py`) that owns accounts, admin, and the `chat_threads`/`quota`/`site_quota` tables. The two

@@ -480,3 +480,31 @@ def test_orphan_query_reports_a_checkpointed_id_and_purges_cleanly(
         cursor.execute("DELETE FROM checkpoints WHERE thread_id = %s", (thread_id,))
         cursor.execute(ORPHAN_THREAD_SQL)
         assert thread_id not in {row["thread_id"] for row in cursor.fetchall()}
+
+
+@pytest.mark.integration
+def test_the_store_tables_land_in_agentic(url: str) -> None:
+    """The store's tables are LangGraph-owned like the checkpointer's: created
+    by `AsyncPostgresStore.setup()` on the shared pool, in the `agentic` schema,
+    and never in `public`."""
+    from langgraph.store.postgres import PostgresStore
+
+    with connect(
+        url,
+        autocommit=True,
+        prepare_threshold=0,
+        row_factory=dict_row,
+        options=SEARCH_PATH_OPTION,
+    ) as raw:
+        row = fetch_one(raw, "SELECT current_schema() AS target")
+        assert row["target"] == "agentic", "run `make migrate-agentic` first"
+        PostgresStore(raw).setup()
+        landed = fetch_one(
+            raw,
+            "SELECT to_regclass('agentic.store') AS store,"
+            " to_regclass('agentic.store_migrations') AS migrations,"
+            " to_regclass('public.store') AS stray",
+        )
+        assert landed["store"] is not None
+        assert landed["migrations"] is not None
+        assert landed["stray"] is None

@@ -557,3 +557,14 @@ async def test_query_on_a_paused_thread_supersedes_the_pause(
     # Assert
     assert state.next == ()
     assert state.values["messages"][-1].content == "assistant reply"
+
+
+def test_build_graph_compiles_with_the_store() -> None:
+    from langgraph.store.memory import InMemoryStore
+
+    # Act
+    store = InMemoryStore()
+    graph = orchestrator.build_graph(store=store)
+    # Assert
+    assert graph.store is store
+    assert orchestrator.build_graph() is not None

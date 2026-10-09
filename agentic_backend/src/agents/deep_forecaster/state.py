@@ -19,6 +19,7 @@ import logging
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
 
+from langgraph.store.base import BaseStore
 from langgraph.types import StreamWriter
 from typing_extensions import NotRequired, TypedDict
 
@@ -88,6 +89,9 @@ class ForecastRun:
 
     step: str = ""
     today: date = field(default_factory=_utc_today)
+    # The orchestrator's store, for `research.ask_video`'s video-notes cache;
+    # None at the root (review thread, #151).
+    store: BaseStore | None = None
 
     def enter(self, label: str, writer: StreamWriter) -> None:
         """Record the step `label` names, log it, and announce it; `label` is a progress const."""
@@ -107,6 +111,8 @@ class ResearchRun:
     """
 
     writer: StreamWriter
+    # The orchestrator's store, for `video.watch_video`'s cache; None at the root.
+    store: BaseStore | None = None
     searches: int = 0
     failed_searches: int = 0
     videos: int = 0

@@ -112,7 +112,7 @@ async def research(
 ) -> dict[str, Any]:
     """Collect the forecasters' writing on the question; return what was read."""
     runtime.context.enter(RESEARCH_LABEL, runtime.stream_writer)
-    run = ResearchRun(writer=runtime.stream_writer)
+    run = ResearchRun(writer=runtime.stream_writer, store=runtime.store)
     timed_out = await _run_agent(build_research_agent(run), state["question"])
     if not run.sources:
         if run.searches and run.failed_searches == run.searches:

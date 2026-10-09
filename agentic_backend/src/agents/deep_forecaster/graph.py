@@ -68,8 +68,12 @@ def build_graph() -> Any:
     return builder.compile(name="deep_forecaster", checkpointer=False)
 
 
-async def forecast(query: str) -> str:
+async def forecast(query: str, store: Any | None = None) -> str:
     """Forecast on `query` and return the checked answer with its vote list.
+
+    `store` is the parent runtime's store (`Runtime.store`), when the caller
+    has one: `research`'s `ask_video` reads its video-notes cache with it
+    (review thread, #151); tests may pass None to run cache-less.
 
     Takes no writer: each step emits its own progress through the graph's
     `runtime.stream_writer`, which reaches the orchestrator's `custom` stream
@@ -78,7 +82,7 @@ async def forecast(query: str) -> str:
     `CancelledError` raised inside its own loop, so the frame's
     `asyncio.timeout` alone does not bound a hung run (smoke gate F3, run 1).
     """
-    run = ForecastRun()
+    run = ForecastRun(store=store)
     try:
         result, capped = await run_under_time_limits(
             build_graph().ainvoke(

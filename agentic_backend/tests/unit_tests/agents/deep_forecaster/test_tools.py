@@ -356,7 +356,7 @@ async def test_ask_video_blank_question_spends_nothing(
     url = "https://www.youtube.com/watch?v=abcdefghijk"
     run.candidates[url] = _candidate(url, domain="youtube.com")
 
-    async def fake(video: str, question: str) -> str:
+    async def fake(video: str, question: str, store: Any = None) -> str:
         raise AssertionError("Gemini must not be called")
 
     monkeypatch.setattr(tools_module, "watch_video", fake)
@@ -377,7 +377,7 @@ async def test_ask_video_mangled_video_id_refuses_to_cite_a_different_url(
     url = "https://www.youtube.com/watch?v=abc%26list%3DX"
     run.candidates[url] = _candidate(url, domain="youtube.com")
 
-    async def fake(video: str, question: str) -> str:
+    async def fake(video: str, question: str, store: Any = None) -> str:
         raise AssertionError("Gemini must not be called")
 
     monkeypatch.setattr(tools_module, "watch_video", fake)
@@ -397,7 +397,7 @@ async def test_ask_video_reask_with_a_different_question_names_the_old_one(
     url = "https://www.youtube.com/watch?v=abcdefghijk"
     run.candidates[url] = _candidate(url, domain="youtube.com", title="A talk")
 
-    async def fake(video: str, question: str) -> str:
+    async def fake(video: str, question: str, store: Any = None) -> str:
         return "Notes " * 10
 
     monkeypatch.setattr(tools_module, "watch_video", fake)
@@ -440,7 +440,7 @@ async def test_ask_video_refuses_a_channel_or_a_short_without_spending(
     # Arrange
     run.candidates[url] = _candidate(url, domain="youtube.com")
 
-    async def fake(video: str, question: str) -> str:
+    async def fake(video: str, question: str, store: Any = None) -> str:
         raise AssertionError("Gemini must not be called")
 
     monkeypatch.setattr(tools_module, "watch_video", fake)
@@ -462,7 +462,7 @@ async def test_ask_video_sends_one_canonical_url_per_video(
     run.candidates[second] = _candidate(second, domain="youtube.com", title="A talk")
     seen: list[str] = []
 
-    async def fake(video: str, question: str) -> str:
+    async def fake(video: str, question: str, store: Any = None) -> str:
         seen.append(video)
         return "Notes " * 40
 
@@ -487,7 +487,7 @@ async def test_ask_video_records_gemini_notes(
     run.candidates[url] = _candidate(url, domain="youtube.com", title="A talk")
     seen: list[str] = []
 
-    async def fake(video: str, question: str) -> str:
+    async def fake(video: str, question: str, store: Any = None) -> str:
         seen.append(video)
         return "Notes " * 40
 
@@ -511,7 +511,7 @@ async def test_a_gemini_failure_is_a_soft_stop(
     url = "https://www.youtube.com/watch?v=abcdefghijk"
     run.candidates[url] = _candidate(url, domain="youtube.com")
 
-    async def fake(video: str, question: str) -> str:
+    async def fake(video: str, question: str, store: Any = None) -> str:
         raise VideoUnavailableError("ClientError")
 
     monkeypatch.setattr(tools_module, "watch_video", fake)
@@ -531,7 +531,7 @@ async def test_an_unexpected_video_error_propagates(
     url = "https://www.youtube.com/watch?v=abcdefghijk"
     run.candidates[url] = _candidate(url, domain="youtube.com")
 
-    async def fake(video: str, question: str) -> str:
+    async def fake(video: str, question: str, store: Any = None) -> str:
         raise RuntimeError("bug")
 
     monkeypatch.setattr(tools_module, "watch_video", fake)
@@ -554,7 +554,7 @@ async def test_an_off_topic_video_records_nothing(
     url = "https://www.youtube.com/watch?v=abcdefghijk"
     run.candidates[url] = _candidate(url, domain="youtube.com")
 
-    async def fake(video: str, question: str) -> str:
+    async def fake(video: str, question: str, store: Any = None) -> str:
         return notes
 
     monkeypatch.setattr(tools_module, "watch_video", fake)
@@ -582,7 +582,7 @@ async def test_the_video_cap_is_a_soft_stop(
     run.candidates[first] = _candidate(first, domain="youtube.com")
     run.candidates[second] = _candidate(second, domain="youtube.com")
 
-    async def fake(video: str, question: str) -> str:
+    async def fake(video: str, question: str, store: Any = None) -> str:
         return "Notes " * 40
 
     monkeypatch.setattr(tools_module, "watch_video", fake)
@@ -613,7 +613,7 @@ async def test_every_progress_label_is_a_const(
     async def fake_fetch(candidates: Any, policy: Any) -> list[Source]:
         return [Source(title="t", url=article, text="text " * 100, author="A")]
 
-    async def fake_watch(video: str, question: str) -> str:
+    async def fake_watch(video: str, question: str, store: Any = None) -> str:
         return "Notes " * 40
 
     monkeypatch.setattr(tools_module, "search_allowlisted", fake_search)
@@ -647,3 +647,23 @@ async def test_every_progress_label_is_a_const(
             event["label"],
         )
         assert match, event["label"]
+
+
+@pytest.mark.anyio
+async def test_ask_video_passes_the_run_store(
+    tools: dict[str, BaseTool], run: ResearchRun, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    url = "https://www.youtube.com/watch?v=abcdefghijk"
+    run.candidates[url] = _candidate(url, domain="youtube.com")
+    received: list[Any] = []
+    sentinel: Any = object()
+    run.store = sentinel
+
+    async def fake(video: str, question: str, store: Any = None) -> str:
+        received.append(store)
+        return "Notes."
+
+    monkeypatch.setattr(tools_module, "watch_video", fake)
+    await tools["ask"].ainvoke({"url": url, "question": "q"})
+    # Assert
+    assert received == [sentinel]

@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import dataclasses
 import importlib
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -398,3 +399,53 @@ async def test_a_forecast_runs_every_step_once_inside_a_checkpointed_parent(
     async for checkpoint in saver.alist({"configurable": {"thread_id": "t"}}):
         namespaces.add(checkpoint.config["configurable"]["checkpoint_ns"])
     assert namespaces == {""}
+
+
+@pytest.mark.anyio
+async def test_the_parent_store_reaches_the_research_step(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A child graph takes its parent's store: the forecaster's cache reads it."""
+    from langgraph.store.memory import InMemoryStore
+
+    received: dict[str, Any] = {}
+
+    class FakeAgent:
+        def __init__(self, run: ResearchRun) -> None:
+            received["run"] = run
+            self.run = run
+
+        async def ainvoke(self, agent_input: Any, *, config: Any = None) -> Any:
+            self.run.sources["https://a.example/1"] = Source(
+                "A", "https://a.example/1", "One."
+            )
+            return {"messages": []}
+
+    monkeypatch.setattr(
+        research_node, "build_research_agent", lambda run: FakeAgent(run)
+    )
+
+    class ParentState(TypedDict):
+        answer: str
+
+    store = InMemoryStore()
+
+    async def parent_node(state: ParentState) -> dict[str, Any]:
+        await research_node.research(
+            {"question": "q"},
+            SimpleNamespace(
+                context=ForecastRun(), stream_writer=lambda e: None, store=store
+            ),
+        )
+        return {"answer": ""}
+
+    builder: Any = StateGraph(ParentState)
+    builder.add_node("n", parent_node)
+    builder.add_edge(START, "n")
+    builder.add_edge("n", END)
+    parent = builder.compile(checkpointer=InMemorySaver(), store=store)
+
+    # Act
+    await parent.ainvoke({"answer": ""}, config={"configurable": {"thread_id": "t"}})
+    # Assert: the ResearchRun the fake was built with carries the parent's store.
+    assert received["run"].store is store

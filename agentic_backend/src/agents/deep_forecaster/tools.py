@@ -247,7 +247,7 @@ def build_tools(run: ResearchRun) -> list[BaseTool]:
             )
             run.reserved += 1
             try:
-                notes = await watch_video(video, question)
+                notes = await watch_video(video, question, run.store)
             except VideoUnavailableError:
                 logger.warning("ask_video failed", exc_info=True)
                 return VIDEO_UNAVAILABLE_MESSAGE
