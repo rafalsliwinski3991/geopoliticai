@@ -24,7 +24,7 @@ from typing_extensions import NotRequired, TypedDict
 
 from agents.deep_forecaster.config import LIMITS
 from agents.deep_forecaster.consts.progress import PROGRESS_NODE
-from agents.deep_forecaster.models import Ballot, Claim, Verdict
+from agents.deep_forecaster.models import Analysis, Ballot, Claim, Verdict
 from models import Candidate, Source
 
 logger = logging.getLogger(__name__)
@@ -73,6 +73,8 @@ class ForecastState(TypedDict):
     ballots_round_1: NotRequired[dict[int, Ballot]]
     ballots_round_2: NotRequired[dict[int, Ballot]]
     tally: NotRequired[list[ClaimTally]]
+    analysis: NotRequired[Analysis]
+    answer: NotRequired[str]
 
 
 @dataclass
