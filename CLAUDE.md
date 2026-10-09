@@ -117,7 +117,11 @@ app service carries both `build:` (dev) and `image:` (prod pulls, never
 builds). Test the script with `uvx pytest deploy/tests`; ruff checks
 `deploy/`. A failed deploy restores its snapshot and restarts the
 previous release. `rollback.yml` restores an earlier release together with the
-matching snapshot. `vps.py backup` uploads a nightly dump off-site. Its
+matching snapshot. One-way dataclass-field changes are a rollback hazard a
+snapshot does not cover: a checkpoint written after `Source.author` existed
+(review thread, #139) does not load on the previous image — its
+JsonPlusSerializer swallows the unknown constructor kwarg into a
+silently-emptied `Source`. `vps.py backup` uploads a nightly dump off-site. Its
 credentials live in the VPS's `backup.env`, never in `.env`. The daily research quota is
 `DAILY_RESEARCH_TURNS` in `agentic_backend/src/config.py`, with a site-wide
 ceiling in its own Django-owned `site_quota` table (one row per UTC day); the

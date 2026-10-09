@@ -225,13 +225,13 @@ async def test_mixed_extraction_failure_does_not_abort(
         calls.append(url)
         return _html(_HTML)
 
-    async def fake_extract(body: str) -> str:
+    async def fake_extract_page(body: str) -> tuple[str | None, str]:
         if "bad" in body:
             raise ValueError("broken parser")
-        return "good " * 200
+        return "good " * 200, ""
 
     monkeypatch.setattr(httpx.AsyncClient, "get", fake_get)
-    monkeypatch.setattr(search, "_extract_text", fake_extract)
+    monkeypatch.setattr(search, "_extract_page", fake_extract_page)
     candidates = [
         Candidate("good", "https://reuters.com/good", "reuters.com"),
         Candidate("bad", "https://reuters.com/bad", "reuters.com"),
@@ -268,11 +268,11 @@ async def test_all_extraction_failures_return_empty(
     ) -> httpx.Response:
         return _html(_HTML)
 
-    async def extract(body: str) -> str:
+    async def extract(body: str) -> tuple[str | None, str]:
         raise ValueError("broken parser")
 
     monkeypatch.setattr(httpx.AsyncClient, "get", fake_get)
-    monkeypatch.setattr(search, "_extract_text", extract)
+    monkeypatch.setattr(search, "_extract_page", extract)
     candidates = [Candidate("a", "https://reuters.com/a", "reuters.com")]
     # Act + Assert
     assert await search.fetch_sources(candidates, EXPERT_SOURCES) == []
@@ -330,11 +330,11 @@ async def test_same_domain_redirect_is_followed(
             return _html("", 302, {"location": "/final", "content-type": "text/html"})
         return _html(_HTML)
 
-    async def extract(body: str) -> str:
-        return "article " * 200
+    async def extract(body: str) -> tuple[str | None, str]:
+        return "article " * 200, ""
 
     monkeypatch.setattr(httpx.AsyncClient, "get", fake_get)
-    monkeypatch.setattr(search, "_extract_text", extract)
+    monkeypatch.setattr(search, "_extract_page", extract)
     # Act
     source = await search._fetch_and_extract(
         httpx.AsyncClient(),
@@ -394,10 +394,10 @@ async def test_fetch_caps_extracted_text(monkeypatch: pytest.MonkeyPatch) -> Non
 
     monkeypatch.setattr(httpx.AsyncClient, "get", fake_get)
 
-    async def extract(body: str) -> str:
-        return "x " * 40_000
+    async def extract(body: str) -> tuple[str | None, str]:
+        return "x " * 40_000, ""
 
-    monkeypatch.setattr(search, "_extract_text", extract)
+    monkeypatch.setattr(search, "_extract_page", extract)
     # Act
     source = await search._fetch_and_extract(
         httpx.AsyncClient(),
@@ -406,3 +406,185 @@ async def test_fetch_caps_extracted_text(monkeypatch: pytest.MonkeyPatch) -> Non
     )
     # Assert
     assert source is not None and len(source.text) <= EXPERT_SOURCES.max_source_chars
+
+
+@pytest.mark.anyio
+async def test_a_fetched_page_carries_its_byline(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Arrange
+    page = (
+        "<html><head>"
+        '<meta name="author" content="Alexander Gabuev">'
+        "</head><body><article><p>"
+        + ("Real reporting. " * 80)
+        + "</p></article></body></html>"
+    )
+
+    async def fake_get(
+        self: httpx.AsyncClient,
+        url: str,
+        *,
+        timeout: object | None = None,
+        follow_redirects: bool = False,
+    ) -> httpx.Response:
+        return httpx.Response(
+            200,
+            text=page,
+            headers={"content-type": "text/html"},
+            request=httpx.Request("GET", "https://reuters.com/x"),
+        )
+
+    monkeypatch.setattr(httpx.AsyncClient, "get", fake_get)
+    # Act
+    source = await search._fetch_and_extract(
+        httpx.AsyncClient(),
+        Candidate("t", "https://reuters.com/x", "reuters.com"),
+        EXPERT_SOURCES,
+    )
+    # Assert
+    assert source is not None and source.author == "Alexander Gabuev"
+
+
+@pytest.mark.anyio
+async def test_a_page_without_a_byline_has_an_empty_author(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Arrange
+    async def fake_get(
+        self: httpx.AsyncClient,
+        url: str,
+        *,
+        timeout: object | None = None,
+        follow_redirects: bool = False,
+    ) -> httpx.Response:
+        return httpx.Response(
+            200,
+            text=_HTML,
+            headers={"content-type": "text/html"},
+            request=httpx.Request("GET", "https://reuters.com/x"),
+        )
+
+    monkeypatch.setattr(httpx.AsyncClient, "get", fake_get)
+    # Act
+    source = await search._fetch_and_extract(
+        httpx.AsyncClient(),
+        Candidate("t", "https://reuters.com/x", "reuters.com"),
+        EXPERT_SOURCES,
+    )
+    # Assert
+    assert source is not None and source.author == ""
+
+
+@pytest.mark.parametrize(
+    ("page", "expected"),
+    [
+        (
+            '<html><head><script type="application/ld+json">'
+            '{"@type": "NewsArticle", "author": {"@type": "Person", "name": "Brahma Chellaney"}}'
+            "</script></head><body></body></html>",
+            "Brahma Chellaney",
+        ),
+        (
+            '<html><head><script type="application/ld+json">'
+            '{"@graph": [{"@type": "Article", "author": [{"name": "A One"}, {"name": "B Two"}]}]}'
+            "</script></head><body></body></html>",
+            "A One, B Two",
+        ),
+        (
+            '<html><head><script type="application/ld+json">'
+            '{"@type": ["Article", "NewsArticle"], "author": "Jane Doe"}'
+            "</script></head><body></body></html>",
+            "Jane Doe",
+        ),
+        (
+            '<html><head><script type="application/ld+json">'
+            '{"@type": ["Person"], "author": "Jane Doe"}'
+            "</script></head><body></body></html>",
+            "Jane Doe",
+        ),
+        (
+            "<html><head>"
+            '<script type="application/ld+json">'
+            '{"@type": "Article", "author": {"name": "Gabuev"}}'
+            "</script>"
+            '<meta name="author" content="Someone Else">'
+            "</head><body></body></html>",
+            "Gabuev",
+        ),
+        (
+            '<html><head><meta name="author" content="Carnegie Endowment for International Peace">'
+            "</head><body></body></html>",
+            "Carnegie Endowment for International Peace",
+        ),
+        (
+            '<html><head><script type="application/ld+json">'
+            '{"@type": "Person", "name": "Charly Salonius-Pasternak"}'
+            "</script></head><body></body></html>",
+            "",
+        ),
+        (
+            '<html><body><a rel="author" href="/people">John Bew</a>'
+            "<article><p>" + ("Text. " * 100) + "</p></article></body></html>",
+            "",
+        ),
+        (
+            '<html><body><span class="byline">By Thomas Gomart</span>'
+            "<article><p>" + ("Text. " * 100) + "</p></article></body></html>",
+            "",
+        ),
+        (
+            "<html><head>"
+            '<script type="application/ld+json">{"@type": "Article", "author": </script>'
+            '<script type="application/ld+json">'
+            '{"@type": "Article", "author": {"name": "Chun"}}'
+            "</script></head><body></body></html>",
+            "Chun",
+        ),
+    ],
+)
+def test_byline_sync(page: str, expected: str) -> None:
+    # Act + Assert
+    assert search._byline_sync(page) == expected
+
+
+def test_a_250_character_name_is_cut_to_200() -> None:
+    # Arrange
+    name = "N" * 250
+    page = (
+        f'<html><head><meta name="author" content="{name}"></head><body></body></html>'
+    )
+    # Act + Assert
+    assert search._byline_sync(page) == name[:200]
+
+
+@pytest.mark.anyio
+async def test_a_byline_failure_keeps_the_page(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Arrange
+    async def fake_get(
+        self: httpx.AsyncClient,
+        url: str,
+        *,
+        timeout: object | None = None,
+        follow_redirects: bool = False,
+    ) -> httpx.Response:
+        return httpx.Response(
+            200,
+            text=_HTML,
+            headers={"content-type": "text/html"},
+            request=httpx.Request("GET", "https://reuters.com/x"),
+        )
+
+    def broken_feed(self: search._BylineParser, data: str) -> None:
+        raise RuntimeError("broken jsonld")
+
+    monkeypatch.setattr(httpx.AsyncClient, "get", fake_get)
+    monkeypatch.setattr(search._BylineParser, "feed", broken_feed)
+    # Act
+    source = await search._fetch_and_extract(
+        httpx.AsyncClient(),
+        Candidate("t", "https://reuters.com/x", "reuters.com"),
+        EXPERT_SOURCES,
+    )
+    # Assert
+    assert source is not None and source.author == ""
