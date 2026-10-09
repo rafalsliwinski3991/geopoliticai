@@ -253,6 +253,8 @@ def test_split_stack_writes_one_diff_per_unit_branch(tmp_path):
         ("* Unit 5 - complete", {"05"}),
         ("**Unit 05**: Complete", {"05"}),
         ("Unit 05 complete (commits a...b)", {"05"}),
+        ("Unit 05 is complete", {"05"}),
+        ("Unit 05 is incomplete", set()),
         ("Unit 05: in progress", set()),
     ],
 )
@@ -335,6 +337,9 @@ def test_non_unit_branches_are_ignored(tmp_path):
     ws, _, _ = _stack(tmp_path, LEDGER)
     _git(ws, "branch", "main")
     _git(ws, "branch", "fc/notes")
+    _git(ws, "branch", "fc/03-")
+    _git(ws, "branch", "fc/04-slug_x")
+    _git(ws, "branch", "fc/05-Upper")
 
     # Act
     found = collect.unit_branches(ws)
@@ -374,6 +379,47 @@ def test_no_unit_branches_means_no_units(tmp_path):
     assert units == []
     assert (stack["units_reached"], stack["chained"], stack["head_off_stack"]) == (0, False, True)
     assert "work.txt" in (out / "candidate.diff").read_text()
+
+
+def test_a_missing_unit_stops_the_cut_and_breaks_the_chain(tmp_path):
+    # Arrange
+    ws, base, out = _stack(tmp_path, LEDGER)
+    _git(ws, "checkout", "-q", "-b", "fc/04-gap")
+    _commit_file(ws, "gap.txt", "g\n")
+
+    # Act
+    units, stack = collect.split_stack(ws, base, collect.read_ledger(ws), out)
+
+    # Assert
+    assert [u["unit"] for u in units] == ["01", "02"]
+    assert not (out / "units" / "u04.diff").exists()
+    assert (stack["units_reached"], stack["chained"]) == (2, False)
+
+
+def test_a_unit_branch_without_changes_is_not_reached(tmp_path):
+    # Arrange
+    ws, base, out = _stack(tmp_path, LEDGER)
+    _git(ws, "branch", "fc/03-empty")
+
+    # Act
+    units, stack = collect.split_stack(ws, base, collect.read_ledger(ws), out)
+
+    # Assert
+    assert [u["unit"] for u in units] == ["01", "02"]
+    assert (stack["units_reached"], stack["chained"]) == (2, True)
+
+
+def test_redact_scrubs_the_longer_secret_first(tmp_path):
+    # Arrange
+    out = tmp_path / "out"
+    out.mkdir()
+    (out / "raw.json").write_text("key prefix12345678 and 12345678")
+
+    # Act
+    collect.redact(out, ["12345678", "prefix12345678"])
+
+    # Assert
+    assert (out / "raw.json").read_text() == "key [REDACTED] and [REDACTED]"
 
 
 def test_redact_scrubs_every_file(tmp_path):

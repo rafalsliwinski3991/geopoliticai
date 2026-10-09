@@ -25,11 +25,12 @@ OPENCODE_DB = Path.home() / ".local" / "share" / "opencode" / "opencode.db"
 TIMEOUT_SLACK_S = 30
 CHECK_NAMES = ("tests_before", "tests_after", "lint")
 # `rs-implement-plan` (Claude Code and OpenCode alike) cuts one branch per unit,
-# named `<stack-slug>/NN-<short-slug>`: git, not the agent's prose, records them.
-UNIT_BRANCH_RE = re.compile(r"^[^/]+/(\d{2})-")
+# named `<stack-slug>/NN-<short-slug>` (a slug of lowercase letters, digits and
+# hyphens): git, not the agent's prose, records them.
+UNIT_BRANCH_RE = re.compile(r"^[^/]+/(\d{2})-[a-z0-9]+(?:-[a-z0-9]+)*$")
 # The ledger line it appends when a unit's audit passes, "Unit 05: complete
-# (commits …)". Written by hand, so tolerate bullets, bold, and a missing zero.
-UNIT_DONE_RE = re.compile(r"\bUnit\W{0,6}(\d{1,2})\W{0,6}complete\b", re.IGNORECASE)
+# (commits …)". Written by hand, so tolerate bullets, bold, a missing zero, and "is complete".
+UNIT_DONE_RE = re.compile(r"\bUnit\W{0,6}(\d{1,2})\W{0,6}(?:is\W{1,6})?complete\b", re.IGNORECASE)
 # Appended after the final review, so it also says the review ran.
 FINAL_HEADS_RE = re.compile(r"^\W*Final heads\W", re.MULTILINE | re.IGNORECASE)
 REDACTED = b"[REDACTED]"
@@ -164,11 +165,18 @@ def split_stack(
     current = git(ws, "branch", "--show-current").strip()
     units: list[dict[str, Any]] = []
     chained, start = bool(branches), base
-    for unit, branch in branches.items():
+    for number, (unit, branch) in enumerate(branches.items(), 1):
+        if unit != f"{number:02d}":
+            # A missing unit's work would land in this unit's diff.
+            chained = False
+            break
         head = git(ws, "rev-parse", branch).strip()
         chained = chained and _is_ancestor(ws, start, head)
         refs = [start] if branch == current else [start, head]
-        units.append(_unit_diff(ws, out, unit, refs, unit in done))
+        entry = _unit_diff(ws, out, unit, refs, unit in done)
+        # A branch with no change is cut, not reached.
+        if entry["changed_files"]:
+            units.append(entry)
         start = head
     stack = {
         "units_reached": len(units),
@@ -183,7 +191,8 @@ def split_stack(
 
 def redact(out: Path, secrets: Iterable[str]) -> None:
     """Replace every secret value in every collected file before upload."""
-    values = [s.encode() for s in secrets if len(s) >= REDACT_MIN_CHARS]
+    # Longest first, so a secret that contains another is not left half-scrubbed.
+    values = sorted({s.encode() for s in secrets if len(s) >= REDACT_MIN_CHARS}, key=len, reverse=True)
     if not values:
         return
     for path in out.rglob("*"):
