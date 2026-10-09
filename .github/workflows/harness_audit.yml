@@ -1,0 +1,129 @@
+name: Harness Audit
+
+# Advisory: Claude Code reads the Claude Code, OpenCode, and Copilot harnesses
+# against the checklist in scripts/harness_audit/prompt.md, and the report job
+# files one issue per run holding every finding. Gates nothing. Runs on pull
+# requests from this repository that change harness files, and by hand. Each
+# run spends the Claude Code subscription's usage limit.
+on:
+  pull_request:
+    paths:
+      - ".claude/**"
+      - ".opencode/**"
+      - ".github/prompts/**"
+      - ".github/agents/**"
+      - ".github/skills/**"
+      - ".github/copilot-instructions.md"
+      - "AGENTS.md"
+      - "CLAUDE.md"
+      - "opencode.jsonc"
+      - "Makefile"
+      - "scripts/harness_audit/**"
+      - ".github/workflows/harness_audit.yml"
+  workflow_dispatch:
+
+concurrency:
+  # A newer push to the same pull request replaces a running audit.
+  group: harness-audit-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions: {}
+
+env:
+  CLAUDE_CODE_VERSION: "2.1.289"
+
+jobs:
+  audit:
+    # The run holds the subscription token, so never a fork's pull request;
+    # Dependabot's runs get no repository secrets, so skip those too.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.pull_request.head.repo.full_name == github.repository &&
+      github.actor != 'dependabot[bot]')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    timeout-minutes: 50
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      # --restricted needs Claude Code 2.1.248 or later.
+      - name: Install Claude Code
+        run: npm install -g "@anthropic-ai/claude-code@$CLAUDE_CODE_VERSION"
+
+      # --restricted drops every tool that runs commands and ignores the
+      # checkout's own settings files, so a pull request's hooks never run here.
+      - name: Audit the harnesses
+        timeout-minutes: 40
+        env:
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+        run: |
+          claude -p "$(cat scripts/harness_audit/prompt.md)" \
+            --model claude-sonnet-5-5 --effort high \
+            --restricted --tools Read,Grep,Glob --strict-mcp-config \
+            --json-schema "$(cat scripts/harness_audit/findings.schema.json)" \
+            --output-format json > "$RUNNER_TEMP/raw.json"
+
+      - name: Read the findings
+        working-directory: scripts
+        run: python3 -m harness_audit.findings --raw "$RUNNER_TEMP/raw.json" --repo .. --out "$RUNNER_TEMP/findings.json"
+
+      - name: Upload the findings
+        uses: actions/upload-artifact@v4
+        with:
+          name: harness-audit-findings
+          path: ${{ runner.temp }}/findings.json
+          if-no-files-found: error
+
+  report:
+    needs: audit
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      # The job that holds the issues token runs the base branch's report.py,
+      # never the pull request's; the PR head reaches it only as --sha.
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha || github.sha }}
+          persist-credentials: false
+
+      - name: Download the findings
+        uses: actions/download-artifact@v4
+        with:
+          name: harness-audit-findings
+          path: ${{ runner.temp }}
+
+      - name: File the issue
+        working-directory: scripts
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          NUM: ${{ github.event.pull_request.number }}
+          SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          if [ -n "$NUM" ]; then
+            TARGET="PR #$NUM"
+          else
+            TARGET="$GITHUB_REF_NAME"
+          fi
+          # The base checkout of a single squashed bootstrap PR can predate
+          # report.py; file nothing rather than fail the advisory job.
+          if [ ! -f harness_audit/report.py ]; then
+            echo "report.py is not on the base checkout yet; skipping the issue filing"
+            exit 0
+          fi
+          python3 -m harness_audit.report --findings "$RUNNER_TEMP/findings.json" \
+            --target "$TARGET" --sha "$SHA" --run-url "$RUN_URL" --summary "$GITHUB_STEP_SUMMARY"
