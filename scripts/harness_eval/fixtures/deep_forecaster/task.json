@@ -1,0 +1,282 @@
+{
+  "task": "deep_forecaster",
+  "plan": {
+    "start": "5b7b5d9f93457b1f3fb3f7f60ef74cc8ef5b948e",
+    "brainstorm": "docs/brainstorming/2026Sep30_brainstorm_v1_deep-forecaster-agent.md",
+    "output": "docs/plans/candidate_plan.md",
+    "reference": "plan_v1.md"
+  },
+  "implement": {
+    "start": "596d3fab0b227ba3217630554e03658aaa643692",
+    "plan": "docs/plans/2026Sep30_plan_deep-forecaster_v4.md",
+    "units": {
+      "01": {
+        "ref_start": "596d3fab0b227ba3217630554e03658aaa643692",
+        "ref_end": "3a03f0a07a913ad9d1a76c03437cc1ec090ea1c2",
+        "sections": [
+          "### Unit 01: `deep-forecaster/01-forecast-cost-and-stream-limit` (parent: `main` at `5b7b5d9`)",
+          "### 4.1 Unit 01: cost, refusal, and the stream limit",
+          "### 5.1 Unit 01"
+        ],
+        "files": [
+          "CLAUDE.md",
+          "agentic_backend/src/agents/deep_expert/config.py",
+          "agentic_backend/src/agents/reporter/config.py",
+          "agentic_backend/src/api.py",
+          "agentic_backend/src/config.py",
+          "agentic_backend/src/db/web/sql.py",
+          "agentic_backend/src/models.py",
+          "agentic_backend/tests/unit_tests/agents/deep_expert/test_graph.py",
+          "agentic_backend/tests/unit_tests/test_api.py",
+          "agentic_backend/tests/unit_tests/test_config.py",
+          "frontend/chat/src/lib/sse.test.ts",
+          "frontend/chat/src/lib/sse.ts",
+          "web_backend/politicalagent/settings.py"
+        ]
+      },
+      "02": {
+        "ref_start": "3a03f0a07a913ad9d1a76c03437cc1ec090ea1c2",
+        "ref_end": "b6f5ce280ef2d06f9d28392a5e8ab48c57d28958",
+        "sections": [
+          "### Unit 02: `deep-forecaster/02-source-bylines` (parent: unit 01)",
+          "### 4.2 Unit 02: bylines",
+          "### 5.2 Unit 02"
+        ],
+        "files": [
+          "CLAUDE.md",
+          "agentic_backend/src/models.py",
+          "agentic_backend/src/search.py",
+          "agentic_backend/tests/unit_tests/test_models.py",
+          "agentic_backend/tests/unit_tests/test_search.py"
+        ]
+      },
+      "03": {
+        "ref_start": "b6f5ce280ef2d06f9d28392a5e8ab48c57d28958",
+        "ref_end": "059d1ba94f2b1cb8d93b2472751e2993d0c45b10",
+        "sections": [
+          "### Unit 03: `deep-forecaster/03-forecaster-research` (parent: unit 02)",
+          "### 4.3 Unit 03: the research step",
+          "### 5.3 Unit 03"
+        ],
+        "files": [
+          "agentic_backend/pyproject.toml",
+          "agentic_backend/src/agents/deep_forecaster/__init__.py",
+          "agentic_backend/src/agents/deep_forecaster/config.py",
+          "agentic_backend/src/agents/deep_forecaster/consts/__init__.py",
+          "agentic_backend/src/agents/deep_forecaster/consts/forecasters.py",
+          "agentic_backend/src/agents/deep_forecaster/consts/progress.py",
+          "agentic_backend/src/agents/deep_forecaster/nodes/__init__.py",
+          "agentic_backend/src/agents/deep_forecaster/nodes/research.py",
+          "agentic_backend/src/agents/deep_forecaster/prompts.py",
+          "agentic_backend/src/agents/deep_forecaster/state.py",
+          "agentic_backend/src/agents/deep_forecaster/tools.py",
+          "agentic_backend/src/agents/deep_forecaster/video.py",
+          "agentic_backend/tests/unit_tests/agents/deep_forecaster/__init__.py",
+          "agentic_backend/tests/unit_tests/agents/deep_forecaster/conftest.py",
+          "agentic_backend/tests/unit_tests/agents/deep_forecaster/consts/__init__.py",
+          "agentic_backend/tests/unit_tests/agents/deep_forecaster/consts/test_forecasters.py",
+          "agentic_backend/tests/unit_tests/agents/deep_forecaster/nodes/__init__.py",
+          "agentic_backend/tests/unit_tests/agents/deep_forecaster/nodes/test_research.py",
+          "agentic_backend/tests/unit_tests/agents/deep_forecaster/test_config.py",
+          "agentic_backend/tests/unit_tests/agents/deep_forecaster/test_prompts.py",
+          "agentic_backend/tests/unit_tests/agents/deep_forecaster/test_state.py",
+          "agentic_backend/tests/unit_tests/agents/deep_forecaster/test_tools.py",
+          "agentic_backend/tests/unit_tests/agents/deep_forecaster/test_video.py",
+          "agentic_backend/uv.lock",
+          "requirements.txt"
+        ]
+      },
+      "04": {
+        "ref_start": "059d1ba94f2b1cb8d93b2472751e2993d0c45b10",
+        "ref_end": "fb76c02e367263a80be2861683c31826d6b77ac4",
+        "sections": [
+          "### Unit 04: `deep-forecaster/04-claims-and-council` (parent: unit 03)",
+          "### 4.4 Unit 04: claims and the council",
+          "### 5.4 Unit 04"
+        ],
+        "files": [
+          ".env.example",
+          "agentic_backend/src/agents/deep_forecaster/config.py",
+          "agentic_backend/src/agents/deep_forecaster/consts/progress.py",
+          "agentic_backend/src/agents/deep_forecaster/council.py",
+          "agentic_backend/src/agents/deep_forecaster/evidence.py",
+          "agentic_backend/src/agents/deep_forecaster/models.py",
+          "agentic_backend/src/agents/deep_forecaster/nodes/__init__.py",
+          "agentic_backend/src/agents/deep_forecaster/nodes/council.py",
+          "agentic_backend/src/agents/deep_forecaster/nodes/draft_claims.py",
+          "agentic_backend/src/agents/deep_forecaster/nodes/tally.py",
+          "agentic_backend/src/agents/deep_forecaster/prompts.py",
+          "agentic_backend/src/agents/deep_forecaster/state.py",
+          "agentic_backend/src/agents/deep_forecaster/tools.py",
+          "agentic_backend/src/config.py",
+          "agentic_backend/tests/unit_tests/agents/deep_forecaster/conftest.py",
+          "agentic_backend/tests/unit_tests/agents/deep_forecaster/nodes/test_council.py",
+          "agentic_backend/tests/unit_tests/agents/deep_forecaster/nodes/test_draft_claims.py",
+          "agentic_backend/tests/unit_tests/agents/deep_forecaster/nodes/test_tally.py",
+          "agentic_backend/tests/unit_tests/agents/deep_forecaster/test_council.py",
+          "agentic_backend/tests/unit_tests/agents/deep_forecaster/test_evidence.py"
+        ]
+      },
+      "05": {
+        "ref_start": "fb76c02e367263a80be2861683c31826d6b77ac4",
+        "ref_end": "c2834e2369cd9d4cb790255805e1f4ee4ae38f21",
+        "sections": [
+          "### Unit 05: `deep-forecaster/05-forecast-graph` (parent: unit 04)",
+          "### 4.5 Unit 05: writing, verification, the graph, and `forecast()`",
+          "### 5.5 Unit 05"
+        ],
+        "files": [
+          "agentic_backend/src/agents/deep_forecaster/__init__.py",
+          "agentic_backend/src/agents/deep_forecaster/config.py",
+          "agentic_backend/src/agents/deep_forecaster/consts/editorial.py",
+          "agentic_backend/src/agents/deep_forecaster/consts/progress.py",
+          "agentic_backend/src/agents/deep_forecaster/council.py",
+          "agentic_backend/src/agents/deep_forecaster/graph.py",
+          "agentic_backend/src/agents/deep_forecaster/models.py",
+          "agentic_backend/src/agents/deep_forecaster/nodes/__init__.py",
+          "agentic_backend/src/agents/deep_forecaster/nodes/draft_claims.py",
+          "agentic_backend/src/agents/deep_forecaster/nodes/research.py",
+          "agentic_backend/src/agents/deep_forecaster/nodes/verify.py",
+          "agentic_backend/src/agents/deep_forecaster/nodes/write_analysis.py",
+          "agentic_backend/src/agents/deep_forecaster/prompts.py",
+          "agentic_backend/src/agents/deep_forecaster/state.py",
+          "agentic_backend/src/agents/deep_forecaster/time_limits.py",
+          "agentic_backend/src/api.py",
+          "agentic_backend/src/config.py",
+          "agentic_backend/tests/unit_tests/agents/deep_forecaster/nodes/test_draft_claims.py",
+          "agentic_backend/tests/unit_tests/agents/deep_forecaster/nodes/test_verify.py",
+          "agentic_backend/tests/unit_tests/agents/deep_forecaster/nodes/test_write_analysis.py",
+          "agentic_backend/tests/unit_tests/agents/deep_forecaster/test_config.py",
+          "agentic_backend/tests/unit_tests/agents/deep_forecaster/test_council.py",
+          "agentic_backend/tests/unit_tests/agents/deep_forecaster/test_graph.py",
+          "agentic_backend/tests/unit_tests/agents/deep_forecaster/test_prompts.py",
+          "agentic_backend/tests/unit_tests/agents/deep_forecaster/test_time_limits.py"
+        ]
+      },
+      "06": {
+        "ref_start": "c2834e2369cd9d4cb790255805e1f4ee4ae38f21",
+        "ref_end": "a4e5a9b02a9a09ee856f370d3afafb6c6d81a0bc",
+        "sections": [
+          "### Unit 06: `deep-forecaster/06-route-forecasts` (parent: unit 05)",
+          "### 4.6 Unit 06: routing, required keys, delivery",
+          "### 5.6 Unit 06"
+        ],
+        "files": [
+          ".env.example",
+          "CLAUDE.md",
+          "README.md",
+          "agentic_backend/README.md",
+          "agentic_backend/evals/judges/orchestrator.py",
+          "agentic_backend/evals/orchestrator.py",
+          "agentic_backend/src/agents/deep_forecaster/nodes/verify.py",
+          "agentic_backend/src/agents/orchestrator/graph.py",
+          "agentic_backend/src/agents/orchestrator/nodes/__init__.py",
+          "agentic_backend/src/agents/orchestrator/nodes/deep_forecaster.py",
+          "agentic_backend/src/agents/orchestrator/prompts.py",
+          "agentic_backend/src/agents/orchestrator/state.py",
+          "agentic_backend/src/api.py",
+          "agentic_backend/src/config.py",
+          "agentic_backend/tests/unit_tests/agents/orchestrator/nodes/test_classify.py",
+          "agentic_backend/tests/unit_tests/agents/orchestrator/nodes/test_deep_forecaster.py",
+          "agentic_backend/tests/unit_tests/agents/orchestrator/test_graph.py",
+          "agentic_backend/tests/unit_tests/agents/orchestrator/test_state.py",
+          "agentic_backend/tests/unit_tests/test_api.py",
+          "agentic_backend/tests/unit_tests/test_config.py",
+          "web_backend/templates/pages/landing.html",
+          "web_backend/templates/pages/llms.txt",
+          "web_backend/templates/pages/privacy.html",
+          "web_backend/tests/pages/test_crawl.py",
+          "web_backend/tests/pages/test_landing.py",
+          "web_backend/tests/pages/test_legal.py"
+        ]
+      },
+      "07": {
+        "ref_start": "a4e5a9b02a9a09ee856f370d3afafb6c6d81a0bc",
+        "ref_end": "ab201d5e351505ae7035893effdf8360b69f005c",
+        "sections": [
+          "### Unit 07: `deep-forecaster/07-forecast-evals` (parent: unit 06)",
+          "### 4.7 Unit 07: routing rows and the structure eval",
+          "### 5.7 Unit 07"
+        ],
+        "files": [
+          ".github/workflows/evals.yml",
+          "CLAUDE.md",
+          "agentic_backend/Makefile",
+          "agentic_backend/evals/datasets/deep_forecaster.json",
+          "agentic_backend/evals/datasets/e2e.json",
+          "agentic_backend/evals/datasets/e2e_deep_forecaster.json",
+          "agentic_backend/evals/datasets/e2e_orchestrator.json",
+          "agentic_backend/evals/datasets/orchestrator.json",
+          "agentic_backend/evals/deep_forecaster.py",
+          "agentic_backend/evals/e2e.py",
+          "agentic_backend/evals/e2e_deep_forecaster.py",
+          "agentic_backend/evals/e2e_orchestrator.py",
+          "agentic_backend/evals/helpers/graph.py",
+          "agentic_backend/evals/helpers/run.py",
+          "agentic_backend/evals/judges/deep_forecaster.py",
+          "agentic_backend/evals/judges/e2e.py",
+          "agentic_backend/evals/judges/e2e_deep_forecaster.py",
+          "agentic_backend/evals/judges/e2e_orchestrator.py",
+          "agentic_backend/tests/unit_tests/evals/helpers/test_graph.py",
+          "agentic_backend/tests/unit_tests/evals/helpers/test_run.py",
+          "agentic_backend/tests/unit_tests/evals/judges/test_deep_forecaster.py",
+          "agentic_backend/tests/unit_tests/evals/judges/test_e2e.py",
+          "agentic_backend/tests/unit_tests/evals/judges/test_e2e_orchestrator.py",
+          "agentic_backend/tests/unit_tests/evals/test_deep_forecaster.py"
+        ]
+      },
+      "08": {
+        "ref_start": "ab201d5e351505ae7035893effdf8360b69f005c",
+        "ref_end": "ffd5ff59bcdc80331e0b3fb44df94c401b96a948",
+        "sections": [
+          "### Unit 08: `deep-forecaster/08-forecast-backtest` (parent: unit 07)",
+          "### 4.8 Unit 08: the backtest (F6)",
+          "### 5.8 Unit 08"
+        ],
+        "files": [
+          ".github/workflows/evals.yml",
+          "agentic_backend/Makefile",
+          "agentic_backend/evals/datasets/forecast_backtest.json",
+          "agentic_backend/evals/forecast_backtest.py",
+          "agentic_backend/evals/judges/forecast_backtest.py",
+          "agentic_backend/tests/unit_tests/evals/judges/test_forecast_backtest.py",
+          "agentic_backend/tests/unit_tests/evals/test_datasets.py",
+          "agentic_backend/tests/unit_tests/evals/test_forecast_backtest.py"
+        ]
+      },
+      "09": {
+        "ref_start": "ffd5ff59bcdc80331e0b3fb44df94c401b96a948",
+        "ref_end": "c5f782268889726f6b112c01e818a4fe215700e8",
+        "sections": [
+          "### Unit 09: `deep-forecaster/09-video-notes-cache` (parent: unit 08)",
+          "### 4.9 Unit 09: the video-notes cache (user decision 2026-10-01)",
+          "### 5.9 Unit 09"
+        ],
+        "files": [
+          "CLAUDE.md",
+          "README.md",
+          "agentic_backend/README.md",
+          "agentic_backend/src/agents/deep_forecaster/graph.py",
+          "agentic_backend/src/agents/deep_forecaster/nodes/research.py",
+          "agentic_backend/src/agents/deep_forecaster/state.py",
+          "agentic_backend/src/agents/deep_forecaster/tools.py",
+          "agentic_backend/src/agents/deep_forecaster/video.py",
+          "agentic_backend/src/agents/orchestrator/graph.py",
+          "agentic_backend/src/agents/orchestrator/nodes/deep_forecaster.py",
+          "agentic_backend/src/api.py",
+          "agentic_backend/tests/integration_tests/test_db_web_schema.py",
+          "agentic_backend/tests/unit_tests/agents/deep_forecaster/nodes/test_research.py",
+          "agentic_backend/tests/unit_tests/agents/deep_forecaster/test_graph.py",
+          "agentic_backend/tests/unit_tests/agents/deep_forecaster/test_tools.py",
+          "agentic_backend/tests/unit_tests/agents/deep_forecaster/test_video.py",
+          "agentic_backend/tests/unit_tests/agents/orchestrator/nodes/test_deep_forecaster.py",
+          "agentic_backend/tests/unit_tests/agents/orchestrator/test_graph.py",
+          "agentic_backend/tests/unit_tests/test_api.py",
+          "docs/cc_logs/forecast_stack_address_feedback.md",
+          "web_backend/templates/pages/privacy.html",
+          "web_backend/tests/pages/test_legal.py"
+        ]
+      }
+    }
+  }
+}
