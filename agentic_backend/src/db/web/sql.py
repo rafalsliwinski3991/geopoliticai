@@ -40,7 +40,8 @@ SELECT used FROM quota WHERE user_id = %(user_id)s AND day = %(day)s
 # returns no row when the cap is already reached, which is how N concurrent
 # requests that all passed the door check still consume only the turns that
 # remain. A plain `used = quota.used + 1` lets concurrency buy extras.
-# `cost` is how many units this turn spends (1, or DEEP_RESEARCH_TURN_COST); the
+# `cost` is how many units this turn spends (1, or a costly destination's cost
+# from `api.COSTLY_DESTINATIONS`); the
 # turn is affordable only when all of it fits, so a partial balance buys nothing.
 # The cost is validated in Python (`increment_quota`), so a fresh row (the
 # INSERT arrow) can never carry a cost the cap rejects. The WHERE on the

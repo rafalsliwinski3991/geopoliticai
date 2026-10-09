@@ -98,7 +98,7 @@ describe("the SSE reader", () => {
     expect(events).toEqual([{ type: "token", content: "ok" }]);
   });
 
-  it("aborts the fetch after ten minutes", async () => {
+  it("aborts the fetch after fifteen minutes, not before", async () => {
     vi.useFakeTimers();
     vi.stubGlobal(
       "fetch",
@@ -112,11 +112,22 @@ describe("the SSE reader", () => {
       ),
     );
     const pending = streamTurn({ query: "x", thread_id: "t" }, "tok").next();
+    let settled = false;
+    pending.then(
+      () => {
+        settled = true;
+      },
+      () => {
+        settled = true;
+      },
+    );
     // Attach the handler before the abort fires: a rejection that lands
     // before its consumer exists is reported as unhandled and fails the run.
     const assertion = expect(pending).rejects.toBeDefined();
-    await vi.advanceTimersByTimeAsync(10 * 60 * 1000);
-    // The timeout fires: the promise rejects with the abort error.
+    // A 14-minute forecast must not be cut: one millisecond short, still waiting.
+    await vi.advanceTimersByTimeAsync(15 * 60 * 1000 - 1);
+    expect(settled).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
     await assertion;
     vi.useRealTimers();
   });
