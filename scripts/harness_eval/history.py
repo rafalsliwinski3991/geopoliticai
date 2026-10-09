@@ -2,6 +2,7 @@
 the step-summary tables that compare each run with the ones before it.
 """
 
+import html
 import json
 from collections.abc import Iterable
 from itertools import groupby
@@ -121,7 +122,7 @@ def _mtok(value: float | None) -> float | None:
 
 
 def _escape(text: str) -> str:
-    return text.replace("|", "\\|").replace("\n", " ")
+    return html.escape(text, quote=False).replace("|", "\\|").replace("\n", " ")
 
 
 def render_subject(entries: list[dict[str, Any]]) -> str:

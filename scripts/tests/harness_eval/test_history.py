@@ -112,7 +112,13 @@ def test_render_keeps_last_ten_runs():
 
 
 def test_render_marks_missing_timeout_and_crash():
-    out = history.render([_row(est_cost_usd=None, timed_out=True, agent_failed=True)])
+    # Arrange
+    rows = [_row(est_cost_usd=None, timed_out=True, agent_failed=True)]
+
+    # Act
+    out = history.render(rows)
+
+    # Assert
     assert "| — | 10m |" in out
     assert "⏱" in out
     assert "✗" in out
@@ -126,6 +132,22 @@ def test_render_reasoning_escapes_pipes():
     out = history.render_reasoning([judged])
     assert "a \\| b c" in out
     assert "(capped at 2)" in out
+
+
+def test_render_reasoning_escapes_html_so_a_verdict_cannot_close_its_block():
+    # Arrange
+    judged = _judged(
+        summary="done </details> & <b>more</b>",
+        criteria=[{"name": "units", "reasoning": "x </details> | y", "score": 2, "cap": None}],
+    )
+
+    # Act
+    out = history.render_reasoning([judged])
+
+    # Assert
+    assert out.count("</details>") == 1
+    assert "done &lt;/details&gt; &amp; &lt;b&gt;more&lt;/b&gt;" in out
+    assert "x &lt;/details&gt; \\| y" in out
 
 
 def test_row_carries_unit_and_units_done():
