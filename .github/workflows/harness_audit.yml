@@ -35,11 +35,13 @@ env:
 jobs:
   audit:
     # The run holds the subscription token, so never a fork's pull request;
-    # Dependabot's runs get no repository secrets, so skip those too.
+    # Dependabot's pull requests get no repository secrets, so skip those too —
+    # by the pull request's author, not the event actor, so a maintainer pushing
+    # to a Dependabot branch does not change the decision.
     if: >-
       github.event_name == 'workflow_dispatch' ||
       (github.event.pull_request.head.repo.full_name == github.repository &&
-      github.actor != 'dependabot[bot]')
+      github.event.pull_request.user.login != 'dependabot[bot]')
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -67,6 +69,15 @@ jobs:
         env:
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
         run: |
+          # A pull request opened before this workflow landed, based on a main
+          # that predates harness_audit, triggers the paths filter but has no
+          # prompt or schema to run with; an empty --json-schema is invalid and
+          # exits with an error, so skip the agent and write an empty result.
+          if [ ! -d scripts/harness_audit ]; then
+            echo "harness_audit is not on the audited checkout yet; no audit to run"
+            echo '{"findings": [], "dropped": []}' > "$RUNNER_TEMP/findings.json"
+            exit 0
+          fi
           claude -p "$(cat scripts/harness_audit/prompt.md)" \
             --model claude-sonnet-5-5 --effort high \
             --restricted --tools Read,Grep,Glob --strict-mcp-config \
@@ -76,12 +87,11 @@ jobs:
       - name: Read the findings
         working-directory: scripts
         run: |
-          # A pull request opened before this workflow landed, based on a main
-          # that predates harness_audit, triggers the paths filter but has no
-          # module to read with; the advisory run stays green and files nothing.
-          if [ ! -d harness_audit ]; then
-            echo "harness_audit is not on the audited checkout yet; no findings to read"
-            echo '{"findings": [], "dropped": []}' > "$RUNNER_TEMP/findings.json"
+          # The audit step skips and writes findings.json itself when the
+          # module is absent on the audited checkout, so a raw result means
+          # the module was there.
+          if [ ! -f "$RUNNER_TEMP/raw.json" ]; then
+            echo "no raw result; the audit step already wrote findings.json"
             exit 0
           fi
           python3 -m harness_audit.findings --raw "$RUNNER_TEMP/raw.json" --repo .. --out "$RUNNER_TEMP/findings.json"
