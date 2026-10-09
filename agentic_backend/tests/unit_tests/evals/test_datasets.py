@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import importlib
 import string
+from datetime import date
 from pathlib import Path
 
 import pytest
@@ -66,3 +67,15 @@ def test_expected_output_passes_its_own_judges(path: Path) -> None:
             else:
                 assert judge.check is not None
                 assert judge.check(variables), judge.name
+
+
+@pytest.mark.parametrize("path", DATASETS)
+def test_backtest_examples_are_dated_before_they_resolve(path: Path) -> None:
+    if path.stem != "forecast_backtest":
+        pytest.skip("only the backtest dataset carries as_of and resolves_on")
+    examples = load_examples(path)
+    for example in examples:
+        as_of = date.fromisoformat(example["input"]["as_of"])
+        resolves_on = date.fromisoformat(example["input"]["resolves_on"])
+        assert as_of < resolves_on
+        assert date(2026, 7, 1) <= resolves_on <= date(2026, 9, 30)
