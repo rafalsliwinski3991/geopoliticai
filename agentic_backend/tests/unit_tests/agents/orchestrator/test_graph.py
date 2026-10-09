@@ -30,7 +30,7 @@ llm_module = importlib.import_module("llm")
 CITED_ANSWER = "Here is the situation [1](https://reuters.com/x)."
 
 
-def test_graph_has_exactly_five_nodes() -> None:
+def test_graph_has_exactly_six_nodes() -> None:
     # Act
     nodes = set(orchestrator.build_graph().get_graph().nodes)
 
@@ -39,6 +39,7 @@ def test_graph_has_exactly_five_nodes() -> None:
         "classify",
         "expert",
         "deep_expert",
+        "deep_forecaster",
         "chat",
         "reporter",
     }
@@ -58,7 +59,9 @@ def test_graph_forks_after_classify() -> None:
         ("classify", "deep_expert"),
         ("classify", "chat"),
         ("classify", "reporter"),
+        ("classify", "deep_forecaster"),
         ("expert", END),
+        ("deep_forecaster", END),
         ("deep_expert", END),
         ("chat", END),
         ("reporter", END),

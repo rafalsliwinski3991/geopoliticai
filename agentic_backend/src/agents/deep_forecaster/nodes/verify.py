@@ -44,6 +44,7 @@ from search import allowed_domain
 
 logger = logging.getLogger(__name__)
 
+
 async def verify(state: ForecastState, runtime: Runtime[ForecastRun]) -> dict[str, Any]:
     """Check the analysis and return the answer the reader sees."""
     runtime.context.enter(VERIFY_LABEL, runtime.stream_writer)

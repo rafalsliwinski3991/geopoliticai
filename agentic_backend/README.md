@@ -56,7 +56,7 @@ There is a single canonical `.env` at the repo root; `config.py` resolves it
 by absolute path regardless of working directory, `langgraph.json`'s `env`
 field points at `../.env`, and Docker Compose's `env_file: .env` reads the
 same file. There is no separate `agentic_backend/.env`. Required environment variables
-for the API are `OPENAI_API_KEY`, `BRAVE_SEARCH_KEY`, `DATABASE_URL`, and `JWT_SIGNING_KEY`.
+for the API are `OPENAI_API_KEY`, `BRAVE_SEARCH_KEY`, `OPENROUTER_API_KEY`, `GEMINI_API_KEY`, `DATABASE_URL`, and `JWT_SIGNING_KEY`.
 Compose supplies `DATABASE_URL` from `POSTGRES_PASSWORD`; the API refuses to
 start without it. Never commit the populated file. Optional settings are
 documented in the repository guidance files.

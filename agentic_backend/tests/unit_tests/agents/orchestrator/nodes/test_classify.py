@@ -17,6 +17,7 @@ node_module = importlib.import_module("agents.orchestrator.nodes.classify")
     [
         ("geopolitical", [SEARCH_PROGRESS]),
         ("deep", []),
+        ("forecast", []),
         ("other", []),
         ("report", []),
     ],

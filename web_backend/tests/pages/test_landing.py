@@ -186,3 +186,12 @@ class LandingMetadataTests(SimpleTestCase):
         self.assertEqual(
             {node["@type"] for node in payload["@graph"]}, {"Organization", "WebSite"}
         )
+
+    def test_the_limits_describe_the_opt_in_forecast(self) -> None:
+        # Arrange
+        # Act
+        response = self.client.get("/")
+        # Assert
+        self.assertContains(response, "Forecast unless you ask")
+        self.assertContains(response, "says so in its answer")
+        self.assertNotContains(response, "does not forecast elections or wars")

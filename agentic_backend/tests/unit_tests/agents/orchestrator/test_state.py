@@ -43,3 +43,9 @@ def test_route_decision_rejects_unknown_destination() -> None:
         ).destination
         == "deep"
     )
+    assert (
+        RouteDecision.model_validate(
+            {"destination": "forecast", "standalone_query": "question"}
+        ).destination
+        == "forecast"
+    )

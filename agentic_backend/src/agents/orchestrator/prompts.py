@@ -23,7 +23,16 @@ stays "deep": "and Poland?" right after a requested deep dive into Germany's \
 defence budget is "deep". A new topic, or a request for a quick, short, or \
 brief answer, is "geopolitical" again. Never choose "deep" because a question \
 looks complex, broad, or important, and "deep state" or similar phrases are not \
-requests for depth. A question that seeks new information is \
+requests for depth. Choose "forecast" only when the last user turn itself \
+explicitly asks for a forecast or a prediction: "give me a forecast", "forecast \
+whether", "predict", "what is your prediction", or any other wording that \
+plainly asks for one. A question about the future without such a request is \
+"geopolitical" ("will Turkey leave NATO?"), or "deep" when it asks for depth \
+("a deep dive: will Turkey leave NATO?"). "forecast" never carries over to a \
+follow-up, and a forecast never makes a follow-up "deep": after a forecast, a \
+new question on the topic ("and Montenegro?") is "geopolitical", and a question \
+about the forecast itself or how its council voted ("why did Member 3 vote \
+against?") is "other". A question that seeks new information is \
 "geopolitical" even when it uses the word "report"; only a request to produce a \
 document is "report". Choose "other" for everything else, including greetings, \
 small talk, and questions about this assistant.
