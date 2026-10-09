@@ -5,7 +5,11 @@ each step returns a partial update and never mutates it. `ForecastRun` is the
 graph's run context (`Runtime.context`): the step the forecast is in, which
 `forecast()` names if the wall cap ends it. `ResearchRun` is the research
 step's own record, which the tools write into and the node reads back;
-`ResearchOutcome` is the part of it the answer reports.
+`ResearchOutcome` is the part of it the answer reports. State here is what
+LangGraph channels carry between nodes; the `*Run` records are mutable work
+contexts bound to one invocation and never written back into the graph
+(review thread, #142). The drafter's and council's message models live in
+`models.py`.
 """
 
 from __future__ import annotations
@@ -13,15 +17,34 @@ from __future__ import annotations
 import asyncio
 import logging
 from dataclasses import dataclass, field
+from datetime import UTC, date, datetime
 
 from langgraph.types import StreamWriter
 from typing_extensions import NotRequired, TypedDict
 
 from agents.deep_forecaster.config import LIMITS
 from agents.deep_forecaster.consts.progress import PROGRESS_NODE
+from agents.deep_forecaster.models import Ballot, Claim, Verdict
 from models import Candidate, Source
 
 logger = logging.getLogger(__name__)
+
+
+def _utc_today() -> date:
+    """Return today's date in UTC, the day a forecast is made."""
+    return datetime.now(UTC).date()
+
+
+@dataclass(frozen=True)
+class ClaimTally:
+    """The final round's count for one claim (Q7)."""
+
+    claim: int
+    verdict: Verdict
+    votes_for: int
+    against: int
+    unsure: int
+    voting: int
 
 
 @dataclass(frozen=True)
@@ -44,13 +67,25 @@ class ForecastState(TypedDict):
     question: str
     sources: NotRequired[list[Source]]
     research: NotRequired[ResearchOutcome]
+    claims: NotRequired[list[Claim]]
+    # Keyed by member number (1-7). A member missing from round 1 was dropped;
+    # one missing from round 2 keeps its round-1 ballot (`council.final_ballots`).
+    ballots_round_1: NotRequired[dict[int, Ballot]]
+    ballots_round_2: NotRequired[dict[int, Ballot]]
+    tally: NotRequired[list[ClaimTally]]
 
 
 @dataclass
 class ForecastRun:
-    """The graph's run context: where the forecast is, for the wall-cap error."""
+    """The graph's run context: the step the forecast is in, and its "today".
+
+    `today` is the forecast's as-of date. It is always the UTC date except in
+    the backtest eval, which sets the date its question was open on, so
+    that the claims' deadlines are still in the future.
+    """
 
     step: str = ""
+    today: date = field(default_factory=_utc_today)
 
     def enter(self, label: str, writer: StreamWriter) -> None:
         """Record the step `label` names, log it, and announce it; `label` is a progress const."""
