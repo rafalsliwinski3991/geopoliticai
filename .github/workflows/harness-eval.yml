@@ -1,11 +1,14 @@
 name: Harness Eval
 
-# Advisory and manual: measures the current harness on the frozen deep-expert
-# task and appends the scores to the `eval-history` branch. Gates nothing.
-# Start it from the Actions tab, or comment `/harness_eval` (or
-# `/harness_eval 3` for three repeats, `/harness_eval 1 impl-glm` for one leg)
-# on a pull request from this repository. Every leg except impl-glm spends the
-# Claude Code subscription's usage limit; run only the legs you need.
+# Advisory and manual: measures the current harness on the frozen
+# deep-forecaster task and appends the scores to the `eval-history` branch.
+# Gates nothing. Each implement leg runs `/rs-implement-plan` over the whole
+# plan, with live API keys and a Postgres service so the plan's own gates run;
+# the plan leg (plan-opus) is opt-in. Start it from the Actions tab, or
+# comment `/harness_eval` (or `/harness_eval 3` for three repeats,
+# `/harness_eval 1 impl-glm` for one leg) on a pull request from this
+# repository. impl-sonnet and plan-opus spend the Claude Code subscription's
+# usage limit, and every implement leg spends the HARNESS_EVAL_* keys.
 on:
   workflow_dispatch:
     inputs:
@@ -14,9 +17,9 @@ on:
         type: number
         default: 1
       subjects:
-        description: "Legs to run, comma-separated: plan-opus, impl-sonnet, impl-glm (only impl-glm spends no Claude usage)"
+        description: "Legs to run, comma-separated: impl-sonnet, impl-glm, plan-opus (opt-in; only impl-glm spends no Claude usage)"
         type: string
-        default: "plan-opus,impl-sonnet,impl-glm"
+        default: "impl-sonnet,impl-glm"
       note:
         description: "What changed in the harness since the last run"
         type: string
@@ -37,7 +40,7 @@ permissions: {}
 env:
   CLAUDE_CODE_VERSION: "2.1.289"
   OPENCODE_VERSION: "1.18.34"
-  TASK: scripts/harness_eval/fixtures/deep_expert
+  TASK: scripts/harness_eval/fixtures/deep_forecaster
 
 jobs:
   setup:
@@ -73,7 +76,7 @@ jobs:
             read -r word arg subj _ <<< "$BODY"
             [ "$word" = /harness_eval ] || { echo "not a /harness_eval command: $word"; exit 1; }
             n=${arg:-1}
-            subjects=${subj:-plan-opus,impl-sonnet,impl-glm}
+            subjects=${subj:-impl-sonnet,impl-glm}
             # The pull request's own head, never a fork's: this run holds secrets.
             read -r sha cross < <(gh pr view "$PR" --repo "$GITHUB_REPOSITORY" \
               --json headRefOid,isCrossRepository -q '[.headRefOid, .isCrossRepository] | @tsv')
@@ -83,18 +86,25 @@ jobs:
           N=$n SUBJECTS=$subjects python3 - >> "$GITHUB_OUTPUT" <<'PY'
           import json, os
 
+          # (kind, harness, model, agent-step minutes)
           LEGS = {
-              "plan-opus": ("plan", "claude", "claude-opus-5-5"),
-              "impl-sonnet": ("implement", "claude", "claude-sonnet-5-5"),
-              "impl-glm": ("implement", "opencode", "opencode-go/glm-5.3-flash"),
+              "plan-opus": ("plan", "claude", "claude-opus-5-5", 120),
+              "impl-sonnet": ("implement", "claude", "claude-sonnet-5-5", 300),
+              "impl-glm": ("implement", "opencode", "opencode-go/glm-5.3-flash", 300),
           }
+          # The job allows 60 minutes beyond the agent step: about 5 for setup,
+          # up to 15 each for the baseline and the hard checks, then collect and
+          # upload. GitHub ends any job at 360, so 300 is the longest agent step
+          # that still uploads a timed-out run.
+          SLACK = 60
           n = int(os.environ["N"])
           assert 1 <= n <= 5, n
           chosen = [x.strip() for x in os.environ["SUBJECTS"].split(",") if x.strip()]
           assert chosen and len(set(chosen)) == len(chosen), chosen
           assert all(x in LEGS for x in chosen), f"unknown leg in {chosen}; known: {list(LEGS)}"
           include = [
-              {"subject": x, "kind": LEGS[x][0], "harness": LEGS[x][1], "model": LEGS[x][2], "repeat": r}
+              {"subject": x, "kind": LEGS[x][0], "harness": LEGS[x][1], "model": LEGS[x][2],
+               "step_minutes": LEGS[x][3], "job_minutes": LEGS[x][3] + SLACK, "repeat": r}
               for x in chosen
               for r in range(1, n + 1)
           ]
@@ -109,9 +119,25 @@ jobs:
     # agent's environment, and the checkout is deleted before the agent runs.
     permissions:
       contents: read
-    # The agent step has its own 45-minute limit; this one leaves room to
-    # collect and upload a timed-out run.
-    timeout-minutes: 75
+    # The agent step's own limit comes from the matrix; this one leaves room
+    # to collect and upload a timed-out run.
+    timeout-minutes: ${{ matrix.job_minutes }}
+    # The plan's integration, migration, and web-backend gates need the dev
+    # Postgres; the root Makefile's targets reach it on 127.0.0.1:55432.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: geopoliticai
+          POSTGRES_USER: geopoliticai
+          POSTGRES_PASSWORD: harness-eval-only
+        ports:
+          - 55432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.setup.outputs.matrix) }}
@@ -179,11 +205,38 @@ jobs:
           fi
           base=$(bash src/scripts/harness_eval/prepare.sh "$PWD/src" "$start" \
             "$TASK/$fixture" "$input" "$RUNNER_TEMP/ws")
-          # The checkout holds the answer key (unit 02's real commit, the
-          # reference plan); the agent must not be able to read it.
+          # The checkout holds the answer key (the merged units, the reference plan); the agent must not be able to read it.
           rm -rf src
           echo "base=$base" >> "$GITHUB_OUTPUT"
           echo "output=$output" >> "$GITHUB_OUTPUT"
+
+      - name: Write the app's .env
+        if: matrix.kind == 'implement'
+        working-directory: ${{ runner.temp }}/ws
+        env:
+          OPENAI_API_KEY: ${{ secrets.HARNESS_EVAL_OPENAI_API_KEY }}
+          BRAVE_SEARCH_KEY: ${{ secrets.HARNESS_EVAL_BRAVE_SEARCH_KEY }}
+          GEMINI_API_KEY: ${{ secrets.HARNESS_EVAL_GEMINI_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.HARNESS_EVAL_OPENROUTER_API_KEY }}
+        run: |
+          # The plan's smoke gates read these through the app's own root .env,
+          # which `.gitignore` keeps out of the candidate diff. Eval-only keys
+          # with spending caps; "Collect the result" scrubs their values.
+          # The root Makefile sources .env as shell, so values are single-quoted.
+          for v in "$OPENAI_API_KEY" "$BRAVE_SEARCH_KEY" "$GEMINI_API_KEY" "$OPENROUTER_API_KEY"; do
+            case "$v" in *"'"*) echo "a HARNESS_EVAL_* secret contains a single quote" >&2; exit 1;; esac
+          done
+          umask 077
+          {
+            printf "OPENAI_API_KEY='%s'\n" "$OPENAI_API_KEY"
+            printf "BRAVE_SEARCH_KEY='%s'\n" "$BRAVE_SEARCH_KEY"
+            printf "GEMINI_API_KEY='%s'\n" "$GEMINI_API_KEY"
+            printf "OPENROUTER_API_KEY='%s'\n" "$OPENROUTER_API_KEY"
+            echo "POSTGRES_PASSWORD=harness-eval-only"
+            echo "DATABASE_URL=postgresql://geopoliticai:harness-eval-only@127.0.0.1:55432/geopoliticai"
+            echo "JWT_SIGNING_KEY=harness-eval-only"
+            echo "DJANGO_SECRET_KEY=harness-eval-only"
+          } > .env
 
       - name: Install and baseline the tests
         id: before
@@ -197,7 +250,7 @@ jobs:
       - name: Run the agent (Claude Code)
         id: claude
         if: matrix.harness == 'claude'
-        timeout-minutes: 45
+        timeout-minutes: ${{ matrix.step_minutes }}
         continue-on-error: true
         working-directory: ${{ runner.temp }}/ws
         env:
@@ -218,7 +271,7 @@ jobs:
       - name: Run the agent (OpenCode)
         id: opencode
         if: matrix.harness == 'opencode'
-        timeout-minutes: 45
+        timeout-minutes: ${{ matrix.step_minutes }}
         continue-on-error: true
         working-directory: ${{ runner.temp }}/ws
         env:
@@ -269,6 +322,15 @@ jobs:
         env:
           CHECKS: ${{ steps.before.outputs.tests }},${{ steps.after.outputs.tests }},${{ steps.after.outputs.lint }}
           OUTCOME: ${{ matrix.harness == 'claude' && steps.claude.outcome || steps.opencode.outcome }}
+          STEP_MINUTES: ${{ matrix.step_minutes }}
+          # The keys the agent saw in .env, scrubbed from every uploaded file.
+          # Only those: this step runs code from $RUNNER_TEMP/tools, which the
+          # agent could have edited, so it never receives a secret the agent
+          # did not already hold. The plan leg gets none.
+          OPENAI_API_KEY: ${{ matrix.kind == 'implement' && secrets.HARNESS_EVAL_OPENAI_API_KEY || '' }}
+          BRAVE_SEARCH_KEY: ${{ matrix.kind == 'implement' && secrets.HARNESS_EVAL_BRAVE_SEARCH_KEY || '' }}
+          GEMINI_API_KEY: ${{ matrix.kind == 'implement' && secrets.HARNESS_EVAL_GEMINI_API_KEY || '' }}
+          OPENROUTER_API_KEY: ${{ matrix.kind == 'implement' && secrets.HARNESS_EVAL_OPENROUTER_API_KEY || '' }}
         run: |
           python3 -m harness_eval.collect \
             --subject "${{ matrix.subject }}" --kind "${{ matrix.kind }}" \
@@ -277,8 +339,10 @@ jobs:
             --ws "$RUNNER_TEMP/ws" --base "${{ steps.ws.outputs.base }}" \
             --output "${{ steps.ws.outputs.output }}" \
             --started-file "$RUNNER_TEMP/started" --ended-file "$RUNNER_TEMP/ended" \
-            --step-timeout-s 2700 --agent-outcome "$OUTCOME" \
-            --checks "$CHECKS" --out "$RUNNER_TEMP/out"
+            --step-timeout-s "$((STEP_MINUTES * 60))" --agent-outcome "$OUTCOME" \
+            --checks "$CHECKS" \
+            --redact-env OPENAI_API_KEY,BRAVE_SEARCH_KEY,GEMINI_API_KEY,OPENROUTER_API_KEY \
+            --out "$RUNNER_TEMP/out"
 
       - name: Upload the result
         if: always() && steps.ws.outcome == 'success' && steps.before.outcome != 'failure'

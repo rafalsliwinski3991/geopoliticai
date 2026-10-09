@@ -47,9 +47,13 @@ def test_plan_caps():
 
 
 def test_implement_caps():
-    ok = {"tests_before": 0, "tests_after": 0, "lint": 0}
-    assert checks.implement_caps({**ok, "tests_after": 1}, [], []) == {"does_the_unit": 1}
-    assert checks.implement_caps({**ok, "tests_before": 1, "tests_after": 1}, [], []) == {}
-    assert checks.implement_caps({**ok, "lint": 1}, [], []) == {"repo_style": 2}
-    assert checks.implement_caps(None, [], []) == {}
-    assert checks.implement_caps(ok, ["a.py", "b.py"], ["a.py"]) == {"in_scope": 2}
+    # Arrange
+    changed = ["a.py", "b.py"]
+
+    # Act
+    over = checks.implement_caps(changed, ["a.py"])
+    within = checks.implement_caps(["a.py"], ["a.py"])
+
+    # Assert
+    assert over == {"in_scope": 2}
+    assert within == {}

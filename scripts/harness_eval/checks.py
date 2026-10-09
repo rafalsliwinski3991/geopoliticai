@@ -1,8 +1,8 @@
 """Hard checks for the harness eval, run in code before the judge.
 
 Each failed check caps one rubric criterion, so the judge cannot score a
-plan grounded when its paths do not exist, or an implementation correct when
-it breaks the tests. Pure functions over text and lists.
+plan grounded when its paths do not exist, or an implementation in scope when
+it touches another unit's files. Pure functions over text and lists.
 """
 
 import posixpath
@@ -81,15 +81,7 @@ def out_of_scope(changed: Iterable[str], unit_files: Iterable[str]) -> list[str]
     return sorted(f for f in changed if f not in allowed)
 
 
-def implement_caps(
-    checks: dict[str, int] | None, changed: Iterable[str], unit_files: Iterable[str]
-) -> dict[str, int]:
-    """Tests cap only on a regression from the baseline; lint covers changed files only."""
-    caps: dict[str, int] = {}
-    if checks and checks["tests_before"] == 0 and checks["tests_after"] != 0:
-        caps["does_the_unit"] = 1
-    if checks and checks["lint"] != 0:
-        caps["repo_style"] = 2
-    if out_of_scope(changed, unit_files):
-        caps["in_scope"] = 2
-    return caps
+def implement_caps(changed: Iterable[str], unit_files: Iterable[str]) -> dict[str, int]:
+    """Scope is the only per-unit cap: tests and lint run once on the whole stack,
+    so a failure cannot be pinned to one unit; they are reported, not capped."""
+    return {"in_scope": 2} if out_of_scope(changed, unit_files) else {}

@@ -16,6 +16,7 @@ import hashlib
 import json
 import re
 import subprocess
+from collections.abc import Callable
 from dataclasses import asdict
 from datetime import UTC, datetime
 from pathlib import Path
@@ -70,7 +71,7 @@ SCALE = (
 )
 PLAN_PROMPT = (
     "You grade an implementation plan an AI agent wrote from a design brainstorm.\n\n"
-    "The reference plan was written from the same brainstorm and was implemented successfully. "
+    "The reference plan was written in one pass from the same brainstorm, before any review. "
     "Use it as an answer key for what the work needs, not as the only acceptable shape: a "
     "different plan that covers the same decisions as safely is as good.\n\n"
     + SCALE
@@ -82,9 +83,9 @@ IMPLEMENT_PROMPT = (
     "You grade a code change an AI agent made to implement one unit of a plan.\n\n"
     "The reference diff is the change merged for the same unit. Use it as an answer key for what "
     "the unit needs, not as the only acceptable code: a different change with the same behaviour "
-    "and tests is as good. The reference also carries later review fixes the unit text never "
-    "asked for; where the unit text and the reference disagree, the unit text wins, and following "
-    "it is never a fault.\n\n"
+    "and tests is as good. The reference also carries fixes from live smoke runs and later review "
+    "that the unit text never asked for; where the unit text and the reference disagree, the unit "
+    "text wins, and following it is never a fault.\n\n"
     + SCALE
     + "\n\n<unit>\n{unit}\n</unit>\n\n"
     "<reference_diff>\n{reference}\n</reference_diff>\n\n"
@@ -177,49 +178,90 @@ def _criteria_list(kind: str) -> str:
     return "\n".join(f"- {name}: {text}" for name, text in CRITERIA[kind].items())
 
 
+def _graded(
+    client: genai.Client, kind: str, candidate: str, prompt: Callable[[], str], caps: dict[str, int]
+) -> tuple[list[dict[str, Any]], str]:
+    """Ask the judge, or score an empty candidate 1 without a call."""
+    if not candidate.strip():
+        return empty(kind), NO_OUTPUT
+    verdict = ask(client, prompt())
+    return score(kind, verdict, caps), verdict.summary
+
+
+def _overall(graded: list[dict[str, Any]]) -> float:
+    return round(mean(c["score"] for c in graded), 2)
+
+
+def _judge_plan(
+    client: genai.Client, out_dir: Path, result: dict[str, Any], task: dict[str, Any],
+    repo: Path, fixtures: Path,
+) -> dict[str, Any]:
+    candidate = (out_dir / "candidate.md").read_text()
+    files = git(repo, "ls-tree", "-r", "--name-only", task["plan"]["start"]).splitlines()
+    found = checks.plan_checks(candidate, files)
+    graded, summary = _graded(
+        client, "plan", candidate,
+        lambda: PLAN_PROMPT.format(
+            criteria=_criteria_list("plan"),
+            brainstorm=(fixtures / "brainstorm.md").read_text(),
+            reference=(fixtures / task["plan"]["reference"]).read_text(),
+            candidate=candidate,
+        ),
+        checks.plan_caps(found),
+    )
+    return {**result, "unit": None, "criteria": graded, "summary": summary,
+            "hard_checks": asdict(found), "overall": _overall(graded)}
+
+
+def _judge_unit(
+    client: genai.Client, out_dir: Path, result: dict[str, Any], run: dict[str, Any],
+    spec: dict[str, Any], plan: str, repo: Path,
+) -> dict[str, Any]:
+    unit = run["unit"]
+    candidate = (out_dir / run["diff"]).read_text()
+    changed = run["changed_files"]
+    graded, summary = _graded(
+        client, "implement", candidate,
+        lambda: IMPLEMENT_PROMPT.format(
+            criteria=_criteria_list("implement"),
+            unit="\n\n".join(section(plan, h) for h in spec["sections"]),
+            reference=git(repo, "diff", spec["ref_start"], spec["ref_end"]),
+            candidate=candidate,
+        ),
+        checks.implement_caps(changed, spec["files"]),
+    )
+    hard = {
+        **(result["checks"] or {}),
+        **result["stack_checks"],
+        "complete": run["complete"],
+        "out_of_scope": checks.out_of_scope(changed, spec["files"]),
+    }
+    rest = {k: v for k, v in result.items() if k != "units"}
+    return {**rest, "unit": unit, "changed_files": changed, "criteria": graded,
+            "summary": summary, "hard_checks": hard, "overall": _overall(graded)}
+
+
 def judge_output(
     client: genai.Client, out_dir: Path, task: dict[str, Any], repo: Path, fixtures: Path
-) -> dict[str, Any]:
+) -> list[dict[str, Any]]:
+    """One verdict for a plan; one per reached task unit for an implementation.
+
+    A leg that reached no unit gets one unit-less verdict of 1s, as an empty
+    candidate always has, so the run still has a history row.
+    """
     result = json.loads((out_dir / "result.json").read_text())
-    kind = result["kind"]
+    if result["kind"] == "plan":
+        return [_judge_plan(client, out_dir, result, task, repo, fixtures)]
+    units = task["implement"]["units"]
+    result = {**result, "stack_checks": {**(result.get("stack_checks") or {}), "units_total": len(units)}}
     plan = (fixtures / "plan.md").read_text()
-    if kind == "plan":
-        candidate = (out_dir / "candidate.md").read_text()
-        files = git(repo, "ls-tree", "-r", "--name-only", task["plan"]["start"]).splitlines()
-        found = checks.plan_checks(candidate, files)
-        caps, hard = checks.plan_caps(found), asdict(found)
-        prompt = PLAN_PROMPT.format(
-            criteria=_criteria_list(kind),
-            brainstorm=(fixtures / "brainstorm.md").read_text(),
-            reference=plan,
-            candidate=candidate,
-        )
-    else:
-        imp = task["implement"]
-        candidate = (out_dir / "candidate.diff").read_text()
-        hard = {
-            **(result["checks"] or {}),
-            "out_of_scope": checks.out_of_scope(result["changed_files"], imp["unit_files"]),
-        }
-        caps = checks.implement_caps(result["checks"], result["changed_files"], imp["unit_files"])
-        prompt = IMPLEMENT_PROMPT.format(
-            criteria=_criteria_list(kind),
-            unit="\n\n".join(section(plan, h) for h in imp["unit_sections"]),
-            reference=git(repo, "diff", imp["start"], imp["reference_end"]),
-            candidate=candidate,
-        )
-    if candidate.strip():
-        verdict = ask(client, prompt)
-        graded, summary = score(kind, verdict, caps), verdict.summary
-    else:
-        graded, summary = empty(kind), NO_OUTPUT
-    return {
-        **result,
-        "criteria": graded,
-        "summary": summary,
-        "hard_checks": hard,
-        "overall": round(mean(c["score"] for c in graded), 2),
-    }
+    runs = [r for r in result.get("units") or [] if r["unit"] in units]
+    if not runs:
+        rest = {k: v for k, v in result.items() if k != "units"}
+        return [{**rest, "unit": None, "criteria": empty("implement"), "summary": NO_OUTPUT,
+                 "hard_checks": {**(result["checks"] or {}), **result["stack_checks"]},
+                 "overall": 1.0}]
+    return [_judge_unit(client, out_dir, result, r, units[r["unit"]], plan, repo) for r in runs]
 
 
 def main() -> None:
@@ -241,7 +283,7 @@ def main() -> None:
         raise SystemExit("no agent produced a result")
     # Reads GEMINI_API_KEY.
     client = genai.Client(http_options=types.HttpOptions(retry_options=RETRY))
-    judged = [judge_output(client, d, task, args.repo, args.fixtures) for d in outputs]
+    judged = [j for d in outputs for j in judge_output(client, d, task, args.repo, args.fixtures)]
     date = datetime.now(UTC).strftime("%Y-%m-%d")
     rows = [
         history.row(j, run_id=args.run_id, date=date, sha=args.sha, note=args.note,
@@ -251,7 +293,11 @@ def main() -> None:
     history.append(args.history, rows)
     args.verdicts.write_text(json.dumps(judged, indent=2))
     with args.summary.open("a") as f:
-        f.write(history.render(history.load(args.history)) + history.render_reasoning(judged))
+        f.write(
+            history.render(history.load(args.history))
+            + history.render_by_unit(judged)
+            + history.render_reasoning(judged)
+        )
 
 
 if __name__ == "__main__":
