@@ -75,7 +75,16 @@ jobs:
 
       - name: Read the findings
         working-directory: scripts
-        run: python3 -m harness_audit.findings --raw "$RUNNER_TEMP/raw.json" --repo .. --out "$RUNNER_TEMP/findings.json"
+        run: |
+          # A pull request opened before this workflow landed, based on a main
+          # that predates harness_audit, triggers the paths filter but has no
+          # module to read with; the advisory run stays green and files nothing.
+          if [ ! -d harness_audit ]; then
+            echo "harness_audit is not on the audited checkout yet; no findings to read"
+            echo '{"findings": [], "dropped": []}' > "$RUNNER_TEMP/findings.json"
+            exit 0
+          fi
+          python3 -m harness_audit.findings --raw "$RUNNER_TEMP/raw.json" --repo .. --out "$RUNNER_TEMP/findings.json"
 
       - name: Upload the findings
         uses: actions/upload-artifact@v4
