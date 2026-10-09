@@ -1,9 +1,11 @@
 import json
+import os
 import sqlite3
 import subprocess
 import sys
 from pathlib import Path
 
+import pytest
 from harness_eval import collect
 
 GIT = ["git", "-c", "user.name=t", "-c", "user.email=t@t"]
@@ -140,9 +142,18 @@ def test_parse_checks():
     assert collect.parse_checks("0,x,1") is None
 
 
-def _run_main(tmp_path: Path, outcome: str, seconds: int) -> dict:
+def _run_main(
+    tmp_path: Path,
+    outcome: str,
+    seconds: int,
+    extra_args: list[str] | None = None,
+    env: dict[str, str] | None = None,
+    plan_text: str | None = None,
+) -> dict:
     ws = tmp_path / "ws"
     ws.mkdir(parents=True)
+    if plan_text is not None:
+        (ws / "plan.md").write_text(plan_text)
     (tmp_path / "start").write_text("1000")
     (tmp_path / "end").write_text(str(1000 + seconds))
     out = tmp_path / "out"
@@ -155,8 +166,9 @@ def _run_main(tmp_path: Path, outcome: str, seconds: int) -> dict:
             "--output", "plan.md",
             "--started-file", str(tmp_path / "start"), "--ended-file", str(tmp_path / "end"),
             "--step-timeout-s", "2700", "--agent-outcome", outcome, "--out", str(out),
+            *(extra_args or []),
         ],
-        cwd=scripts, check=True, capture_output=True,
+        cwd=scripts, check=True, capture_output=True, env={**os.environ, **(env or {})},
     )
     return json.loads((out / "result.json").read_text())
 
@@ -166,3 +178,242 @@ def test_main_marks_crash_not_timeout(tmp_path):
     assert (crash["agent_failed"], crash["timed_out"]) == (True, False)
     timeout = _run_main(tmp_path / "b", "failure", 2690)
     assert (timeout["agent_failed"], timeout["timed_out"]) == (False, True)
+
+
+def _rev(ws: Path, ref: str) -> str:
+    return subprocess.run(
+        ["git", "-C", str(ws), "rev-parse", ref], capture_output=True, text=True, check=True
+    ).stdout.strip()
+
+
+def _commit_file(ws: Path, name: str, text: str) -> None:
+    (ws / name).write_text(text)
+    _git(ws, "add", "-A")
+    _git(ws, "commit", "-q", "-m", name)
+
+
+def _stack(tmp_path: Path, ledger: str) -> tuple[Path, str, Path]:
+    """Overlay base on eval-base, fc/01-cost (1 commit), fc/02-bylines (2 commits) checked out."""
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    _git(ws, "init", "-q", "-b", "eval-base")
+    (ws / ".gitignore").write_text("docs/harness_logs/\n")
+    _commit_file(ws, "base.txt", "b")
+    base = _rev(ws, "HEAD")
+    _git(ws, "checkout", "-q", "-b", "fc/01-cost")
+    _commit_file(ws, "cost.txt", "cost\n")
+    _git(ws, "checkout", "-q", "-b", "fc/02-bylines")
+    _commit_file(ws, "by1.txt", "by1\n")
+    _commit_file(ws, "by2.txt", "by2\n")
+    log = ws / "docs" / "harness_logs" / "p"
+    log.mkdir(parents=True)
+    (log / "ledger.md").write_text(ledger)
+    out = tmp_path / "out"
+    out.mkdir()
+    return ws, base, out
+
+
+LEDGER = "Unit 01: complete (commits a..b)\n- **Unit 2** \u2014 complete\n"
+
+
+def test_split_stack_writes_one_diff_per_unit_branch(tmp_path):
+    # Arrange
+    ws, base, out = _stack(tmp_path, LEDGER)
+
+    # Act
+    units, stack = collect.split_stack(ws, base, collect.read_ledger(ws), out)
+
+    # Assert
+    u1 = (out / "units" / "u01.diff").read_text()
+    u2 = (out / "units" / "u02.diff").read_text()
+    assert "cost.txt" in u1 and "by1.txt" not in u1 and "by2.txt" not in u1
+    assert "by1.txt" in u2 and "by2.txt" in u2 and "cost.txt" not in u2
+    assert units == [
+        {"unit": "01", "diff": "units/u01.diff", "changed_files": ["cost.txt"], "complete": True},
+        {
+            "unit": "02",
+            "diff": "units/u02.diff",
+            "changed_files": ["by1.txt", "by2.txt"],
+            "complete": True,
+        },
+    ]
+    assert stack == {
+        "units_reached": 2,
+        "units_done": 2,
+        "chained": True,
+        "final_heads": False,
+        "head_off_stack": False,
+    }
+
+
+@pytest.mark.parametrize(
+    ("ledger", "expected"),
+    [
+        ("Unit 05: complete (commits `a..b`)", {"05"}),
+        ("* Unit 5 - complete", {"05"}),
+        ("**Unit 05**: Complete", {"05"}),
+        ("Unit 05 complete (commits a...b)", {"05"}),
+        ("Unit 05: in progress", set()),
+    ],
+)
+def test_ledger_variants_count_as_complete(ledger, expected):
+    # Arrange
+    # Act
+    done = collect.completed_units(ledger)
+
+    # Assert
+    assert done == expected
+
+
+def test_unit_branch_without_a_complete_line_is_reached_not_done(tmp_path):
+    # Arrange
+    ws, base, out = _stack(tmp_path, "Unit 01: complete\n")
+
+    # Act
+    units, stack = collect.split_stack(ws, base, collect.read_ledger(ws), out)
+
+    # Assert
+    assert [u["complete"] for u in units] == [True, False]
+    assert (stack["units_reached"], stack["units_done"]) == (2, 1)
+
+
+def test_the_checked_out_unit_includes_uncommitted_work(tmp_path):
+    # Arrange
+    ws, base, out = _stack(tmp_path, LEDGER)
+    (ws / "by1.txt").write_text("edited\n")
+    (ws / "new.txt").write_text("fresh\n")
+    collect.capture_diff(ws, base, out)
+
+    # Act
+    units, _ = collect.split_stack(ws, base, collect.read_ledger(ws), out)
+
+    # Assert
+    u1 = (out / "units" / "u01.diff").read_text()
+    u2 = (out / "units" / "u02.diff").read_text()
+    assert "edited" in u2 and "new.txt" in u2
+    assert "edited" not in u1 and "new.txt" not in u1
+    assert units[0]["changed_files"] == ["cost.txt"]
+    assert units[1]["changed_files"] == ["by1.txt", "by2.txt", "new.txt"]
+
+
+def test_ending_off_the_stack_is_reported(tmp_path):
+    # Arrange
+    ws, base, out = _stack(tmp_path, LEDGER)
+    _git(ws, "checkout", "-q", "eval-base")
+
+    # Act
+    units, stack = collect.split_stack(ws, base, collect.read_ledger(ws), out)
+
+    # Assert
+    assert stack["head_off_stack"] is True
+    u1 = (out / "units" / "u01.diff").read_text()
+    u2 = (out / "units" / "u02.diff").read_text()
+    assert "+cost" in u1 and "+by1" in u2 and "+by2" in u2
+    assert "-cost" not in u1 and "-by1" not in u2
+    assert [u["changed_files"] for u in units] == [["cost.txt"], ["by1.txt", "by2.txt"]]
+
+
+def test_a_rebased_branch_breaks_the_chain(tmp_path):
+    # Arrange
+    ws, base, out = _stack(tmp_path, LEDGER)
+    _git(ws, "checkout", "-q", "eval-base")
+    _git(ws, "branch", "-D", "fc/02-bylines")
+    _git(ws, "checkout", "-q", "-b", "fc/02-bylines")
+    _commit_file(ws, "by1.txt", "by1\n")
+
+    # Act
+    units, stack = collect.split_stack(ws, base, collect.read_ledger(ws), out)
+
+    # Assert
+    assert stack["chained"] is False
+    assert (out / "units" / "u01.diff").exists() and (out / "units" / "u02.diff").exists()
+    assert len(units) == 2
+
+
+def test_non_unit_branches_are_ignored(tmp_path):
+    # Arrange
+    ws, _, _ = _stack(tmp_path, LEDGER)
+    _git(ws, "branch", "main")
+    _git(ws, "branch", "fc/notes")
+
+    # Act
+    found = collect.unit_branches(ws)
+
+    # Assert
+    assert found == {"01": "fc/01-cost", "02": "fc/02-bylines"}
+
+
+def test_final_heads_line_is_found(tmp_path):
+    # Arrange
+    ledger = LEDGER + "Final heads: fc/01-cost 1a2b, fc/02-bylines 3c4d\n"
+    ws, base, out = _stack(tmp_path, ledger)
+
+    # Act
+    _, stack = collect.split_stack(ws, base, collect.read_ledger(ws), out)
+
+    # Assert
+    assert stack["final_heads"] is True
+
+
+def test_no_unit_branches_means_no_units(tmp_path):
+    # Arrange
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    _git(ws, "init", "-q", "-b", "eval-base")
+    _commit_file(ws, "base.txt", "b")
+    base = _rev(ws, "HEAD")
+    _commit_file(ws, "work.txt", "w\n")
+    out = tmp_path / "out"
+    out.mkdir()
+    collect.capture_diff(ws, base, out)
+
+    # Act
+    units, stack = collect.split_stack(ws, base, "", out)
+
+    # Assert
+    assert units == []
+    assert (stack["units_reached"], stack["chained"], stack["head_off_stack"]) == (0, False, True)
+    assert "work.txt" in (out / "candidate.diff").read_text()
+
+
+def test_redact_scrubs_every_file(tmp_path):
+    # Arrange
+    out = tmp_path / "out"
+    (out / "units").mkdir(parents=True)
+    (out / "harness_logs" / "p").mkdir(parents=True)
+    secret = "sk-secret-value-1"
+    targets = [out / "raw.json", out / "units" / "u01.diff", out / "harness_logs" / "p" / "ledger.md"]
+    for t in targets:
+        t.write_text(f"a {secret} b short12 c")
+    clean = out / "clean.txt"
+    clean.write_text("nothing here")
+    os.utime(clean, (1000, 1000))
+
+    # Act
+    collect.redact(out, [secret, "short"])
+
+    # Assert
+    for t in targets:
+        assert t.read_text() == "a [REDACTED] b short12 c"
+    assert clean.read_bytes() == b"nothing here"
+    assert clean.stat().st_mtime == 1000
+
+
+def test_main_redacts_named_env(tmp_path):
+    # Arrange
+    secret = "secretvalue123"
+
+    # Act
+    result = _run_main(
+        tmp_path,
+        "success",
+        300,
+        extra_args=["--redact-env", "K"],
+        env={"K": secret},
+        plan_text=f"the key is {secret}",
+    )
+
+    # Assert
+    assert (tmp_path / "out" / "candidate.md").read_text() == "the key is [REDACTED]"
+    assert result["units"] == []
+    assert result["stack_checks"] is None
