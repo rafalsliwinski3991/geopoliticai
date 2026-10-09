@@ -240,6 +240,9 @@ jobs:
             echo "JWT_SIGNING_KEY=harness-eval-only"
             echo "DJANGO_SECRET_KEY=harness-eval-only"
           } > .env
+          # The integration tests read DATABASE_URL from the environment at
+          # import, and their make target does not source .env. It holds no secret.
+          echo "DATABASE_URL=postgresql://geopoliticai:harness-eval-only@127.0.0.1:55432/geopoliticai" >> "$GITHUB_ENV"
 
       - name: Install and baseline the tests
         id: before

@@ -209,28 +209,30 @@ def test_judge_output_grades_each_unit(tmp_path, monkeypatch):
     monkeypatch.setattr(judge, "git", lambda repo, *args: "REFDIFF")
     changed = ["agentic_backend/src/agents/deep_forecaster/graph.py", "x.py"]
     runs = [
+        {"unit": "06", "diff": "units/u06.diff", "changed_files": [], "complete": True},
         {"unit": "05", "diff": "units/u05.diff", "changed_files": changed, "complete": True},
         {"unit": "10", "diff": "units/u10.diff", "changed_files": [], "complete": True},
     ]
-    out = _out_dir(tmp_path, _result(runs), {"u05.diff": "+x\n", "u10.diff": "+y\n"})
+    diffs = {"u05.diff": "+x\n", "u06.diff": "+y\n", "u10.diff": "+z\n"}
+    out = _out_dir(tmp_path, _result(runs), diffs)
     client = FakeClient(_verdict(3))
 
     # Act
     judged = judge.judge_output(client, out, _task(), tmp_path, FIXTURES)
 
     # Assert
-    assert len(judged) == 1
+    assert [j["unit"] for j in judged] == ["06", "05"]
     assert "REFDIFF" in client.contents
     assert "write_analysis" in client.contents
     assert "the unit text wins" in client.contents
     assert UNTRUSTED in client.contents
-    verdict = judged[0]
+    verdict = judged[1]
     by_name = {c["name"]: c["score"] for c in verdict["criteria"]}
     assert verdict["unit"] == "05"
     assert by_name["in_scope"] == 2
     assert by_name["does_the_unit"] == 3
     hard = verdict["hard_checks"]
-    assert hard["units_done"] == 2
+    assert hard["units_done"] == len(runs)
     assert hard["units_total"] == 9
     assert hard["complete"] is True
     assert hard["out_of_scope"] == ["x.py"]
