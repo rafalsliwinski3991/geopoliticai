@@ -5,9 +5,10 @@ same instructions and the same evidence. Members are "Member 1" … "Member 7"
 wherever a reader or another member sees them; which model holds which seat
 is logged for the operator and never shown (Q21).
 
-A free seat that fails — an error, its timeout, no ballot, or a ballot
-`validate_ballot` refuses — asks its paid fallback once (user decision
-2026-10-01). A member whose every attempt fails has no ballot for that round.
+Every seat is a paid model; a seat that fails — an error, its timeout, no
+ballot, or a ballot `validate_ballot` refuses — has no ballot for that round,
+and the client's own retries (429, 5xx, connection errors) are the recovery
+(user decision 2026-10-08, ending the free-roster fallback of 2026-10-01).
 Round 1 must keep a quorum (Q9, F7); below it the forecast is a hard error. A
 member dropped in round 1 does not sit round 2, and a round-1 voter that fails
 round 2 keeps its round-1 vote (`final_ballots`): Delphi's second round
@@ -54,13 +55,11 @@ def member_client(
 ) -> ChatOpenAI:
     """Return a chat client for `model` on `seat`'s endpoint; built per call.
 
-    `model` is the seat's own model or its paid fallback; both go through the
-    seat's provider. Built at call time: `ChatOpenAI` cannot be constructed
-    without a key. The openai SDK retries connection errors, timeouts, 408,
-    409, 429 and 5xx, never a 400. A free attempt passes `max_retries=0`:
-    OpenRouter's free models share 20 requests a minute per account, so the
-    paid fallback, not a retry of the free model, is the recovery (`_cast`).
-    `_cast`'s `asyncio.timeout` bounds every attempt together, so a round
+    `model` is the seat's own model. Built at call time: `ChatOpenAI` cannot
+    be constructed without a key. The openai SDK retries connection errors,
+    timeouts, 408, 409, 429 and 5xx, never a 400; with every seat paid, those
+    retries are the recovery for a transient failure (`_cast`).
+    `_cast`'s `asyncio.timeout` bounds the attempt, so a round
     still ends within one member timeout. Non-OpenAI seats never receive
     `parallel_tool_calls`, which `with_structured_output` sends and Gemini's
     compatible endpoint has been reported to reject (framework review).
@@ -87,7 +86,7 @@ def member_model(seat: Seat, model: str, *, max_retries: int) -> Any:
     """Return the ballot-producing chain for `model` on `seat`'s endpoint.
 
     Structured output goes through tool calling, which every roster model
-    and fallback advertises; five of seven seats do not advertise
+    advertises; five of seven seats do not advertise
     `structured_outputs` (Q4). `TAG_NOSTREAM` keeps every ballot out of
     `stream_mode="messages"`.
     """
@@ -228,50 +227,36 @@ async def _cast(
 ) -> Ballot | None:
     """Return one member's counted ballot, or None when it has none this round.
 
-    A seat with a paid fallback first asks its free model, with no retries
-    and `free_attempt_seconds`; if that yields no counted ballot, it asks the
-    fallback once, with the client's retries, in what is left of
-    `member_seconds` (user decision 2026-10-01). Every outcome is logged with
-    the model that answered and the elapsed seconds, the smoke runs' measure
-    of free-model latency and fallback use (F3).
+    One attempt on the seat's own model, with the client's retries (user
+    decision 2026-10-08). Every outcome is logged with the model that
+    answered and the elapsed seconds, the smoke runs' measure of
+    per-seat latency (F3).
     """
     seat = COUNCIL[member - 1]
     started = time.monotonic()
-    attempts: list[tuple[str, int, float | None]] = [
-        (seat.model, DEFAULT_MAX_RETRIES, None)
-    ]
-    if seat.fallback is not None:
-        attempts = [
-            (seat.model, 0, LIMITS.free_attempt_seconds),
-            (seat.fallback, DEFAULT_MAX_RETRIES, None),
-        ]
     failures: list[str] = []
     try:
         async with asyncio.timeout(LIMITS.member_seconds):
-            for model, retries, seconds in attempts:
-                ballot, why = await _attempt(
-                    seat,
-                    model,
-                    retries,
-                    seconds,
-                    messages,
-                    claims=claims,
-                    quoted_by_claim=quoted_by_claim,
+            ballot, why = await _attempt(
+                seat,
+                seat.model,
+                messages,
+                claims=claims,
+                quoted_by_claim=quoted_by_claim,
+            )
+            if ballot is not None:
+                # One line per member, naming the model that voted (the smoke
+                # runs measure per-seat latency and drop rates from these).
+                logger.info(
+                    "council round %d: Member %d voted via %s after %.0f s%s",
+                    round_number,
+                    member,
+                    seat.model,
+                    time.monotonic() - started,
+                    f" ({'; '.join(failures)})" if failures else "",
                 )
-                if ballot is not None:
-                    # One line per member, naming the model that voted and
-                    # any free attempt that failed first (the smoke runs
-                    # count fallbacks per seat from these).
-                    logger.info(
-                        "council round %d: Member %d voted via %s after %.0f s%s",
-                        round_number,
-                        member,
-                        model,
-                        time.monotonic() - started,
-                        f" ({'; '.join(failures)})" if failures else "",
-                    )
-                    return ballot
-                failures.append(f"{model}: {why}")
+                return ballot
+            failures.append(f"{seat.model}: {why}")
     except TimeoutError:
         failures.append("the member's time limit")
     _dropped(round_number, member, "; ".join(failures), started)
@@ -281,24 +266,20 @@ async def _cast(
 async def _attempt(
     seat: Seat,
     model: str,
-    retries: int,
-    seconds: float | None,
     messages: list[BaseMessage],
     *,
     claims: int,
     quoted_by_claim: Mapping[int, frozenset[int]],
 ) -> tuple[Ballot | None, str]:
-    """Ask `model` once (with `retries`); return its counted ballot, or None and why not.
+    """Ask `model` once (with the client's retries); return its counted ballot, or None and why not.
 
-    A timeout of `seconds` (None: no limit of its own) is this attempt's
-    failure, not the member's. Cancellation by the member's own timeout or by
+    Cancellation by the member's own timeout or by
     the wall cap is a `BaseException`, so it passes through.
     """
     try:
-        async with asyncio.timeout(seconds):
-            ballot = await member_model(seat, model, max_retries=retries).ainvoke(
-                messages
-            )
+        ballot = await member_model(
+            seat, model, max_retries=DEFAULT_MAX_RETRIES
+        ).ainvoke(messages)
     except Exception as exc:  # noqa: BLE001 - a failed attempt has no ballot (Q9)
         # The body, logged only: the smoke runs need to tell a rejected
         # parameter from a transient provider error (F3).

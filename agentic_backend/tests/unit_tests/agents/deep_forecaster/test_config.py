@@ -15,11 +15,6 @@ def test_the_step_budgets_leave_slack_under_the_wall() -> None:
     assert LIMITS.wall_seconds < 15 * 60
 
 
-def test_a_free_attempt_leaves_its_fallback_time() -> None:
-    # Assert
-    assert LIMITS.member_seconds - LIMITS.free_attempt_seconds >= 45
-
-
 def test_the_research_lead_uses_the_deep_expert_budget() -> None:
     # Assert
     assert RESEARCH_LLM_SETTINGS.model == "gpt-5-mini"
