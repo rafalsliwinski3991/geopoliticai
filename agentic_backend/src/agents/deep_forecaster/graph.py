@@ -18,7 +18,6 @@ maps its failures to pipeline errors.
 
 from __future__ import annotations
 
-import asyncio
 import logging
 from typing import Any
 
@@ -37,6 +36,7 @@ from agents.deep_forecaster.nodes import (
     write_analysis,
 )
 from agents.deep_forecaster.state import ForecastRun, ForecastState
+from agents.deep_forecaster.time_limits import run_under_time_limits
 from models import LLMInvocationError, PipelineError, ResearchLimitError
 
 # (name, node, LangGraph node timeout). Research carries its own soft time
@@ -73,21 +73,20 @@ async def forecast(query: str) -> str:
 
     Takes no writer: each step emits its own progress through the graph's
     `runtime.stream_writer`, which reaches the orchestrator's `custom` stream
-    under the child namespace (measured, plan §1).
+    under the child namespace (measured, plan §1). The wall cap is a
+    dedicated-task cancel (`time_limits.run_under_time_limits`): the pregel runner absorbs a
+    `CancelledError` raised inside its own loop, so the frame's
+    `asyncio.timeout` alone does not bound a hung run (smoke gate F3, run 1).
     """
     run = ForecastRun()
-    deadline = asyncio.timeout(LIMITS.wall_seconds)
     try:
-        async with deadline:
-            result = await build_graph().ainvoke(
+        result, capped = await run_under_time_limits(
+            build_graph().ainvoke(
                 {"question": query}, config=NO_CHECKPOINTER_CONFIG, context=run
-            )
+            ),
+            LIMITS.wall_seconds,
+        )
     except TimeoutError as exc:
-        if deadline.expired():
-            raise ResearchLimitError(
-                f"The forecast ran past its {LIMITS.wall_seconds / 60:g}-minute limit "
-                f"during this step: {run.step}."
-            ) from exc
         raise LLMInvocationError("The forecast failed.") from exc
     except NodeTimeoutError as exc:
         # A step's own node timeout (`STEPS`); not a `TimeoutError`.
@@ -101,6 +100,11 @@ async def forecast(query: str) -> str:
         raise
     except Exception as exc:  # noqa: BLE001 - one boundary for the whole graph
         raise LLMInvocationError("The forecast failed.") from exc
+    if capped:
+        raise ResearchLimitError(
+            f"The forecast ran past its {LIMITS.wall_seconds / 60:g}-minute limit "
+            f"during this step: {run.step}."
+        )
     answer: str = result["answer"]
     logger.info("deep_forecaster: %d answer chars", len(answer))
     return answer
