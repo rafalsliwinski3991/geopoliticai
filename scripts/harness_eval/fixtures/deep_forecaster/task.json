@@ -113,8 +113,10 @@
           "agentic_backend/tests/unit_tests/agents/deep_forecaster/nodes/test_council.py",
           "agentic_backend/tests/unit_tests/agents/deep_forecaster/nodes/test_draft_claims.py",
           "agentic_backend/tests/unit_tests/agents/deep_forecaster/nodes/test_tally.py",
+          "agentic_backend/tests/unit_tests/agents/deep_forecaster/test_config.py",
           "agentic_backend/tests/unit_tests/agents/deep_forecaster/test_council.py",
-          "agentic_backend/tests/unit_tests/agents/deep_forecaster/test_evidence.py"
+          "agentic_backend/tests/unit_tests/agents/deep_forecaster/test_evidence.py",
+          "agentic_backend/tests/unit_tests/agents/deep_forecaster/test_prompts.py"
         ]
       },
       "05": {
