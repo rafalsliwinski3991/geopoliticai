@@ -39,7 +39,6 @@ async def watch_video(url: str, question: str) -> str:
     for a missing `GEMINI_API_KEY`, so the scout sees the documented soft
     stop instead of a hard `KeyError` (review thread, #140).
     """
-    static = VIDEO_SETTINGS.processing == "static"
     try:
         api_key = os.environ["GEMINI_API_KEY"]
     except KeyError as exc:
@@ -53,17 +52,15 @@ async def watch_video(url: str, question: str) -> str:
                     parts=[
                         types.Part(
                             file_data=types.FileData(file_uri=url),
-                            media_processing=(
-                                types.MediaProcessing.STATIC
-                                if static
-                                else types.MediaProcessing.AGENTIC
-                            ),
-                            # A custom `fps` is documented for static processing only.
-                            video_metadata=(
-                                types.VideoMetadata(fps=VIDEO_SETTINGS.fps)
-                                if static
-                                else None
-                            ),
+                            # A custom `fps` is documented for static processing
+                            # only; static is the committed mode. The probe
+                            # measured static at 12 s and ~130k prompt tokens
+                            # for a ~1-hour video (fps respected). Sending
+                            # `media_processing` for a YouTube URL is a 400
+                            # ("mime_type must be set when media_processing is
+                            # specified", unit 03 probe 2026-10-01), so no
+                            # processing field is sent at all.
+                            video_metadata=types.VideoMetadata(fps=VIDEO_SETTINGS.fps),
                         ),
                         types.Part(
                             text=VIDEO_PROMPT.format(
