@@ -1,0 +1,8 @@
+# deploy/ and scripts/ are judged by `uvx ruff` with no package of their
+# own, so without this file they inherit ruff's default rule set — which
+# grew from 59 to 413 rules in the 0.16 line and changed again in 0.17,
+# silently failing CI on a rare upgrade. Pinning the pre-0.16 default
+# keeps a floating ruff judge from re-linting old code.
+# Files under agentic_backend/ and web_backend/ keep their own configs.
+[lint]
+select = ["E4", "E7", "E9", "F"]

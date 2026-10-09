@@ -66,7 +66,9 @@ def _opencode_db(path: Path, rows: list[tuple[str, str, str | None, int, dict]])
     c.execute("create table session (id text, directory text, parent_id text, time_created int, time_updated int)")
     c.execute("create table message (id text, session_id text, time_created int, data text)")
     sess = {"top": ("/repo", None), "child": ("/repo", "top")}
-    ms = lambda day, hm: int(_local(day, hm).timestamp() * 1000)
+
+    def ms(day: str, hm: str) -> int:
+        return int(_local(day, hm).timestamp() * 1000)
     for sid, (d, p) in sess.items():
         c.execute("insert into session values (?,?,?,?,?)", (sid, d, p, ms("2026-10-04", "13:00"), ms("2026-10-04", "16:00")))
     for mid, sid, _x, t, tok in rows:
@@ -79,7 +81,8 @@ def _opencode_db(path: Path, rows: list[tuple[str, str, str | None, int, dict]])
 
 
 def test_opencode_includes_child_excludes_outside(tmp_path: Path):
-    ms = lambda hm: int(_local("2026-10-04", hm).timestamp() * 1000)
+    def ms(hm: str) -> int:
+        return int(_local("2026-10-04", hm).timestamp() * 1000)
     db = tmp_path / "o.db"
     _opencode_db(db, [
         ("a", "top", None, ms("14:05"), {"i": 10, "o": 5, "cost": 0.5}),
