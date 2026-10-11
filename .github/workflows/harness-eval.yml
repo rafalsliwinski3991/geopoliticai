@@ -2,9 +2,11 @@ name: Harness Eval
 
 # Advisory and manual: measures the current harness on the frozen
 # deep-forecaster task and appends the scores to the `eval-history` branch.
-# Gates nothing. Each implement leg runs `/rs-implement-plan` over the whole
-# plan, with live API keys and a Postgres service so the plan's own gates run;
-# the plan leg (plan-opus) is opt-in. Start it from the Actions tab, or
+# Gates nothing. Each implement leg runs `/rs-implement-plan` on Unit 05 alone
+# (Units 01 to 04 are already in its start commit), with live API keys and a
+# Postgres service so the unit's own gates run; the plan leg (plan-opus) is
+# opt-in. Set `judge_run_id` to re-judge an earlier run's artifacts with no
+# agent leg and no history row. Start it from the Actions tab, or
 # comment `/harness_eval` (or `/harness_eval 3` for three repeats,
 # `/harness_eval 1 impl-glm` for one leg) on a pull request from this
 # repository. impl-sonnet and plan-opus spend the Claude Code subscription's
@@ -20,6 +22,10 @@ on:
         description: "Legs to run, comma-separated: impl-sonnet, impl-glm, plan-opus (opt-in; only impl-glm spends no Claude usage)"
         type: string
         default: "impl-sonnet,impl-glm"
+      judge_run_id:
+        description: "Judge only: the id of an earlier run whose artifacts to re-grade (no agent leg runs, nothing is written to the history)"
+        type: string
+        default: ""
       note:
         description: "What changed in the harness since the last run"
         type: string
@@ -89,13 +95,12 @@ jobs:
           # (kind, harness, model, agent-step minutes)
           LEGS = {
               "plan-opus": ("plan", "claude", "claude-opus-5-5", 120),
-              "impl-sonnet": ("implement", "claude", "claude-sonnet-5-5", 300),
-              "impl-glm": ("implement", "opencode", "opencode-go/glm-5.3-flash", 300),
+              "impl-sonnet": ("implement", "claude", "claude-sonnet-5-5", 90),
+              "impl-glm": ("implement", "opencode", "opencode-go/glm-5.3-flash", 90),
           }
           # The job allows 60 minutes beyond the agent step: about 5 for setup,
           # up to 15 each for the baseline and the hard checks, then collect and
-          # upload. GitHub ends any job at 360, so 300 is the longest agent step
-          # that still uploads a timed-out run.
+          # upload.
           SLACK = 60
           n = int(os.environ["N"])
           assert 1 <= n <= 5, n
@@ -114,6 +119,8 @@ jobs:
   agent:
     name: "${{ matrix.subject }} #${{ matrix.repeat }}"
     needs: setup
+    # A judge-only run reuses an earlier run's artifacts.
+    if: ${{ inputs.judge_run_id == '' }}
     runs-on: ubuntu-latest
     # Read access only for the checkout below; the token never reaches the
     # agent's environment, and the checkout is deleted before the agent runs.
@@ -200,7 +207,8 @@ jobs:
             echo "args=$input $output" >> "$GITHUB_OUTPUT"
           else
             start=$(jq -r .implement.start "src/$TASK/task.json")
-            fixture=plan.md
+            fixture=$(jq -r .implement.fixture "src/$TASK/task.json")
+            echo "first_unit=$(jq -r '.implement.units | keys[0]' "src/$TASK/task.json")" >> "$GITHUB_OUTPUT"
             input=$(jq -r .implement.plan "src/$TASK/task.json")
             output=""
             echo "name=rs-implement-plan" >> "$GITHUB_OUTPUT"
@@ -329,6 +337,7 @@ jobs:
           CHECKS: ${{ steps.before.outputs.tests }},${{ steps.after.outputs.tests }},${{ steps.after.outputs.lint }}
           OUTCOME: ${{ matrix.harness == 'claude' && steps.claude.outcome || steps.opencode.outcome }}
           STEP_MINUTES: ${{ matrix.step_minutes }}
+          FIRST_UNIT: ${{ steps.ws.outputs.first_unit }}
           # The keys the agent saw in .env, scrubbed from every uploaded file.
           # Only those: this step runs code from $RUNNER_TEMP/tools, which the
           # agent could have edited, so it never receives a secret the agent
@@ -346,7 +355,7 @@ jobs:
             --output "${{ steps.ws.outputs.output }}" \
             --started-file "$RUNNER_TEMP/started" --ended-file "$RUNNER_TEMP/ended" \
             --step-timeout-s "$((STEP_MINUTES * 60))" --agent-outcome "$OUTCOME" \
-            --checks "$CHECKS" \
+            --checks "$CHECKS" --first-unit "${FIRST_UNIT:-1}" \
             --redact-env OPENAI_API_KEY,BRAVE_SEARCH_KEY,GEMINI_API_KEY,OPENROUTER_API_KEY \
             --out "$RUNNER_TEMP/out"
 
@@ -381,6 +390,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      actions: read
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -392,11 +402,21 @@ jobs:
         uses: astral-sh/setup-uv@caf0cab7a618c569241d31dcd442f54681755d39 # v3
 
       - name: Download the agent results
+        if: ${{ inputs.judge_run_id == '' }}
         uses: actions/download-artifact@v4
         with:
           path: ${{ runner.temp }}/results
 
+      - name: Download the earlier run's results
+        if: ${{ inputs.judge_run_id != '' }}
+        uses: actions/download-artifact@v4
+        with:
+          run-id: ${{ inputs.judge_run_id }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/results
+
       - name: Open the history branch
+        if: ${{ inputs.judge_run_id == '' }}
         run: |
           if git ls-remote --exit-code --heads origin eval-history >/dev/null; then
             git fetch -q origin eval-history
@@ -408,20 +428,23 @@ jobs:
       - name: Judge the outputs
         working-directory: scripts
         env:
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          # Empty on a judge-only run: the verdicts are printed, never recorded.
+          HISTORY: ${{ inputs.judge_run_id == '' && format('{0}/history/history.jsonl', runner.temp) || '' }}
           NOTE: ${{ github.event_name == 'issue_comment' && format('PR {0}', github.event.issue.number) || inputs.note }}
           EVAL_SHA: ${{ needs.setup.outputs.sha }}
         run: |
           uv run --no-project --python 3.12 \
-            --with "google-genai>=1.33,<2" --with "pydantic>=2.9,<3" \
+            --with "openai>=1.50,<3" --with "pydantic>=2.9,<3" \
             python -m harness_eval.judge \
             --repo "$GITHUB_WORKSPACE" --fixtures "$GITHUB_WORKSPACE/$TASK" \
-            --results "$RUNNER_TEMP/results" --history "$RUNNER_TEMP/history/history.jsonl" \
+            --results "$RUNNER_TEMP/results" ${HISTORY:+--history "$HISTORY"} \
             --verdicts "$RUNNER_TEMP/verdicts.json" \
             --run-id "$GITHUB_RUN_ID" --sha "$EVAL_SHA" --note "$NOTE" \
             --summary "$GITHUB_STEP_SUMMARY"
 
       - name: Save the history
+        if: ${{ inputs.judge_run_id == '' }}
         working-directory: ${{ runner.temp }}/history
         run: |
           git add history.jsonl

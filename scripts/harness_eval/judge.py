@@ -1,4 +1,4 @@
-"""Judge the harness eval's outputs with Gemini and append them to the history.
+"""Judge the harness eval's outputs with Gemini (through OpenRouter) and append them to the history.
 
 One structured call per output. For each named criterion the judge writes its
 reasoning first, then a 1-4 score, grading the candidate against the task's
@@ -8,12 +8,13 @@ the judge. A failed judge call fails the job before anything is appended, so
 "Re-run failed jobs" judges the same artifacts again.
 
 Run from scripts/:
-    uv run --no-project --with google-genai --with pydantic python -m harness_eval.judge ...
+    uv run --no-project --with openai --with pydantic python -m harness_eval.judge ...
 """
 
 import argparse
 import hashlib
 import json
+import os
 import re
 import subprocess
 from collections.abc import Callable
@@ -23,22 +24,20 @@ from pathlib import Path
 from statistics import mean
 from typing import Any
 
-from google import genai
-from google.genai import types
+from openai import OpenAI
 from pydantic import BaseModel, Field
 
 from harness_eval import checks, history
 
-# The cheapest current Gemini model (2.5 flash-lite is closed to new users): the eval is
-# run for cost, and the flash tier answered 503 for ten minutes straight. The judge is not
-# deterministic; its noise is part of the `≈` threshold.
-JUDGE_MODEL = "gemini-3.5-flash-lite"
-# Gemini answers 503 during demand spikes. Waits about 10, 20, 40, 80 and 120 s between the 6
-# attempts (jitter adds up to 1 s to each; about 4.5 min), then the job fails and "Re-run failed
-# jobs" tries again.
-RETRY = types.HttpRetryOptions(
-    attempts=6, initial_delay=10, max_delay=120, http_status_codes=[503]
-)
+# The cheapest current Gemini model on OpenRouter: the eval is run for cost. The judge is not
+# deterministic; its noise is part of the `≈` threshold. Only endpoints that accept the
+# JSON schema are used (`require_parameters`), since OpenRouter otherwise drops it silently.
+JUDGE_MODEL = "google/gemini-3.5-flash-lite"
+OPENROUTER_URL = "https://openrouter.ai/api/v1"
+# The SDK retries 408, 409, 429 and 5xx with exponential backoff (0.5 s doubling to 8 s), about
+# a minute over these attempts; then the job fails and "Re-run failed jobs" tries again.
+RETRIES = 6
+PROVIDER = {"require_parameters": True}
 CRITERIA = {
     "plan": {
         "decisions": "Covers every settled decision in the brainstorm; none is dropped or reopened.",
@@ -138,19 +137,37 @@ def section(text: str, heading: str) -> str:
     return "\n".join(lines[start:])
 
 
-def ask(client: genai.Client, prompt: str) -> Verdict:
-    response = client.models.generate_content(
+def _strict(schema: Any) -> Any:
+    """Mark every object in the schema closed, as strict structured output requires."""
+    if isinstance(schema, dict):
+        out = {k: _strict(v) for k, v in schema.items()}
+        if out.get("type") == "object":
+            out["additionalProperties"] = False
+        return out
+    if isinstance(schema, list):
+        return [_strict(v) for v in schema]
+    return schema
+
+
+def ask(client: OpenAI, prompt: str) -> Verdict:
+    response = client.chat.completions.create(
         model=JUDGE_MODEL,
-        contents=prompt,
-        config=types.GenerateContentConfig(
-            response_mime_type="application/json",
-            response_json_schema=Verdict.model_json_schema(),
-        ),
+        messages=[{"role": "user", "content": prompt}],
+        response_format={
+            "type": "json_schema",
+            "json_schema": {
+                "name": "verdict",
+                "strict": True,
+                "schema": _strict(Verdict.model_json_schema()),
+            },
+        },
+        extra_body={"provider": PROVIDER},
     )
-    if not response.text:
-        reason = response.candidates[0].finish_reason if response.candidates else "no candidates"
+    choice = response.choices[0] if response.choices else None
+    if choice is None or not choice.message.content:
+        reason = choice.finish_reason if choice else "no choices"
         raise RuntimeError(f"judge returned no text (finish reason: {reason})")
-    return Verdict.model_validate_json(response.text)
+    return Verdict.model_validate_json(choice.message.content)
 
 
 def score(kind: str, verdict: Verdict, caps: dict[str, int]) -> list[dict[str, Any]]:
@@ -179,7 +196,7 @@ def _criteria_list(kind: str) -> str:
 
 
 def _graded(
-    client: genai.Client, kind: str, candidate: str, prompt: Callable[[], str], caps: dict[str, int]
+    client: OpenAI, kind: str, candidate: str, prompt: Callable[[], str], caps: dict[str, int]
 ) -> tuple[list[dict[str, Any]], str]:
     """Ask the judge, or score an empty candidate 1 without a call."""
     if not candidate.strip():
@@ -193,7 +210,7 @@ def _overall(graded: list[dict[str, Any]]) -> float:
 
 
 def _judge_plan(
-    client: genai.Client, out_dir: Path, result: dict[str, Any], task: dict[str, Any],
+    client: OpenAI, out_dir: Path, result: dict[str, Any], task: dict[str, Any],
     repo: Path, fixtures: Path,
 ) -> dict[str, Any]:
     candidate = (out_dir / "candidate.md").read_text()
@@ -214,7 +231,7 @@ def _judge_plan(
 
 
 def _judge_unit(
-    client: genai.Client, out_dir: Path, result: dict[str, Any], run: dict[str, Any],
+    client: OpenAI, out_dir: Path, result: dict[str, Any], run: dict[str, Any],
     spec: dict[str, Any], plan: str, repo: Path,
 ) -> dict[str, Any]:
     unit = run["unit"]
@@ -242,7 +259,7 @@ def _judge_unit(
 
 
 def judge_output(
-    client: genai.Client, out_dir: Path, task: dict[str, Any], repo: Path, fixtures: Path
+    client: OpenAI, out_dir: Path, task: dict[str, Any], repo: Path, fixtures: Path
 ) -> list[dict[str, Any]]:
     """One verdict for a plan; one per reached task unit for an implementation.
 
@@ -254,7 +271,7 @@ def judge_output(
         return [_judge_plan(client, out_dir, result, task, repo, fixtures)]
     units = task["implement"]["units"]
     result = {**result, "stack_checks": {**(result.get("stack_checks") or {}), "units_total": len(units)}}
-    plan = (fixtures / "plan.md").read_text()
+    plan = (fixtures / task["implement"]["fixture"]).read_text()
     runs = [r for r in result.get("units") or [] if r["unit"] in units]
     if not runs:
         rest = {k: v for k, v in result.items() if k != "units"}
@@ -269,7 +286,9 @@ def main() -> None:
     p.add_argument("--repo", type=Path, required=True)
     p.add_argument("--fixtures", type=Path, required=True)
     p.add_argument("--results", type=Path, required=True, help="one sub-directory per artifact")
-    p.add_argument("--history", type=Path, required=True)
+    p.add_argument(
+        "--history", type=Path, help="append the rows here; leave out to print the verdicts only"
+    )
     p.add_argument("--verdicts", type=Path, required=True)
     p.add_argument("--run-id", required=True)
     p.add_argument("--sha", required=True)
@@ -281,23 +300,25 @@ def main() -> None:
     outputs = sorted(r.parent for r in args.results.glob("*/result.json"))
     if not outputs:
         raise SystemExit("no agent produced a result")
-    # Reads GEMINI_API_KEY.
-    client = genai.Client(http_options=types.HttpOptions(retry_options=RETRY))
+    client = OpenAI(
+        base_url=OPENROUTER_URL, api_key=os.environ["OPENROUTER_API_KEY"], max_retries=RETRIES
+    )
     judged = [j for d in outputs for j in judge_output(client, d, task, args.repo, args.fixtures)]
-    date = datetime.now(UTC).strftime("%Y-%m-%d")
-    rows = [
-        history.row(j, run_id=args.run_id, date=date, sha=args.sha, note=args.note,
-                    judge_version=JUDGE_VERSION)
-        for j in judged
-    ]
-    history.append(args.history, rows)
     args.verdicts.write_text(json.dumps(judged, indent=2))
-    with args.summary.open("a") as f:
-        f.write(
-            history.render(history.load(args.history))
-            + history.render_by_unit(judged)
-            + history.render_reasoning(judged)
+    summary = history.render_by_unit(judged) + history.render_reasoning(judged)
+    if args.history:
+        date = datetime.now(UTC).strftime("%Y-%m-%d")
+        history.append(
+            args.history,
+            [
+                history.row(j, run_id=args.run_id, date=date, sha=args.sha, note=args.note,
+                            judge_version=JUDGE_VERSION)
+                for j in judged
+            ],
         )
+        summary = history.render(history.load(args.history)) + summary
+    with args.summary.open("a") as f:
+        f.write(summary)
 
 
 if __name__ == "__main__":
