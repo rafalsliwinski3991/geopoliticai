@@ -52,11 +52,13 @@ Provider trees present: `.claude`, `.opencode`, `.github`.
 | rs-gh-stack-guidebook | yes | yes | yes |
 | rs-gh-stack-merge | yes | yes | yes |
 | rs-gh-stack-review | yes | yes | yes |
+| rs-implement-loop | yes | yes | yes |
 | rs-implement-plan | yes | yes | yes |
 | rs-improve-plan | yes | yes | yes |
 | rs-plan-from-asana | yes | yes | yes |
 | rs-plan-from-brainstorm | yes | yes | yes |
 | rs-plan-from-gh-issues | yes | yes | yes |
+| rs-prototype-loop | yes | yes | yes |
 | rs-review-plan | yes | yes | yes |
 
 ## Agents
