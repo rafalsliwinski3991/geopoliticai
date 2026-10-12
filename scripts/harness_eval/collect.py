@@ -11,28 +11,17 @@ Usage: python3 -m harness_eval.collect --subject impl-sonnet --kind implement ..
 import argparse
 import json
 import os
-import re
 import shutil
 import sqlite3
 import subprocess
 from collections.abc import Iterable
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Any
 
 OPENCODE_DB = Path.home() / ".local" / "share" / "opencode" / "opencode.db"
 # A step killed by its timeout ends a few seconds after the limit.
 TIMEOUT_SLACK_S = 30
 CHECK_NAMES = ("tests_before", "tests_after", "lint")
-# `rs-implement-plan` (Claude Code and OpenCode alike) cuts one branch per unit,
-# named `<stack-slug>/NN-<short-slug>` (a slug of lowercase letters, digits and
-# hyphens): git, not the agent's prose, records them.
-UNIT_BRANCH_RE = re.compile(r"^[^/]+/(\d{2})-[a-z0-9]+(?:-[a-z0-9]+)*$")
-# The ledger line it appends when a unit's audit passes, "Unit 05: complete
-# (commits …)". Written by hand, so tolerate bullets, bold, a missing zero, and "is complete".
-UNIT_DONE_RE = re.compile(r"\bUnit\W{0,6}(\d{1,2})\W{0,6}(?:is\W{1,6})?complete\b", re.IGNORECASE)
-# Appended after the final review, so it also says the review ran.
-FINAL_HEADS_RE = re.compile(r"^\W*Final heads\W", re.MULTILINE | re.IGNORECASE)
 REDACTED = b"[REDACTED]"
 # A shorter value would scrub ordinary text; no real key is this short.
 REDACT_MIN_CHARS = 8
@@ -113,82 +102,6 @@ def capture_diff(ws: Path, base: str, out: Path) -> list[str]:
     return git(ws, "diff", "--name-only", "-z", "--no-renames", base).split("\0")[:-1]
 
 
-def read_ledger(ws: Path) -> str:
-    """The run's ledger: one plan per eval run, so the first one found is it."""
-    found = sorted((ws / "docs" / "harness_logs").glob("*/ledger.md"))
-    return found[0].read_text() if found else ""
-
-
-def completed_units(ledger: str) -> set[str]:
-    """Two-digit numbers of the units the ledger marks complete."""
-    return {m[1].zfill(2) for m in UNIT_DONE_RE.finditer(ledger)}
-
-
-def unit_branches(ws: Path) -> dict[str, str]:
-    """Unit number to branch name, in unit order; the first name sorted wins a duplicate."""
-    found: dict[str, str] = {}
-    for name in sorted(git(ws, "for-each-ref", "--format=%(refname:short)", "refs/heads/").split()):
-        m = UNIT_BRANCH_RE.match(name)
-        if m:
-            found.setdefault(m[1], name)
-    return dict(sorted(found.items()))
-
-
-def _is_ancestor(ws: Path, older: str, newer: str) -> bool:
-    return subprocess.run(
-        ["git", "-C", str(ws), "merge-base", "--is-ancestor", older, newer], check=False
-    ).returncode == 0
-
-
-def _unit_diff(ws: Path, out: Path, unit: str, refs: list[str], complete: bool) -> dict[str, Any]:
-    """One unit's diff: `refs` is [start, head], or [start] for the working tree."""
-    rel = f"units/u{unit}.diff"
-    (out / rel).write_text(git(ws, "diff", "--binary", *refs))
-    names = git(ws, "diff", "--name-only", "-z", "--no-renames", *refs).split("\0")[:-1]
-    return {"unit": unit, "diff": rel, "changed_files": names, "complete": complete}
-
-
-def split_stack(
-    ws: Path, base: str, ledger: str, out: Path, first_unit: int = 1
-) -> tuple[list[dict[str, Any]], dict[str, Any]]:
-    """Cut the agent's stack into one diff per unit branch.
-
-    Unit N's diff runs from the previous unit's branch (the overlay commit for
-    `first_unit`) to its own branch. The branch checked out at the end is diffed
-    against the working tree instead, so a run stopped mid-unit keeps its
-    uncommitted work; call after `capture_diff`, whose intent-to-add makes
-    untracked files part of that diff. Completion comes from the ledger.
-    """
-    (out / "units").mkdir(parents=True, exist_ok=True)
-    branches = unit_branches(ws)
-    done = completed_units(ledger)
-    current = git(ws, "branch", "--show-current").strip()
-    units: list[dict[str, Any]] = []
-    chained, start = bool(branches), base
-    for number, (unit, branch) in enumerate(branches.items(), first_unit):
-        if unit != f"{number:02d}":
-            # A missing unit's work would land in this unit's diff.
-            chained = False
-            break
-        head = git(ws, "rev-parse", branch).strip()
-        chained = chained and _is_ancestor(ws, start, head)
-        refs = [start] if branch == current else [start, head]
-        entry = _unit_diff(ws, out, unit, refs, unit in done)
-        # A branch with no change is cut, not reached.
-        if entry["changed_files"]:
-            units.append(entry)
-        start = head
-    stack = {
-        "units_reached": len(units),
-        "units_done": sum(u["complete"] for u in units),
-        "chained": chained,
-        "final_heads": bool(FINAL_HEADS_RE.search(ledger)),
-        # The final branch is not a unit branch: uncommitted work there is not graded.
-        "head_off_stack": current not in branches.values(),
-    }
-    return units, stack
-
-
 def redact(out: Path, secrets: Iterable[str]) -> None:
     """Replace every secret value in every collected file before upload."""
     # Longest first, so a secret that contains another is not left half-scrubbed.
@@ -249,7 +162,6 @@ def main() -> None:
     p.add_argument(
         "--redact-env", default="", help="comma-separated names of env vars whose values are scrubbed"
     )
-    p.add_argument("--first-unit", type=int, default=1, help="the number of the first unit the agent builds")
     p.add_argument("--out", type=Path, required=True)
     args = p.parse_args()
 
@@ -261,14 +173,11 @@ def main() -> None:
     else:
         usage = opencode_usage(OPENCODE_DB)
     changed: list[str] = []
-    units: list[dict[str, Any]] = []
-    stack: dict[str, Any] | None = None
     if args.kind == "plan":
         plan = args.ws / args.output
         (args.out / "candidate.md").write_text(plan.read_text() if plan.exists() else "")
     else:
         changed = capture_diff(args.ws, args.base, args.out)
-        units, stack = split_stack(args.ws, args.base, read_ledger(args.ws), args.out, args.first_unit)
     logs = args.ws / "docs" / "harness_logs"
     if logs.is_dir():
         shutil.copytree(logs, args.out / "harness_logs", dirs_exist_ok=True)
@@ -288,8 +197,6 @@ def main() -> None:
         "agent_failed": args.agent_outcome != "success" and not timed_out,
         "changed_files": changed,
         "checks": parse_checks(args.checks),
-        "units": units,
-        "stack_checks": stack,
     }
     names = [n.strip() for n in args.redact_env.split(",") if n.strip()]
     redact(args.out, [os.environ.get(n, "") for n in names])

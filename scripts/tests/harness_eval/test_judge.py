@@ -157,25 +157,22 @@ def test_a_503_is_retried_until_it_clears():
     assert len(calls) == 3
 
 
-def _result(units, **extra):
+def _result(**extra):
     return {
         "subject": "impl-glm",
         "kind": "implement",
         "repeat": 1,
         "changed_files": [],
         "checks": {"tests_before": 0, "tests_after": 1, "lint": 0},
-        "stack_checks": {"units_reached": len(units), "units_done": len(units)},
-        "units": units,
         **extra,
     }
 
 
-def _out_dir(tmp_path, result, diffs=None):
+def _out_dir(tmp_path, result, diff=""):
     out = tmp_path / "out"
-    (out / "units").mkdir(parents=True)
+    out.mkdir(parents=True)
     (out / "result.json").write_text(json.dumps(result))
-    for name, diff in (diffs or {}).items():
-        (out / "units" / name).write_text(diff)
+    (out / "candidate.diff").write_text(diff)
     return out
 
 
@@ -205,72 +202,46 @@ def test_judge_output_plan_prompt_marks_blocks_untrusted(tmp_path, monkeypatch):
     assert "implemented successfully" not in client.contents
 
 
-def test_judge_output_no_reached_unit_is_one_row_of_ones(tmp_path, monkeypatch):
+def test_judge_output_empty_diff_skips_the_model(tmp_path, monkeypatch):
     # Arrange
     monkeypatch.setattr(judge, "git", lambda repo, *args: "REFDIFF")
-    out = _out_dir(tmp_path, _result([], stack_checks={"units_reached": 0, "units_done": 0}))
+    out = _out_dir(tmp_path, _result(), "")
 
     # Act
     judged = judge.judge_output(ExplodingClient(), out, _task(), tmp_path, FIXTURES)
 
     # Assert
     assert len(judged) == 1
-    assert judged[0]["unit"] is None
     assert [c["score"] for c in judged[0]["criteria"]] == [1, 1, 1, 1]
     assert judged[0]["overall"] == 1.0
     assert judged[0]["summary"] == judge.NO_OUTPUT
-    assert judged[0]["hard_checks"]["units_total"] == 1
 
 
-def test_judge_output_empty_unit_diff_skips_the_model(tmp_path, monkeypatch):
-    # Arrange
-    monkeypatch.setattr(judge, "git", lambda repo, *args: "REFDIFF")
-    run = {"unit": "05", "diff": "units/u05.diff", "changed_files": [], "complete": False}
-    out = _out_dir(tmp_path, _result([run]), {"u05.diff": ""})
-
-    # Act
-    judged = judge.judge_output(ExplodingClient(), out, _task(), tmp_path, FIXTURES)
-
-    # Assert
-    assert len(judged) == 1
-    assert judged[0]["unit"] == "05"
-    assert [c["score"] for c in judged[0]["criteria"]] == [1, 1, 1, 1]
-    assert judged[0]["overall"] == 1.0
-
-
-def test_judge_output_grades_only_the_task_unit(tmp_path, monkeypatch):
+def test_judge_output_grades_the_candidate_diff_against_the_task_unit(tmp_path, monkeypatch):
     # Arrange
     monkeypatch.setattr(judge, "git", lambda repo, *args: "REFDIFF")
     changed = ["agentic_backend/src/agents/deep_forecaster/graph.py", "x.py"]
-    runs = [
-        {"unit": "06", "diff": "units/u06.diff", "changed_files": [], "complete": True},
-        {"unit": "05", "diff": "units/u05.diff", "changed_files": changed, "complete": True},
-        {"unit": "10", "diff": "units/u10.diff", "changed_files": [], "complete": True},
-    ]
-    diffs = {"u05.diff": "+x\n", "u06.diff": "+y\n", "u10.diff": "+z\n"}
-    out = _out_dir(tmp_path, _result(runs), diffs)
+    out = _out_dir(tmp_path, _result(changed_files=changed), "+candidate line\n")
     client = FakeClient(_verdict(3))
 
     # Act
     judged = judge.judge_output(client, out, _task(), tmp_path, FIXTURES)
 
     # Assert
-    assert [j["unit"] for j in judged] == ["05"]
+    assert len(judged) == 1
+    assert "+candidate line" in client.contents
     assert "REFDIFF" in client.contents
     assert "write_analysis" in client.contents
     assert "the unit text wins" in client.contents
     assert UNTRUSTED in client.contents
     verdict = judged[0]
     by_name = {c["name"]: c["score"] for c in verdict["criteria"]}
-    assert verdict["unit"] == "05"
     assert by_name["in_scope"] == 2
     assert by_name["does_the_unit"] == 3
-    hard = verdict["hard_checks"]
-    assert hard["units_done"] == len(runs)
-    assert hard["units_total"] == 1
-    assert hard["complete"] is True
-    assert hard["out_of_scope"] == ["x.py"]
-    assert "units" not in verdict
+    assert verdict["hard_checks"] == {
+        "tests_before": 0, "tests_after": 1, "lint": 0, "out_of_scope": ["x.py"]
+    }
+    assert "unit" not in verdict and "units" not in verdict
 
 
 def test_section_ignores_hashes_in_code_fences():
@@ -309,16 +280,15 @@ def test_main_without_history_prints_the_verdicts_and_writes_no_history(tmp_path
     monkeypatch.setattr(judge, "git", lambda repo, *args: "REFDIFF")
     monkeypatch.setenv("OPENROUTER_API_KEY", "k")
     monkeypatch.setattr(judge, "OpenAI", lambda **kwargs: FakeClient(_verdict(3)))
-    run = {"unit": "05", "diff": "units/u05.diff", "changed_files": [], "complete": True}
-    out = _out_dir(tmp_path, _result([run], **USAGE), {"u05.diff": "+x\n"})
+    out = _out_dir(tmp_path, _result(**USAGE), "+x\n")
     monkeypatch.setattr("sys.argv", _main_args(tmp_path, out.parent))
 
     # Act
     judge.main()
 
     # Assert
-    assert json.loads((tmp_path / "verdicts.json").read_text())[0]["unit"] == "05"
-    assert "| impl-glm #1 | 3.00 | 3.00 |" in (tmp_path / "summary.md").read_text()
+    assert json.loads((tmp_path / "verdicts.json").read_text())[0]["overall"] == 3.0
+    assert "impl-glm #1 — 3.00" in (tmp_path / "summary.md").read_text()
     assert not list(tmp_path.glob("**/*.jsonl"))
 
 
@@ -327,8 +297,7 @@ def test_main_with_history_appends_one_row_per_verdict(tmp_path, monkeypatch):
     monkeypatch.setattr(judge, "git", lambda repo, *args: "REFDIFF")
     monkeypatch.setenv("OPENROUTER_API_KEY", "k")
     monkeypatch.setattr(judge, "OpenAI", lambda **kwargs: FakeClient(_verdict(3)))
-    run = {"unit": "05", "diff": "units/u05.diff", "changed_files": [], "complete": True}
-    out = _out_dir(tmp_path, _result([run], **USAGE), {"u05.diff": "+x\n"})
+    out = _out_dir(tmp_path, _result(**USAGE), "+x\n")
     rows = tmp_path / "history.jsonl"
     monkeypatch.setattr("sys.argv", _main_args(tmp_path, out.parent, "--history", str(rows)))
 

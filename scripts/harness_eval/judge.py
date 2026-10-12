@@ -226,17 +226,18 @@ def _judge_plan(
         ),
         checks.plan_caps(found),
     )
-    return {**result, "unit": None, "criteria": graded, "summary": summary,
+    return {**result, "criteria": graded, "summary": summary,
             "hard_checks": asdict(found), "overall": _overall(graded)}
 
 
-def _judge_unit(
-    client: OpenAI, out_dir: Path, result: dict[str, Any], run: dict[str, Any],
-    spec: dict[str, Any], plan: str, repo: Path,
+def _judge_implement(
+    client: OpenAI, out_dir: Path, result: dict[str, Any], task: dict[str, Any],
+    repo: Path, fixtures: Path,
 ) -> dict[str, Any]:
-    unit = run["unit"]
-    candidate = (out_dir / run["diff"]).read_text()
-    changed = run["changed_files"]
+    (spec,) = task["implement"]["units"].values()
+    plan = (fixtures / task["implement"]["fixture"]).read_text()
+    candidate = (out_dir / "candidate.diff").read_text()
+    changed = result["changed_files"]
     graded, summary = _graded(
         client, "implement", candidate,
         lambda: IMPLEMENT_PROMPT.format(
@@ -247,38 +248,19 @@ def _judge_unit(
         ),
         checks.implement_caps(changed, spec["files"]),
     )
-    hard = {
-        **(result["checks"] or {}),
-        **result["stack_checks"],
-        "complete": run["complete"],
-        "out_of_scope": checks.out_of_scope(changed, spec["files"]),
-    }
-    rest = {k: v for k, v in result.items() if k != "units"}
-    return {**rest, "unit": unit, "changed_files": changed, "criteria": graded,
-            "summary": summary, "hard_checks": hard, "overall": _overall(graded)}
+    hard = {**(result["checks"] or {}), "out_of_scope": checks.out_of_scope(changed, spec["files"])}
+    return {**result, "criteria": graded, "summary": summary, "hard_checks": hard,
+            "overall": _overall(graded)}
 
 
 def judge_output(
     client: OpenAI, out_dir: Path, task: dict[str, Any], repo: Path, fixtures: Path
 ) -> list[dict[str, Any]]:
-    """One verdict for a plan; one per reached task unit for an implementation.
-
-    A leg that reached no unit gets one unit-less verdict of 1s, as an empty
-    candidate always has, so the run still has a history row.
-    """
+    """One verdict for the run: a plan or the task's one implemented unit."""
     result = json.loads((out_dir / "result.json").read_text())
     if result["kind"] == "plan":
         return [_judge_plan(client, out_dir, result, task, repo, fixtures)]
-    units = task["implement"]["units"]
-    result = {**result, "stack_checks": {**(result.get("stack_checks") or {}), "units_total": len(units)}}
-    plan = (fixtures / task["implement"]["fixture"]).read_text()
-    runs = [r for r in result.get("units") or [] if r["unit"] in units]
-    if not runs:
-        rest = {k: v for k, v in result.items() if k != "units"}
-        return [{**rest, "unit": None, "criteria": empty("implement"), "summary": NO_OUTPUT,
-                 "hard_checks": {**(result["checks"] or {}), **result["stack_checks"]},
-                 "overall": 1.0}]
-    return [_judge_unit(client, out_dir, result, r, units[r["unit"]], plan, repo) for r in runs]
+    return [_judge_implement(client, out_dir, result, task, repo, fixtures)]
 
 
 def main() -> None:
@@ -305,7 +287,7 @@ def main() -> None:
     )
     judged = [j for d in outputs for j in judge_output(client, d, task, args.repo, args.fixtures)]
     args.verdicts.write_text(json.dumps(judged, indent=2))
-    summary = history.render_by_unit(judged) + history.render_reasoning(judged)
+    summary = history.render_reasoning(judged)
     if args.history:
         date = datetime.now(UTC).strftime("%Y-%m-%d")
         history.append(
