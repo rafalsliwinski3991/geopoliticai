@@ -9,8 +9,8 @@ Plan: $1
 You are the **auditor and reviser** and the team lead. You are the only agent in this run that
 writes. Every other agent you spawn is read-only and exists to check the plan, never to change it.
 
-Run log: `docs/harness_logs/claude-code/<YYYYMonDD>_<plan-filename-stem>/review.md` (create the run directory if missing; the tree
-gitignored). If that file already exists, append a new dated section rather than overwriting it.
+Run log: `docs/harness_logs/claude-code/<YYYYMonDD>_<plan-filename-stem>/review.md` (create the run
+directory if missing; the tree is gitignored). If that file already exists, append a new dated section rather than overwriting it.
 
 Follow `docs/harness_logs/TEMPLATE.md`: header first (`harness: claude-code`), one `date` stamp per stage heading, no token numbers. As the last step before the report, run `python3 scripts/log_metrics.py <run log>`; if it prints an error, continue.
 
