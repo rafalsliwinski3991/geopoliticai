@@ -1,48 +1,67 @@
 ---
-description: Check every unresolved review comment on the PRs of a gh-stack chain, then address or reject each one and reply in-thread
-agent: build
-model: opencode-go/glm-5.3-flash
+description: Check every unresolved review comment on a pull request or on a gh-stack chain, then address or reject each one and reply in-thread
+argument-hint: "[optional PR number or branch]"
+allowed-tools: Read, Edit, Write, Glob, Grep, Bash, AskUserQuestion, mcp__context7__resolve-library-id, mcp__context7__query-docs, mcp__plugin_context7_context7__resolve-library-id, mcp__plugin_context7_context7__query-docs, mcp__tavily-remote-mcp__tavily_search, mcp__tavily-remote-mcp__tavily_extract
 ---
-> **Harness note.** This workflow was written for Claude Code conventions (frontmatter
-> `allowed-tools`, `AskUserQuestion`, lens subagents). OpenCode handles all of this inline: run the
-> steps yourself, ask the user with the `question` tool where a confirmation is called for, and
-> never dispatch a named lens. Every other rule applies unchanged.
 
 Review input: $ARGUMENTS
 
-You are the **feedback responder** of a stacked pull-request chain. For every open layer you collect
-all unresolved review threads and standalone comments, decide for each one whether to **apply** the
-requested change (by editing code, committing, and pushing to the layer branch) or to **reject** it
-(with a reasoned rebuttal), and post exactly one reply per thread. You never mark a thread resolved
-yourself — the human reviewer closes threads after reading your reply.
+You are the **feedback responder** for one pull request or for a stacked pull-request chain. You
+collect all unresolved review threads and standalone comments on each open pull request in scope,
+decide for each one whether to **apply** the requested change (by editing code, committing, and
+pushing to the branch) or to **reject** it (with a reasoned rebuttal), and post exactly one reply
+per thread. You never mark a thread resolved yourself — the human reviewer closes threads after
+reading your reply.
 
-Run log: `docs/harness_logs/opencode/<YYYYMonDD>_<stack-slug>/stack_address_feedback.md` (create the run directory if missing; the tree is gitignored). If it exists, append a new dated section.
+Run log: `docs/harness_logs/claude-code/<YYYYMonDD>_<branch-name-or-stack-slug>/address_feedback.md`
+(create the run directory if missing; the tree is gitignored). Name the run directory for the pull
+request's branch in single-PR mode and for the stack in stack mode. If that file already exists,
+append a new dated section rather than overwriting it.
 
-Follow `docs/harness_logs/TEMPLATE.md`: header first (`harness: opencode`), one `date` stamp per stage heading, no token numbers. As the last step before the report, run `python3 scripts/log_metrics.py <run log>`; if it prints an error, continue.
+Follow `docs/harness_logs/TEMPLATE.md`: header first (`harness: claude-code`), one `date` stamp per stage heading, no token numbers. As the last step before the report, run `python3 scripts/log_metrics.py <run log>`; if it prints an error, continue.
 
 ---
 
-## Step 1 — Resolve the stack
+## Step 1 — Resolve the pull request, or the stack
 
-Confirm `gh auth status` succeeds and `gh stack --help` is available; if the extension is missing,
-stop and report `gh extension install github/gh-stack`.
+Confirm `gh auth status` succeeds; if it fails, stop. Check the `gh stack` extension with
+`gh stack --help`; if the extension is missing, say so, skip stack detection entirely, and go
+straight to single-PR mode.
 
-Start from the branch or PR in `$ARGUMENTS`, else the current branch. Run `gh stack view` and read
-the ordered layers bottom to top. For each layer branch, fetch its pull request:
+Start from the pull request named in `$ARGUMENTS` (a PR number or a branch), else the current
+branch's pull request. This command requires a pull request — a draft PR counts. Run `gh stack view`
+on that pull request's head branch to detect the mode:
+
+- **Stack mode** — the chain has **more than one open layer**. Work every open layer bottom to
+  top, each layer on its own branch.
+- **Single-PR mode** — the chain has exactly one open layer, or `gh stack view` errors because the
+  branch is not in a stack. Work that one pull request and stop.
+
+If neither a stack nor a pull request exists, refuse before anything else and tell the user to open
+a PR first:
+
+```text
+Nothing to address — /rs-address-feedback addresses review feedback on a pull request (a draft PR
+counts). Open one first, then rerun the command.
+```
+
+In stack mode, read the ordered layers bottom to top and fetch each layer branch's pull request:
 
 ```bash
 gh pr view <branch> --json number,url,title,body,baseRefName,headRefName,headRefOid,state
 ```
 
-Skip merged or closed layers and say so. If a branch has no PR, or a PR's `baseRefName` is not the
-layer below it (the bottom layer's base is the trunk), stop and report the mismatch rather than
-working against the wrong parent.
+Skip merged or closed layers and say so. Stop and report a mismatch rather than working against the
+wrong parent when a layer has no pull request (tell the user to open a draft PR for it), or when a
+PR's `baseRefName` is not the layer below it (the bottom layer's base is the trunk).
 
-The step is done when the run log holds a table: order, branch, PR number, base, head SHA.
+The step is done when the run log holds the mode and a table: order, branch, PR number, base, head
+SHA — one row per pull request to address.
 
 ## Step 2 — Collect unresolved feedback
 
-For each open layer, fetch all review comments and their resolution state:
+For each open pull request — the single row in single-PR mode, bottom to top in stack mode — fetch
+all review comments and their resolution state:
 
 ```bash
 gh api repos/{owner}/{repo}/pulls/<number>/comments --paginate
@@ -71,7 +90,8 @@ The step is done when the run log lists every unresolved thread per PR, or `NONE
 
 ## Step 3 — Evaluate each thread
 
-For each unresolved thread, bottom-to-top layer order, decide **apply** or **reject**. To decide:
+For each unresolved thread, bottom-to-top layer order in stack mode, decide **apply** or
+**reject**. To decide:
 
 1. Fetch the layer diff (`git fetch origin <base> <head> --quiet` then
    `git diff origin/<base>...origin/<head>` at the head SHA the comment was pinned to) and read the
@@ -126,11 +146,12 @@ once:
 
 For each **apply**:
 
-1. Check out the layer branch, make the edit, run that layer's lint and tests, and commit with a
+1. Check out the branch, make the edit, run that pull request's lint and tests, and commit with a
    conventional message referencing the thread (for example `fix: handle empty payload
    (review thread, #<pr>)`).
-2. Push to the layer branch. Push bottom to top so the stack rebases cleanly; after pushing a
-   lower layer, rebase the layers above it and force-push with `--force-with-lease`.
+2. Push the change. In single-PR mode a plain `git push` to that branch is correct; no rebase or
+   force-push is needed. In stack mode, push bottom to top so the stack rebases cleanly; after
+   pushing a lower layer, rebase the layers above it and force-push with `--force-with-lease`.
 3. Post the reply **after** the push so it can cite the pushed commit SHA.
 
 For each **reject**, post the reply as-is, citing evidence gathered in Step 3.
@@ -158,22 +179,26 @@ with `CC:` already exists (from this run or a previous one).
 Print to the terminal and write to the run log:
 
 ```text
-Stack address-feedback: <stack-slug>, <N> layers, <M> skipped
+Address-feedback (<mode>): <N> pull request(s) addressed, <M> skipped
 #<pr> <branch> — <A> applied, <R> rejected, <P> replies posted, <U> undecidable/manual
 ...
-Pushed commits: <list per layer, or none>
-Run log: docs/harness_logs/opencode/<YYYYMonDD>_<stack-slug>/stack_address_feedback.md
+Pushed commits: <list per branch, or none>
+Run log: docs/harness_logs/claude-code/<YYYYMonDD>_<branch-name-or-stack-slug>/address_feedback.md
 ```
 
 Say plainly what remains unverified — threads answered without a Context7 check, threads whose code
 you did not run, and any apply whose tests did not run clean.
 
+---
+
 ## Standing rules
 
+- Every apply is committed and pushed to its pull request's branch. In single-PR mode a plain
+  `git push` is correct. In stack mode, pushes go bottom to top, layer by layer,
+  `--force-with-lease` only.
 - One reply per thread, exactly prefixed `CC: <MODEL_NAME> -> applied:` or
   `CC: <MODEL_NAME> -> rejected:`. Nothing else is posted.
 - No framework claim or applied fix goes in without a Context7 check against the pinned version.
 - The code wins over the PR body and over the reviewer's claim; note disagreements in the run log.
 - Never resolve threads, never re-request review, never change the PR state.
-- Applies are committed and pushed layer by layer, bottom to top, `--force-with-lease` only.
 - Quote each thread's motivating line in the run log next to its decision.

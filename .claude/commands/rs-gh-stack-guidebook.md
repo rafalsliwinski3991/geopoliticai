@@ -11,7 +11,7 @@ Input: $ARGUMENTS
 Turn one pull request, or one stacked chain of them, into one published Artifact page: the **guidebook**.
 Its reader is the person deciding whether to merge. After reading it they know four things: what the whole
 change does, how to review each PR, every review finding with what happened to it, and what is still open.
-Run it after `/rs-code-review` and `rs-gh-stack-address-feedback`, so the outcomes exist.
+Run it after `/rs-code-review` and `/rs-address-feedback`, so the outcomes exist.
 
 The guidebook reports and never decides. This command writes one HTML file and publishes it. It never edits
 code, pull requests, comments, or threads. It never commits, pushes, or checks out a branch.
@@ -81,7 +81,7 @@ Turn every thread into one **finding** with these fields:
 How to report each outcome:
 - Report "applied" as **applied**, never as "fixed". The reply says what was changed, and the reader judges
   whether that fixes the finding.
-- `isResolved` is not an outcome. `rs-gh-stack-address-feedback` never resolves threads.
+- `isResolved` is not an outcome. `/rs-address-feedback` never resolves threads.
 - Show the resolved and outdated state only as a column.
 - When `latest.totalCount` is above 50, mark the thread "older replies not read".
 
