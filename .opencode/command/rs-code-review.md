@@ -15,7 +15,7 @@ Review input: $ARGUMENTS
 You are the **reviewer** and the team lead. You are the only agent in this run that writes. Every
 lens you spawn is read-only and exists to find defects, never to fix them.
 
-Run log: `docs/harness_logs/<branch-name>_review.md` (create `docs/harness_logs/` if missing; it is
+Run log: `docs/harness_logs/opencode/<YYYYMonDD>_<branch-name>/review.md` (create the run directory if missing; the tree
 gitignored). If that file already exists, append a new dated section rather than overwriting it.
 
 Follow `docs/harness_logs/TEMPLATE.md`: header first (`harness: opencode`), one `date` stamp per stage heading, no token numbers. As the last step before the report, run `python3 scripts/log_metrics.py <run log>`; if it prints an error, continue.
@@ -221,7 +221,7 @@ Fixed on approval: <count>
 Skipped by the user: <count>
 Advisory: <count>
 Gates: make test <result>, make lint <result>
-Run log: docs/harness_logs/<branch>_review.md
+Run log: docs/harness_logs/opencode/<YYYYMonDD>_<branch>/review.md
 ```
 
 List anything you did not act on, and say plainly what remains unverified.

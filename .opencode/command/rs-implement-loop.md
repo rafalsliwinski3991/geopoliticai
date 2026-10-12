@@ -8,7 +8,7 @@ Brainstorm: $ARGUMENTS
 
 Implement a brainstorm's design in a loop that ends when the user's definition of done holds. The first argument is the artifact path (`docs/brainstorming/*.md`); the rest, if any, names the slice to build. You write the code, the tests, and the loop file.
 
-The loop file is `docs/harness_logs/<slug>-loop/loop.md` (gitignored; `<slug>` is the artifact's topic slug). It holds the definition of done and one entry per iteration, and is exempt from `docs/harness_logs/TEMPLATE.md`: no header, no metrics table. Trust it and `git log` over your recollection. If it already exists, read it, check out the branch it records, and resume at Step 4.
+The loop file is `docs/harness_logs/opencode/<YYYYMonDD>_<slug>/loop.md` (gitignored; `<slug>` is the artifact's topic slug). It holds the definition of done and one entry per iteration, and is exempt from `docs/harness_logs/TEMPLATE.md`: no header, no metrics table. Trust it and `git log` over your recollection. If it already exists, read it, check out the branch it records, and resume at Step 4.
 
 ---
 
