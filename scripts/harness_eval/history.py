@@ -2,6 +2,7 @@
 the step-summary tables that compare each run with the ones before it.
 """
 
+import html
 import json
 from collections.abc import Iterable
 from itertools import groupby
@@ -19,8 +20,8 @@ LEGEND = (
     "est. $ is each tool's own list-price estimate. ⏱ timed out; ✗ the agent crashed.\n"
 )
 TABLE_HEAD = (
-    "| run | date | note | n | quality | tokens | est. $ | time | q/Mtok |\n"
-    "|---|---|---|---|---|---|---|---|---|\n"
+    "| run | date | note | n | units | quality | tokens | est. $ | time | q/Mtok |\n"
+    "|---|---|---|---|---|---|---|---|---|---|\n"
 )
 MEANS = ("overall", "tokens_total", "est_cost_usd", "minutes", "quality_per_mtok")
 
@@ -39,6 +40,9 @@ def row(
         "judge_version": judge_version,
         "subject": judged["subject"],
         "repeat": judged["repeat"],
+        "unit": judged.get("unit"),
+        "units_done": (judged.get("stack_checks") or {}).get("units_done"),
+        "units_total": (judged.get("stack_checks") or {}).get("units_total"),
         "model": judged["model"],
         "overall": overall,
         "scores": {c["name"]: c["score"] for c in judged["criteria"]},
@@ -63,10 +67,10 @@ def load(path: Path) -> list[dict[str, Any]]:
 
 def append(path: Path, rows: Iterable[dict[str, Any]]) -> None:
     """Skip rows already recorded, so re-running the judge job adds nothing twice."""
-    seen = {(r["run_id"], r["subject"], r["repeat"]) for r in load(path)}
+    seen = {(r["run_id"], r["subject"], r.get("unit"), r["repeat"]) for r in load(path)}
     with path.open("a") as f:
         for r in rows:
-            key = (r["run_id"], r["subject"], r["repeat"])
+            key = (r["run_id"], r["subject"], r.get("unit"), r["repeat"])
             if key not in seen:
                 seen.add(key)
                 f.write(json.dumps(r, sort_keys=True) + "\n")
@@ -88,7 +92,9 @@ def runs(rows: list[dict[str, Any]], subject: str) -> list[dict[str, Any]]:
             "date": g[0]["date"],
             "note": g[0]["note"],
             "judge_version": g[0]["judge_version"],
-            "n": len(g),
+            "n": len({r["repeat"] for r in g}),
+            "units_done": _mean(g, "units_done"),
+            "units_total": g[0].get("units_total"),
             "timed_out": any(r["timed_out"] for r in g),
             "agent_failed": any(r.get("agent_failed") for r in g),
             **{k: _mean(g, k) for k in MEANS},
@@ -116,7 +122,7 @@ def _mtok(value: float | None) -> float | None:
 
 
 def _escape(text: str) -> str:
-    return text.replace("|", "\\|").replace("\n", " ")
+    return html.escape(text, quote=False).replace("|", "\\|").replace("\n", " ")
 
 
 def render_subject(entries: list[dict[str, Any]]) -> str:
@@ -124,7 +130,7 @@ def render_subject(entries: list[dict[str, Any]]) -> str:
     prev: dict[str, Any] | None = None
     for e in entries:
         if prev is not None and e["judge_version"] != prev["judge_version"]:
-            lines.append(f"| | | **judge changed → {e['judge_version']}** | | | | | | |\n")
+            lines.append(f"| | | **judge changed → {e['judge_version']}** | | | | | | | |\n")
             prev = None
         p = prev or {}
         marks = (" ⏱" if e["timed_out"] else "") + (" ✗" if e["agent_failed"] else "")
@@ -134,9 +140,14 @@ def render_subject(entries: list[dict[str, Any]]) -> str:
         )
         cost = _cell(e["est_cost_usd"], "${:.2f}") + _delta(e["est_cost_usd"], p.get("est_cost_usd"), "${:.2f}")
         time = _cell(e["minutes"], "{:.0f}m") + _delta(e["minutes"], p.get("minutes"), "{:.0f}m")
+        units = (
+            "—"
+            if e["units_total"] is None or e["units_done"] is None
+            else f"{e['units_done']:.0f}/{e['units_total']}"
+        )
         lines.append(
-            f"| {e['run_id']} | {e['date']} | {_escape(e['note'])} | {e['n']} | {quality}{marks} "
-            f"| {tokens} | {cost} | {time} | {_cell(e['quality_per_mtok'], '{:.1f}')} |\n"
+            f"| {e['run_id']} | {e['date']} | {_escape(e['note'])} | {e['n']} | {units} "
+            f"| {quality}{marks} | {tokens} | {cost} | {time} | {_cell(e['quality_per_mtok'], '{:.1f}')} |\n"
         )
         prev = e
     return TABLE_HEAD + "".join(lines)
@@ -151,13 +162,37 @@ def render(rows: list[dict[str, Any]]) -> str:
     return "".join(out)
 
 
+def render_by_unit(judged: list[dict[str, Any]]) -> str:
+    """This run's implement legs: one row per leg and repeat, one column per unit."""
+    graded = [j for j in judged if j.get("unit")]
+    if not graded:
+        return ""
+    units = sorted({j["unit"] for j in graded})
+    score = {(j["subject"], j["repeat"], j["unit"]): j["overall"] for j in graded}
+    head = "| leg | " + " | ".join(f"u{u}" for u in units) + " | mean |\n"
+    rule = "|---" * (len(units) + 2) + "|\n"
+    rows = []
+    for subject, repeat in sorted({(j["subject"], j["repeat"]) for j in graded}):
+        cells = [score.get((subject, repeat, u)) for u in units]
+        known = [c for c in cells if c is not None]
+        rows.append(
+            f"| {subject} #{repeat} | "
+            + " | ".join(_cell(c, "{:.2f}") for c in cells)
+            + f" | {_cell(mean(known) if known else None, '{:.2f}')} |\n"
+        )
+    return "\n## This run, by unit\n\n" + head + rule + "".join(rows)
+
+
 def render_reasoning(judged: list[dict[str, Any]]) -> str:
     out = ["\n## This run's verdicts\n"]
     for j in judged:
-        out.append(f"\n### {j['subject']} #{j['repeat']} — {j['overall']:.2f}\n\n")
+        unit = f" u{j['unit']}" if j.get("unit") else ""
+        out.append(
+            f"\n<details><summary>{j['subject']} #{j['repeat']}{unit} — {j['overall']:.2f}</summary>\n\n"
+        )
         out.append(f"{_escape(j['summary'])}\n\n| criterion | score | reasoning |\n|---|---|---|\n")
         for c in j["criteria"]:
             capped = f" (capped at {c['cap']})" if c["cap"] is not None else ""
             out.append(f"| {c['name']} | {c['score']}{capped} | {_escape(c['reasoning'])} |\n")
-        out.append(f"\nHard checks: `{json.dumps(j['hard_checks'], sort_keys=True)}`\n")
+        out.append(f"\nHard checks: `{json.dumps(j['hard_checks'], sort_keys=True)}`\n\n</details>\n")
     return "".join(out)
