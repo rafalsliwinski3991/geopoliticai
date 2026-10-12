@@ -40,7 +40,8 @@ Keep it terse: logging costs tokens.
   fits. Do not add more.
 - The `rs-implement-plan` ledger (`docs/harness_logs/<harness>/<plan-stem>/ledger.md`) is exempt: its
   first line stays the plan path, and it has no header and no metrics table.
-- The `rs-implement-loop` and `rs-prototype-loop` loop files
+- The `rs-implement-from-brainstorm-in-loop` and
+  `rs-prototype-from-brainstorm-in-loop` loop files
   (`docs/harness_logs/<harness>/<YYYYMonDD>_<slug>/loop.md`) are exempt the same way: no header and
   no metrics table.
 
