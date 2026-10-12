@@ -208,7 +208,6 @@ jobs:
           else
             start=$(jq -r .implement.start "src/$TASK/task.json")
             fixture=$(jq -r .implement.fixture "src/$TASK/task.json")
-            echo "first_unit=$(jq -r '.implement.units | keys[0]' "src/$TASK/task.json")" >> "$GITHUB_OUTPUT"
             input=$(jq -r .implement.plan "src/$TASK/task.json")
             output=""
             echo "name=rs-implement-plan" >> "$GITHUB_OUTPUT"
@@ -337,7 +336,6 @@ jobs:
           CHECKS: ${{ steps.before.outputs.tests }},${{ steps.after.outputs.tests }},${{ steps.after.outputs.lint }}
           OUTCOME: ${{ matrix.harness == 'claude' && steps.claude.outcome || steps.opencode.outcome }}
           STEP_MINUTES: ${{ matrix.step_minutes }}
-          FIRST_UNIT: ${{ steps.ws.outputs.first_unit }}
           # The keys the agent saw in .env, scrubbed from every uploaded file.
           # Only those: this step runs code from $RUNNER_TEMP/tools, which the
           # agent could have edited, so it never receives a secret the agent
@@ -355,7 +353,7 @@ jobs:
             --output "${{ steps.ws.outputs.output }}" \
             --started-file "$RUNNER_TEMP/started" --ended-file "$RUNNER_TEMP/ended" \
             --step-timeout-s "$((STEP_MINUTES * 60))" --agent-outcome "$OUTCOME" \
-            --checks "$CHECKS" --first-unit "${FIRST_UNIT:-1}" \
+            --checks "$CHECKS" \
             --redact-env OPENAI_API_KEY,BRAVE_SEARCH_KEY,GEMINI_API_KEY,OPENROUTER_API_KEY \
             --out "$RUNNER_TEMP/out"
 
