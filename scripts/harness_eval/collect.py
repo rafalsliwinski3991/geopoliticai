@@ -149,12 +149,12 @@ def _unit_diff(ws: Path, out: Path, unit: str, refs: list[str], complete: bool) 
 
 
 def split_stack(
-    ws: Path, base: str, ledger: str, out: Path
+    ws: Path, base: str, ledger: str, out: Path, first_unit: int = 1
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     """Cut the agent's stack into one diff per unit branch.
 
     Unit N's diff runs from the previous unit's branch (the overlay commit for
-    the first) to its own branch. The branch checked out at the end is diffed
+    `first_unit`) to its own branch. The branch checked out at the end is diffed
     against the working tree instead, so a run stopped mid-unit keeps its
     uncommitted work; call after `capture_diff`, whose intent-to-add makes
     untracked files part of that diff. Completion comes from the ledger.
@@ -165,7 +165,7 @@ def split_stack(
     current = git(ws, "branch", "--show-current").strip()
     units: list[dict[str, Any]] = []
     chained, start = bool(branches), base
-    for number, (unit, branch) in enumerate(branches.items(), 1):
+    for number, (unit, branch) in enumerate(branches.items(), first_unit):
         if unit != f"{number:02d}":
             # A missing unit's work would land in this unit's diff.
             chained = False
@@ -249,6 +249,7 @@ def main() -> None:
     p.add_argument(
         "--redact-env", default="", help="comma-separated names of env vars whose values are scrubbed"
     )
+    p.add_argument("--first-unit", type=int, default=1, help="the number of the first unit the agent builds")
     p.add_argument("--out", type=Path, required=True)
     args = p.parse_args()
 
@@ -267,7 +268,7 @@ def main() -> None:
         (args.out / "candidate.md").write_text(plan.read_text() if plan.exists() else "")
     else:
         changed = capture_diff(args.ws, args.base, args.out)
-        units, stack = split_stack(args.ws, args.base, read_ledger(args.ws), args.out)
+        units, stack = split_stack(args.ws, args.base, read_ledger(args.ws), args.out, args.first_unit)
     logs = args.ws / "docs" / "harness_logs"
     if logs.is_dir():
         shutil.copytree(logs, args.out / "harness_logs", dirs_exist_ok=True)

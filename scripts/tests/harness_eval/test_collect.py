@@ -396,6 +396,28 @@ def test_a_missing_unit_stops_the_cut_and_breaks_the_chain(tmp_path):
     assert (stack["units_reached"], stack["chained"]) == (2, False)
 
 
+def test_a_run_may_start_at_a_later_unit(tmp_path):
+    # Arrange
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    _git(ws, "init", "-q", "-b", "eval-base")
+    _commit_file(ws, "base.txt", "b")
+    base = _rev(ws, "HEAD")
+    _git(ws, "checkout", "-q", "-b", "fc/05-graph")
+    _commit_file(ws, "graph.txt", "g\n")
+    out = tmp_path / "out"
+    out.mkdir()
+
+    # Act
+    from_five, stack = collect.split_stack(ws, base, "Unit 5: complete\n", out, first_unit=5)
+    from_one, _ = collect.split_stack(ws, base, "Unit 5: complete\n", tmp_path / "out1")
+
+    # Assert
+    assert [(u["unit"], u["complete"]) for u in from_five] == [("05", True)]
+    assert (stack["units_reached"], stack["chained"]) == (1, True)
+    assert from_one == []
+
+
 def test_a_unit_branch_without_changes_is_not_reached(tmp_path):
     # Arrange
     ws, base, out = _stack(tmp_path, LEDGER)

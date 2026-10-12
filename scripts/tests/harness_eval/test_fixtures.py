@@ -9,8 +9,9 @@ from harness_eval import judge
 REPO = Path(__file__).resolve().parents[3]
 FIXTURE = REPO / "scripts" / "harness_eval" / "fixtures" / "deep_forecaster"
 SHA_RE = re.compile(r"[0-9a-f]{40}")
-UNITS = [f"{n:02d}" for n in range(1, 10)]
-FILE_COUNTS = {"01": 13, "02": 5, "03": 25, "04": 22, "05": 25, "06": 26, "07": 24, "08": 8, "09": 22}
+UNITS = ["05"]
+FILE_COUNTS = {"05": 25}
+IMPL_PLAN = "ref_plan_to_impl_leg.md"
 
 
 def load_task() -> dict:
@@ -19,7 +20,7 @@ def load_task() -> dict:
 
 def plan_headings() -> list[str]:
     """The plan's unit headings, unit by unit: the stack line, §4.N, then §5.N."""
-    lines = (FIXTURE / "plan.md").read_text().splitlines()
+    lines = (FIXTURE / IMPL_PLAN).read_text().splitlines()
     groups = [
         [line for line in lines if re.match(pattern, line)]
         for pattern in (r"### Unit \d\d: ", r"### 4\.\d Unit \d\d: ", r"### 5\.\d Unit \d\d$")
@@ -27,12 +28,17 @@ def plan_headings() -> list[str]:
     return [heading for unit in zip(*groups, strict=True) for heading in unit]
 
 
+def unit_05_headings() -> list[str]:
+    """Unit 05 is the fifth unit of the plan: headings 12 to 14 of the nine units' 27."""
+    return plan_headings()[12:15]
+
+
 def all_headings() -> list[str]:
     units = load_task()["implement"]["units"]
     return [h for unit in units.values() for h in unit["sections"]]
 
 
-def test_task_has_nine_units_in_order():
+def test_task_has_unit_05_only():
     # Arrange
     task = load_task()
 
@@ -49,23 +55,21 @@ def test_task_has_nine_units_in_order():
     assert {n: len(u["files"]) for n, u in units.items()} == FILE_COUNTS
 
 
-def test_units_chain_on_main():
+def test_the_agent_starts_where_unit_05_starts():
     # Arrange
     task = load_task()
-    units = list(task["implement"]["units"].values())
 
     # Act
-    starts = [u["ref_start"] for u in units]
-    expected = [task["implement"]["start"]] + [u["ref_end"] for u in units[:-1]]
+    unit = task["implement"]["units"]["05"]
 
     # Assert
-    assert starts == expected
+    assert task["implement"]["start"] == unit["ref_start"]
 
 
 @pytest.mark.parametrize("heading", all_headings())
 def test_every_unit_section_parses_whole(heading):
     # Arrange
-    plan = (FIXTURE / "plan.md").read_text()
+    plan = (FIXTURE / IMPL_PLAN).read_text()
 
     # Act
     block = judge.section(plan, heading)
@@ -77,7 +81,7 @@ def test_every_unit_section_parses_whole(heading):
         assert "write_analysis" in block
 
 
-def test_every_unit_section_count_is_twenty_seven():
+def test_unit_05_has_three_sections():
     # Arrange
     headings = all_headings()
 
@@ -85,31 +89,33 @@ def test_every_unit_section_count_is_twenty_seven():
     count = len(headings)
 
     # Assert
-    assert count == 27
+    assert count == 3
 
 
 def test_plan_leg_files_exist():
     # Arrange
     task = load_task()
-    names = ["brainstorm.md", "plan.md", task["plan"]["reference"]]
+    names = ["brainstorm.md", task["implement"]["fixture"], task["plan"]["reference"]]
 
     # Act
     missing = [n for n in names if not (FIXTURE / n).is_file()]
 
     # Assert
     assert missing == []
-    assert (FIXTURE / "plan_v1.md").read_text() != (FIXTURE / "plan.md").read_text()
+    assert task["implement"]["fixture"] == IMPL_PLAN
+    assert task["plan"]["reference"] == "ref_plan_to_plan_leg.md"
+    assert (FIXTURE / task["plan"]["reference"]).read_text() != (FIXTURE / IMPL_PLAN).read_text()
 
 
-def test_unit_sections_are_the_plans_unit_headings_in_order():
+def test_unit_sections_are_the_plans_unit_05_headings():
     # Arrange
-    expected = plan_headings()
+    expected = unit_05_headings()
 
     # Act
     actual = all_headings()
 
     # Assert
-    assert len(expected) == 27
+    assert len(plan_headings()) == 27
     assert actual == expected
 
 
