@@ -30,6 +30,8 @@ Keep it terse: logging costs tokens.
   fits. Do not add more.
 - The `rs-implement-plan` ledger (`<plan-stem>/ledger.md`) is exempt: its first line stays the plan
   path, and it has no header and no metrics table.
+- The `rs-implement-loop` and `rs-prototype-loop` loop files (`<slug>-loop/loop.md`,
+  `<slug>-prototype/loop.md`) are exempt the same way: no header and no metrics table.
 
 ## Pre-flight — <harness> (YYYY-MM-DD HH:MM–HH:MM)
 
