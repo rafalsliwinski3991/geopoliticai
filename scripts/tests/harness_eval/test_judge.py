@@ -86,8 +86,15 @@ def test_score_reorders_by_name_and_rejects_missing():
 
 
 def test_ask_raises_on_empty_text():
-    with pytest.raises(RuntimeError, match="content_filter"):
-        judge.ask(FakeClient(text=None), "prompt")
+    # Arrange
+    client = FakeClient(text=None)
+
+    # Act
+    with pytest.raises(RuntimeError) as raised:
+        judge.ask(client, "prompt")
+
+    # Assert
+    assert "content_filter" in str(raised.value)
 
 
 def test_ask_requires_providers_that_honour_the_schema():
