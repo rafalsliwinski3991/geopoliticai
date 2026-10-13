@@ -21,7 +21,7 @@ Do not dispatch `general`, `explore`, `preflight-scout`, `commit-auditor`, or a 
 
 Every argument is a plan path. Run them in the order given. Each plan has its own ledger, unit branches, and pull requests. Steps 1 and 2 cover every plan, then Steps 3–6 run one plan at a time. The next plan starts from a fresh checkout of the base branch.
 
-Workspace, one directory per plan: `docs/harness_logs/<plan-filename-stem>/`. It is gitignored. Create it if missing. Files:
+Workspace, one directory per plan: `docs/harness_logs/opencode/<plan-filename-stem>/`. It is gitignored. Create it if missing. Files:
 
 - `ledger.md` — resume map. Trust it and `git log` over your own memory. It is exempt from `docs/harness_logs/TEMPLATE.md`: no header, no metrics table.
 - `unit-<NN>-brief.md` — that unit only.

@@ -16,8 +16,8 @@ You are the **merger** of a stacked pull-request chain. You merge the whole chai
 one atomic `gh stack merge`, then close every source its PRs name. You never edit code, push, or
 rewrite commits.
 
-Run log: `docs/harness_logs/<stack-slug>_stack_merge.md` (create `docs/harness_logs/` if missing; it is
-gitignored). If it exists, append a new dated section.
+Run log: `docs/harness_logs/opencode/<YYYYMonDD>_<stack-slug>/stack_merge.md` (create the run
+directory if missing; the tree is gitignored). If it exists, append a new dated section.
 
 Follow `docs/harness_logs/TEMPLATE.md`: header first (`harness: opencode`), one `date` stamp per stage heading, no token numbers. As the last step before the report, run `python3 scripts/log_metrics.py <run log>`; if it prints an error, continue.
 

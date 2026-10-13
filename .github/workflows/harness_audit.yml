@@ -2,29 +2,15 @@ name: Harness Audit
 
 # Advisory: Claude Code reads the Claude Code, OpenCode, and Copilot harnesses
 # against the checklist in scripts/harness_audit/prompt.md, and the report job
-# files one issue per run holding every finding. Gates nothing. Runs on pull
-# requests from this repository that change harness files, and by hand. Each
-# run spends the Claude Code subscription's usage limit.
+# files one issue per run holding every finding. Gates nothing. Runs by hand
+# only (Actions tab, on the branch to audit), never on a pull request, because
+# each run spends the Claude Code subscription's usage limit.
 on:
-  pull_request:
-    paths:
-      - ".claude/**"
-      - ".opencode/**"
-      - ".github/prompts/**"
-      - ".github/agents/**"
-      - ".github/skills/**"
-      - ".github/copilot-instructions.md"
-      - "AGENTS.md"
-      - "CLAUDE.md"
-      - "opencode.jsonc"
-      - "Makefile"
-      - "scripts/harness_audit/**"
-      - ".github/workflows/harness_audit.yml"
   workflow_dispatch:
 
 concurrency:
-  # A newer push to the same pull request replaces a running audit.
-  group: harness-audit-${{ github.event.pull_request.number || github.ref }}
+  # A newer manual run on the same ref replaces a running audit.
+  group: harness-audit-${{ github.ref }}
   cancel-in-progress: true
 
 permissions: {}
@@ -34,14 +20,6 @@ env:
 
 jobs:
   audit:
-    # The run holds the subscription token, so never a fork's pull request;
-    # Dependabot's pull requests get no repository secrets, so skip those too —
-    # by the pull request's author, not the event actor, so a maintainer pushing
-    # to a Dependabot branch does not change the decision.
-    if: >-
-      github.event_name == 'workflow_dispatch' ||
-      (github.event.pull_request.head.repo.full_name == github.repository &&
-      github.event.pull_request.user.login != 'dependabot[bot]')
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -50,7 +28,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ github.sha }}
           persist-credentials: false
 
       - name: Set up Node
@@ -110,12 +88,10 @@ jobs:
       contents: read
       issues: write
     steps:
-      # The job that holds the issues token runs the base branch's report.py,
-      # never the pull request's; the PR head reaches it only as --sha.
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.base.sha || github.sha }}
+          ref: ${{ github.sha }}
           persist-credentials: false
 
       - name: Download the findings
@@ -129,15 +105,10 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          NUM: ${{ github.event.pull_request.number }}
-          SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          SHA: ${{ github.sha }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
-          if [ -n "$NUM" ]; then
-            TARGET="PR #$NUM"
-          else
-            TARGET="$GITHUB_REF_NAME"
-          fi
+          TARGET="$GITHUB_REF_NAME"
           # The base checkout of a single squashed bootstrap PR can predate
           # report.py; file nothing rather than fail the advisory job.
           if [ ! -f harness_audit/report.py ]; then

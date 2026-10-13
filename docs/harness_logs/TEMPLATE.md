@@ -13,7 +13,18 @@ ended: <output of `date -Iseconds`, written last>
 
 # Run log — <subject>
 
-One file per subject, shared by every harness. This folder is gitignored except this template.
+One run log per run, in that run's directory under its harness. The layout for every command run is:
+
+    docs/harness_logs/<harness>/<YYYYMonDD>_<slug>/<log-name>
+
+`harness` is `claude-code`, `opencode`, or `copilot`; the dir is named `<YYYYMonDD>_<slug>`, the slug
+being the run's topic (a branch name, plan stem, or stack slug); `<log-name>` keeps the command's own
+suffix file name — `review.md`, `stack_review.md`, `stack_merge.md`, `stack_address_feedback.md`,
+`loop.md` — and the two HTML outputs (`explainer.html`, `guidebook.html`) land in the same run dir.
+A rerun on the same day appends a dated section inside that file; a rerun on a later day starts a new
+`<YYYYMonDD>_<slug>` directory. The `rs-implement-plan` ledger is the exception: it lives in an undated
+`docs/harness_logs/<harness>/<plan-filename-stem>/ledger.md` and is reused across days. This tree is
+gitignored except this template.
 Keep it terse: logging costs tokens.
 
 ## How to fill it in
@@ -28,10 +39,11 @@ Keep it terse: logging costs tokens.
   records and appends `## Metrics`.
 - A command may add one optional section of its own, such as `## Findings`, when none of the four
   fits. Do not add more.
-- The `rs-implement-plan` ledger (`<plan-stem>/ledger.md`) is exempt: its first line stays the plan
-  path, and it has no header and no metrics table.
-- The `rs-implement-loop` and `rs-prototype-loop` loop files (`<slug>-loop/loop.md`,
-  `<slug>-prototype/loop.md`) are exempt the same way: no header and no metrics table.
+- The `rs-implement-plan` ledger (`docs/harness_logs/<harness>/<plan-stem>/ledger.md`) is exempt: its
+  first line stays the plan path, and it has no header and no metrics table.
+- The `rs-implement-loop` and `rs-prototype-loop` loop files
+  (`docs/harness_logs/<harness>/<YYYYMonDD>_<slug>/loop.md`) are exempt the same way: no header and
+  no metrics table.
 
 ## Pre-flight — <harness> (YYYY-MM-DD HH:MM–HH:MM)
 

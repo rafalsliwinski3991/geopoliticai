@@ -39,7 +39,7 @@ or "focus on the rollout", write for that instead.
   conversation clearly identifies. If none is clear, ask with `AskUserQuestion`.
 - If the filename ends in `_v<N>.md` and a higher version of the same stem exists, ask whether to
   explain the newest version instead.
-- The local file is `docs/harness_logs/<plan-stem>_explainer.html`. The directory is gitignored.
+- The local file is `docs/harness_logs/copilot/<YYYYMonDD>_<plan-stem>/explainer.html`. The directory is gitignored.
   Create it if it is missing.
 
 ## Step 2: Read until you can explain it

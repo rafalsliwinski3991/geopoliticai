@@ -18,7 +18,7 @@ Plan: $1
 You are the implementer and the only writer. Copilot cannot dispatch subagents, so every review role
 is a separate pass of yours over a diff file, and you apply the fixes yourself. You also write the ledger, the diff files, and the pull-request bodies.
 
-Workspace: `docs/harness_logs/<plan-filename-stem>/` (gitignored; create it if missing). Files:
+Workspace: `docs/harness_logs/copilot/<plan-filename-stem>/` (gitignored; create it if missing). Files:
 
 - `ledger.md` — resume map and run log. Trust it and `git log` over your own memory. It is exempt from `docs/harness_logs/TEMPLATE.md`: no header, no metrics table.
 - `unit-<NN>.diff` — `git diff <BASE>..HEAD` for that unit, `BASE` being the unit branch's start.

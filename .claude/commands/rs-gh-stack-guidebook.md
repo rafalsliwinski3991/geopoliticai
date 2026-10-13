@@ -35,7 +35,7 @@ code, pull requests, comments, or threads. It never commits, pushes, or checks o
   - If two kept PRs share one base, stop and report the fork.
   - A PR with nothing above or below is a one-PR chain.
 - The slug is the bottom layer's branch up to its first `/`, or the whole branch name when it has none.
-- The local file is `docs/harness_logs/<slug>_guidebook.html`. The directory is gitignored; create it if missing.
+- The local file is `docs/harness_logs/claude-code/<YYYYMonDD>_<slug>/guidebook.html`. The directory is gitignored; create it if missing.
 
 The step is done when you have a table of every layer: order, PR, branch, base, state, head SHA, additions,
 deletions, changed files.
@@ -105,19 +105,20 @@ Local logs enrich the page; they never replace GitHub.
 **Plan path.** Use the second argument. Otherwise use the plan path a layer's "Why" section names. Otherwise
 ask with `AskUserQuestion`, offering "no plan".
 
-**Logs to read.** Read each of these that exists, in `docs/harness_logs/`:
+**Logs to read.** Read each of these that exists, in `docs/harness_logs/claude-code/`,
+`docs/harness_logs/opencode/`, or `docs/harness_logs/copilot/` (per-harness run dir `<YYYYMonDD>_<slug>` inside each):
 
-- **The `rs-implement-plan` ledger**, at `<plan-stem>/ledger.md` or the older `<plan-stem>_run.md`. Take
+- **The `rs-implement-plan` ledger**, at `docs/harness_logs/<harness>/<plan-stem>/ledger.md` for `<harness>` in `claude-code`, `opencode`, and `copilot`. Take
   from it:
   - the plan's units, and which commits were added to a unit during the run, with the failed check or
     finding behind each;
   - gates that are still failing or open;
   - audit minors left in place.
-- **`<slug>_stack_review.md`.** Its `Not posted: <count and reason>` line, and any per-finding
+- **`claude-code|opencode|copilot`/`<YYYYMonDD>_<slug>`/stack_review.md.** Its `Not posted: <count and reason>` line, and any per-finding
   "Dropped or not posted" list a run wrote, give findings whose outcome is **not posted**, with the
   reason. When the log has only the count, show that count and reason under the layer; never guess which
   findings they were.
-- **`<slug>_stack_address_feedback.md`.** A decision drafted there with no matching reply on GitHub gets
+- **`claude-code|opencode|copilot`/`<YYYYMonDD>_<slug>`/stack_address_feedback.md.** A decision drafted there with no matching reply on GitHub gets
   outcome **drafted, not posted**, with the drafted text.
 
 Record every path you looked for. The page lists each missing one as "Not found on this machine: `<path>`".
