@@ -1,6 +1,6 @@
 import asyncio
 import dataclasses
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 
 import httpx
 import pytest
@@ -10,7 +10,7 @@ from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanE
 
 import search
 from agents.expert.consts.sources import EXPERT_SOURCES
-from models import Candidate, SearchUnavailableError
+from models import Candidate, SearchUnavailableError, SourcePolicy
 
 _HTML = (
     "<html><body><article><p>"
@@ -176,6 +176,70 @@ async def test_search_preserves_cancellation(
     # Act + Assert
     with pytest.raises(asyncio.CancelledError):
         await search.search_allowlisted("question", EXPERT_SOURCES)
+
+
+@pytest.mark.anyio
+async def test_search_span_counts_results_and_failed_batches(
+    monkeypatch: pytest.MonkeyPatch,
+    captured_spans: InMemorySpanExporter,
+) -> None:
+    """One failed batch must not lose the surviving batches' counts on the span."""
+
+    # Arrange
+    async def fake_batch(
+        client: httpx.AsyncClient,
+        query: str,
+        domains: Sequence[str],
+        policy: SourcePolicy,
+    ) -> list[Candidate]:
+        if "reuters.com" in domains:
+            return [
+                Candidate("r1", "https://reuters.com/one", "reuters.com"),
+                Candidate("r2", "https://reuters.com/two", "reuters.com"),
+            ]
+        if "apnews.com" in domains:
+            return [Candidate("a1", "https://apnews.com/one", "apnews.com")]
+        raise httpx.ConnectError("batch down")
+
+    monkeypatch.setattr(search, "_brave_batch", fake_batch)
+    # Act
+    candidates = await search.search_allowlisted("question", EXPERT_SOURCES)
+    span = _span_by_name(captured_spans, "brave_search")
+    # Assert
+    assert len(candidates) == 3  # 2 reuters + 1 apnews survive the merge
+    attributes = _attrs(span)
+    assert attributes["search.batches"] == 3
+    assert attributes["search.failed_batches"] == 1
+    per_batch = attributes["search.results_per_batch"]
+    # OTel records sequence attributes as tuples; normalize before comparing.
+    assert isinstance(per_batch, tuple)
+    assert list(per_batch) == [2, 1]
+    assert attributes["search.candidates"] == len(candidates)
+
+
+@pytest.mark.anyio
+async def test_search_span_names_the_policy_domains(
+    monkeypatch: pytest.MonkeyPatch,
+    captured_spans: InMemorySpanExporter,
+) -> None:
+    # Arrange
+    async def fake_batch(
+        client: httpx.AsyncClient,
+        query: str,
+        domains: Sequence[str],
+        policy: SourcePolicy,
+    ) -> list[Candidate]:
+        return [Candidate("a", "https://reuters.com/one", "reuters.com")]
+
+    monkeypatch.setattr(search, "_brave_batch", fake_batch)
+    # Act
+    await search.search_allowlisted("question", EXPERT_SOURCES)
+    span = _span_by_name(captured_spans, "brave_search")
+    # Assert
+    # OTel records sequence attributes as tuples; normalize before comparing.
+    recorded = _attrs(span)["search.domains"]
+    assert isinstance(recorded, tuple)
+    assert list(recorded) == sorted(EXPERT_SOURCES.allowed_domains)
 
 
 def _html(
