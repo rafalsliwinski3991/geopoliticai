@@ -1,7 +1,7 @@
 ---
 description: Build a throwaway prototype in a loop that ends when the user's verdict answers one question
-argument-hint: "[brainstorm-path] <question>"
-allowed-tools: Read, Write, Edit, Glob, Grep, Bash, AskUserQuestion
+agent: build
+model: opencode-go/glm-5.3-flash
 ---
 
 Question: $ARGUMENTS
@@ -13,7 +13,7 @@ A prototype is throwaway code that answers a question. The question decides the 
 - **Logic or state model** ("does this feel right?"): one self-contained HTML file or script with free-play buttons and guided cases that push the state through what is hard to reason about on paper, drivable by a non-developer.
 - **Appearance** ("what should this look like?"): several radically different variants on one route, switched by a URL search param and a floating bottom bar, following the project's routing convention.
 
-The loop file is `docs/harness_logs/claude-code/<YYYYMonDD>_<slug>/loop.md` (gitignored; `<slug>` is the question in two to four kebab-case words). It holds the definition of done and one entry per round, and is exempt from `docs/harness_logs/TEMPLATE.md`: no header, no metrics table. Trust it and `git log` over your recollection. If it already exists, read it, check out the branch it records, and resume at Step 3.
+The loop file is `docs/harness_logs/opencode/<YYYYMonDD>_<slug>/loop.md` (gitignored; `<slug>` is the question in two to four kebab-case words). It holds the definition of done and one entry per round, and is exempt from `docs/harness_logs/TEMPLATE.md`: no header, no metrics table. Trust it and `git log` over your recollection. If it already exists, read it, check out the branch it records, and resume at Step 3.
 
 ---
 
@@ -59,4 +59,4 @@ The loop exits when each agent check passed in this round and the user has confi
 1. Write the verdict (the question, the answer, the evidence) into the brainstorm artifact when one was given.
 2. Stage only the prototype's own files, by path, and commit them to its branch, with the question and the verdict in the commit message. It stays out of the main branch.
 3. Push the branch when the user asked in Step 1.
-4. Report the verdict and the branch. Offer `/rs-implement-loop` to build the validated decision for real.
+4. Report the verdict and the branch. Offer `/rs-implement-from-brainstorm-in-loop` to build the validated decision for real.

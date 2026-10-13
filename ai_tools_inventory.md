@@ -49,15 +49,15 @@ Provider trees present: `.claude`, `.opencode`, `.github`.
 | rs-code-review | yes | yes | yes |
 | rs-create-stacked-prs | yes | yes | yes |
 | rs-explain-plan | yes | yes | yes |
-| rs-gh-stack-guidebook | yes | yes | yes |
 | rs-gh-stack-merge | yes | yes | yes |
-| rs-implement-loop | yes | yes | yes |
+| rs-guidebook | yes | yes | yes |
+| rs-implement-from-brainstorm-in-loop | yes | yes | yes |
 | rs-implement-plan | yes | yes | yes |
 | rs-improve-plan | yes | yes | yes |
 | rs-plan-from-asana | yes | yes | yes |
 | rs-plan-from-brainstorm | yes | yes | yes |
 | rs-plan-from-gh-issues | yes | yes | yes |
-| rs-prototype-loop | yes | yes | yes |
+| rs-prototype-from-brainstorm-in-loop | yes | yes | yes |
 | rs-review-plan | yes | yes | yes |
 
 ## Agents

@@ -1,10 +1,23 @@
 ---
-description: Explain a reviewed pull request or gh-stack chain as a published guidebook with diagrams, a size chart, and every review finding with its outcome
+name: rs-guidebook
+description: "Explain a pull request or gh-stack chain as a published guidebook with diagrams, a size chart, and every review finding with its outcome"
 argument-hint: "<PR number or branch> [plan-path]"
-allowed-tools: Read, Write, Edit, Glob, Grep, Bash, Skill, Artifact, AskUserQuestion
+agent: agent
+tools: ["edit", "execute", "read", "search"]
 ---
+> **Harness note.** This workflow was written for Claude Code, which owns the `Artifact` tool
+> (quickstart design guidance, publish, list-by-url) and the `artifact-diagramming` and `dataviz`
+> skills. Copilot has none of these: there is nothing to publish to, and no artifact skill to load.
+> Where the steps below say to call `Artifact`, design the page yourself against the rules the step
+> states (utilitarian treatment, plain HTML); skip the quickstart call. Where a step loads one of
+> those skills, apply its intent directly: charts that plot the collected numbers to scale, and
+> diagrams drawn as inline SVG or plain HTML. Where a step says to ask with `AskUserQuestion`, ask
+> the user in chat. "Publish" degrades to writing the local HTML file: do the fidelity and
+> readability passes the same way, skip the publish and `action: "list"` steps, and report the
+> local file path in place of an artifact URL, saying that no artifact was published. Every other
+> rule applies unchanged.
 
-# Stack guidebook
+# Guidebook
 
 Input: $ARGUMENTS
 
@@ -35,7 +48,7 @@ code, pull requests, comments, or threads. It never commits, pushes, or checks o
   - If two kept PRs share one base, stop and report the fork.
   - A PR with nothing above or below is a one-PR chain.
 - The slug is the bottom layer's branch up to its first `/`, or the whole branch name when it has none.
-- The local file is `docs/harness_logs/claude-code/<YYYYMonDD>_<slug>/guidebook.html`. The directory is gitignored; create it if missing.
+- The local file is `docs/harness_logs/copilot/<YYYYMonDD>_<slug>/guidebook.html`. The directory is gitignored; create it if missing.
 
 The step is done when you have a table of every layer: order, PR, branch, base, state, head SHA, additions,
 deletions, changed files.
@@ -73,7 +86,7 @@ Turn every thread into one **finding** with these fields:
 
 | Field | Rule |
 |---|---|
-| Found by | `copilot-pull-request-reviewer` or `copilot-pull-request-reviewer[bot]` is Copilot. A root comment starting `CC: <model> -> [<SEVERITY>, <n>/10]` is that model's stack review, with that severity and confidence. Any other author is that person, by login. |
+| Found by | `copilot-pull-request-reviewer` or `copilot-pull-request-reviewer[bot]` is Copilot. A root comment starting `CC: <model> -> [<SEVERITY>, <n>/10]` is that model's review, with that severity and confidence. Any other author is that person, by login. |
 | Finding | The root comment's first line, linked to its `url`. |
 | Outcome | Take the latest comment in `latest`. One starting `CC: <model> -> applied:` gives outcome **applied**; one starting `CC: <model> -> rejected:` gives **rejected**. Show the reply text, which names the change and SHA, or the reason. With neither, the outcome is **no outcome recorded**. |
 | Same spot | When another finding in the same layer sits on the same path within three lines, link the two as "same spot". Count each thread once. |
@@ -86,7 +99,8 @@ How to report each outcome:
 - When `latest.totalCount` is above 50, mark the thread "older replies not read".
 
 Review bodies:
-- A review body starting `CC: <model> -> Stack review of layer` gives that layer's counts.
+- A review body starting `CC: <model> -> Review of #<pr>` gives that layer's counts — the format
+  `/rs-code-review` posts, whose counts (`<X> critical, <Y> informational`) come from the same run.
 - Each further line in that body is an unanchored finding.
 - Its outcome comes from a PR comment starting `CC: <model> -> applied:` or `-> rejected:` that names it, or
   from the address-feedback log (Step 3). Otherwise it is **no outcome recorded**.
@@ -105,7 +119,7 @@ Local logs enrich the page; they never replace GitHub.
 **Plan path.** Use the second argument. Otherwise use the plan path a layer's "Why" section names. Otherwise
 ask with `AskUserQuestion`, offering "no plan".
 
-**Logs to read.** Read each of these that exists, in `docs/harness_logs/claude-code/`,
+**Logs to read.** Read each of these that exists, in `docs/harness_logs/copilot/`,
 `docs/harness_logs/opencode/`, or `docs/harness_logs/copilot/` (per-harness run dir `<YYYYMonDD>_<slug>` inside each):
 
 - **The `rs-implement-plan` ledger**, at `docs/harness_logs/<harness>/<plan-stem>/ledger.md` for `<harness>` in `claude-code`, `opencode`, and `copilot`. Take
@@ -165,8 +179,8 @@ text and in attribute values, and render a link only when its URL starts with `h
 3. **Readability pass.** Re-read the prose against the `writing-for-people` checklist and fix what it flags.
 4. Take the one optional look the design guidance allows, and make one pass of fixes.
 5. **Publish.**
-   - The `<title>` is the slug in title case followed by "Stack Guidebook", for example "Forecast Stack
-     Guidebook".
+   - The `<title>` is the slug in title case followed by "Guidebook", for example "Forecast
+      Guidebook".
    - Use `icon: "book"` and a one-sentence `description`.
    - Before publishing, check `action: "list"` for an artifact with the same title. If one exists, read it and
      update it by `url` so its link stays the same.

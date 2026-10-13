@@ -1,5 +1,5 @@
 ---
-name: rs-prototype-loop
+name: rs-prototype-from-brainstorm-in-loop
 description: "Build a throwaway prototype in a loop that ends when the user's verdict answers one question"
 argument-hint: "[brainstorm-path] <question>"
 agent: agent
@@ -60,4 +60,4 @@ The loop exits when each agent check passed in this round and the user has confi
 1. Write the verdict (the question, the answer, the evidence) into the brainstorm artifact when one was given.
 2. Stage only the prototype's own files, by path, and commit them to its branch, with the question and the verdict in the commit message. It stays out of the main branch.
 3. Push the branch when the user asked in Step 1.
-4. Report the verdict and the branch. Offer `/rs-implement-loop` to build the validated decision for real.
+4. Report the verdict and the branch. Offer `/rs-implement-from-brainstorm-in-loop` to build the validated decision for real.

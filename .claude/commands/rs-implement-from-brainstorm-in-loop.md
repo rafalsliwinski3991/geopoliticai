@@ -1,5 +1,5 @@
 ---
-description: Implement a brainstorm's design in a loop that ends when the user's definition of done holds, then review it and open a pull request
+description: Implement a brainstorm's design in a loop that ends when the user's definition of done holds, on a draft pull request reviewed each iteration
 argument-hint: "<brainstorm-path> [slice]"
 allowed-tools: Read, Write, Edit, Glob, Grep, Bash, Agent, Skill, AskUserQuestion
 ---
@@ -23,7 +23,7 @@ Ask before writing code. Use your harness's question tool, or a numbered chat li
 1. **Scope.** The slice, restated in one line, and what is out of scope.
 2. **Definition of done.** Propose a checklist from the artifact. Each item is a **check**: a command whose exit code decides, or an observable the user confirms by name. Examples: `make test` exits 0; `cd agentic_backend && uv run pytest tests/unit_tests/foo/test_bar.py` passes; "the user reads the new response and agrees". An item nobody can check ("works well") goes back for rewording until it is checkable.
 3. **Budget.** Maximum iterations (recommend 8).
-4. **Base and delivery.** Ask explicitly for the base branch: `loop/<slug>` starts from it and the pull request targets it (recommend the repo's default branch). Open a pull request when done?
+4. **Base and delivery.** Ask explicitly for the base branch: `loop/<slug>` starts from it and a draft pull request against it opens once the branch is cut (recommend the repo's default branch). When the loop exits, turn the draft pull request over for final review?
 5. **Open flags.** Each carried flag you could not resolve by reading.
 
 Then restate scope, the checklist as a table (item, check, owner: agent or user), the budget, the base branch, and delivery. Wait for the user's explicit approval. The approved checklist is the loop's exit; only the user changes it afterwards.
@@ -32,7 +32,7 @@ If your harness has a goal or stop-condition feature (Claude Code: `/goal <condi
 
 ## Step 3 — Branch and loop file
 
-Stop and ask if the working tree has uncommitted changes or `loop/<slug>` already exists. Otherwise cut `loop/<slug>` from the approved base branch. Create the loop file with the approved table, the budget, the branch name, and an empty iteration log.
+Stop and ask if the working tree has uncommitted changes or `loop/<slug>` already exists. Otherwise cut `loop/<slug>` from the approved base branch. Create the loop file with the approved table, the budget, the branch name, and an empty iteration log. Then open one draft pull request from `loop/<slug>` against the approved base and record its URL in the loop file. The draft PR belongs to the loop itself, not to the delivery choice in Step 2: review runs on it whether or not the user later asks for delivery.
 
 Run every agent check once and log its result. Each should fail now. If one already passes, stop and ask the user to reword or drop it before Step 4; it cannot close the loop as is.
 
@@ -53,8 +53,8 @@ Stop and report when the budget is spent, or when two consecutive iterations tur
 
 ## Step 5 — Close
 
-1. Run the review on the branch by carrying out the `rs-code-review` command's steps here, fix its findings, and re-run every checklist check.
+1. Push so the draft PR carries every iteration, then run `/rs-code-review` on it, fix the findings it posts — each arrives as a PR comment: apply it with the loop's red-green workflow, or hand it to `/rs-address-feedback` — and re-run every checklist check.
 2. Update `CLAUDE.md` when the application codebase changed, as it requires.
 3. Re-run the Step 4 gate, then commit the review fixes and any `CLAUDE.md` change. Ask the user to confirm each user check again against this committed version.
-4. When the user asked for delivery, verify the tree is clean, push, and open one pull request against the chosen base. Its description carries the checklist with each item's evidence.
+4. When the user asked for delivery, verify the tree is clean, push, and mark the draft pull request ready for review against the chosen base. Its description carries the checklist with each item's evidence.
 5. Report: the checklist table with evidence, the branch, the pull request URL.
