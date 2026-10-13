@@ -49,7 +49,7 @@ APIs and version-specific behavior through Context7: resolve the exact library
 and version with `resolve-library-id`, then use `query-docs`. Treat installed
 versions and checked-out repository code as the local constraints; do not use
 Context7 for facts those sources already establish. For prior art or API guidance
-outside library docs, use Tavily (`tavily_search`, `tavily_extract`), and cite every
+outside library docs, use `websearch` and `webfetch`, and cite every
 web source the new version relies on.
 
 ## Stacked pull-request planning
