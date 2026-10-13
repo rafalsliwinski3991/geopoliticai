@@ -6,9 +6,9 @@ model: opencode-go/glm-5.3-flash
 
 Plans: $ARGUMENTS
 
-You are the lead. You coordinate. You write briefs, the ledger, diff files, and pull-request bodies. You do not edit production code or tests. The subagents do that.
+You are the lead. You coordinate. You write briefs, the ledger, diff files, and pull-request bodies. Lightweight and standard plans: you are also the only code writer. Full plan: every unit is implemented by a fresh `plan-implementer` from a brief file, and you do not edit production code or tests.
 
-OpenCode dispatches a subagent with the Task tool. Set `subagent_type` to one of the names below. The Task tool has no model argument; the agent file pins the model. A dispatch that returns `Unknown agent type` means OpenCode has not loaded `.opencode/agents/` yet: stop and tell the user to quit and restart OpenCode. Do not implement the unit yourself.
+The rest of this section applies to a full plan only. OpenCode dispatches a subagent with the Task tool. Set `subagent_type` to one of the names below. The Task tool has no model argument; the agent file pins the model. A dispatch that returns `Unknown agent type` means OpenCode has not loaded `.opencode/agents/` yet: stop and tell the user to quit and restart OpenCode. Do not implement the unit yourself.
 
 | Role | `subagent_type` | Model |
 |---|---|---|
@@ -24,8 +24,8 @@ Every argument is a plan path. Run them in the order given. Each plan has its ow
 Workspace, one directory per plan: `docs/harness_logs/opencode/<plan-filename-stem>/`. It is gitignored. Create it if missing. Files:
 
 - `ledger.md` — resume map. Trust it and `git log` over your own memory. It is exempt from `docs/harness_logs/TEMPLATE.md`: no header, no metrics table.
-- `unit-<NN>-brief.md` — that unit only.
-- `unit-<NN>-report.md` — the implementer's report.
+- `unit-<NN>-brief.md` — full plan only: that unit only.
+- `unit-<NN>-report.md` — full plan only: the implementer's report.
 - `unit-<NN>.diff` — `git diff <base>..<head>` for that unit.
 - `branch.diff` — `git diff <base>...HEAD` for the final review.
 - `final-fix-brief.md`, `final-fix-report.md` — the final review's findings and the fix implementer's report.
@@ -62,7 +62,9 @@ A live gate whose key or credit is missing stays blocked. Do not start the next 
 
 Walk units in plan order, starting where the user said. Finish the unit's audit before cutting the next branch. The parent branch must contain the unit's commits before the child branch is created.
 
-For each unit:
+**Lightweight or standard plan.** For each unit, create `<stack-slug>/<NN>-<short-slug>` from the previous unit's branch (unit 01's parent is the base branch), check it out, and record `BASE` with `git rev-parse HEAD` in the ledger. Then implement the unit yourself by the test-first rules in `.opencode/agents/plan-implementer.md`: a new test fails for the missing behavior first, make the smallest change that passes, and the focused command and then the full gate are green before the commit. Append the commit subject and the real tail of the gate's output to the ledger, then `Unit <NN>: complete (commits <base>..<head>, no per-unit audit)`. Run no per-unit audit and write no brief or report; skip the numbered loop below.
+
+**Full plan.** For each unit:
 
 1. Create `<stack-slug>/<NN>-<short-slug>` from the previous unit's branch. Unit 01's parent is the base branch. Check it out. Record `BASE` with `git rev-parse HEAD` in the ledger.
 2. Write `unit-<NN>-brief.md`. Copy that unit's plan section, the interfaces earlier units established, the branch name, `BASE`, the focused test command, and the full gate command. Do not copy the rest of the plan.
@@ -89,7 +91,9 @@ After the last unit, write `branch.diff` for `git diff <base>...HEAD`.
 - **Lightweight:** read that diff yourself against the plan's scope. Dispatch `plan-final-review` only if you find a concrete risk.
 - **Standard or full:** dispatch `plan-final-review` once, with the plan path, `branch.diff`, and the ledger.
 
-If it returns findings, write `final-fix-brief.md`: the full findings list, the plan path, the branch, `BASE` (the current HEAD), the focused test commands, and the full gate command. Dispatch one `plan-implementer` with that brief and the report path `final-fix-report.md`. Then rewrite `branch.diff` and dispatch one `plan-unit-auditor` with `final-fix-brief.md`, `final-fix-report.md`, and `branch.diff`. A residual that contradicts the plan is `HALT`. A residual `FAIL` or `Important` finding also stops the run: show it and ask the user before Step 5. Only `Minor` residuals go in the ledger and in the Step 6 report. There is no second fix wave.
+For a lightweight or standard plan, make the fixes yourself, then rewrite `branch.diff` and rerun `plan-final-review` on it. A full plan uses the wave below.
+
+If it returns findings on a full plan, write `final-fix-brief.md`: the full findings list, the plan path, the branch, `BASE` (the current HEAD), the focused test commands, and the full gate command. Dispatch one `plan-implementer` with that brief and the report path `final-fix-report.md`. Then rewrite `branch.diff` and dispatch one `plan-unit-auditor` with `final-fix-brief.md`, `final-fix-report.md`, and `branch.diff`. A residual that contradicts the plan is `HALT`. A residual `FAIL` or `Important` finding also stops the run: show it and ask the user before Step 5. Only `Minor` residuals go in the ledger and in the Step 6 report. There is no second fix wave.
 
 Then append `Final heads: <unit-01-branch> <sha>, …, <top-branch> <sha>` to the ledger, from
 `git rev-parse refs/heads/<branch>` for every unit branch. Step 5 checks the branches against this line.
@@ -190,7 +194,7 @@ Print, per plan: path, tier, units completed, audit results, any `HALT`, residua
 
 ## Standing rules
 
-- One implementer at a time, on the checked-out unit branch. A later unit's branch does not exist until the earlier unit has committed.
+- One writer at a time, on the checked-out unit branch. A later unit's branch does not exist until the earlier unit has committed.
 - The brief file is the unit's requirements. The task prompt points at it.
 - Where the plan and the code disagree, the code wins. Record the disagreement. If the unit then cannot be implemented as written, `HALT` and ask.
 - Reviewer agents have `edit: deny`. If you ask one to change a file, the tool will fail.
