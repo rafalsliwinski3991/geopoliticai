@@ -30,10 +30,10 @@ The issues are the input set. Group them by the subsystem they touch; issues tha
 independent subsystems become separate plans, one per group. When there is more than one group and the arguments give
 an output path, use it as a prefix: write `<path without .md>-<group-slug>.md` per group.
 
-## Steps 1–4 — Plan
+## Steps 1–5 — Plan
 
 Read `.claude/commands/rs-plan-from-brainstorm.md` and run its output-path rule and Steps
-1–4 exactly, with these substitutions:
+1–5 exactly, with these substitutions:
 
 - **The brainstorm doc** is the issue set collected above. The output path is the one from
   the arguments, else the brainstorm command's default (today's date).
@@ -43,6 +43,8 @@ Read `.claude/commands/rs-plan-from-brainstorm.md` and run its output-path rule 
   the code, or ask with `AskUserQuestion`.
 - **Scope** cites every issue it implements by number and URL, and names selected issues
   the plan deliberately leaves out, with the reason.
+- **Step 2** (structure and naming) covers the files the issue set requires: show the tree, contents,
+  and sample names, and wait for the user's approval before drafting, exactly as for a brainstorm.
 - **Each stack unit** names the issues it closes, so its PR body can carry `Closes #<n>`.
   An issue closed across several units is closed by the last one.
 

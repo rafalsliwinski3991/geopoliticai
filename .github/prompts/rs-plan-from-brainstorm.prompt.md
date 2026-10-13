@@ -83,10 +83,36 @@ rewriting history:
    when its checkpoint asks for them. Planning does not push, create, merge, or rewrite
    pull requests.
 
-## Step 2 — Write the draft plan
+## Step 2 — Agree the code structure
+
+Once you understand the problem and see a solution, agree its shape with the user before
+drafting. Start from any naming conventions the harness has saved to memory.
+
+Show, in a plain message (a tree does not fit `AskUserQuestion` options):
+
+1. **The tree** -- every file the change touches, marked new, modified, or deleted, including
+   new modules, folders, and test files.
+2. **Contents** -- for each file, one or two lines on what it will hold (its main functions,
+   classes, and constants) and the boundary it owns.
+3. **Sample names** -- up to five real names the plan would create (all of them when it creates
+   fewer), each with its kind and a one-line reason. Spread them across kinds (function, class,
+   constant, variable, test) wherever the change has them.
+
+Ask the user to approve or request changes. Revise and show the proposal again until the user
+explicitly approves it. The step is done only on that approval; draft nothing before it.
+
+Then state the naming rules the user's feedback implies (for example: verb-first function
+names, no `_helper` suffix) and name every other function, class, variable, and file in the
+plan by them. When the harness has a memory system, save the rules as a `feedback` memory,
+updating an existing naming memory rather than adding a second one.
+
+When the change creates no file and no new name, say so in one line and go on to Step 3.
+
+## Step 3 — Write the draft plan
 
 Open every plan, whatever its tier, by naming its tier and the brainstorm path it implements (or,
-for issue or task input, the source set), so later commands never have to infer them.
+for issue or task input, the source set), so later commands never have to infer them. Every tier also carries an
+**Approved structure and naming** section: the tree and naming rules agreed in Step 2.
 
 Write a **lightweight plan** to the output path with only:
 
@@ -99,6 +125,7 @@ Write a **lightweight plan** to the output path with only:
    demonstrates the change works.
 4. **Required follow-up** -- only applicable documentation, configuration,
    migration, rollout, or compatibility work.
+5. **Approved structure and naming** -- the tree and naming rules agreed in Step 2.
 
 Write a **standard plan** to the output path with:
 
@@ -137,11 +164,11 @@ Full-plan steps must be independently executable and testable. Prefer focused
 checkbox steps for test, implementation, validation, and commit actions; do not
 leave placeholders such as `TBD`, "add appropriate handling", or "write tests".
 
-## Step 3 — Review by subagents
+## Step 4 — Review by subagents
 
 For a **lightweight plan**, self-review it before reporting back: verify it covers
 every settled decision, names the exact code path and validation, has no placeholder,
-and does not add unnecessary work. Do not dispatch the three reviewers unless new
+does not add unnecessary work, and matches the approved tree and naming rules. Do not dispatch the three reviewers unless new
 information raises the plan to full scope.
 
 For a **standard plan**, perform the same self-review, then dispatch one focused
@@ -171,7 +198,7 @@ rather than trusting the plan's claims about them.
 Each reviewer returns findings ranked by severity, each with a file path, a line, and a
 concrete failure scenario. No style notes, no praise.
 
-## Step 4 — Revise
+## Step 5 — Revise
 
 For a full plan, revise it yourself with what the reviews surfaced. Add an **Open
 questions and rejected objections** section recording every finding, whether you
