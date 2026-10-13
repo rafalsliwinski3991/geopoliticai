@@ -126,7 +126,7 @@ Keep every ordered plan unit independently reviewable and compatible with GitHub
 - Each ordered plan unit must have its own linear branch. Create the unit branch from the previous branch before editing, use names such as `<stack-slug>/01-<short-slug>`, and keep the implementation and any reviewer-fix commits on that branch. Never squash, merge, reorder, or rewrite those commits.
 - Record each unit branch, its parent branch, commits, focused validation, gate output, and ledger entry. Reviewers and auditors compare a unit branch with its immediate parent, not only with the cumulative top branch.
 - Each plan gets its own stack slug and its own chain, whose bottom branch is cut from the base branch. Plans never stack on one another.
-- If existing work is not already split into linear unit branches, leave history unchanged and stop that plan at Step 6: report that a hand-built chain needs manual `gh stack init` from cumulative branch pointers. Never force-push or silently rewrite history here.
+- If existing work is not already split into linear unit branches, leave history unchanged and stop that plan at Step 6: report that its history needs one branch per unit. Cut each as `git branch <stack-slug>/NN-<short-slug> <sha>` at the unit's last commit (check each SHA against `git ls-remote origin`, and that each branch descends from the one below it, so the chain stays linear), then rerun; or open its pull requests by hand with `gh pr create --base <parent>`. Never force-push or silently rewrite history here.
 
 ### TDD rule
 

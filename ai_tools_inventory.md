@@ -47,7 +47,6 @@ Provider trees present: `.claude`, `.opencode`, `.github`.
 | rs-address-feedback | yes | yes | yes |
 | rs-brainstorming | yes | yes | yes |
 | rs-code-review | yes | yes | yes |
-| rs-create-stacked-prs | yes | yes | yes |
 | rs-explain-plan | yes | yes | yes |
 | rs-gh-stack-merge | yes | yes | yes |
 | rs-guidebook | yes | yes | yes |
@@ -58,7 +57,6 @@ Provider trees present: `.claude`, `.opencode`, `.github`.
 | rs-plan-from-brainstorm | yes | yes | yes |
 | rs-plan-from-gh-issues | yes | yes | yes |
 | rs-prototype-from-brainstorm-in-loop | yes | yes | yes |
-| rs-review-plan | yes | yes | yes |
 
 ## Agents
 
@@ -117,7 +115,7 @@ OpenCode loads both `.opencode/command/` and `.opencode/commands/`. This
 repository uses the singular form only; the plural directory was removed after
 two commands existed in both with different bodies and undefined precedence. The
 two generic review commands it also held (`review`, `plan-review`) are replaced
-by the `rs-code-review` and `rs-review-plan` ports, not dropped.
+by the `rs-code-review` and `rs-improve-plan` ports, not dropped.
 
 OpenCode command copies are the Claude originals with `argument-hint` and
 `allowed-tools` (neither of which OpenCode reads) replaced by `agent: build`
