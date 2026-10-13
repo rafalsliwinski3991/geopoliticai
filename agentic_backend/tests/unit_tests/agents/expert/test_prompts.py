@@ -1,34 +1,44 @@
 """The expert's answer prompt ends with a fixed next-step menu."""
 
+import api
 from agents.expert.prompts import (
     ANSWER_SYSTEM_PROMPT,
     NEXT_STEPS_MENU,
     REPORT_TURN_COST,
 )
+from agents.orchestrator.prompts import CLASSIFY_SYSTEM_PROMPT
 from config import DAILY_RESEARCH_TURNS, DEEP_RESEARCH_TURN_COST, FORECAST_TURN_COST
 
 
 def test_answer_prompt_states_costs_from_config() -> None:
     # Arrange
-    costs = {
-        DEEP_RESEARCH_TURN_COST,
-        FORECAST_TURN_COST,
-        REPORT_TURN_COST,
-    }
+    options = [
+        (
+            "Do a deep dive on",
+            f"Uses {DEEP_RESEARCH_TURN_COST} of your {DAILY_RESEARCH_TURNS} daily research turns",
+        ),
+        (
+            "Forecast whether",
+            f"Needs all {FORECAST_TURN_COST} of your {DAILY_RESEARCH_TURNS}",
+        ),
+        (
+            "Write me a report on this conversation",
+            f"Uses {REPORT_TURN_COST} of your {DAILY_RESEARCH_TURNS} daily research turns",
+        ),
+    ]
 
     # Act
-    found = {
-        cost: f"Uses {cost} of your {DAILY_RESEARCH_TURNS} daily research turns"
-        in ANSWER_SYSTEM_PROMPT
-        for cost in costs
-    }
+    missing = [
+        trigger
+        for trigger, cost_phrase in options
+        if not any(
+            trigger in line and cost_phrase in line
+            for line in NEXT_STEPS_MENU.splitlines()
+        )
+    ]
 
     # Assert
-    assert found == {
-        DEEP_RESEARCH_TURN_COST: True,
-        FORECAST_TURN_COST: True,
-        REPORT_TURN_COST: True,
-    }
+    assert missing == []
 
 
 def test_answer_prompt_names_router_trigger_phrases() -> None:
@@ -38,17 +48,25 @@ def test_answer_prompt_names_router_trigger_phrases() -> None:
         "Forecast whether",
         "Write me a report on this conversation",
     ]
+    router_cores = ["deep dive", "forecast whether", "write me a report"]
 
     # Act
     missing = [trigger for trigger in triggers if trigger not in ANSWER_SYSTEM_PROMPT]
+    unroutable = [
+        core for core in router_cores if core not in CLASSIFY_SYSTEM_PROMPT.lower()
+    ]
 
     # Assert
     assert missing == []
+    assert unroutable == []
 
 
 def test_answer_prompt_has_no_unfilled_braces() -> None:
+    # Arrange
+    braces_chars = "{}"
+
     # Act
-    braces = [char for char in ANSWER_SYSTEM_PROMPT if char in "{}"]
+    braces = [char for char in ANSWER_SYSTEM_PROMPT if char in braces_chars]
 
     # Assert
     assert braces == []
@@ -66,6 +84,29 @@ def test_answer_prompt_exempts_menu_from_source_rules() -> None:
     # Assert
     assert in_rule_4
     assert in_rule_5
+
+
+def test_answer_prompt_ends_with_rule_5_directive_then_menu() -> None:
+    # Arrange
+    directive = "End every answer with a horizontal rule (`---`)"
+
+    # Act
+    directive_index = ANSWER_SYSTEM_PROMPT.index(directive)
+    menu_index = ANSWER_SYSTEM_PROMPT.index(NEXT_STEPS_MENU)
+
+    # Assert
+    assert directive_index < menu_index
+
+
+def test_report_turn_cost_matches_api_one_unit() -> None:
+    # Arrange
+    stated_cost = REPORT_TURN_COST
+
+    # Act
+    api_cost = api.ONE_UNIT[0]
+
+    # Assert
+    assert api_cost == stated_cost
 
 
 def test_next_steps_menu_has_no_links() -> None:

@@ -8,10 +8,10 @@ from agents.reporter.prompts import (
 
 def test_outline_prompt_ignores_closing_menus() -> None:
     # Arrange
-    ignore_rule = "closing menu of next steps"
+    directive = "never propose a section for it"
 
     # Act
-    in_outline = ignore_rule in OUTLINE_SYSTEM_PROMPT
+    in_outline = directive in OUTLINE_SYSTEM_PROMPT
 
     # Assert
     assert in_outline
@@ -19,10 +19,10 @@ def test_outline_prompt_ignores_closing_menus() -> None:
 
 def test_report_prompt_ignores_closing_menus() -> None:
     # Arrange
-    ignore_rule = "closing menu of next steps"
+    directive = "leave it out of the report"
 
     # Act
-    in_report = ignore_rule in REPORT_SYSTEM_PROMPT
+    in_report = directive in REPORT_SYSTEM_PROMPT
 
     # Assert
     assert in_report
