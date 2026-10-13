@@ -112,13 +112,13 @@ Choosing between the three ways to build:
 | `rs-plan-from-asana` | Same as above, from Asana tasks. Only explicit task text and confirmed comments count as decided. | Asana tasks and comments | Plan file(s), one per subsystem | Open questions; structure; approval |
 | `rs-plan-from-gh-issues` | Same as above, from GitHub issues. Each unit names the issues it closes. | Issues and comments | Plan file(s), one per subsystem | Open questions; structure; approval |
 | `rs-improve-plan` | Audits a plan against the live code and writes a complete new version with a changelog. Never edits the old file. | Plan, source doc, code | `<plan>_v<N+1>.md`, `review.md` log | Approve, request changes, or cancel the new version |
-| `rs-explain-plan` | Publishes a plan as an artifact page with diagrams and tables for a newcomer. Changes nothing else. | Plan, brainstorm, `CLAUDE.md`, code | `explainer.html`, published artifact | Only if the plan path is unclear |
+| `rs-explain-plan` | Explains a plan as a page with diagrams and tables for a newcomer. Claude Code publishes it as an artifact; OpenCode and Copilot write the local HTML file. Changes nothing else. | Plan, brainstorm, `CLAUDE.md`, code | `explainer.html`; also a published artifact in Claude Code | Only if the plan path is unclear |
 | `rs-implement-plan` | Implements one or more plans unit by unit, test first, with per-unit audits and a final review. Opens PRs. | Plan(s), code | Unit branches, commits, `ledger.md`, PRs | One checkpoint before any code: start point, sources, and PR shape (stack, one PR, or none; draft or ready) |
 | `rs-implement-from-brainstorm-in-loop` | Builds a brainstorm slice on `loop/<slug>` with a draft PR, iterating until every agreed check passes. | Brainstorm, code | Branch, commits, draft PR, `loop.md` | Scope, definition of done, budget, base; your verdict on each user check |
 | `rs-prototype-from-brainstorm-in-loop` | Builds throwaway code on `prototype/<slug>` that answers one question, looping on your verdict. | Question, optional brainstorm | Prototype branch, `loop.md`, verdict in the brainstorm | Question, checklist, budget; your verdict each round |
 | `rs-code-review` | Reviews each PR against its own base, bottom to top in a stack, and posts findings as inline comments. Changes no code. | PR diffs, code at the head SHA | PR review comments, `review.md` | Post all, critical only, or cancel |
 | `rs-address-feedback` | Decides apply or reject for every unresolved thread, commits and pushes the applies, replies once per thread. Never resolves threads. | PR threads and comments | Commits, pushes, thread replies, `address_feedback.md` | Proceed all, applies only, adjust, or cancel |
-| `rs-guidebook` | Publishes one page for a PR chain: what it does, how to review each PR, every finding with its outcome, what is still open. Changes nothing. | PRs, threads, local logs | `guidebook.html`, published artifact | Only if the PR or plan is unclear |
+| `rs-guidebook` | Explains a PR chain on one page: what it does, how to review each PR, every finding with its outcome, what is still open. Claude Code publishes it as an artifact; OpenCode and Copilot write the local HTML file. Changes nothing. | PRs, threads, local logs | `guidebook.html`; also a published artifact in Claude Code | Only if the PR or plan is unclear |
 | `rs-gh-stack-merge` | Merges a whole stack in one `gh stack merge`, then closes the Asana tasks and GitHub issues listed in each PR's `## Source`. | PRs, their `## Source` sections | Merge, closed issues and tasks, `stack_merge.md` | Squash, merge commit, rebase, or cancel |
 
 ### Plan tiers
@@ -129,7 +129,7 @@ agents run, so a small change does not pay for a large review.
 | Tier | Fits | Planning review | Implementation | Final review |
 |---|---|---|---|---|
 | Lightweight | A small, contained change to one flow | Self-review | The lead writes code; no per-unit audit | The lead reviews the diff |
-| Standard | Multi-file work inside one subsystem | One correctness reviewer | The lead writes code; audit only units the scout marked risky | `correctness-lens` |
+| Standard | Multi-file work inside one subsystem | One correctness reviewer | The lead writes code; audit only units the pre-flight pass (Claude: `preflight-scout`) marked moderate or high | `correctness-lens` |
 | Full | Several components, interfaces, migrations, security risk, or strict order | Three reviewers in parallel | A fresh `plan-implementer` per unit; every unit audited | `correctness-lens`, `framework-lens`, `guidance-compliance-lens` |
 
 When in doubt the commands choose the heavier tier. `/rs-improve-plan` keeps a plan's tier unless the code
@@ -246,8 +246,8 @@ ignores the flag).
 
 | Output | Path | In git? |
 |---|---|---|
-| Brainstorm | `docs/brainstorming/<YYYYMonDD>_brainstorm_v<N>_<slug>.md` | Yes |
-| Plan | `docs/plans/<YYYYMonDD>_plan_<slug>_v<N>.md` | Yes |
+| Brainstorm | `docs/brainstorming/<YYYYMonDD>_brainstorm_v<N>_<slug>.md` | No (gitignored) |
+| Plan | `docs/plans/<YYYYMonDD>_plan_<slug>_v<N>.md` | No (gitignored) |
 | Run logs (`review.md`, `address_feedback.md`, `stack_merge.md`, `loop.md`) | `docs/harness_logs/<harness>/<YYYYMonDD>_<slug>/` | No |
 | Explainer and guidebook pages | Same run directory, as `explainer.html` and `guidebook.html` | No |
 | Implementation ledger | `docs/harness_logs/<harness>/<plan-stem>/ledger.md` (undated, reused across days) | No |

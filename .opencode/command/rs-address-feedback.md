@@ -28,7 +28,8 @@ Confirm `gh auth status` succeeds; if it fails, stop.
 
 Start from the pull request named in `$ARGUMENTS` (a PR number or a branch), else the current
 branch's pull request. This command requires a pull request — a draft PR counts. Detect the mode from the
-open pull requests themselves: run `gh pr list --state open --json number,headRefName,baseRefName`,
+open pull requests themselves: run `gh pr list --state open --limit 1000 --json number,headRefName,baseRefName`
+(stop if it returns 1,000 rows or does not include the starting PR),
 then walk down from the starting PR while its `baseRefName` is another open PR's `headRefName`, and
 up while another open PR's `baseRefName` is this one's `headRefName`. (`gh stack view` takes no
 branch argument and describes the checked-out branch, so it cannot be pointed at another PR.) Stop
