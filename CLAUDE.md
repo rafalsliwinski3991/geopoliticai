@@ -50,7 +50,8 @@ The `emails` app owns the `emails_email` table. All Django mail goes through
 through `MAILERS["smtp"]`; the host crontab runs
 `manage.py send_queued_emails` every minute (README's "Queued email" section
 has the line). All queue rules — attempts, retry wait, slice, hourly
-cap — live in `emails/services.py`.
+cap — live in `emails/services.py`; the cap's value is
+`settings.EMAIL_MAX_PER_HOUR`, not a services constant.
 
 Agents live in `agentic_backend/src/agents/<name>/` with graph, state, config, prompts,
 `consts/`, and node modules. Put fixed editorial data in `consts/`, prompts in

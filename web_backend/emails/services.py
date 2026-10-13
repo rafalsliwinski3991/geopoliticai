@@ -5,12 +5,13 @@
 mail backend hold no rules and only call these.
 """
 
+import logging
 from datetime import timedelta
 
 from django.conf import settings
 from django.core import mail
 from django.core.mail import EmailMessage, EmailMultiAlternatives
-from django.db import models, transaction
+from django.db import connection, models, transaction
 from django.utils import timezone
 
 from emails.models import Email
@@ -21,31 +22,38 @@ SLICE_SIZE = 20
 CAP_WINDOW = timedelta(hours=1)
 MAILER_ALIAS = "smtp"
 LAST_ERROR_MAX_CHARS = 2000
+# Postgres advisory-lock key serialising `send_batch` runners against each
+# other, so two processes cannot both count the same hourly room.
+CAP_LOCK_KEY = 20261013
+
+logger = logging.getLogger(__name__)
 
 
 def queue_message(message: EmailMessage) -> Email:
     """Store one outgoing message as a `pending` row instead of sending it."""
-    if getattr(message, "attachments", None):
+    if not message.recipients():
+        raise ValueError("queued mail cannot be without recipients")
+    if message.attachments:
         raise ValueError("queued mail cannot carry attachments")
     if message.extra_headers:
         raise ValueError(
             "queued mail cannot carry extra headers: "
             + ", ".join(sorted(message.extra_headers))
         )
-    alternatives = [
-        (content, mimetype)
-        for content, mimetype in getattr(message, "alternatives", [])
+    alternatives = getattr(message, "alternatives", [])
+    non_html = [
+        (content, mimetype) for content, mimetype in alternatives
         if mimetype != "text/html"
     ]
-    if alternatives:
+    if non_html:
         raise ValueError(
             "queued mail can only carry text/html alternatives, not "
-            + alternatives[0][1]
+            + non_html[0][1]
         )
     html = next(
         (
             content
-            for content, mimetype in getattr(message, "alternatives", [])
+            for content, mimetype in alternatives
             if mimetype == "text/html"
         ),
         "",
@@ -101,14 +109,26 @@ def send_batch() -> tuple[int, int]:
     after its last attempt, the mail sent in the last `CAP_WINDOW` never
     exceeds `settings.EMAIL_MAX_PER_HOUR`, and rows another process already
     holds locks on are skipped, not waited for.
+
+    The SMTP session runs OUTSIDE the transaction: one short atomic block
+    claims the slice (each attempt consumed, `last_attempt_at` stamped,
+    which also hides rows mid-send from other runners for `RETRY_WAIT`),
+    then every send outcome is saved in its own autocommit save. A crash
+    mid-batch therefore cannot lose an attempt or resend delivered mail,
+    and a failing QUIT cannot roll back already-sent rows.
     """
     now = timezone.now()
-    sent_in_window = Email.objects.filter(sent_at__gt=now - CAP_WINDOW).count()
-    room = min(SLICE_SIZE, settings.EMAIL_MAX_PER_HOUR - sent_in_window)
-    sent_now = 0
-    if room > 0:
-        with transaction.atomic():
-            rows = (
+    rows: list[Email] = []
+    with transaction.atomic():
+        if connection.vendor == "postgresql":
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    "SELECT pg_advisory_xact_lock(%s)", [CAP_LOCK_KEY]
+                )
+        sent_in_window = Email.objects.filter(sent_at__gt=now - CAP_WINDOW).count()
+        room = min(SLICE_SIZE, settings.EMAIL_MAX_PER_HOUR - sent_in_window)
+        if room > 0:
+            claimable = (
                 Email.objects.filter(
                     status=Email.Status.PENDING,
                     attempts__lt=MAX_ATTEMPTS,
@@ -120,26 +140,56 @@ def send_batch() -> tuple[int, int]:
                 .order_by("created_at")
                 .select_for_update(skip_locked=True)[:room]
             )
-            with mail.mailers[MAILER_ALIAS] as backend:
-                for row in rows:
-                    try:
-                        backend.send_messages([build_message(row)])
-                    except Exception as exc:
-                        row.attempts += 1
-                        row.last_attempt_at = now
-                        row.last_error = str(exc)[:LAST_ERROR_MAX_CHARS]
-                        if row.attempts >= MAX_ATTEMPTS:
-                            row.status = Email.Status.FAILED
-                        row.save()
-                    else:
+            for row in claimable:
+                # Consume the attempt while the row is locked. If this
+                # process dies before sending, the row retries after
+                # RETRY_WAIT instead of a second runner sending the same
+                # mail while the first send is still in flight.
+                row.attempts += 1
+                row.last_attempt_at = now
+                row.save(update_fields=["attempts", "last_attempt_at"])
+                rows.append(row)
+    if not rows:
+        return 0, Email.objects.filter(status=Email.Status.PENDING).count()
+    sent_now = 0
+    try:
+        with mail.mailers[MAILER_ALIAS] as backend:
+            for row in rows:
+                try:
+                    delivered = backend.send_messages([build_message(row)])
+                except Exception as exc:
+                    # A failed connection would fail every later row: force
+                    # the next send_messages call to open a fresh one.
+                    backend.close()
+                    _record_failure(row, str(exc))
+                else:
+                    if delivered == 1:
                         sent_now += 1
                         row.status = Email.Status.SENT
-                        row.attempts += 1
-                        row.sent_at = now
-                        row.last_attempt_at = now
-                        row.save()
+                        row.sent_at = timezone.now()
+                        row.save(update_fields=["status", "sent_at"])
+                    else:
+                        _record_failure(
+                            row,
+                            f"backend sent {delivered} message(s) instead of 1",
+                        )
+    except Exception:
+        # open()/QUIT failures escape the per-row handler. The claim is
+        # already durable (attempts consumed, rows retry after RETRY_WAIT),
+        # so log it and report what was saved so far instead of aborting.
+        logger.exception("queue batch aborted by a mailer connection error")
     still_pending = Email.objects.filter(status=Email.Status.PENDING).count()
     return sent_now, still_pending
+
+
+def _record_failure(row: Email, error: str) -> None:
+    """Charge a failed send: the attempt was consumed at claim time."""
+    logger.warning("queued email %d failed to send: %s", row.pk, error)
+    row.last_error = error[:LAST_ERROR_MAX_CHARS]
+    if row.attempts >= MAX_ATTEMPTS:
+        row.status = Email.Status.FAILED
+    row.last_attempt_at = timezone.now()
+    row.save(update_fields=["last_error", "status", "last_attempt_at"])
 
 
 def requeue_emails(queryset) -> int:

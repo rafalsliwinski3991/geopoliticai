@@ -161,18 +161,32 @@ ACCESS_TOKEN_SECONDS = int(SIMPLE_JWT["ACCESS_TOKEN_LIFETIME"].total_seconds())
 # sends (allauth included) is stored in `emails_email` and sent later by
 # `emails.services.send_batch` through the `smtp` mailer, which holds the
 # domain mailbox over SMTP. Switching to a relay later is an `smtp` change.
+SMTP_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
+# An empty value means the default, not a broken backend.
+_DJANGO_EMAIL_BACKEND = os.getenv("DJANGO_EMAIL_BACKEND") or SMTP_BACKEND
 MAILERS = {
     "default": {"BACKEND": "emails.backend.QueueBackend"},
     "smtp": {
-        "BACKEND": os.getenv(
-            "DJANGO_EMAIL_BACKEND", "django.core.mail.backends.smtp.EmailBackend"
-        ),
+        "BACKEND": _DJANGO_EMAIL_BACKEND,
+        # OPTIONS must match the backend: Django raises InvalidMailer for
+        # options an overridden backend does not accept (the console backend,
+        # for example).
         "OPTIONS": {
-            "host": os.getenv("EMAIL_HOST", ""),
-            "port": int(os.getenv("EMAIL_PORT", "587")),
-            "username": os.getenv("EMAIL_HOST_USER", ""),
-            "password": os.getenv("EMAIL_HOST_PASSWORD", ""),
-            "use_tls": os.getenv("EMAIL_USE_TLS", "true").lower() == "true",
+            **(
+                {
+                    "host": os.getenv("EMAIL_HOST", ""),
+                    "port": int(os.getenv("EMAIL_PORT", "587")),
+                    "username": os.getenv("EMAIL_HOST_USER", ""),
+                    "password": os.getenv("EMAIL_HOST_PASSWORD", ""),
+                    "use_tls": os.getenv("EMAIL_USE_TLS", "true").lower()
+                    == "true",
+                    # A hung SMTP host must not block the batch (and its row
+                    # locks) forever: `EMAIL_TIMEOUT` defaults to 30 s.
+                    "timeout": int(os.getenv("EMAIL_TIMEOUT", "30")),
+                }
+                if _DJANGO_EMAIL_BACKEND == SMTP_BACKEND
+                else {}
+            ),
         },
     },
 }

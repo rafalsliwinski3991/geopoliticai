@@ -22,7 +22,10 @@ class EmailAdmin(admin.ModelAdmin):
     def has_add_permission(self, request) -> bool:
         return False
 
-    @admin.action(description="Resend selected")
+    def has_delete_permission(self, request, obj=None) -> bool:
+        return False
+
+    @admin.action(description="Resend selected", permissions=["change"])
     def resend_selected(self, request, queryset) -> None:
         count = requeue_emails(queryset)
         self.message_user(
@@ -61,7 +64,6 @@ class EmailAdmin(admin.ModelAdmin):
         )
         return super().changelist_view(request, extra_context)
 
+    @admin.display(description="To")
     def to_display(self, obj):
         return ", ".join(obj.to)
-
-    to_display.short_description = "To"
