@@ -22,7 +22,7 @@ Input: $ARGUMENTS
 Turn one pull request, or one stacked chain of them, into one published Artifact page: the **guidebook**.
 Its reader is the person deciding whether to merge. After reading it they know four things: what the whole
 change does, how to review each PR, every review finding with what happened to it, and what is still open.
-Run it after `rs-gh-stack-review` and `rs-gh-stack-address-feedback`, so the outcomes exist.
+Run it after `/rs-code-review` and `rs-gh-stack-address-feedback`, so the outcomes exist.
 
 The guidebook reports and never decides. This command writes one HTML file and publishes it. It never edits
 code, pull requests, comments, or threads. It never commits, pushes, or checks out a branch.

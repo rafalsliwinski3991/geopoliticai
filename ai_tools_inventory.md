@@ -51,7 +51,6 @@ Provider trees present: `.claude`, `.opencode`, `.github`.
 | rs-gh-stack-address-feedback | yes | yes | yes |
 | rs-gh-stack-guidebook | yes | yes | yes |
 | rs-gh-stack-merge | yes | yes | yes |
-| rs-gh-stack-review | yes | yes | yes |
 | rs-implement-loop | yes | yes | yes |
 | rs-implement-plan | yes | yes | yes |
 | rs-improve-plan | yes | yes | yes |
@@ -138,8 +137,8 @@ stays byte-identical. Two things qualify. Naming one of Claude's read-only
 subagents does: OpenCode has the mechanism but none of those agents (its
 `.opencode/agent/` and `.opencode/agents/` hold only the interactive
 `plan-auditor` and `rs-implement-plan`'s own workers) and errors on the unknown
-name, and Copilot has no mechanism at all — `rs-code-review`,
-`rs-gh-stack-review` and `rs-improve-plan` are noted in both harnesses for this,
+name, and Copilot has no mechanism at all — `rs-code-review`
+and `rs-improve-plan` are noted in both harnesses for this,
 and `rs-implement-plan` in Copilot only, because OpenCode's version dispatches
 its own workers. `rs-improve-plan` Step 5's `/opencode:rescue`
 does too, being a Claude Code plugin command; its note is the second paragraph.
