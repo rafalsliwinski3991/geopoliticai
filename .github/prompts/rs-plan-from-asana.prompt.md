@@ -4,18 +4,13 @@ description: "Turn Asana tasks (specific tasks or one assignee's) into a right-s
 agent: agent
 tools: ["context7/*", "edit", "execute", "read", "search", "web"]
 ---
-> **Harness note.** This workflow was written for Claude Code conventions (frontmatter
-> `allowed-tools`, `AskUserQuestion`, lens subagents). Copilot handles all of this inline: run the
-> steps yourself, ask the user in chat where a confirmation is called for, and never dispatch a
-> named lens. Every other rule applies unchanged.
 
 Arguments: the text the user typed after the command.
 
 ## Step 0 — Collect the tasks
 
-Use the official Asana plugin's MCP server (`mcp__asana__*` tools). If those tools are
-absent or unauthenticated, tell the user to run `/asana-setup` (then `/mcp` to sign in)
-and stop.
+Use the Asana MCP server's tools. If no Asana tools are available or they are
+unauthenticated, tell the user to connect an Asana MCP server and stop.
 
 Parse the arguments into a task selector and an optional output path (an argument ending
 in `.md`):
@@ -23,7 +18,7 @@ in `.md`):
 - task URLs or gids -> exactly those tasks. The gid is the numeric id in the URL's
   `/task/<gid>` segment (or the last numeric segment of older URLs).
 - `@<name|email>` (or `@me`) -> that person's incomplete tasks. Resolve the person to an
-  Asana user first; if the name matches several users, ask with `AskUserQuestion`.
+  Asana user first; if the name matches several users, ask the user in chat and wait for the answer.
 - empty -> ask which tasks or assignee to plan from.
 
 Then read every selected task in full: name, notes/description, custom fields, due date,
@@ -37,7 +32,7 @@ an output path, use it as a prefix: write `<path without .md>-<group-slug>.md` p
 
 ## Steps 1–5 — Plan
 
-Read `.claude/commands/rs-plan-from-brainstorm.md` and run its output-path rule and Steps
+Read `.github/prompts/rs-plan-from-brainstorm.prompt.md` and run its output-path rule and Steps
 1–5 exactly, with these substitutions:
 
 - **The brainstorm doc** is the task set collected above. The output path is the one from
@@ -45,7 +40,7 @@ Read `.claude/commands/rs-plan-from-brainstorm.md` and run its output-path rule 
 - **Settled decisions** are only the behavior a task states explicitly and anything
   confirmed in its comments. Everything else — vague acceptance criteria, competing
   proposals in comments, unstated expected behavior — is open: resolve it from the code,
-  or ask with `AskUserQuestion`.
+  or ask the user in chat and wait for the answer.
 - **Scope** cites every task it implements by name and URL, and names selected tasks the
   plan deliberately leaves out, with the reason.
 - **Step 2** (structure and naming) covers the files the task set requires: show the tree, contents,

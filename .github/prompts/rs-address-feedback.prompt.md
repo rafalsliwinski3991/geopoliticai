@@ -5,10 +5,6 @@ argument-hint: "[optional PR number or branch]"
 agent: agent
 tools: ["context7/*", "edit", "execute", "read", "search"]
 ---
-> **Harness note.** This workflow was written for Claude Code conventions (frontmatter
-> `allowed-tools`, `AskUserQuestion`, lens subagents). Copilot handles all of this inline: run the
-> steps yourself, ask the user in chat where a confirmation is called for, and never dispatch a
-> named lens. Every other rule applies unchanged.
 
 Review input: the text the user typed after the command.
 
