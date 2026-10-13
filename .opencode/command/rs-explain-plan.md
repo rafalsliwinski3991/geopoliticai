@@ -120,5 +120,5 @@ or timelines.
 
 Report the artifact URL, the local file path, and the sections included and skipped. Also report
 every plan-versus-code note and every question the plan left unanswered. When the explainer shows
-a gap in the plan, suggest `/rs-review-plan` or `/rs-improve-plan`. Report the gap and leave the
+a gap in the plan, suggest `/rs-improve-plan`. Report the gap and leave the
 plan unchanged.

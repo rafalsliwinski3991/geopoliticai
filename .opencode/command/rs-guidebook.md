@@ -56,7 +56,7 @@ deletions, changed files.
 GitHub is the backbone. For every layer, including merged or closed ones (mark them), collect:
 
 - **Description:** `gh pr view <n> --json body --jq .body`.
-  - A body written by `rs-implement-plan` or `rs-create-stacked-prs` has some of these sections: "What this
+  - A body written by `rs-implement-plan` has some of these sections: "What this
     PR does", "Why", "Why this PR exists", "How to review it", "What implement-plan's own review found",
     "Checks", and "Source".
   - An empty body, or one holding only the gh-stack footer, is recorded as "no description".

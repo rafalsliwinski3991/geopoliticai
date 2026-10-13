@@ -100,7 +100,7 @@ implemented as a GitHub stacked pull-request chain without rewriting history:
 - The revised plan must state that implementation creates one or more linear commits
   per unit branch, with reviewer fixes remaining on that branch, and that
   `rs-implement-plan` opens the pull requests itself, as a stack or one PR, when its
-  checkpoint asks for them (`rs-create-stacked-prs` remains for hand-built branches).
+  checkpoint asks for them.
   This workflow does not push, create, merge, or rewrite pull requests.
 
 ## Step 2 — Pre-flight scout
