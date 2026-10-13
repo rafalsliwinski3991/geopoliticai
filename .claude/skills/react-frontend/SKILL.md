@@ -73,9 +73,9 @@ sanitized input only. This is a trust boundary, not polish — never simplify it
 
 ## Tests
 
-The repository's frontend suite is `.mjs` files in `frontend/tests/` run by Node's
-built-in runner — `npm test` from `frontend/`. Extend that runner; do not introduce
-Vitest, jsdom, or a different test framework unless the frontend adopts one first.
+The repository's frontend unit tests are Vitest files beside the code in
+`frontend/chat/src/` (`*.test.ts(x)`, for example `App.test.tsx`), run with `npm test`
+from `frontend/chat/`.
 Test the behaviour most likely to break: the streaming reader, auth redirects, and
 any pause/resume or multi-step flow.
 
