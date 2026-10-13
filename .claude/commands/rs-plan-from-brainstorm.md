@@ -93,9 +93,9 @@ Show, in a plain message (a tree does not fit `AskUserQuestion` options):
    new modules, folders, and test files.
 2. **Contents** -- for each file, one or two lines on what it will hold (its main functions,
    classes, and constants) and the boundary it owns.
-3. **Five sample names** -- exactly five real names the plan would create, each with its kind
-   and a one-line reason. Spread them across kinds (function, class, constant, variable, test)
-   wherever the change has them.
+3. **Sample names** -- up to five real names the plan would create (all of them when it creates
+   fewer), each with its kind and a one-line reason. Spread them across kinds (function, class,
+   constant, variable, test) wherever the change has them.
 
 Ask the user to approve or request changes. Revise and show the proposal again until the user
 explicitly approves it. The step is done only on that approval; draft nothing before it.
@@ -124,6 +124,7 @@ Write a **lightweight plan** to the output path with only:
    demonstrates the change works.
 4. **Required follow-up** -- only applicable documentation, configuration,
    migration, rollout, or compatibility work.
+5. **Approved structure and naming** -- the tree and naming rules agreed in Step 2.
 
 Write a **standard plan** to the output path with:
 

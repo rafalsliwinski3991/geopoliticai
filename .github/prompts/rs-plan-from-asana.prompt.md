@@ -35,10 +35,10 @@ The tasks are the input set. Group them by the subsystem they touch; tasks that 
 independent subsystems become separate plans, one per group. When there is more than one group and the arguments give
 an output path, use it as a prefix: write `<path without .md>-<group-slug>.md` per group.
 
-## Steps 1–4 — Plan
+## Steps 1–5 — Plan
 
 Read `.claude/commands/rs-plan-from-brainstorm.md` and run its output-path rule and Steps
-1–4 exactly, with these substitutions:
+1–5 exactly, with these substitutions:
 
 - **The brainstorm doc** is the task set collected above. The output path is the one from
   the arguments, else the brainstorm command's default (today's date).
@@ -48,6 +48,8 @@ Read `.claude/commands/rs-plan-from-brainstorm.md` and run its output-path rule 
   or ask with `AskUserQuestion`.
 - **Scope** cites every task it implements by name and URL, and names selected tasks the
   plan deliberately leaves out, with the reason.
+- **Step 2** (structure and naming) covers the files the task set requires: show the tree, contents,
+  and sample names, and wait for the user's approval before drafting, exactly as for a brainstorm.
 - **Each stack unit** names the Asana task URLs it delivers, so its PR body can link them.
 
 Planning only reads Asana: it never comments on, reassigns, or completes tasks.
