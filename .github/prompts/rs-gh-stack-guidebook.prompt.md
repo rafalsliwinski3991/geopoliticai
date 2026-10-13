@@ -24,7 +24,7 @@ Input: $ARGUMENTS
 Turn one pull request, or one stacked chain of them, into one published Artifact page: the **guidebook**.
 Its reader is the person deciding whether to merge. After reading it they know four things: what the whole
 change does, how to review each PR, every review finding with what happened to it, and what is still open.
-Run it after `rs-code-review` and `rs-gh-stack-address-feedback`, so the outcomes exist.
+Run it after `rs-code-review` and `rs-address-feedback`, so the outcomes exist.
 
 The guidebook reports and never decides. This command writes one HTML file and publishes it. It never edits
 code, pull requests, comments, or threads. It never commits, pushes, or checks out a branch.
@@ -94,7 +94,7 @@ Turn every thread into one **finding** with these fields:
 How to report each outcome:
 - Report "applied" as **applied**, never as "fixed". The reply says what was changed, and the reader judges
   whether that fixes the finding.
-- `isResolved` is not an outcome. `rs-gh-stack-address-feedback` never resolves threads.
+- `isResolved` is not an outcome. `rs-address-feedback` never resolves threads.
 - Show the resolved and outdated state only as a column.
 - When `latest.totalCount` is above 50, mark the thread "older replies not read".
 
@@ -127,11 +127,11 @@ ask with `AskUserQuestion`, offering "no plan".
     finding behind each;
   - gates that are still failing or open;
   - audit minors left in place.
-- **`claude-code|opencode|copilot`/`<YYYYMonDD>_<slug>`/stack_review.md.** Its `Not posted: <count and reason>` line, and any per-finding
+- **`claude-code|opencode|copilot`/`<YYYYMonDD>_<slug>`/review.md.** Its `Not posted: <count and reason>` line, and any per-finding
   "Dropped or not posted" list a run wrote, give findings whose outcome is **not posted**, with the
   reason. When the log has only the count, show that count and reason under the layer; never guess which
   findings they were.
-- **`claude-code|opencode|copilot`/`<YYYYMonDD>_<slug>`/stack_address_feedback.md.** A decision drafted there with no matching reply on GitHub gets
+- **`claude-code|opencode|copilot`/`<YYYYMonDD>_<slug>`/address_feedback.md.** A decision drafted there with no matching reply on GitHub gets
   outcome **drafted, not posted**, with the drafted text.
 
 Record every path you looked for. The page lists each missing one as "Not found on this machine: `<path>`".

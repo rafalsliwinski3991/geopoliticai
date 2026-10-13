@@ -44,11 +44,11 @@ Provider trees present: `.claude`, `.opencode`, `.github`.
 
 | Command | .claude | .opencode | .github |
 |---|---|---|---|
+| rs-address-feedback | yes | yes | yes |
 | rs-brainstorming | yes | yes | yes |
 | rs-code-review | yes | yes | yes |
 | rs-create-stacked-prs | yes | yes | yes |
 | rs-explain-plan | yes | yes | yes |
-| rs-gh-stack-address-feedback | yes | yes | yes |
 | rs-gh-stack-guidebook | yes | yes | yes |
 | rs-gh-stack-merge | yes | yes | yes |
 | rs-implement-loop | yes | yes | yes |

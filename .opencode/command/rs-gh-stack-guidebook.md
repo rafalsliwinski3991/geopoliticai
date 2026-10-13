@@ -125,11 +125,11 @@ ask with `AskUserQuestion`, offering "no plan".
     finding behind each;
   - gates that are still failing or open;
   - audit minors left in place.
-- **`claude-code|opencode|copilot`/`<YYYYMonDD>_<slug>`/stack_review.md.** Its `Not posted: <count and reason>` line, and any per-finding
+- **`claude-code|opencode|copilot`/`<YYYYMonDD>_<slug>`/review.md.** Its `Not posted: <count and reason>` line, and any per-finding
   "Dropped or not posted" list a run wrote, give findings whose outcome is **not posted**, with the
   reason. When the log has only the count, show that count and reason under the layer; never guess which
   findings they were.
-- **`claude-code|opencode|copilot`/`<YYYYMonDD>_<slug>`/stack_address_feedback.md.** A decision drafted there with no matching reply on GitHub gets
+- **`claude-code|opencode|copilot`/`<YYYYMonDD>_<slug>`/address_feedback.md.** A decision drafted there with no matching reply on GitHub gets
   outcome **drafted, not posted**, with the drafted text.
 
 Record every path you looked for. The page lists each missing one as "Not found on this machine: `<path>`".

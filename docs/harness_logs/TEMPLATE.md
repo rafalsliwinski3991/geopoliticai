@@ -19,9 +19,8 @@ One run log per run, in that run's directory under its harness. The layout for e
 
 `harness` is `claude-code`, `opencode`, or `copilot`; the dir is named `<YYYYMonDD>_<slug>`, the slug
 being the run's topic (a branch name, plan stem, or stack slug); `<log-name>` keeps the command's own
-suffix file name — `review.md`, `stack_review.md`, `stack_merge.md`, `stack_address_feedback.md`,
-`loop.md` — and the two HTML outputs (`explainer.html`, `guidebook.html`) land in the same run dir.
-A rerun on the same day appends a dated section inside that file; a rerun on a later day starts a new
+suffix file name — `review.md`, `address_feedback.md`, `stack_merge.md`, `loop.md` — and the two HTML
+outputs (`explainer.html`, `guidebook.html`) land in the same run dir. A rerun on the same day appends a dated section inside that file; a rerun on a later day starts a new
 `<YYYYMonDD>_<slug>` directory. The `rs-implement-plan` ledger is the exception: it lives in an undated
 `docs/harness_logs/<harness>/<plan-filename-stem>/ledger.md` and is reused across days. This tree is
 gitignored except this template.
