@@ -1,8 +1,9 @@
 # Notes
 
 Facts about this repository's AI harnesses that cannot be read off the
-filesystem. `make inventory` appends this file verbatim to the generated
-inventory. Keep only what a directory listing cannot tell you: a reason, a
+filesystem. `make inventory` fails when a Claude command or skill has no
+counterpart under OpenCode or Copilot; this file explains the deliberate
+exceptions and everything else it cannot check. Keep only what a directory listing cannot tell you: a reason, a
 deliberate absence, a launch incantation.
 
 ## Guidance files
@@ -64,9 +65,10 @@ does too, being a Claude Code plugin command; its note is the second paragraph.
 Naming an ordinary Claude tool such as `AskUserQuestion` in prose gets no note,
 because every harness has some way to ask the user.
 
-`make inventory` reports whether a command exists under each harness, never
-whether the ported body still matches the Claude original. That match is
-verified by hand; a `yes` cell is not evidence of it.
+`make inventory` checks only that a port exists under each harness, never
+whether its body still matches the Claude original. That match is verified by
+hand and by the Harness Audit workflow; a passing check is not evidence of it.
+Agents are not checked: each harness keeps a deliberately different set.
 
 ## Session artifacts
 
@@ -94,8 +96,4 @@ maintained by hand, which is where the Copilot harness notes live.
 `make link-skills` prunes only symlinks, leaving OpenCode-only real directories
 in place, and refuses to link a canonical skill whose name is already taken by
 one of them. Linking over it would put the symlink inside that directory, where
-it dangles while the inventory still reports the skill as present.
-
-`ai_tools_inventory.md` is committed, not generated on demand: drift is only
-catchable in review if the table is visible on GitHub. Regenerate it with
-`make inventory` in the same commit as any harness change.
+it dangles and `make inventory` reports the skill as missing.
