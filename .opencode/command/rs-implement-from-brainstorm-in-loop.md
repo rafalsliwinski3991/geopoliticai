@@ -1,7 +1,7 @@
 ---
 description: Implement a brainstorm's design in a loop that ends when the user's definition of done holds, on a draft pull request reviewed each iteration
-argument-hint: "<brainstorm-path> [slice]"
-allowed-tools: Read, Write, Edit, Glob, Grep, Bash, Agent, Skill, AskUserQuestion
+agent: build
+model: opencode-go/glm-5.3-flash
 ---
 
 Brainstorm: $ARGUMENTS
