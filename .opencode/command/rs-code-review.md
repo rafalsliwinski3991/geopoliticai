@@ -143,7 +143,7 @@ addresses.
 
 Before you flag a framework or library call as wrong, or recommend a different pattern in its place,
 check the current documentation through Context7: call `resolve-library-id` for the exact library and
-the version installed here, then call `query-docs` with that identifier . Read the installed version from the lockfile at
+the version installed here, then call `query-docs` with that identifier. Read the installed version from the lockfile at
 `<headRefOid>` that pins the package (`git show <headRefOid>:<lockfile>`) — `agentic_backend/uv.lock`, `web_backend/uv.lock`, or
 `frontend/chat/package-lock.json` — rather than assuming the latest release. Record any material
 documentation result in the run log, and cite it in the finding.
