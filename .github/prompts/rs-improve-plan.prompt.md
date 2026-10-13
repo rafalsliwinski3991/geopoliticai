@@ -19,7 +19,7 @@ tools: ["edit", "execute", "read", "search"]
 > reported exactly as Step 5 describes. It stays mandatory at every tier; only
 > the dispatch changes.
 
-Plan: $1
+Input: the text the user typed after the command. The plan is the first path in the input.
 
 You are the **auditor and reviser** and the team lead. You are the only agent in this run that
 writes. Every other agent you spawn is read-only and exists to check the plan, never to change it.
@@ -43,10 +43,10 @@ If it prints nothing, tell the user OpenCode or the model is unavailable and ask
 `AskUserQuestion` whether to **continue without the OpenCode critique** (skip Step 5) or **stop**.
 Record the answer in the run log.
 
-Read `$1`'s filename. It must end `_v<N>.md`; if it doesn't, treat it as `v1` for numbering purposes
+Read the plan path's filename. It must end `_v<N>.md`; if it doesn't, treat it as `v1` for numbering purposes
 but do not rename it. The new path is the same directory and stem with `_v<N+1>.md`. If any higher
-version of the same stem already exists, `$1` is not the latest version: stop and ask the user with
-`AskUserQuestion` whether to audit the newest version instead. Continue from `$1` only if the user
+version of the same stem already exists, the plan path in the input is not the latest version: stop and ask the user with
+`AskUserQuestion` whether to audit the newest version instead. Continue from the plan path in the input only if the user
 says so, and then use the next unused version number.
 
 Do not create the new file yet; Step 4 writes it.
@@ -185,7 +185,7 @@ in the run log.
 
 ## Step 4 — Write the new, complete version
 
-Write the new version to the path resolved in Step 0. It is a new file; never modify `$1`. **It must
+Write the new version to the path resolved in Step 0. It is a new file; never modify the plan path in the input. **It must
 stand alone.** Someone reading only
 this file, never opening the previous version, must get the full picture — do not write "see v1 for
 the rest" or omit a commit because it didn't change. Carry forward everything from the previous
@@ -242,7 +242,7 @@ critic, it must say so and mark such findings as unverified instead of asserting
 
 If the dispatch fails because the plugin or model is unavailable, ask the user the same Step 0
 question: continue without the OpenCode critique, or stop. Never fall back to a Claude agent or
-another model. When the user chooses to stop, delete the new version file (never `$1`) and record
+another model. When the user chooses to stop, delete the new version file (never the plan path in the input) and record
 the stop in the run log. When the critique is skipped, add a changelog entry saying the new version
 had no OpenCode critique.
 
@@ -259,7 +259,7 @@ Then use `AskUserQuestion` to ask whether the user approves it. Offer these choi
 - **Approve** — keep the new version as written and continue to Step 7.
 - **Request changes** — ask the user what must change, edit the new version in place, add a
   changelog entry for each change, and ask for approval again.
-- **Cancel** — delete the new version file (never `$1`), record the cancellation in the run log, and
+- **Cancel** — delete the new version file (never the plan path in the input), record the cancellation in the run log, and
   stop.
 
 Do not treat silence, ambiguous feedback, or a general conversational acknowledgment as approval.

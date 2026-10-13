@@ -5,8 +5,9 @@ argument-hint: <brainstorm-doc-path> [output-plan-path]
 agent: agent
 tools: ["context7/*", "edit", "execute", "read", "search", "web"]
 ---
-Brainstorm doc: $1
-Output plan path: $2 (if empty, use `docs/plans/<date>_plan_<topic-slug>_v1.md`). `<date>` is
+Input: the text the user typed after the command.
+Brainstorm doc: the first path in the input.
+Output plan path: the second path in the input (if absent, use `docs/plans/<date>_plan_<topic-slug>_v1.md`). `<date>` is
 today's date unless the brainstorm filename carries one, in which case reuse that date.
 `<topic-slug>` is **1 to 3 kebab-case words naming what the plan is about**, so the filename is
 identifiable in a directory listing without opening it — e.g. `orchestrator-agent`,

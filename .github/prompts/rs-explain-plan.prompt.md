@@ -19,7 +19,7 @@ tools: ["context7/*", "edit", "execute", "read", "search", "web"]
 
 # Plan explainer
 
-Input: $ARGUMENTS
+Input: the text the user typed after the command.
 
 Turn one written plan into one published Artifact page, the **explainer**. After about ten minutes
 on it, a reader knows what the plan changes and why. They also know how the parts fit, the order

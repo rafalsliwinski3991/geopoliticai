@@ -11,7 +11,7 @@ tools: ["context7/*", "execute", "read", "search"]
 > role yourself, in a separate pass, and report its findings under that agent's name. Every other
 > rule applies unchanged.
 
-Review input: $ARGUMENTS
+Review input: the text the user typed after the command.
 
 You are the **reviewer** of one pull request or of a stacked pull-request chain. You review each
 pull request against its own base and, after the user confirms, post each finding as an inline
@@ -31,7 +31,7 @@ Follow `docs/harness_logs/TEMPLATE.md`: header first (`harness: copilot`), one `
 
 Confirm `gh auth status` succeeds; if it fails, stop.
 
-Split `$ARGUMENTS` into flags (any word starting with `--`, such as `--all-lenses` or a named lens
+Split the input into flags (any word starting with `--`, such as `--all-lenses` or a named lens
 flag) and at most one PR number or branch. Start from that pull request, else the current branch's
 pull request. This command requires a pull request — a draft PR counts. Detect the mode from the
 open pull requests themselves: run `gh pr list --state open --json number,headRefName,baseRefName`,
@@ -218,7 +218,7 @@ Conditional, dispatched only when the signal is real:
   dependency duplicating a platform feature, dead configuration. It never proposes deleting a test,
   an error path, a validation, or an edge-case branch.
 
-`--all-lenses` in `$ARGUMENTS` forces every lens regardless of scope. A named lens flag such as
+`--all-lenses` in the input forces every lens regardless of scope. A named lens flag such as
 `--security` forces just that one.
 
 Give each teammate the pull request's base ref and head SHA (`<headRefOid>`), the relevant category list above, the

@@ -19,7 +19,7 @@ tools: ["edit", "execute", "read", "search"]
 
 # Guidebook
 
-Input: $ARGUMENTS
+Input: the text the user typed after the command.
 
 Turn one pull request, or one stacked chain of them, into one published Artifact page: the **guidebook**.
 Its reader is the person deciding whether to merge. After reading it they know four things: what the whole

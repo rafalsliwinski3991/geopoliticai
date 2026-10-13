@@ -9,7 +9,7 @@ tools: ["context7/*", "edit", "execute", "read", "search", "web"]
 > steps yourself, ask the user in chat where a confirmation is called for, and never dispatch a
 > named lens. Every other rule applies unchanged.
 
-Arguments: $ARGUMENTS
+Arguments: the text the user typed after the command.
 
 ## Step 0 — Collect the tasks
 

@@ -9,7 +9,7 @@ tools: ["context7/*", "edit", "execute", "read", "search"]
 > steps yourself, ask the user in chat where a confirmation is called for, and never dispatch a
 > named lens. Every other rule applies unchanged.
 
-Stack input: $ARGUMENTS
+Stack input: the text the user typed after the command.
 
 You are the **merger** of a stacked pull-request chain. You merge the whole chain into its trunk in
 one atomic `gh stack merge`, then close every source its PRs name. You never edit code, push, or
@@ -27,7 +27,7 @@ Follow `docs/harness_logs/TEMPLATE.md`: header first (`harness: copilot`), one `
 Confirm `gh auth status` succeeds and `gh stack --help` is available; if the extension is missing,
 stop and report `gh extension install github/gh-stack`.
 
-Start from the stack, PR, or branch in `$ARGUMENTS`, else the current branch. Run `gh stack view`
+Start from the stack, PR, or branch in the input, else the current branch. Run `gh stack view`
 and read the layers bottom to top. For each layer fetch its PR:
 
 ```bash

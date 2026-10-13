@@ -5,7 +5,7 @@ argument-hint: "[brainstorm-path] <question>"
 agent: agent
 tools: ["edit", "execute", "read", "search"]
 ---
-Question: $ARGUMENTS
+Question: the text the user typed after the command.
 
 Build a throwaway prototype that answers one question, and loop until the user's verdict closes it. The arguments are the question, or a brainstorm path (`docs/brainstorming/*.md`) followed by the question: a settled decision or flag the prototype should test.
 

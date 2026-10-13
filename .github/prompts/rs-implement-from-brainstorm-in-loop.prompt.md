@@ -5,7 +5,7 @@ argument-hint: "<brainstorm-path> [slice]"
 agent: agent
 tools: ["edit", "execute", "read", "search"]
 ---
-Brainstorm: $ARGUMENTS
+Brainstorm: the text the user typed after the command.
 
 Implement a brainstorm's design in a loop that ends when the user's definition of done holds. The first argument is the artifact path (`docs/brainstorming/*.md`); the rest, if any, names the slice to build. You write the code, the tests, and the loop file.
 
