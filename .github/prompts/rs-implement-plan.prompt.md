@@ -3,7 +3,7 @@ name: rs-implement-plan
 description: "Implement a written plan with TDD and tiered review, then open its sourced pull requests as a stack or one PR"
 argument-hint: <plan-path>
 agent: agent
-tools: ["edit", "execute", "read", "search", "context7/*"]
+tools: ["context7/*", "edit", "execute", "read", "search"]
 ---
 
 Input: the text the user typed after the command. The plan is the first path in the input.

@@ -3,7 +3,7 @@ name: rs-brainstorming
 description: "Grill the user relentlessly about a plan, decision, or idea - stress-test the thinking, not just collect requirements"
 argument-hint: <plan-or-idea>
 agent: agent
-tools: ["edit", "execute", "read", "search"]
+tools: ["context7/*", "edit", "execute", "read", "search"]
 ---
 Help the user reach an approved design at the level of process the request needs. Before asking a detailed question, classify the request and say the classification aloud so the user can correct it:
 
