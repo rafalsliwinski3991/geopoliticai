@@ -40,6 +40,8 @@ Do this yourself, for every plan. Done when `ledger.md` exists and contains the 
 
 Read the plan. Record its tier: **lightweight**, **standard**, or **full**. If it names none, pick the smallest tier that fits. Escalate only for a concrete cross-component, interface, migration, or reliability risk.
 
+For a **standard or full plan**, also write a pre-flight table in the ledger, one row per plan task or commit, after reading the files the plan names (never trust the plan's description of the code). Columns: **Commit** (the plan's own heading); **Status** (`not started`, `partially applied`, or `already applied`); **Risk** (`mechanical`, `moderate`, or `high`; every `mechanical` verdict carries a one-line justification naming what you checked); **Staleness** (moved paths, changed versions, or `—`). List any blockers: plan sections that cannot be implemented as written against the current code.
+
 Resolve the base branch with `gh repo view --json defaultBranchRef --jq .defaultBranchRef.name`, unless the user named another. Record a stable stack slug. The plan's slug wins when it names one.
 
 Run `git fetch`. Then `git log --name-only <plan-base>..origin/<base>`, where `<plan-base>` is `git rev-list -1 --before="$(date -r <plan-path> -Iseconds)" origin/<base>`, the base branch as it stood when the plan file was last written. Re-read a cited line only when that log touches the file. Write the result in the ledger. An empty log is a clean staleness result, not a skipped check.
@@ -54,7 +56,7 @@ Map every unit to its Asana tasks, GitHub issues, and Aikido issues. A unit that
 
 Stop. This is the only scheduled stop. Use the `question` tool. If that tool is unavailable, ask in text and wait. Do not start on silence.
 
-Show, for every plan: tier, staleness, conflict table, source gaps, and the operator checklist. Ask which unit to start from, how Step 5 opens the pull requests (**a stack**, one PR per unit, **one PR** for the whole plan, or **none**, leaving the branches local; and **draft** or **ready for review**), and whether the checklist is done. Begin Step 3 only after the user answers.
+Show, for every plan: tier, the pre-flight table and blockers (standard or full), staleness, conflict table, source gaps, and the operator checklist. Ask which unit to start from (for a standard or full plan, from the table), how Step 5 opens the pull requests (**a stack**, one PR per unit, **one PR** for the whole plan, or **none**, leaving the branches local; and **draft** or **ready for review**), and whether the checklist is done. Begin Step 3 only after the user answers.
 
 A live gate whose key or credit is missing stays blocked. Do not start the next unit to get around it.
 
@@ -62,7 +64,9 @@ A live gate whose key or credit is missing stays blocked. Do not start the next 
 
 Walk units in plan order, starting where the user said. Finish the unit's audit before cutting the next branch. The parent branch must contain the unit's commits before the child branch is created.
 
-**Lightweight or standard plan.** For each unit, create `<stack-slug>/<NN>-<short-slug>` from the previous unit's branch (unit 01's parent is the base branch), check it out, and record `BASE` with `git rev-parse HEAD` in the ledger. Then implement the unit yourself by the test-first rules in `.opencode/agents/plan-implementer.md`: a new test fails for the missing behavior first, make the smallest change that passes, and the focused command and then the full gate are green before the commit. Append the commit subject and the real tail of the gate's output to the ledger, then `Unit <NN>: complete (commits <base>..<head>, no per-unit audit)`. Run no per-unit audit and write no brief or report; skip the numbered loop below.
+**Lightweight or standard plan.** For each unit, create `<stack-slug>/<NN>-<short-slug>` from the previous unit's branch (unit 01's parent is the base branch), check it out, and record `BASE` with `git rev-parse HEAD` in the ledger. Then implement the unit yourself by the test-first rules in `.opencode/agents/plan-implementer.md`: a new test fails for the missing behavior first, make the smallest change that passes, and the focused command and then the full gate are green before the commit. Append the commit subject and the real tail of the gate's output to the ledger. Write no brief or report; skip the numbered loop below.
+
+Audit the unit only when it needs one: a standard-plan unit marked `moderate` or `high` in the pre-flight table, or a lightweight-plan unit whose implementation reveals a concrete risk. Write `unit-<NN>.diff` from `BASE` to the unit's HEAD (never `HEAD~1`), dispatch `plan-unit-auditor` with the plan path, the unit's plan section in place of a brief, the diff path, and the ledger in place of a report, and apply its result as in step 7 of the full-plan loop below. Then append `Unit <NN>: complete (commits <base>..<head>, review <clean|N minor|none>)`; use `none` when no audit ran.
 
 **Full plan.** For each unit:
 

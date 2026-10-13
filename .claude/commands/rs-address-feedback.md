@@ -24,18 +24,20 @@ Follow `docs/harness_logs/TEMPLATE.md`: header first (`harness: claude-code`), o
 
 ## Step 1 — Resolve the pull request, or the stack
 
-Confirm `gh auth status` succeeds; if it fails, stop. Check the `gh stack` extension with
-`gh stack --help`; if the extension is missing, say so, skip stack detection entirely, and go
-straight to single-PR mode.
+Confirm `gh auth status` succeeds; if it fails, stop.
 
 Start from the pull request named in `$ARGUMENTS` (a PR number or a branch), else the current
-branch's pull request. This command requires a pull request — a draft PR counts. Run `gh stack view`
-on that pull request's head branch to detect the mode:
+branch's pull request. This command requires a pull request — a draft PR counts. Detect the mode from the
+open pull requests themselves: run `gh pr list --state open --json number,headRefName,baseRefName`,
+then walk down from the starting PR while its `baseRefName` is another open PR's `headRefName`, and
+up while another open PR's `baseRefName` is this one's `headRefName`. (`gh stack view` takes no
+branch argument and describes the checked-out branch, so it cannot be pointed at another PR.) Stop
+on any `gh` error rather than guessing a mode.
 
 - **Stack mode** — the chain has **more than one open layer**. Work every open layer bottom to
   top, each layer on its own branch.
-- **Single-PR mode** — the chain has exactly one open layer, or `gh stack view` errors because the
-  branch is not in a stack. Work that one pull request and stop.
+- **Single-PR mode** — the chain has exactly one open layer: no other open PR is linked to it by
+  base and head branch. Work that one pull request and stop.
 
 If neither a stack nor a pull request exists, refuse before anything else and tell the user to open
 a PR first:

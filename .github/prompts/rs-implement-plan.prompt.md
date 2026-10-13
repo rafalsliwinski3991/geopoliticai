@@ -1,17 +1,21 @@
 ---
 name: rs-implement-plan
-description: "Implement a written plan with TDD and tiered review, then open its sourced pull requests as a stack or one PR"
-argument-hint: <plan-path>
+description: "Implement one or more written plans with TDD and tiered review, then open each plan's sourced pull requests as a stack or one PR"
+argument-hint: <plan-path>...
 agent: agent
 tools: ["context7/*", "edit", "execute", "read", "search"]
 ---
 
-Input: the text the user typed after the command. The plan is the first path in the input.
+Input: the text the user typed after the command. Every path in it is a plan; run them all, in the
+order given. Each plan is its own run: its own tier, ledger, pre-flight, stack of unit branches cut
+from the base branch, final review, and pull requests. Steps 1 and 2 cover every plan up front; Steps
+3–6 then run for one plan at a time, and the next plan starts from a fresh checkout of the base
+branch. Step 7 reports on all of them.
 
 You are the implementer and the only writer. Copilot cannot dispatch subagents, so every review role
 is a separate pass of yours over a diff file, and you apply the fixes yourself. You also write the ledger, the diff files, and the pull-request bodies.
 
-Workspace: `docs/harness_logs/copilot/<plan-filename-stem>/` (gitignored; create it if missing). Files:
+Workspace, one directory per plan: `docs/harness_logs/copilot/<plan-filename-stem>/` (gitignored; create it if missing). Files:
 
 - `ledger.md` — resume map and run log. Trust it and `git log` over your own memory. It is exempt from `docs/harness_logs/TEMPLATE.md`: no header, no metrics table.
 - `unit-<NN>.diff` — `git diff <BASE>..HEAD` for that unit, `BASE` being the unit branch's start.
@@ -25,7 +29,7 @@ done; resume at the first unit without one. When every unit is complete and the 
 
 ## Step 1 — Pre-flight
 
-Read the plan in full. Identify its stated tier: **lightweight**, **standard**, or **full**. If the
+Run this step for every plan. Read the plan in full. Identify its stated tier: **lightweight**, **standard**, or **full**. If the
 plan does not name one, infer the smallest safe tier from its actual scope. Escalate only when live
 code exposes a concrete major, cross-component, interface, migration, or reliability risk; do not
 add process merely because several related files change.
@@ -78,9 +82,9 @@ plan's Scope. Record the map in the ledger. A unit left with no source is a chec
 
 **Stop here.** This is the only scheduled stop in the run.
 
-For a **lightweight plan**, show the direct pre-flight note and ask whether to proceed. For a
-**standard or full plan**, show the pass's table and blockers, then ask which task or commit the
-run should start from and whether to proceed. Show the unit-to-source map and ask for the source of
+Present every plan in one checkpoint. For a **lightweight plan**, show the direct pre-flight note. For a
+**standard or full plan**, show the pass's table and blockers, then ask which task or commit its
+run should start from. Ask once, for all plans, whether to proceed. Show the unit-to-source map and ask for the source of
 any unit that has none. Also show the conflict table and operator checklist and ask whether the
 checklist is done: a live gate whose key or credit is missing stays blocked, and you do not start a
 later unit to get around it.
@@ -104,6 +108,7 @@ pass. Before editing a unit's branch, record `BASE` (`git rev-parse HEAD`) in th
 
 Keep every ordered plan unit independently reviewable and compatible with GitHub's `gh stack` workflow:
 
+- Each plan gets its own stack slug and its own chain, whose bottom branch is cut from the base branch. Plans never stack on one another.
 - At pre-flight, record the trunk/base branch and a stable stack slug. The default base is the repository's default branch from `gh repo view --json defaultBranchRef --jq .defaultBranchRef.name` unless the user specifies another one.
 - Each ordered plan unit must have its own linear branch. Create the unit branch from the previous branch before editing, use names such as `<stack-slug>/01-<short-slug>`, and keep the implementation and any reviewer-fix commits on that branch. Never squash, merge, reorder, or rewrite those commits.
 - Record each unit branch, its parent branch, commits, focused validation, gate output, and ledger entry. Review passes compare a unit branch with its immediate parent, not only with the cumulative top branch.
@@ -292,7 +297,7 @@ Write any lens findings into the ledger, then **also print them to the terminal*
 gitignored, so anything that exists only there is invisible to any later reader. For lightweight
 plans, record the lead's final self-review instead.
 
-Report to the user: the plan path and tier, tasks or commits made, units audited and what the audits
+Report on every plan. For each, report to the user: the plan path and tier, tasks or commits made, units audited and what the audits
 found, what was fix-forwarded, any `HALT` you hit, the outstanding applicable review findings you did
 **not** act on, the PR URLs with their sources (or "no PRs opened; rerun this command to open them"), and the ledger path.
 
