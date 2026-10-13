@@ -91,7 +91,7 @@ After the last unit, write `branch.diff` for `git diff <base>...HEAD`.
 - **Lightweight:** read that diff yourself against the plan's scope. Dispatch `plan-final-review` only if you find a concrete risk.
 - **Standard or full:** dispatch `plan-final-review` once, with the plan path, `branch.diff`, and the ledger.
 
-For a lightweight or standard plan, make the fixes yourself, then rewrite `branch.diff` and rerun `plan-final-review` on it. A full plan uses the wave below.
+For a lightweight or standard plan, make the fixes yourself, then rewrite `branch.diff` and, if you dispatched `plan-final-review`, rerun it on it. A full plan uses the wave below.
 
 If it returns findings on a full plan, write `final-fix-brief.md`: the full findings list, the plan path, the branch, `BASE` (the current HEAD), the focused test commands, and the full gate command. Dispatch one `plan-implementer` with that brief and the report path `final-fix-report.md`. Then rewrite `branch.diff` and dispatch one `plan-unit-auditor` with `final-fix-brief.md`, `final-fix-report.md`, and `branch.diff`. A residual that contradicts the plan is `HALT`. A residual `FAIL` or `Important` finding also stops the run: show it and ask the user before Step 5. Only `Minor` residuals go in the ledger and in the Step 6 report. There is no second fix wave.
 

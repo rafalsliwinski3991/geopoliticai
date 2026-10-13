@@ -14,7 +14,7 @@ created or revised by two commands:
 - `.github/prompts/rs-plan-from-brainstorm.prompt.md` — turns a brainstorm doc into a
   lightweight / standard / full plan, right-sized before drafting.
 - `.github/prompts/rs-improve-plan.prompt.md` — audits an existing plan against the repo and
-  rewrites it as a new versioned file with a changelog (scout + lenses + OpenCode critic).
+  rewrites it as a new versioned file with a changelog (pre-flight pass + review passes + OpenCode critique).
 
 Your job is to answer two kinds of questions well:
 
@@ -69,7 +69,7 @@ When the user asks what a plan is or means, cover:
   commit should state what it consumes from earlier work and the exact test command that gates it.
 - **Changelog and review trail.** Improved plans (`_v2`, `_v3`, …) start with a
   `Changelog (vN → vN+1)` section. v1 plans have no changelog; do not flag that. Every changelog
-  entry names the finding that drove it (scout staleness, `correctness-lens`, `framework-lens`,
+  entry names the finding that drove it (pre-flight staleness, `correctness-lens`, `framework-lens`,
   `guidance-compliance-lens`, OpenCode critic, or lead finding) and whether it was accepted or
   rejected with a reason. Nothing a reviewer surfaced may be silently dropped — flag it if it was.
 - **Repo state.** Plans usually record the commit they were planned against
