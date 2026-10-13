@@ -81,7 +81,7 @@ reporter's share no key with it, and the deep expert's shares only `messages`. T
 (`agents/deep_forecaster/`) shares no key with the orchestrator's either, and is invoked the same
 way. The expert makes exactly
 three Brave batches, extracts allow-listed pages with trafilatura, and makes one
-streamed plain-text model call. Expert search, source, and model failures are
+streamed plain-text model call. Each answer ends with a fixed next-step menu (deep dive, forecast, report, with their research-turn costs from config.py), which the reporter's prompts ignore. Expert search, source, and model failures are
 hard errors; do not add degraded fallbacks.
 
 The deep expert (`agents/deep_expert/`) is a `deepagents` agent (gpt-5-mini, `reasoning_effort="low"`). It plans, searches and reads through the shared `search.py` boundary with the expert's `EXPERT_SOURCES`, and revises under `RubricMiddleware` (gpt-4o-mini grader). The grader reads the question and the whole final draft (`graph.grader_view`), never tool output. The classifier routes to `"deep"` only after an explicit request for depth, and keeps same-topic follow-ups deep. Search is capped at 5 per turn, shared with its subagent, and a spent budget is a message to the model rather than an error. Wall time is capped at 480 s, and passing it is a hard error (`ResearchLimitError`, 504). An unsatisfied grader after 3 rounds ships the last draft. A grader crash, no source read, or no cited source is a hard error. Its graph and tools are built per turn, never at import. `research()` runs the agent with checkpointing off for its whole tree (`NO_CHECKPOINTER_CONFIG`). Its answer reaches the browser once as a `notice`, and its progress labels carry counts only.
