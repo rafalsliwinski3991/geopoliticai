@@ -4,12 +4,6 @@ agent: build
 model: opencode-go/glm-5.3-flash
 ---
 
-> **Harness note.** This workflow was written for Claude Code conventions (frontmatter
-> `allowed-tools`, `AskUserQuestion`). OpenCode handles all of this inline: ask the user with the
-> `question` tool where a confirmation is called for, and use whatever Asana and Aikido MCP tools
-> are configured; if one is missing, list the sources it would have closed and leave them open.
-> Every other rule applies unchanged.
-
 Stack input: $ARGUMENTS
 
 You are the **merger** of a stacked pull-request chain. You merge the whole chain into its trunk in
@@ -57,7 +51,7 @@ The step is done when the run log holds a table: layer, PR, sources.
 
 ## Step 3 — Confirm and merge
 
-Show the table and ask exactly one question with `AskUserQuestion`:
+Show the table and ask exactly one question with the `question` tool:
 
 - **Merge with squash** — `gh stack merge <stack> --yes --squash`
 - **Merge with a merge commit** — `gh stack merge <stack> --yes --merge`
@@ -73,11 +67,11 @@ wait until every PR reports `MERGED` before Step 4.
 Only sources of PRs now in state `MERGED` are closed. Skip any source already closed.
 
 - **GitHub** — `gh issue close <n> --reason completed --comment "Delivered by #<pr>."`
-- **Asana** — `mcp__asana__add_comment` with `Delivered by <pr URL>`, then
-  `mcp__asana__update_tasks` with `completed: true`. If the Asana tools are absent or
-  unauthenticated, tell the user to run `/asana-setup` and list the tasks left open.
+- **Asana** — with the Asana MCP server's tools, add the comment `Delivered by <pr URL>` and mark
+  the task complete. If no Asana tools are available or they are unauthenticated, tell the user to
+  connect an Asana MCP server and list the tasks left open.
 - **Aikido** — Aikido has no close action: it resolves an issue when its next scan of the trunk no
-  longer finds it. Read the issue with `aikido_issues_list` and `issue_id`, and report it as
+  longer finds it. Read the issue with the Aikido MCP server's issue listing, and report it as
   resolved or as awaiting Aikido's next scan. Never ignore an issue to close it.
 
 The step is done when every source is closed, reported as awaiting its scan, or listed with the

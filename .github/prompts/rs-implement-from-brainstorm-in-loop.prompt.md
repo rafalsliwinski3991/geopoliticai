@@ -29,8 +29,6 @@ Ask before writing code. Use your harness's question tool, or a numbered chat li
 
 Then restate scope, the checklist as a table (item, check, owner: agent or user), the budget, the base branch, and delivery. Wait for the user's explicit approval. The approved checklist is the loop's exit; only the user changes it afterwards.
 
-If your harness has a goal or stop-condition feature (Claude Code: `/goal <condition>`), give the user the one-line condition to set, so the harness itself holds the loop open.
-
 ## Step 3 — Branch and loop file
 
 Stop and ask if the working tree has uncommitted changes or `loop/<slug>` already exists. Otherwise cut `loop/<slug>` from the approved base branch. Create the loop file with the approved table, the budget, the branch name, and an empty iteration log. Then open one draft pull request from `loop/<slug>` against the approved base and record its URL in the loop file. The draft PR belongs to the loop itself, not to the delivery choice in Step 2: review runs on it whether or not the user later asks for delivery.

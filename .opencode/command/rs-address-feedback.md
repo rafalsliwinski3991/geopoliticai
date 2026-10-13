@@ -3,10 +3,6 @@ description: Check every unresolved review comment on a pull request or on a gh-
 agent: build
 model: opencode-go/glm-5.3-flash
 ---
-> **Harness note.** This workflow was written for Claude Code conventions (frontmatter
-> `allowed-tools`, `AskUserQuestion`, lens subagents). OpenCode handles all of this inline: run the
-> steps yourself, ask the user with the `question` tool where a confirmation is called for, and
-> never dispatch a named lens. Every other rule applies unchanged.
 
 Review input: $ARGUMENTS
 
@@ -139,7 +135,7 @@ a concrete edit plan, all recorded in the run log.
 
 ## Step 4 — Confirm, then act
 
-Print the plan per PR: thread reference, apply or reject, and the drafted reply. Then ask the user
+Print the plan per PR: thread reference, apply or reject, and the drafted reply. Then ask with the `question` tool
 once:
 
 - **Proceed all** — apply all applies, push, and post every reply.

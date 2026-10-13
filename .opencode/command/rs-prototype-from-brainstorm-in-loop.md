@@ -31,8 +31,6 @@ Ask before writing code. Use your harness's question tool, or a numbered chat li
 
 Then restate the question, the checklist as a table (item, owner, and the expected state of each agent check), the budget, and the base branch. Wait for the user's explicit approval. The approved checklist is the loop's exit; only the user changes it afterwards.
 
-If your harness has a goal or stop-condition feature (Claude Code: `/goal <condition>`), give the user the one-line condition to set, so the harness itself holds the loop open.
-
 ## Step 2 — Build the first version
 
 Stop and ask if the working tree has uncommitted changes or `prototype/<slug>` already exists. Otherwise cut `prototype/<slug>` from the approved base branch. Create the loop file with the approved table, the budget, the branch name, and an empty round log. Then build:
