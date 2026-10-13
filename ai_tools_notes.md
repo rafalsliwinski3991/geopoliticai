@@ -56,8 +56,8 @@ stays byte-identical. Two things qualify. Naming one of Claude's read-only
 subagents does: OpenCode has the mechanism but none of those agents (its
 `.opencode/agent/` and `.opencode/agents/` hold only the interactive
 `plan-auditor` and `rs-implement-plan`'s own workers) and errors on the unknown
-name, and Copilot has no mechanism at all — `rs-code-review`,
-`rs-gh-stack-review` and `rs-improve-plan` are noted in both harnesses for this,
+name, and Copilot has no mechanism at all — `rs-code-review`
+and `rs-improve-plan` are noted in both harnesses for this,
 and `rs-implement-plan` in Copilot only, because OpenCode's version dispatches
 its own workers. `rs-improve-plan` Step 5's `/opencode:rescue`
 does too, being a Claude Code plugin command; its note is the second paragraph.
