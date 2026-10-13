@@ -75,9 +75,9 @@ Turn every thread into one **finding** with these fields:
 
 | Field | Rule |
 |---|---|
-| Found by | `copilot-pull-request-reviewer` or `copilot-pull-request-reviewer[bot]` is Copilot. A root comment starting `CC: <model> -> [<SEVERITY>, <n>/10]` is that model's review, with that severity and confidence. Any other author is that person, by login. |
+| Found by | `copilot-pull-request-reviewer` or `copilot-pull-request-reviewer[bot]` is Copilot. A root comment starting `<prefix>: <model> -> [<SEVERITY>, <n>/10]` (`<prefix>` is `CC`, `OPENCODE`, or `COPILOT`) is that model's review, with that severity and confidence. Any other author is that person, by login. |
 | Finding | The root comment's first line, linked to its `url`. |
-| Outcome | Take the latest comment in `latest`. One starting `CC: <model> -> applied:` gives outcome **applied**; one starting `CC: <model> -> rejected:` gives **rejected**. Show the reply text, which names the change and SHA, or the reason. With neither, the outcome is **no outcome recorded**. |
+| Outcome | Take the latest comment in `latest`. One starting `<prefix>: <model> -> applied:` gives outcome **applied**; one starting `<prefix>: <model> -> rejected:` gives **rejected**. Show the reply text, which names the change and SHA, or the reason. With neither, the outcome is **no outcome recorded**. |
 | Same spot | When another finding in the same layer sits on the same path within three lines, link the two as "same spot". Count each thread once. |
 
 How to report each outcome:
@@ -88,10 +88,10 @@ How to report each outcome:
 - When `latest.totalCount` is above 50, mark the thread "older replies not read".
 
 Review bodies:
-- A review body starting `CC: <model> -> Review of #<pr>` gives that layer's counts — the format
+- A review body starting `<prefix>: <model> -> Review of #<pr>` gives that layer's counts — the format
   `/rs-code-review` posts, whose counts (`<X> critical, <Y> informational`) come from the same run.
 - Each further line in that body is an unanchored finding.
-- Its outcome comes from a PR comment starting `CC: <model> -> applied:` or `-> rejected:` that names it, or
+- Its outcome comes from a PR comment starting `<prefix>: <model> -> applied:` or `-> rejected:` that names it, or
   from the address-feedback log (Step 3). Otherwise it is **no outcome recorded**.
 
 Never infer an outcome from the code.

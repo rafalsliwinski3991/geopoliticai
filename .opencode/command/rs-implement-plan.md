@@ -8,7 +8,7 @@ Plans: $ARGUMENTS
 
 You are the lead. You coordinate. You write briefs, the ledger, diff files, and pull-request bodies. Lightweight and standard plans: you are also the only code writer. Full plan: every unit is implemented by a fresh `plan-implementer` from a brief file, and you do not edit production code or tests.
 
-The rest of this section applies to a full plan only. OpenCode dispatches a subagent with the Task tool. Set `subagent_type` to one of the names below. The Task tool has no model argument; the agent file pins the model. A dispatch that returns `Unknown agent type` means OpenCode has not loaded `.opencode/agents/` yet: stop and tell the user to quit and restart OpenCode. Do not implement the unit yourself.
+The rest of this paragraph, the table, and the line after it apply to a full plan only. OpenCode dispatches a subagent with the Task tool. Set `subagent_type` to one of the names below. The Task tool has no model argument; the agent file pins the model. A dispatch that returns `Unknown agent type` means OpenCode has not loaded `.opencode/agents/` yet: stop and tell the user to quit and restart OpenCode. Do not implement the unit yourself.
 
 | Role | `subagent_type` | Model |
 |---|---|---|

@@ -246,7 +246,7 @@ gh api repos/{owner}/{repo}/pulls/<number>/comments --paginate
 ```
 
 Drop any finding whose `path` and `line` already carry a comment starting with the
-`CC: <MODEL_NAME> ->` prefix (match on the `CC:` prefix, since `<MODEL_NAME>` has been resolved to
+`COPILOT: <MODEL_NAME> ->` prefix (match on the `CC:`, `OPENCODE:`, or `COPILOT:` prefix, since `<MODEL_NAME>` has been resolved to
 the concrete model name on older comments) that makes the same point, so a rerun never double-posts.
 
 ## Step 5 — Confirm, then post
@@ -271,17 +271,17 @@ gh api repos/{owner}/{repo}/pulls/<number>/reviews --method POST --input review.
 {
   "commit_id": "<headRefOid>",
   "event": "COMMENT",
-  "body": "CC: <MODEL_NAME> -> Review of #<pr> (<n>/<total> in stack mode): <X> critical, <Y> informational.\n<unanchored findings, one per line>",
+  "body": "COPILOT: <MODEL_NAME> -> Review of #<pr> (<n>/<total> in stack mode): <X> critical, <Y> informational.\n<unanchored findings, one per line>",
   "comments": [
     {"path": "agentic_backend/src/api.py", "line": 42, "side": "RIGHT",
-     "body": "CC: <MODEL_NAME> -> [CRITICAL, 8/10] <problem, one line>\n\nFix: <fix, one line>"}
+     "body": "COPILOT: <MODEL_NAME> -> [CRITICAL, 8/10] <problem, one line>\n\nFix: <fix, one line>"}
   ]
 }
 ```
 
-Every comment body and review body starts with the prefix `CC: <MODEL_NAME> ->`, where
+Every comment body and review body starts with the prefix `COPILOT: <MODEL_NAME> ->`, where
 `<MODEL_NAME>` is the name of the model running this command as your system prompt states it (for
-example `CC: Opus 5.5 ->`). Write the JSON under the session scratchpad. If GitHub rejects a line
+example `COPILOT: GPT-5 mini ->`). Write the JSON under the session scratchpad. If GitHub rejects a line
 (422), move that finding into the review body and post again.
 
 ## Step 6 — Report

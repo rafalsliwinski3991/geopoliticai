@@ -2,7 +2,7 @@
 name: rs-gh-stack-merge
 description: "Merge every pull request of a gh-stack chain, then close the Asana tasks, GitHub issues, and Aikido issues they deliver"
 agent: agent
-tools: ["context7/*", "edit", "execute", "read", "search"]
+tools: ["context7/*", "asana/*", "aikido/*", "edit", "execute", "read", "search"]
 ---
 
 Stack input: the text the user typed after the command.

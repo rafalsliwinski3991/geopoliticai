@@ -184,9 +184,9 @@ way `rs-plan-from-brainstorm`'s "Open questions and rejected objections" section
 drop a reviewer's finding.
 
 Stop before implementing. Beyond the pre-flight pass and the tier's lens passes, the only remaining pass is the
-Step 5 OpenCode critique.
+Step 5 final critique.
 
-## Step 5 — OpenCode critique of the new version
+## Step 5 — final critique of the new version
 
 Runs for **every tier** — lightweight, standard, and full — once the new version exists on disk.
 
@@ -231,7 +231,7 @@ Report to the user: the previous plan path, the new plan path, the version bump,
 and the applicable review summary. For a standard or full plan, include the pre-flight pass's top-line status
 (how many tasks or commits are already applied / partially applied / not started); for a lightweight
 plan, include the direct pre-flight and self-review result instead. Also report how many findings
-each applicable lens raised and how many you accepted, how many the OpenCode critique raised and how
+each applicable lens raised and how many you accepted, how many the final critique raised and how
 many you accepted, the simplifications you made, plus the
 run-log path.
 
@@ -240,7 +240,7 @@ run-log path.
 ## Standing rules
 
 - You are the only writer. Every review pass is read-only; never let one change a file.
-- The Step 5 OpenCode critique runs at every tier, before the user is asked to approve.
+- The Step 5 final critique runs at every tier, before the user is asked to approve.
 - Where the plan and the code disagree, the code wins, and the disagreement goes in the changelog.
 - The new version is a complete replacement, never a diff or a pointer back to the old one.
 - Never claim a finding was addressed unless the new version's text actually reflects it.

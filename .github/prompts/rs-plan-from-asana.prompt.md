@@ -2,7 +2,7 @@
 name: rs-plan-from-asana
 description: "Turn Asana tasks (specific tasks or one assignee's) into a right-sized implementation plan"
 agent: agent
-tools: ["context7/*", "edit", "execute", "read", "search", "web"]
+tools: ["context7/*", "asana/*", "edit", "execute", "read", "search", "web"]
 ---
 
 Arguments: the text the user typed after the command.
