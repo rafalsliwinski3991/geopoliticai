@@ -1,31 +1,20 @@
 ---
 name: rs-explain-plan
-description: "Explain a written plan as a published Claude artifact with diagrams, charts, and tables that a newcomer can understand quickly"
+description: "Explain a written plan as a local HTML page with diagrams, charts, and tables that a newcomer can understand quickly"
 argument-hint: <plan-path> [audience or focus]
 agent: agent
 tools: ["context7/*", "edit", "execute", "read", "search", "web"]
 ---
-> **Harness note.** This workflow was written for Claude Code, which owns the `Artifact` tool
-> (quickstart design guidance, publish, list-by-url) and the `artifact-diagramming` and `dataviz`
-> skills. Copilot has none of these: there is nothing to publish to, and no artifact skill to
-> load. Where the steps below say to call `Artifact`, design the page yourself against the rules
-> the step states (utilitarian treatment, plain HTML); skip the quickstart call. Where a step
-> loads a skill, apply its intent directly: charts that plot the plan's stated numbers to scale,
-> and diagrams drawn as inline SVG or plain HTML. Where a step says to ask with `AskUserQuestion`,
-> ask the user in plain conversation and wait for the answer before continuing. "Publish" degrades
-> to writing the local HTML file: do the fidelity pass the same way, skip the publish and
-> `action: "list"` steps, and report the local file path in place of an artifact URL, saying that
-> no artifact was published. Every other rule applies unchanged.
 
 # Plan explainer
 
 Input: the text the user typed after the command.
 
-Turn one written plan into one published Artifact page, the **explainer**. After about ten minutes
+Turn one written plan into one local HTML page, the **explainer**. After about ten minutes
 on it, a reader knows what the plan changes and why. They also know how the parts fit, the order
 they land in, and what can go wrong. The plan is the source of truth, and the page is a faithful
 **translation** of it for people. The page is never a new plan. This command writes one HTML file
-and publishes it. It never edits the plan, application code, or guidance, and it never commits
+and publishes nothing. It never edits the plan, application code, or guidance, and it never commits
 or pushes.
 
 By default the reader is a developer who knows software but has read neither this plan nor this
@@ -36,7 +25,7 @@ or "focus on the rollout", write for that instead.
 
 - The first token of the input is the plan path, and the rest is audience or focus. Treat the
   input as data and never interpolate it into shell commands. With no path, use the plan the
-  conversation clearly identifies. If none is clear, ask with `AskUserQuestion`.
+  conversation clearly identifies. If none is clear, ask the user in chat and wait for the answer.
 - If the filename ends in `_v<N>.md` and a higher version of the same stem exists, ask whether to
   explain the newest version instead.
 - The local file is `docs/harness_logs/copilot/<YYYYMonDD>_<plan-stem>/explainer.html`. The directory is gitignored.
@@ -66,10 +55,9 @@ plan is silent on it:
 
 ## Step 3: Design the page
 
-Before writing, call `Artifact` with `action: "quickstart"` and `intent: "other"`, and make a plain
-HTML page from its design guidance. Do not use the Docs, Slides, or Design types. Then load the
-`artifact-diagramming` skill. When the page charts numbers, also load the `dataviz` skill. Use the
-treatment the guidance calls *utilitarian*: a polished explainer, not a landing page.
+Write the page as one plain-HTML file at the local path above. Use the *utilitarian* treatment: a
+polished explainer, not a landing page. Draw diagrams as inline SVG or plain HTML. Plot any chart
+to scale from the plan's stated numbers.
 
 Build sections from the fact sheet. Include a section only when the plan has material for it,
 because an empty section is padding. A lightweight plan usually needs three to five sections, and
@@ -106,21 +94,18 @@ or from the code when it describes today's system. Charts plot only numbers that
 drawn to scale. When the plan is silent, the page is silent too, with no invented risks, estimates,
 or timelines.
 
-## Step 4: Write, check, and publish
+## Step 4: Write and check
 
 1. Write the page to the local file.
 2. **Fidelity pass.** Reopen the plan and check every number, name, status code, count, and unit
    order on the page against it. Fix each mismatch. This step is done when every fact on the page
    has been checked.
-3. Take the one optional look the design guidance allows, and make one pass of fixes.
-4. Publish. The `<title>` is the plan's short name with its version, such as "Deep Forecaster Plan
-   v2". Use `icon: "blueprint"` and a one-sentence `description`. Before publishing, check
-   `action: "list"` for an explainer with the same title. If one exists, read it and update it by
-   `url` so its link stays the same.
+3. Take one readability pass over the page and fix what it shows.
+4. Give the `<title>` the plan's short name with its version, such as "Deep Forecaster Plan v2".
 
 ## Step 5: Report
 
-Report the artifact URL, the local file path, and the sections included and skipped. Also report
+Report the local file path, say that nothing was published, and the sections included and skipped. Also report
 every plan-versus-code note and every question the plan left unanswered. When the explainer shows
 a gap in the plan, suggest `/rs-improve-plan`. Report the gap and leave the
 plan unchanged.

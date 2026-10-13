@@ -1,5 +1,5 @@
 ---
-description: Turn a brainstorming doc into a right-sized implementation plan, using full multi-agent review only when the change warrants it
+description: Turn a brainstorming doc into a right-sized implementation plan, using full multi-pass review only when the change warrants it
 agent: build
 model: opencode-go/glm-5.3-flash
 ---
@@ -44,7 +44,7 @@ Before drafting, choose the smallest planning depth that makes implementation sa
 - **Lightweight plan** -- use for a minor, contained change to one existing flow:
   a small bug fix, a narrowly scoped behavior change, or a routine local update.
   Do not inflate it into artificial commits, speculative alternatives, a migration
-  section, or a multi-agent review merely because a plan was requested.
+  section, or a multi-pass review merely because a plan was requested.
 - **Standard plan** -- use for a coherent multi-file feature or refactor within
    one existing subsystem. It needs ordered file-level tasks and focused testing,
    but has no migration, high-risk interface, or cross-subsystem concern.
