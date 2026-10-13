@@ -116,20 +116,20 @@ Local logs enrich the page; they never replace GitHub.
 **Plan path.** Use the second argument. Otherwise use the plan path a layer's "Why" section names. Otherwise
 ask with `AskUserQuestion`, offering "no plan".
 
-**Logs to read.** Read each of these that exists, in `docs/harness_logs/claude-code/` or
-`docs/harness_logs/opencode/` (per-harness run dir `<YYYYMonDD>_<slug>` inside each):
+**Logs to read.** Read each of these that exists, in `docs/harness_logs/claude-code/`,
+`docs/harness_logs/opencode/`, or `docs/harness_logs/copilot/` (per-harness run dir `<YYYYMonDD>_<slug>` inside each):
 
-- **The `rs-implement-plan` ledger**, at `docs/harness_logs/claude-code/<plan-stem>/ledger.md` or `docs/harness_logs/opencode/<plan-stem>/ledger.md`. Take
+- **The `rs-implement-plan` ledger**, at `docs/harness_logs/<harness>/<plan-stem>/ledger.md` for `<harness>` in `claude-code`, `opencode`, and `copilot`. Take
   from it:
   - the plan's units, and which commits were added to a unit during the run, with the failed check or
     finding behind each;
   - gates that are still failing or open;
   - audit minors left in place.
-- **`claude-code|opencode`/`<YYYYMonDD>_<slug>`/stack_review.md.** Its `Not posted: <count and reason>` line, and any per-finding
+- **`claude-code|opencode|copilot`/`<YYYYMonDD>_<slug>`/stack_review.md.** Its `Not posted: <count and reason>` line, and any per-finding
   "Dropped or not posted" list a run wrote, give findings whose outcome is **not posted**, with the
   reason. When the log has only the count, show that count and reason under the layer; never guess which
   findings they were.
-- **`claude-code|opencode`/`<YYYYMonDD>_<slug>`/stack_address_feedback.md.** A decision drafted there with no matching reply on GitHub gets
+- **`claude-code|opencode|copilot`/`<YYYYMonDD>_<slug>`/stack_address_feedback.md.** A decision drafted there with no matching reply on GitHub gets
   outcome **drafted, not posted**, with the drafted text.
 
 Record every path you looked for. The page lists each missing one as "Not found on this machine: `<path>`".
