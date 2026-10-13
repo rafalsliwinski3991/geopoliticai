@@ -61,6 +61,23 @@ class EmailAdminPermissionTest(TestCase):
         self.assertContains(response, "searchable subject")
         self.assertNotContains(response, "guarded row")
 
+    def test_a_staff_user_without_permissions_cannot_view_the_rows(self) -> None:
+        # Arrange
+        # Stored bodies hold live reset and confirmation links, so
+        # `has_view_permission` stays superuser-only.
+        self.client.force_login(
+            User.objects.create_user(
+                email="viewer@example.com",
+                password="resolute-amber-8",
+                is_staff=True,
+            )
+        )
+        url = reverse("admin:emails_email_changelist")
+        # Act
+        response = self.client.get(url)
+        # Assert
+        self.assertEqual(response.status_code, 403)
+
 
 @override_settings(MAILERS=TEST_MAILERS)
 class EmailAdminResendActionTest(TestCase):

@@ -25,6 +25,12 @@ class EmailAdmin(admin.ModelAdmin):
     def has_delete_permission(self, request, obj=None) -> bool:
         return False
 
+    def has_view_permission(self, request, obj=None) -> bool:
+        # Stored bodies hold live password-reset and confirmation links:
+        # any staff user who could open a row would get an account-takeover
+        # path, so viewing rows stays a superuser-only ability.
+        return request.user.is_superuser
+
     @admin.action(description="Resend selected", permissions=["change"])
     def resend_selected(self, request, queryset) -> None:
         count = requeue_emails(queryset)

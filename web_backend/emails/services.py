@@ -195,10 +195,14 @@ def _record_failure(row: Email, error: str) -> None:
 def requeue_emails(queryset) -> int:
     """Put rows back to `pending` for a resend.
 
-    `sent_at` and `last_error` are left as they are: a later attempt only
-    overwrites them once it has actually sent.
+    Only `sent` and `failed` rows are touched: a `pending` row is already
+    queued, and recounting it as a resend would bump `resend_count` for
+    work nobody asked for. `sent_at` and `last_error` are left as they
+    are: a later attempt only overwrites them once it has actually sent.
     """
-    return queryset.update(
+    return queryset.filter(
+        status__in=[Email.Status.SENT, Email.Status.FAILED]
+    ).update(
         status=Email.Status.PENDING,
         attempts=0,
         resend_count=models.F("resend_count") + 1,

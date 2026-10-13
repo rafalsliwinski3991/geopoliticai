@@ -460,6 +460,22 @@ class RequeueEmailsTest(TestCase):
         self.assertEqual(row.resend_count, 1)
         self.assertEqual(row.last_error, last_error_before)
 
+    def test_requeue_emails_leaves_pending_rows_untouched(self) -> None:
+        # Arrange
+        row = Email.objects.create(
+            from_email="noreply@politicalagent.eu",
+            to=["reader@example.com"],
+            subject="already pending",
+        )
+        # Act
+        count = requeue_emails(Email.objects.filter(pk=row.pk))
+        row.refresh_from_db()
+        # Assert
+        self.assertEqual(count, 0)
+        self.assertEqual(row.status, Email.Status.PENDING)
+        self.assertEqual(row.attempts, 0)
+        self.assertEqual(row.resend_count, 0)
+
 
 class SendBatchSkipsLockedRowTest(TransactionTestCase):
     """The `skip_locked` decision: another process's batch does not stall.
