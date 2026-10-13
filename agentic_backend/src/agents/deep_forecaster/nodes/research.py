@@ -46,6 +46,7 @@ from models import (
     PipelineError,
     SearchUnavailableError,
 )
+from tracing import start_span
 
 # deepagents' reserved name: a spec under it replaces the auto-added default
 # subagent (`deepagents/graph.py:798`), so the scout is the lead's only one.
@@ -113,7 +114,25 @@ async def research(
     """Collect the forecasters' writing on the question; return what was read."""
     runtime.context.enter(RESEARCH_LABEL, runtime.stream_writer)
     run = ResearchRun(writer=runtime.stream_writer, store=runtime.store)
-    timed_out = await _run_agent(build_research_agent(run), state["question"])
+    timed_out = False
+    with start_span("forecast_research") as span:
+        try:
+            timed_out = await _run_agent(build_research_agent(run), state["question"])
+        finally:
+            span.set_attributes(
+                {
+                    "research.searches_used": run.searches,
+                    "research.search_cap": LIMITS.max_searches,
+                    "research.failed_searches": run.failed_searches,
+                    "research.sources_read": len(run.sources),
+                    "research.source_cap": LIMITS.max_sources,
+                    "research.videos_used": run.videos,
+                    "research.search_budget_hit": run.searches >= LIMITS.max_searches,
+                    "research.source_budget_hit": len(run.sources)
+                    >= LIMITS.max_sources,
+                    "research.time_limit_hit": timed_out,
+                }
+            )
     if not run.sources:
         if run.searches and run.failed_searches == run.searches:
             # Every Brave request failed: an outage, as the deep expert reports it.

@@ -5,6 +5,9 @@ from datetime import date
 from typing import Any
 
 import pytest
+from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
+    InMemorySpanExporter,
+)
 
 from agents.deep_forecaster.models import Claim, EvidenceRef
 from models import LLMInvocationError, Source
@@ -290,3 +293,51 @@ async def test_a_statement_with_a_link_or_a_line_break_is_refused() -> None:
                 today=TODAY,
                 sources=sources(),
             )
+
+
+@pytest.mark.anyio
+async def test_evidence_positions_span_marks_cut_sources(
+    monkeypatch: pytest.MonkeyPatch,
+    events: list[dict[str, Any]],
+    captured_spans: InMemorySpanExporter,
+) -> None:
+    """Source 1 padded to exactly 20,000 chars with blank lines stays 3 paragraphs and counts as cut."""
+    # Arrange
+    from agents.deep_forecaster.consts.forecasters import FORECASTER_SOURCES
+    from agents.deep_forecaster.models import DraftedClaims as _Drafted
+
+    def cut_sources() -> list[Source]:
+        head = "Alpha one.\nAlpha two.\nAlpha three."
+        padded = head + "\n" * (FORECASTER_SOURCES.max_source_chars - len(head))
+        assert len(padded) == FORECASTER_SOURCES.max_source_chars
+        base = sources()
+        base[0] = Source(
+            base[0].title, base[0].url, padded, author=base[0].author or ""
+        )
+        return base
+
+    drafted = _Drafted(claims=_valid_claims())
+
+    async def fake_ainvoke(
+        prompt: str, messages: Any, schema: Any, *, settings: Any = None
+    ) -> Any:
+        return drafted
+
+    monkeypatch.setattr(draft_module, "ainvoke_structured", fake_ainvoke)
+    state = {"question": "q", "sources": cut_sources()}
+    # Act
+    await draft_module.draft_claims(state, _runtime(events))
+    matches = [
+        span
+        for span in captured_spans.get_finished_spans()
+        if span.name == "evidence_positions" and span.attributes is not None
+    ]
+    attributes = matches[0].attributes
+    # Assert
+    assert len(matches) == 1
+    assert attributes is not None
+    # OTel records sequence attributes as tuples; normalize before comparing.
+    positions: tuple[float, ...] = attributes["evidence.positions"]  # type: ignore[assignment]
+    cut_flags: tuple[bool, ...] = attributes["evidence.on_cut_source"]  # type: ignore[assignment]
+    assert list(positions) == [1 / 3, 2 / 3, 3 / 3]
+    assert list(cut_flags) == [True, False, True]

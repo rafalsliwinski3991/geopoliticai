@@ -11,6 +11,7 @@ from langchain_core.messages import HumanMessage
 from langgraph.runtime import Runtime
 
 from agents.deep_forecaster.config import CLAIMS_LLM_SETTINGS, LIMITS
+from agents.deep_forecaster.consts.forecasters import FORECASTER_SOURCES
 from agents.deep_forecaster.consts.progress import CLAIMS_LABEL
 from agents.deep_forecaster.evidence import (
     links_in,
@@ -23,6 +24,7 @@ from agents.deep_forecaster.prompts import DRAFT_CLAIMS_PROMPT
 from agents.deep_forecaster.state import ForecastRun, ForecastState
 from llm import ainvoke_structured
 from models import LLMInvocationError, Source
+from tracing import start_span
 
 logger = logging.getLogger(__name__)
 
@@ -44,9 +46,33 @@ async def draft_claims(
         DraftedClaims,
         settings=CLAIMS_LLM_SETTINGS,
     )
-    return {
-        "claims": checked_claims(drafted.claims, today=today, sources=state["sources"])
-    }
+    claims = checked_claims(drafted.claims, today=today, sources=state["sources"])
+    _record_evidence_positions(claims, state["sources"])
+    return {"claims": claims}
+
+
+def _record_evidence_positions(claims: list[Claim], sources: Sequence[Source]) -> None:
+    """Record where each cited paragraph sits in its page, and whether that page was cut.
+
+    A position is paragraph / paragraph count, so 1.0 is a page's last kept
+    paragraph. A page is cut when its text is exactly `max_source_chars`
+    long (brainstorm 2026Oct13 Q10): no `Source` field records it.
+    """
+    refs = [ref for claim in claims for ref in claim.evidence]
+    counts = [len(paragraphs(source.text)) for source in sources]
+    with start_span("evidence_positions") as span:
+        span.set_attributes(
+            {
+                "evidence.positions": [
+                    ref.paragraph / counts[ref.source - 1] for ref in refs
+                ],
+                "evidence.on_cut_source": [
+                    len(sources[ref.source - 1].text)
+                    == FORECASTER_SOURCES.max_source_chars
+                    for ref in refs
+                ],
+            }
+        )
 
 
 def checked_claims(

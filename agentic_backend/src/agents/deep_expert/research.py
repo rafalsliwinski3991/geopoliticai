@@ -25,6 +25,7 @@ from models import (
     PipelineError,
     ResearchLimitError,
 )
+from tracing import start_span
 
 # Same pattern as `evals/helpers/judge.py::MARKDOWN_LINK_URL`; src never imports evals.
 MARKDOWN_LINK_URL = re.compile(r"\]\((https?://[^)\s]+)\)")
@@ -32,10 +33,30 @@ logger = logging.getLogger(__name__)
 
 
 async def research(query: str, writer: StreamWriter) -> str:
-    """Research `query` in depth and return the finished, checked answer."""
+    """Research `query` in depth and return the finished, checked answer.
+
+    A `deep_research` span records whether the turn ran out of searches or
+    time (brainstorm 2026Oct13 Q9), including when the wall cap ends it.
+    """
     run = ResearchRun(writer=writer)
     writer(PLANNING_PROGRESS)
-    result = await _invoke(build_graph(run), query)
+    time_limit_hit = False
+    with start_span("deep_research") as span:
+        try:
+            result = await _invoke(build_graph(run), query)
+        except ResearchLimitError:
+            time_limit_hit = True
+            raise
+        finally:
+            span.set_attributes(
+                {
+                    "research.searches_used": run.searches,
+                    "research.search_cap": LIMITS.max_searches,
+                    "research.sources_read": len(run.sources),
+                    "research.search_budget_hit": run.searches >= LIMITS.max_searches,
+                    "research.time_limit_hit": time_limit_hit,
+                }
+            )
     return _checked_deep_answer(result, run)
 
 

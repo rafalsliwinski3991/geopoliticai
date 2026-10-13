@@ -13,6 +13,10 @@ from langchain_core.language_models.fake_chat_models import FakeMessagesListChat
 from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.graph import END, START, StateGraph
+from opentelemetry.sdk.trace import ReadableSpan
+from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
+    InMemorySpanExporter,
+)
 from typing_extensions import TypedDict
 
 from agents.deep_forecaster.consts.progress import RESEARCH_LABEL
@@ -631,3 +635,84 @@ async def test_research_hands_the_runtime_store_to_its_tools(
     await research_module.research({"question": "q"}, runtime)
     # Assert
     assert holder["run"].store is sentinel
+
+
+def _span_by_name(captured: InMemorySpanExporter, name: str) -> ReadableSpan:
+    matches = [
+        span
+        for span in captured.get_finished_spans()
+        if span.name == name and span.attributes is not None
+    ]
+    assert len(matches) == 1, f"expected exactly one {name} span, got {len(matches)}"
+    return matches[0]
+
+
+@pytest.mark.anyio
+async def test_research_span_records_the_time_box(
+    monkeypatch: pytest.MonkeyPatch,
+    events: list[dict[str, Any]],
+    captured_spans: InMemorySpanExporter,
+) -> None:
+    # Arrange
+    import agents.deep_forecaster.config as config
+
+    fake_factory = lambda run: _FakeAgent(  # noqa: E731
+        run, mutate=_record_one_source, slow=1.0
+    )
+    monkeypatch.setattr(research_module, "build_research_agent", fake_factory)
+    small = dataclasses.replace(config.LIMITS, research_seconds=0.05)
+    monkeypatch.setattr(research_module, "LIMITS", small)
+    monkeypatch.setattr(config, "LIMITS", small)
+    # Act
+    await research_module.research({"question": "q"}, _runtime(events))
+    span = _span_by_name(captured_spans, "forecast_research")
+    # Assert
+    attributes = span.attributes
+    assert attributes is not None
+    assert attributes["research.time_limit_hit"] is True
+    assert attributes["research.sources_read"] == 1
+
+
+@pytest.mark.anyio
+async def test_research_span_records_a_full_source_budget(
+    monkeypatch: pytest.MonkeyPatch,
+    events: list[dict[str, Any]],
+    captured_spans: InMemorySpanExporter,
+) -> None:
+    # Arrange
+    def fill_sources(run: ResearchRun) -> None:
+        for index in range(1, 21):
+            run.sources[f"https://a.example/{index}"] = Source(
+                "t", f"https://a.example/{index}", "text " * 100
+            )
+
+    _patch_agent(monkeypatch, lambda run: _FakeAgent(run, mutate=fill_sources))
+    # Act
+    await research_module.research({"question": "q"}, _runtime(events))
+    span = _span_by_name(captured_spans, "forecast_research")
+    # Assert
+    attributes = span.attributes
+    assert attributes is not None
+    assert attributes["research.source_budget_hit"] is True
+    assert attributes["research.search_budget_hit"] is False
+
+
+@pytest.mark.anyio
+async def test_research_span_records_a_failed_run(
+    monkeypatch: pytest.MonkeyPatch,
+    events: list[dict[str, Any]],
+    captured_spans: InMemorySpanExporter,
+) -> None:
+    # Arrange
+    fake = _FakeAgent(ResearchRun(writer=events.append), fail=RuntimeError("bug"))
+    _patch_agent(
+        monkeypatch, lambda run: _FakeAgent(run, fail=fake.fail, mutate=fake.mutate)
+    )
+    # Act
+    with pytest.raises(LLMInvocationError):
+        await research_module.research({"question": "q"}, _runtime(events))
+    span = _span_by_name(captured_spans, "forecast_research")
+    # Assert
+    attributes = span.attributes
+    assert attributes is not None
+    assert attributes["research.searches_used"] == 0

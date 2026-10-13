@@ -8,6 +8,9 @@ from typing import Any
 
 import pytest
 from langchain_core.tools import BaseTool
+from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
+    InMemorySpanExporter,
+)
 
 import agents.deep_forecaster.tools as tools_module
 from agents.deep_forecaster.consts.forecasters import FORECASTERS_BY_ID
@@ -667,3 +670,30 @@ async def test_ask_video_passes_the_run_store(
     await tools["ask"].ainvoke({"url": url, "question": "q"})
     # Assert
     assert received == [sentinel]
+
+
+@pytest.mark.anyio
+async def test_ask_video_opens_a_watch_video_span(
+    tools: dict[str, BaseTool],
+    run: ResearchRun,
+    monkeypatch: pytest.MonkeyPatch,
+    captured_spans: InMemorySpanExporter,
+) -> None:
+    # Arrange
+    url = "https://www.youtube.com/watch?v=abcdefghijk"
+    run.candidates[url] = _candidate(url, domain="youtube.com", title="A talk")
+
+    async def fake(video: str, question: str, store: Any = None) -> str:
+        return "Notes " * 40
+
+    monkeypatch.setattr(tools_module, "watch_video", fake)
+    # Act
+    result = await tools["ask"].ainvoke({"url": url, "question": "q"})
+    # Assert
+    assert result.startswith("--- SOURCE ---") or "Gemini's notes" in result
+    matches = [
+        span
+        for span in captured_spans.get_finished_spans()
+        if span.name == "watch_video"
+    ]
+    assert len(matches) == 1

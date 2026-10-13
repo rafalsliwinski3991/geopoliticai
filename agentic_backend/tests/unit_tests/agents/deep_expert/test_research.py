@@ -8,6 +8,10 @@ from typing import Any
 
 import pytest
 from langchain_core.messages import AIMessage, HumanMessage
+from opentelemetry.sdk.trace import ReadableSpan
+from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
+    InMemorySpanExporter,
+)
 
 from agents.deep_expert.config import ResearchLimits
 from agents.deep_expert.prompts import DEEP_ANSWER_RUBRIC
@@ -234,6 +238,59 @@ async def test_an_arbitrary_failure_becomes_llm_invocation_error(
     # Act + Assert
     with pytest.raises(LLMInvocationError):
         await research_module.research("q", lambda e: None)
+
+
+def _span_by_name(captured: InMemorySpanExporter, name: str) -> ReadableSpan:
+    matches = [
+        span
+        for span in captured.get_finished_spans()
+        if span.name == name and span.attributes is not None
+    ]
+    assert len(matches) == 1, f"expected exactly one {name} span, got {len(matches)}"
+    return matches[0]
+
+
+@pytest.mark.anyio
+async def test_research_span_records_a_spent_budget(
+    monkeypatch: pytest.MonkeyPatch,
+    captured_spans: InMemorySpanExporter,
+) -> None:
+    # Arrange
+    def five_searches(run: ResearchRun) -> None:
+        cited_run()(run)
+        run.searches = 5
+
+    spy = _GraphSpy([AIMessage(DEEP_ANSWER)], five_searches)
+    monkeypatch.setattr(research_module, "build_graph", lambda run: spy.bind_run(run))
+    # Act
+    await research_module.research("q", lambda e: None)
+    span = _span_by_name(captured_spans, "deep_research")
+    # Assert
+    attributes = span.attributes
+    assert attributes is not None
+    assert attributes["research.searches_used"] == 5
+    assert attributes["research.search_budget_hit"] is True
+    assert attributes["research.time_limit_hit"] is False
+
+
+@pytest.mark.anyio
+async def test_research_span_records_the_wall_limit(
+    monkeypatch: pytest.MonkeyPatch,
+    captured_spans: InMemorySpanExporter,
+) -> None:
+    # Arrange
+    monkeypatch.setattr(research_module, "LIMITS", ResearchLimits(wall_seconds=0.01))
+    spy = _GraphSpy([])
+    spy.sleep_for = 1.0
+
+    monkeypatch.setattr(research_module, "build_graph", lambda run: spy.bind_run(run))
+    # Act + Assert
+    with pytest.raises(ResearchLimitError, match="0.01-second"):
+        await research_module.research("q", lambda e: None)
+    span = _span_by_name(captured_spans, "deep_research")
+    attributes = span.attributes
+    assert attributes is not None
+    assert attributes["research.time_limit_hit"] is True
 
 
 @pytest.mark.anyio
