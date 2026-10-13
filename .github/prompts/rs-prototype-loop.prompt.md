@@ -14,7 +14,7 @@ A prototype is throwaway code that answers a question. The question decides the 
 - **Logic or state model** ("does this feel right?"): one self-contained HTML file or script with free-play buttons and guided cases that push the state through what is hard to reason about on paper, drivable by a non-developer.
 - **Appearance** ("what should this look like?"): several radically different variants on one route, switched by a URL search param and a floating bottom bar, following the project's routing convention.
 
-The loop file is `docs/harness_logs/<slug>-prototype/loop.md` (gitignored; `<slug>` is the question in two to four kebab-case words). It holds the definition of done and one entry per round, and is exempt from `docs/harness_logs/TEMPLATE.md`: no header, no metrics table. Trust it and `git log` over your recollection. If it already exists, read it, check out the branch it records, and resume at Step 3.
+The loop file is `docs/harness_logs/copilot/<YYYYMonDD>_<slug>/loop.md` (gitignored; `<slug>` is the question in two to four kebab-case words). It holds the definition of done and one entry per round, and is exempt from `docs/harness_logs/TEMPLATE.md`: no header, no metrics table. Trust it and `git log` over your recollection. If it already exists, read it, check out the branch it records, and resume at Step 3.
 
 ---
 
