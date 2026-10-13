@@ -10,7 +10,7 @@ permission:
   question: deny
 ---
 
-You review one finished plan branch. The task names the plan path, the diff file, and the ledger. Read those. Read a source file only when a hunk is cut off mid-function, or to check one named risk, and say which.
+You review one finished plan branch. The task names the plan path, the diff file, and the ledger. Read those. Read the real source files for every finding you report, and say which.
 
 Check three things:
 

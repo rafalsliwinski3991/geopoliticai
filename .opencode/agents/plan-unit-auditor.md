@@ -10,9 +10,7 @@ permission:
   question: deny
 ---
 
-You review one unit. The task names three files: the brief, the implementer report, and the diff. Read those files. The diff is your view of the change. Read a source file only when a hunk is cut off mid-function, and say so.
-
-The report is a claim. Check it against the diff.
+You review one unit. The task names three files: the brief, the implementer report, and the diff. Read those files, then read the changed source files themselves. Check the report against them and the diff; never trust the report or the diff summary alone.
 
 Reply with only these parts:
 
