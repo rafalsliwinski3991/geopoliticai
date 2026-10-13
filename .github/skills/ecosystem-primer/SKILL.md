@@ -143,7 +143,7 @@ Start here rather than tree-searching from root (swap `python` → `javascript` 
 
 ### Accessing docs in an agent context
 
-**If the LangChain Docs MCP server is connected** (`mcp__docs-langchain__*` tools are available), query it directly:
+**If a LangChain docs MCP server is connected**, query it directly:
 ```
 tree /oss/python -L 2                        # explore Python structure
 tree /oss/javascript -L 2                    # parallel TypeScript structure

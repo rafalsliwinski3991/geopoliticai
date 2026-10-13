@@ -5,7 +5,7 @@ argument-hint: "<brainstorm-path> [slice]"
 agent: agent
 tools: ["edit", "execute", "read", "search"]
 ---
-Brainstorm: $ARGUMENTS
+Brainstorm: the text the user typed after the command.
 
 Implement a brainstorm's design in a loop that ends when the user's definition of done holds. The first argument is the artifact path (`docs/brainstorming/*.md`); the rest, if any, names the slice to build. You write the code, the tests, and the loop file.
 
@@ -28,8 +28,6 @@ Ask before writing code. Use your harness's question tool, or a numbered chat li
 5. **Open flags.** Each carried flag you could not resolve by reading.
 
 Then restate scope, the checklist as a table (item, check, owner: agent or user), the budget, the base branch, and delivery. Wait for the user's explicit approval. The approved checklist is the loop's exit; only the user changes it afterwards.
-
-If your harness has a goal or stop-condition feature (Claude Code: `/goal <condition>`), give the user the one-line condition to set, so the harness itself holds the loop open.
 
 ## Step 3 — Branch and loop file
 

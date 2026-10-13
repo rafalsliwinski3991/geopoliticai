@@ -5,13 +5,8 @@ argument-hint: "[optional PR number or branch, or --all-lenses]"
 agent: agent
 tools: ["context7/*", "execute", "read", "search"]
 ---
-> **Harness note.** This workflow was written for Claude Code, which can spawn the named read-only
-> lens subagents (`correctness-lens`, `framework-lens`, `guidance-compliance-lens`). Copilot has no
-> equivalent, so a literal dispatch fails. Wherever the steps below say to spawn one, perform that
-> role yourself, in a separate pass, and report its findings under that agent's name. Every other
-> rule applies unchanged.
 
-Review input: $ARGUMENTS
+Review input: the text the user typed after the command.
 
 You are the **reviewer** of one pull request or of a stacked pull-request chain. You review each
 pull request against its own base and, after the user confirms, post each finding as an inline
@@ -31,7 +26,7 @@ Follow `docs/harness_logs/TEMPLATE.md`: header first (`harness: copilot`), one `
 
 Confirm `gh auth status` succeeds; if it fails, stop.
 
-Split `$ARGUMENTS` into flags (any word starting with `--`, such as `--all-lenses` or a named lens
+Split the input into flags (any word starting with `--`, such as `--all-lenses` or a named lens
 flag) and at most one PR number or branch. Start from that pull request, else the current branch's
 pull request. This command requires a pull request — a draft PR counts. Detect the mode from the
 open pull requests themselves: run `gh pr list --state open --json number,headRefName,baseRefName`,
@@ -150,17 +145,14 @@ addresses.
 
 Before you flag a framework or library call as wrong, or recommend a different pattern in its place,
 check the current documentation through Context7: call `resolve-library-id` for the exact library and
-the version installed here, then call `query-docs` with that identifier (tool names
-`mcp__context7__resolve-library-id` / `mcp__context7__query-docs`, or their plugin mirrors
-`mcp__plugin_context7_context7__resolve-library-id` /
-`mcp__plugin_context7_context7__query-docs`). Read the installed version from the lockfile at
+the version installed here, then call `query-docs` with that identifier. Read the installed version from the lockfile at
 `<headRefOid>` that pins the package (`git show <headRefOid>:<lockfile>`) — `agentic_backend/uv.lock`, `web_backend/uv.lock`, or
 `frontend/chat/package-lock.json` — rather than assuming the latest release. Record any material
 documentation result in the run log, and cite it in the finding.
 
 A comment on a pull request is public and sticks, so the check happens before anything is posted: a
 finding the docs contradict is dropped, and a `Fix:` line the docs do not support is rewritten or
-removed. Tell every lens the same, and tell it the head SHA. Every file read and every lockfile
+removed. Hold every review pass to the same rule, and keep the head SHA in front of it. Every file read and every lockfile
 version comes from the reviewed commit, not the working tree (`git show <headRefOid>:<path>`),
 because a review runs without checking the branch out. That code, its lockfile, and this
 repository's guidance stay authoritative for local behavior; use Context7 only for facts those
@@ -187,61 +179,61 @@ value; if no diff line fits, it goes in the review body instead.
 The step is done when every open pull request has a findings list or `NO FINDINGS`, recorded in the
 run log with its tier and scope-check verdict.
 
-## Step 3 — Lenses
+## Step 3 — Review passes
 
 Per pull request, each with its own tier. Skip this step entirely for a **lightweight** tier and say
-so: "Lightweight tier (N lines) — lenses skipped." Otherwise spawn the in-scope lenses **in parallel
-in one message**, each on Sonnet 5.5 at medium effort, each told to read the real source files and
-to **message its findings to the lead**. An idle notification carries no output.
+so: "Lightweight tier (N lines) — review passes skipped." Otherwise make each in-scope pass yourself,
+one after another, as a separate review pass over the pull request's diff. Read the real source files
+in each pass, and name the pass in each finding's `lens` field.
 
 Always on for standard and full:
 
-- `correctness-lens` — broken call sites, deletions whose callers survive, behavior that silently
+- `correctness-lens` pass — broken call sites, deletions whose callers survive, behavior that silently
   changed, error and state paths that differ from before.
-- `guidance-compliance-lens` — whether the change required updating `CLAUDE.md`, `AGENTS.md`, and
+- `guidance-compliance-lens` pass — whether the change required updating `CLAUDE.md`, `AGENTS.md`, and
   `.github/copilot-instructions.md`, and whether those files still describe the code truthfully.
-- A `general-purpose` teammate named `testing` — missing negative paths and error branches, untested
+- A `testing` pass — missing negative paths and error branches, untested
   guard clauses, boundary values, order-dependent or clock-dependent tests, real network calls in
   tests, and new public functions with no coverage.
 
-Conditional, dispatched only when the signal is real:
+Conditional, made only when the signal is real:
 
-- `framework-lens` — when the diff touches dependencies, a lockfile, or a framework API surface. Tell
-  it to check the idiom against the versions **actually installed** here, using Context7's
+- `framework-lens` pass — when the diff touches dependencies, a lockfile, or a framework API surface.
+  Check the idiom against the versions **actually installed** here, using Context7's
   `resolve-library-id` and `query-docs` when current external documentation is needed.
-- A `general-purpose` teammate named `security` — when the diff touches authentication, the API
-  layer, secrets handling, or deployment configuration. It hunts authorization defaults that allow,
+- A `security` pass — when the diff touches authentication, the API
+  layer, secrets handling, or deployment configuration. Hunt for authorization defaults that allow,
   secrets in source or logs, path traversal, server-side request forgery, weak or non-constant-time
   comparisons, and unsafe deserialization.
-- A `general-purpose` teammate named `simplification` — full tier only, and advisory. It hunts
+- A `simplification` pass — full tier only, and advisory. Hunt for
   unrequested structure: an abstraction with one implementation, hand-rolled standard library, a
-  dependency duplicating a platform feature, dead configuration. It never proposes deleting a test,
+  dependency duplicating a platform feature, dead configuration. Never propose deleting a test,
   an error path, a validation, or an edge-case branch.
 
-`--all-lenses` in `$ARGUMENTS` forces every lens regardless of scope. A named lens flag such as
+`--all-lenses` in the input forces every pass regardless of scope. A named lens flag such as
 `--security` forces just that one.
 
-Give each teammate the pull request's base ref and head SHA (`<headRefOid>`), the relevant category list above, the
+In each pass, work from the pull request's base ref and head SHA (`<headRefOid>`), the relevant category list above, the
 confidence-and-evidence rule from Step 2, and the Context7 rule from Step 2 for any finding that
-turns on external framework behavior. Require one finding per line as JSON:
+turns on external framework behavior. Write one finding per line as JSON:
 
 ```json
 {"severity":"CRITICAL|INFORMATIONAL","confidence":8,"path":"agentic_backend/src/api.py","line":42,"category":"...","summary":"...","fix":"...","fingerprint":"path:line:category","lens":"..."}
 ```
 
-with `NO FINDINGS` and nothing else when a lens finds nothing. If a lens fails or times out, log the
-failure and continue; partial lens coverage beats none.
+with `NO FINDINGS` and nothing else when a pass finds nothing. If a pass cannot be completed, log the
+failure and continue; partial coverage beats none.
 
 **Merge.** Group findings by fingerprint, keep the highest confidence of each group, and mark a
-repeated fingerprint as confirmed by more than one lens, raising its confidence by one to a maximum
+repeated fingerprint as confirmed by more than one pass, raising its confidence by one to a maximum
 of ten. Apply the confidence gate from Step 2 to the merged list. Simplification findings are
 advisory: report them separately and keep them out of the finding counts; they would post as
 informational comments only if the user picks "Post all".
 
 ### Adversarial pass (full tier only)
 
-Spawn one more `general-purpose` teammate named `red-team`, after the others return, with the merged
-findings in its brief. Its job is what they missed: silent failures and swallowed exceptions,
+Make one more pass, `red-team`, after the others, with the merged
+findings in front of you. Its job is what they missed: silent failures and swallowed exceptions,
 partial completion that leaves inconsistent state, integration boundaries between two systems,
 first-run and empty-data behavior, and double submissions. Same JSON schema, same evidence gate.
 
@@ -254,12 +246,12 @@ gh api repos/{owner}/{repo}/pulls/<number>/comments --paginate
 ```
 
 Drop any finding whose `path` and `line` already carry a comment starting with the
-`CC: <MODEL_NAME> ->` prefix (match on the `CC:` prefix, since `<MODEL_NAME>` has been resolved to
+`COPILOT: <MODEL_NAME> ->` prefix (match on the `CC:`, `OPENCODE:`, or `COPILOT:` prefix, since `<MODEL_NAME>` has been resolved to
 the concrete model name on older comments) that makes the same point, so a rerun never double-posts.
 
 ## Step 5 — Confirm, then post
 
-Print the planned comments per PR, then ask one `AskUserQuestion`:
+Print the planned comments per PR, then ask the user once, in chat, and wait for the answer:
 
 - **Post all** — post every planned comment.
 - **Critical only** — post only CRITICAL findings.
@@ -279,17 +271,17 @@ gh api repos/{owner}/{repo}/pulls/<number>/reviews --method POST --input review.
 {
   "commit_id": "<headRefOid>",
   "event": "COMMENT",
-  "body": "CC: <MODEL_NAME> -> Review of #<pr> (<n>/<total> in stack mode): <X> critical, <Y> informational.\n<unanchored findings, one per line>",
+  "body": "COPILOT: <MODEL_NAME> -> Review of #<pr> (<n>/<total> in stack mode): <X> critical, <Y> informational.\n<unanchored findings, one per line>",
   "comments": [
     {"path": "agentic_backend/src/api.py", "line": 42, "side": "RIGHT",
-     "body": "CC: <MODEL_NAME> -> [CRITICAL, 8/10] <problem, one line>\n\nFix: <fix, one line>"}
+     "body": "COPILOT: <MODEL_NAME> -> [CRITICAL, 8/10] <problem, one line>\n\nFix: <fix, one line>"}
   ]
 }
 ```
 
-Every comment body and review body starts with the prefix `CC: <MODEL_NAME> ->`, where
+Every comment body and review body starts with the prefix `COPILOT: <MODEL_NAME> ->`, where
 `<MODEL_NAME>` is the name of the model running this command as your system prompt states it (for
-example `CC: Opus 5.5 ->`). Write the JSON under the session scratchpad. If GitHub rejects a line
+example `COPILOT: GPT-5 mini ->`). Write the JSON under the session scratchpad. If GitHub rejects a line
 (422), move that finding into the review body and post again.
 
 ## Step 6 — Report
@@ -315,8 +307,7 @@ List anything you did not post, and say plainly what remains unverified.
 - You change no code: no edits, commits, or pushes, anywhere in this run. Posting review comments is
   the only external action, and it happens once, after the user confirms. Fixes never happen here —
   they flow through `/rs-address-feedback`.
-- Every spawned lens runs on Sonnet 5.5 at medium effort and reports to you; a lens has no write
-  tools, so asking one to change code will fail, and you are the only one who posts.
+- You are the only writer, and the only one who posts.
 - Read the whole diff before the first finding. Never flag what the diff already addresses.
 - Quote the motivating line in the run log for every posted finding. "This looks fine" is not a
   finding either: cite the evidence that it is fine, or record it as unverified.

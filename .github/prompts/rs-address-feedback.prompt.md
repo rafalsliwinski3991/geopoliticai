@@ -5,12 +5,8 @@ argument-hint: "[optional PR number or branch]"
 agent: agent
 tools: ["context7/*", "edit", "execute", "read", "search"]
 ---
-> **Harness note.** This workflow was written for Claude Code conventions (frontmatter
-> `allowed-tools`, `AskUserQuestion`, lens subagents). Copilot handles all of this inline: run the
-> steps yourself, ask the user in chat where a confirmation is called for, and never dispatch a
-> named lens. Every other rule applies unchanged.
 
-Review input: $ARGUMENTS
+Review input: the text the user typed after the command.
 
 You are the **feedback responder** for one pull request or for a stacked pull-request chain. You
 collect all unresolved review threads and standalone comments on each open pull request in scope,
@@ -30,18 +26,21 @@ Follow `docs/harness_logs/TEMPLATE.md`: header first (`harness: copilot`), one `
 
 ## Step 1 — Resolve the pull request, or the stack
 
-Confirm `gh auth status` succeeds; if it fails, stop. Check the `gh stack` extension with
-`gh stack --help`; if the extension is missing, say so, skip stack detection entirely, and go
-straight to single-PR mode.
+Confirm `gh auth status` succeeds; if it fails, stop.
 
-Start from the pull request named in `$ARGUMENTS` (a PR number or a branch), else the current
-branch's pull request. This command requires a pull request — a draft PR counts. Run `gh stack view`
-on that pull request's head branch to detect the mode:
+Start from the pull request named in the input (a PR number or a branch), else the current
+branch's pull request. This command requires a pull request — a draft PR counts. Detect the mode from the
+open pull requests themselves: run `gh pr list --state open --limit 1000 --json number,headRefName,baseRefName`
+(stop if it returns 1,000 rows or does not include the starting PR),
+then walk down from the starting PR while its `baseRefName` is another open PR's `headRefName`, and
+up while another open PR's `baseRefName` is this one's `headRefName`. (`gh stack view` takes no
+branch argument and describes the checked-out branch, so it cannot be pointed at another PR.) Stop
+on any `gh` error rather than guessing a mode.
 
 - **Stack mode** — the chain has **more than one open layer**. Work every open layer bottom to
   top, each layer on its own branch.
-- **Single-PR mode** — the chain has exactly one open layer, or `gh stack view` errors because the
-  branch is not in a stack. Work that one pull request and stop.
+- **Single-PR mode** — the chain has exactly one open layer: no other open PR is linked to it by
+  base and head branch. Work that one pull request and stop.
 
 If neither a stack nor a pull request exists, refuse before anything else and tell the user to open
 a PR first:
@@ -122,18 +121,18 @@ For each unresolved thread, bottom-to-top layer order in stack mode, decide **ap
 For every decision, prepare the reply body. The reply is the deliverable, not a stub:
 
 ```text
-CC: <MODEL_NAME> -> applied: <what was changed, in one or two sentences:
+COPILOT: <MODEL_NAME> -> applied: <what was changed, in one or two sentences:
 file(s), the edit made, and the commit SHA once pushed.>
 ```
 
 ```text
-CC: <MODEL_NAME> -> rejected: <the reason, in one or two sentences:
+COPILOT: <MODEL_NAME> -> rejected: <the reason, in one or two sentences:
 what the code actually does, the evidence (docs lookup, test, or upstream layer),
 and, when useful, what would make you reconsider.>
 ```
 
 `<MODEL_NAME>` is the name of the model running this command as your system prompt states it (for
-example `CC: Sonnet 5.5 -> applied:`). Every reply starts with this exact prefix and
+example `COPILOT: GPT-5 mini -> applied:`). Every reply starts with this exact prefix and
 nothing starts without it. No praise, no thank-you filler, no diff summaries.
 
 The step is done when every unresolved thread has a decision, a drafted reply, and — for applies —
@@ -178,7 +177,7 @@ gh pr comment <number> --body "<reply body>"
 
 If GitHub rejects a payload (422), fall back to a plain PR comment prefixed the same way. Never
 post twice to the same thread: before posting, re-fetch the thread and skip if a reply starting
-with `CC:` already exists (from this run or a previous one).
+with `CC:`, `OPENCODE:`, or `COPILOT:` already exists (from this run or a previous one).
 
 ## Step 5 — Report
 
@@ -202,8 +201,8 @@ you did not run, and any apply whose tests did not run clean.
 - Every apply is committed and pushed to its pull request's branch. In single-PR mode a plain
   `git push` is correct. In stack mode, pushes go bottom to top, layer by layer,
   `--force-with-lease` only.
-- One reply per thread, exactly prefixed `CC: <MODEL_NAME> -> applied:` or
-  `CC: <MODEL_NAME> -> rejected:`. Nothing else is posted.
+- One reply per thread, exactly prefixed `COPILOT: <MODEL_NAME> -> applied:` or
+  `COPILOT: <MODEL_NAME> -> rejected:`. Nothing else is posted.
 - No framework claim or applied fix goes in without a Context7 check against the pinned version.
 - The code wins over the PR body and over the reviewer's claim; note disagreements in the run log.
 - Never resolve threads, never re-request review, never change the PR state.

@@ -80,7 +80,7 @@ SKIP_SKILLS := swarm
 
 # `sync-copilot` rebuilds .github/skills from scratch: copying in place leaves a
 # skill that was deleted from the canonical tree behind forever, and a stale copy
-# is exactly the drift `make inventory` exists to catch. `set -e` keeps a failed
+# is exactly the drift Harness Integrity's diff exists to catch. `set -e` keeps a failed
 # cp from being masked by the closing echo. Anything hand-written under
 # .github/skills is destroyed; edit .claude/skills and re-run this instead.
 sync-copilot:
@@ -93,13 +93,13 @@ sync-copilot:
 		echo 'copied .claude/skills -> .github/skills (skipped: $(SKIP_SKILLS))'
 
 inventory:
-	python3 scripts/ai_tools_inventory.py
+	python3 scripts/harness_integrity/ai_tools_inventory.py $(SKIP_SKILLS)
 
 # Unlike sync-copilot this prunes only the symlinks, because OpenCode-only skills
 # live here as real directories and must survive. A real directory sharing a
 # canonical skill's name is refused rather than linked: `ln -s` would silently
-# create the link *inside* it, where it dangles and `make inventory` still
-# reports the skill as present. Every name is checked before anything is pruned,
+# create the link *inside* it, where it dangles and `make inventory` reports
+# the skill as missing. Every name is checked before anything is pruned,
 # so a refusal leaves the existing links alone instead of deleting the ones it
 # had not reached yet. git cannot track an empty directory, so a fresh checkout
 # has no .opencode/skills at all until mkdir creates it.
@@ -133,7 +133,7 @@ help:
 		'migrate-agentic Run Alembic migrations for the agentic-owned schema (runs after migrate-web)' \
 		'createsuperuser Create a Django admin user' \
 		'sync-copilot Copy .claude/skills into .github/skills (Copilot keeps real copies, not symlinks)' \
-		'inventory Regenerate ai_tools_inventory.md from the harness directories on disk' \
+		'inventory Fail if a Claude command or skill is missing from OpenCode or Copilot' \
 		'link-skills Symlink .claude/skills into .opencode/skills (Claude Code is canonical; OpenCode-only skills stay untouched)' \
 		'test-web-backend Run the Django service test suite (unit tests; integration excluded)' \
 		'test-web-integration Run the Django integration suite against the dev Postgres' \

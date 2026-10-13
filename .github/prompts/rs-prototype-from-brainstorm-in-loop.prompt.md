@@ -5,7 +5,7 @@ argument-hint: "[brainstorm-path] <question>"
 agent: agent
 tools: ["edit", "execute", "read", "search"]
 ---
-Question: $ARGUMENTS
+Question: the text the user typed after the command.
 
 Build a throwaway prototype that answers one question, and loop until the user's verdict closes it. The arguments are the question, or a brainstorm path (`docs/brainstorming/*.md`) followed by the question: a settled decision or flag the prototype should test.
 
@@ -31,8 +31,6 @@ Ask before writing code. Use your harness's question tool, or a numbered chat li
 5. **Base and keeping it.** Ask explicitly for the base branch `prototype/<slug>` starts from (recommend the current branch). Push the throwaway branch to origin when done?
 
 Then restate the question, the checklist as a table (item, owner, and the expected state of each agent check), the budget, and the base branch. Wait for the user's explicit approval. The approved checklist is the loop's exit; only the user changes it afterwards.
-
-If your harness has a goal or stop-condition feature (Claude Code: `/goal <condition>`), give the user the one-line condition to set, so the harness itself holds the loop open.
 
 ## Step 2 — Build the first version
 

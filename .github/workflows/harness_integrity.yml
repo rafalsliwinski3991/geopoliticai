@@ -11,10 +11,9 @@ on:
       - "AGENTS.md"
       - "CLAUDE.md"
       - "Makefile"
-      - "scripts/ai_tools_inventory.py"
+      - "scripts/harness_integrity/**"
       - "scripts/log_metrics.py"
       - "docs/harness_logs/TEMPLATE.md"
-      - "ai_tools_inventory.md"
       - "ai_tools_notes.md"
 
 jobs:
@@ -30,7 +29,7 @@ jobs:
       # checked by re-running them and diffing: they are idempotent, and a
       # clean tree before this step means any diff they produce is drift.
       - name: Re-run the sync targets
-        run: make sync-copilot link-skills inventory
+        run: make sync-copilot link-skills
 
       - name: Fail on drift
         if: ${{ !cancelled() }}
@@ -40,13 +39,13 @@ jobs:
           # to .claude/skills but not copied/linked) would pass silently.
           # `status --porcelain` catches those too.
           if [ -n "$(git status --porcelain -- \
-            .github/skills .opencode/skills ai_tools_inventory.md)" ]; then
-            git diff -- .github/skills .opencode/skills ai_tools_inventory.md
+            .github/skills .opencode/skills)" ]; then
+            git diff -- .github/skills .opencode/skills
             echo
             echo "Harness drift detected: the sync targets changed files above."
             echo "Re-run from the repo root and commit the result:"
             echo
-            echo "    make sync-copilot link-skills inventory"
+            echo "    make sync-copilot link-skills"
             echo
             exit 1
           fi
@@ -62,21 +61,11 @@ jobs:
             }
           done
 
-      # Command ports are existence-checked in CI; bodies remain verified by
-      # hand (the port transform and harness notes are human judgement).
-      - name: Claude commands have a port under every harness
-        run: |
-          missing=0
-          for f in .claude/commands/*.md; do
-            b=$(basename "$f" .md)
-            for p in ".opencode/command/$b.md" ".github/prompts/$b.prompt.md"; do
-              if [ ! -f "$p" ]; then
-                echo "Missing port: $p (add it)" >&2
-                missing=1
-              fi
-            done
-          done
-          exit $missing
+      # Command and skill ports are existence-checked here; bodies remain
+      # verified by hand and by the Harness Audit workflow.
+      - name: Every Claude command and skill exists under every harness
+        if: ${{ !cancelled() }}
+        run: make inventory
 
       # The run logs moved to one folder; a command copied from an old branch
       # would quietly bring the retired names back.

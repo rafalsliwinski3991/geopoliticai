@@ -4,12 +4,8 @@ description: "Turn GitHub issues (all open, specific numbers, or one assignee's)
 agent: agent
 tools: ["context7/*", "edit", "execute", "read", "search", "web"]
 ---
-> **Harness note.** This workflow was written for Claude Code conventions (frontmatter
-> `allowed-tools`, `AskUserQuestion`, lens subagents). Copilot handles all of this inline: run the
-> steps yourself, ask the user in chat where a confirmation is called for, and never dispatch a
-> named lens. Every other rule applies unchanged.
 
-Arguments: $ARGUMENTS
+Arguments: the text the user typed after the command.
 
 ## Step 0 — Collect the issues
 
@@ -37,7 +33,7 @@ an output path, use it as a prefix: write `<path without .md>-<group-slug>.md` p
 
 ## Steps 1–5 — Plan
 
-Read `.claude/commands/rs-plan-from-brainstorm.md` and run its output-path rule and Steps
+Read `.github/prompts/rs-plan-from-brainstorm.prompt.md` and run its output-path rule and Steps
 1–5 exactly, with these substitutions:
 
 - **The brainstorm doc** is the issue set collected above. The output path is the one from
@@ -45,7 +41,7 @@ Read `.claude/commands/rs-plan-from-brainstorm.md` and run its output-path rule 
 - **Settled decisions** are only the behavior an issue states explicitly and anything a
   maintainer confirmed in its comments. Everything else — vague acceptance criteria,
   competing proposals in comments, unstated expected behavior — is open: resolve it from
-  the code, or ask with `AskUserQuestion`.
+  the code, or ask the user in chat and wait for the answer.
 - **Scope** cites every issue it implements by number and URL, and names selected issues
   the plan deliberately leaves out, with the reason.
 - **Step 2** (structure and naming) covers the files the issue set requires: show the tree, contents,

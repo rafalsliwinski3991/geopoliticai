@@ -1,5 +1,5 @@
 ---
-description: Turn a brainstorming doc into a right-sized implementation plan, using full multi-agent review only when the change warrants it
+description: Turn a brainstorming doc into a right-sized implementation plan, using full multi-pass review only when the change warrants it
 agent: build
 model: opencode-go/glm-5.3-flash
 ---
@@ -31,13 +31,12 @@ repository-local behavior that the checked-out code or guidance already answers.
 
 Use Context7 for library documentation only. For implementation patterns, prior
 art, and API guidance outside library docs -- vendor guides, tech blogs, GitHub
-repositories or issues -- use Tavily (`tavily_search`, `tavily_extract`) or `WebSearch`
-to find sources and `WebFetch` to read
+repositories or issues -- use `websearch` to find sources and `webfetch` to read
 them. Cite every web source the plan relies on, and prefer official sources when
 they conflict with others.
 
 When a question blocks a safe plan and neither the code nor the brainstorm answers
-it, ask the user with `AskUserQuestion` instead of guessing. Leave settled
+it, ask with the `question` tool instead of guessing. Leave settled
 decisions this way; ask only about genuine gaps.
 
 Before drafting, choose the smallest planning depth that makes implementation safe:
@@ -45,7 +44,7 @@ Before drafting, choose the smallest planning depth that makes implementation sa
 - **Lightweight plan** -- use for a minor, contained change to one existing flow:
   a small bug fix, a narrowly scoped behavior change, or a routine local update.
   Do not inflate it into artificial commits, speculative alternatives, a migration
-  section, or a multi-agent review merely because a plan was requested.
+  section, or a multi-pass review merely because a plan was requested.
 - **Standard plan** -- use for a coherent multi-file feature or refactor within
    one existing subsystem. It needs ordered file-level tasks and focused testing,
    but has no migration, high-risk interface, or cross-subsystem concern.
@@ -87,7 +86,7 @@ rewriting history:
 Once you understand the problem and see a solution, agree its shape with the user before
 drafting. Start from any naming conventions the harness has saved to memory.
 
-Show, in a plain message (a tree does not fit `AskUserQuestion` options):
+Show, in a plain message (a tree does not fit a question's options):
 
 1. **The tree** -- every file the change touches, marked new, modified, or deleted, including
    new modules, folders, and test files.
@@ -163,47 +162,47 @@ Full-plan steps must be independently executable and testable. Prefer focused
 checkbox steps for test, implementation, validation, and commit actions; do not
 leave placeholders such as `TBD`, "add appropriate handling", or "write tests".
 
-## Step 4 — Review by subagents
+## Step 4 — Review passes
 
 For a **lightweight plan**, self-review it before reporting back: verify it covers
 every settled decision, names the exact code path and validation, has no placeholder,
-does not add unnecessary work, and matches the approved tree and naming rules. Do not dispatch the three reviewers unless new
+does not add unnecessary work, and matches the approved tree and naming rules. Do not make the three review passes unless new
 information raises the plan to full scope.
 
-For a **standard plan**, perform the same self-review, then dispatch one focused
-correctness reviewer. Ask it to read the actual source and tests and identify broken
+For a **standard plan**, perform the same self-review, then make one focused
+correctness review pass yourself. Read the actual source and tests and identify broken
 callers, behavior regressions, error-path gaps, and missing validation. Incorporate
-supported findings. Do not expand to three reviewers unless new information raises
+supported findings. Do not expand to three passes unless new information raises
 the plan to full scope.
 
-For a **full plan**, once the plan file exists, spawn three subagents in parallel. Give each one the
-brainstorm path and the plan path, and instruct each to read the actual source files
+For a **full plan**, once the plan file exists, make three separate review passes yourself, each over the
+brainstorm and the plan. In each, read the actual source files
 rather than trusting the plan's claims about them.
 
-- **Correctness reviewer.** Run on Sonnet 5.5, medium effort. Does each commit leave the
+- **Correctness pass.** Does each commit leave the
   repo importable, runnable, and its tests passing? Hunt for deletions whose callers
   survive, survivors whose dependencies are deleted, behaviour that silently changes,
   and error or state paths that quietly differ from today.
-- **Domain and framework reviewer.** Run on Sonnet 5.5, medium effort. For the frameworks,
+- **Domain and framework pass.** For the frameworks,
   libraries, and versions this repo actually has installed, is the proposed approach the
   current correct idiom? Check the API surfaces the plan calls, the version constraints,
    and any pattern the plan copies from a reference or template. Use Context7's
    `resolve-library-id` and `query-docs` when current library documentation is needed.
-- **Devil's advocate.** Run on Opus 5.5, high effort. Argue the plan is wrong. Attack the
+- **Devil's advocate pass.** Argue the plan is wrong. Attack the
   premises the brainstorm settled on, especially any decision justified by future work
   that is not yet scheduled. Attack every deletion by naming what breaks if the future
   never arrives. Name the cheaper plan that gets most of the benefit.
 
-Each reviewer returns findings ranked by severity, each with a file path, a line, and a
+Each pass yields findings ranked by severity, each with a file path, a line, and a
 concrete failure scenario. No style notes, no praise.
 
 ## Step 5 — Revise
 
-For a full plan, revise it yourself with what the reviews surfaced. Add an **Open
+For a full plan, revise it yourself with what the passes surfaced. Add an **Open
 questions and rejected objections** section recording every finding, whether you
-accepted it, and why. Do not spawn a fourth agent. For a lightweight plan, correct
+accepted it, and why. Do not make a fourth pass. For a lightweight plan, correct
 any self-review finding inline and add only genuine unresolved questions. For a
-standard plan, correct supported reviewer findings inline and record only genuine
+standard plan, correct supported review findings inline and record only genuine
 unresolved questions or rejected objections.
 
 Stop before implementing. Ask the user to review and explicitly approve the written
