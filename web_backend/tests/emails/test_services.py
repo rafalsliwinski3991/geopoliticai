@@ -81,6 +81,22 @@ class QueueMessageStoreTest(TestCase):
         self.assertEqual(row.body, "")
         self.assertEqual(row.html, "<p>world</p>")
 
+    def test_queue_message_rejects_a_message_without_recipients(self) -> None:
+        # Arrange
+        count_before = Email.objects.count()
+        message = EmailMessage(
+            subject="nobody",
+            body="world",
+            from_email="noreply@politicalagent.eu",
+            to=[],
+        )
+        # Act
+        with self.assertRaises(ValueError) as raised:
+            queue_message(message)
+        # Assert
+        self.assertIn("recipients", str(raised.exception))
+        self.assertEqual(Email.objects.count(), count_before)
+
     def test_queue_message_rejects_an_attachment_and_makes_no_row(self) -> None:
         # Arrange
         count_before = Email.objects.count()
@@ -91,9 +107,11 @@ class QueueMessageStoreTest(TestCase):
             to=["reader@example.com"],
         )
         message.attach("invoice.txt", "pdf", "text/plain")
-        # Act + Assert
-        with self.assertRaises(ValueError):
+        # Act
+        with self.assertRaises(ValueError) as raised:
             queue_message(message)
+        # Assert
+        self.assertIn("attachments", str(raised.exception))
         self.assertEqual(Email.objects.count(), count_before)
 
     def test_queue_message_rejects_an_extra_header_and_makes_no_row(self) -> None:
@@ -106,9 +124,11 @@ class QueueMessageStoreTest(TestCase):
             to=["reader@example.com"],
         )
         message.extra_headers = {"X-My-Header": "x"}
-        # Act + Assert
-        with self.assertRaises(ValueError):
+        # Act
+        with self.assertRaises(ValueError) as raised:
             queue_message(message)
+        # Assert
+        self.assertIn("X-My-Header", str(raised.exception))
         self.assertEqual(Email.objects.count(), count_before)
 
     def test_queue_message_rejects_a_non_html_alternative_and_makes_no_row(self) -> None:
@@ -121,9 +141,11 @@ class QueueMessageStoreTest(TestCase):
             to=["reader@example.com"],
         )
         message.attach_alternative("raw:bytes", "image/png")
-        # Act + Assert
-        with self.assertRaises(ValueError):
+        # Act
+        with self.assertRaises(ValueError) as raised:
             queue_message(message)
+        # Assert
+        self.assertIn("image/png", str(raised.exception))
         self.assertEqual(Email.objects.count(), count_before)
 
 
@@ -157,6 +179,62 @@ class BuildMessageRoundTripTest(TestCase):
         # Assert
         self.assertEqual(message.content_subtype, "html")
         self.assertEqual(message.body, "<p>world</p>")
+
+    def test_build_message_sends_a_row_with_body_and_html_as_multipart(self) -> None:
+        # Arrange
+        row = Email.objects.create(
+            from_email="noreply@politicalagent.eu",
+            to=["reader@example.com"],
+            subject="hello",
+            body="world",
+            html="<p>world</p>",
+        )
+        # Act
+        message = build_message(row)
+        # Assert
+        self.assertEqual(message.body, "world")
+        self.assertEqual(
+            message.alternatives, [("<p>world</p>", "text/html")]
+        )
+
+    def test_build_message_round_trips_cc_bcc_and_reply_to(self) -> None:
+        # Arrange
+        row = Email.objects.create(
+            from_email="noreply@politicalagent.eu",
+            to=["reader@example.com"],
+            cc=["carbon@example.com"],
+            bcc=["blind@example.com"],
+            reply_to=["replies@example.com"],
+            subject="hello",
+            body="world",
+        )
+        # Act
+        message = build_message(row)
+        # Assert
+        self.assertEqual(message.cc, ["carbon@example.com"])
+        self.assertEqual(message.bcc, ["blind@example.com"])
+        self.assertEqual(message.reply_to, ["replies@example.com"])
+
+    def test_the_queue_and_batch_round_trip_cc_bcc_and_reply_to(self) -> None:
+        # Arrange
+        message = EmailMultiAlternatives(
+            subject="carbon copy",
+            body="world",
+            from_email="noreply@politicalagent.eu",
+            to=["reader@example.com"],
+            cc=["carbon@example.com"],
+            bcc=["blind@example.com"],
+            reply_to=["replies@example.com"],
+        )
+        queue_message(message)
+        # Act
+        sent, pending = send_batch()
+        # Assert
+        self.assertEqual((sent, pending), (1, 0))
+        sent_message = mail.outbox[0]
+        self.assertEqual(sent_message.cc, ["carbon@example.com"])
+        self.assertEqual(sent_message.bcc, ["blind@example.com"])
+        self.assertEqual(sent_message.reply_to, ["replies@example.com"])
 
 
 @override_settings(MAILERS=TEST_MAILERS)
@@ -196,9 +274,13 @@ class SendBatchRetriesTest(TestCase):
             to=["reader@example.com"],
             subject="will fail",
         )
-        # Act + Assert
-        with patch("django.core.mail.backends.locmem.EmailBackend.send_messages", side_effect=Exception("SMTP refused")):
+        # Act
+        with patch(
+            "django.core.mail.backends.locmem.EmailBackend.send_messages",
+            side_effect=Exception("SMTP refused"),
+        ):
             sent, pending = send_batch()
+        # Assert
         self.assertEqual((sent, pending), (0, 1))
         row.refresh_from_db()
         self.assertEqual(row.status, Email.Status.PENDING)
@@ -422,8 +504,10 @@ class SendBatchSkipsLockedRowTest(TransactionTestCase):
                 connections["default"].close()
 
         try:
+            # Act
             # Open an explicit transaction on the second connection and
             # hold row 1's FOR UPDATE lock while the thread's batch runs.
+            # The thread start/join below IS the action under test.
             lock_connection.set_autocommit(False)
             cursor = lock_connection.cursor()
             cursor.execute(
@@ -451,3 +535,182 @@ class SendBatchSkipsLockedRowTest(TransactionTestCase):
         row_2.refresh_from_db()
         self.assertEqual(row_1.status, Email.Status.PENDING)
         self.assertEqual(row_2.status, Email.Status.SENT)
+
+
+@override_settings(MAILERS=TEST_MAILERS)
+class SendBatchMailerConnectionFailureTest(TestCase):
+    """open()/QUIT failures abort the batch after the claim; rows retry."""
+
+    def test_an_smtp_open_failure_preserves_the_claimed_attempts(self) -> None:
+        # Arrange
+        from unittest.mock import patch
+
+        row = Email.objects.create(
+            from_email="noreply@politicalagent.eu",
+            to=["reader@example.com"],
+            subject="open refused",
+        )
+        # Act
+        with patch(
+            "django.core.mail.backends.locmem.EmailBackend.open",
+            side_effect=Exception("SMTP open refused"),
+        ):
+            sent, pending = send_batch()
+        # Assert
+        self.assertEqual(sent, 0)
+        self.assertEqual(pending, 1)
+        row.refresh_from_db()
+        self.assertEqual(row.status, Email.Status.PENDING)
+        self.assertEqual(row.attempts, 1)
+        self.assertIsNotNone(row.last_attempt_at)
+
+    def test_a_smtp_close_failure_after_a_send_keeps_the_sent_rows_sent(self) -> None:
+        # Arrange
+        from unittest.mock import patch
+
+        row = Email.objects.create(
+            from_email="noreply@politicalagent.eu",
+            to=["reader@example.com"],
+            subject="close refused",
+        )
+        # Act
+        with patch(
+            "django.core.mail.backends.locmem.EmailBackend.close",
+            side_effect=Exception("SMTP close refused"),
+        ):
+            sent, pending = send_batch()
+        # Assert
+        self.assertEqual(sent, 1)
+        self.assertEqual(pending, 0)
+        row.refresh_from_db()
+        self.assertEqual(row.status, Email.Status.SENT)
+        self.assertEqual(len(mail.outbox), 1)
+
+
+@override_settings(MAILERS=TEST_MAILERS)
+class SendBatchMixedBatchTest(TestCase):
+    def test_one_failing_row_among_others_fails_alone(self) -> None:
+        # Arrange
+        from unittest.mock import patch
+
+        failing = Email.objects.create(
+            from_email="noreply@politicalagent.eu",
+            to=["first@example.com"],
+            subject="fails",
+        )
+        keep = Email.objects.create(
+            from_email="noreply@politicalagent.eu",
+            to=["second@example.com"],
+            subject="sends",
+        )
+        also_keep = Email.objects.create(
+            from_email="noreply@politicalagent.eu",
+            to=["third@example.com"],
+            subject="sends too",
+        )
+        # Act
+        with patch(
+            "django.core.mail.backends.locmem.EmailBackend.send_messages",
+            side_effect=[Exception("boom"), 1, 1],
+        ):
+            sent, pending = send_batch()
+        # Assert
+        self.assertEqual((sent, pending), (2, 1))
+        failing.refresh_from_db()
+        keep.refresh_from_db()
+        also_keep.refresh_from_db()
+        self.assertEqual(failing.status, Email.Status.PENDING)
+        self.assertIn("boom", failing.last_error)
+        self.assertEqual(failing.attempts, 1)
+        self.assertEqual(keep.status, Email.Status.SENT)
+        self.assertEqual(also_keep.status, Email.Status.SENT)
+
+    def test_a_send_error_longer_than_the_last_error_column_is_truncated(self) -> None:
+        # Arrange
+        from unittest.mock import patch
+
+        row = Email.objects.create(
+            from_email="noreply@politicalagent.eu",
+            to=["reader@example.com"],
+            subject="long error",
+        )
+        # Act
+        with patch(
+            "django.core.mail.backends.locmem.EmailBackend.send_messages",
+            side_effect=Exception("x" * 5000),
+        ):
+            sent, pending = send_batch()
+        # Assert
+        self.assertEqual(sent, 0)
+        row.refresh_from_db()
+        self.assertEqual(len(row.last_error), 2000)
+        self.assertEqual(pending, 1)
+
+
+@override_settings(MAILERS=TEST_MAILERS)
+class SendBatchBoundaryTest(TestCase):
+    """The exact RETRY_WAIT, CAP_WINDOW and MAX_ATTEMPTS edges."""
+
+    def setUp(self) -> None:
+        self.clock = timezone.now()
+
+    def test_a_row_whose_last_attempt_is_exactly_the_retry_wait_ago_is_sent(self) -> None:
+        # Arrange
+        from unittest.mock import patch
+
+        Email.objects.create(
+            from_email="noreply@politicalagent.eu",
+            to=["reader@example.com"],
+            subject="on the edge",
+            attempts=1,
+            last_attempt_at=self.clock - timedelta(minutes=5),
+        )
+        # Act
+        with patch("emails.services.timezone.now", return_value=self.clock):
+            sent, pending = send_batch()
+        # Assert
+        self.assertEqual(sent, 1)
+        self.assertEqual(pending, 0)
+
+    def test_a_sent_row_exactly_the_cap_window_old_is_not_counted_against_the_cap(self) -> None:
+        # Arrange
+        from unittest.mock import patch
+
+        for i in range(5):
+            Email.objects.create(
+                from_email="noreply@politicalagent.eu",
+                to=[f"sent{i}@example.com"],
+                subject=f"sent {i}",
+                status=Email.Status.SENT,
+                sent_at=self.clock - timedelta(hours=1),
+            )
+        for i in range(6):
+            Email.objects.create(
+                from_email="noreply@politicalagent.eu",
+                to=[f"pending{i}@example.com"],
+                subject=f"pending {i}",
+            )
+        # Act
+        with patch("emails.services.timezone.now", return_value=self.clock):
+            with override_settings(EMAIL_MAX_PER_HOUR=5):
+                sent, pending = send_batch()
+        # Assert
+        self.assertEqual(sent, 5)
+        self.assertEqual(pending, 1)
+
+    def test_a_pending_row_at_the_max_attempts_edge_is_never_claimed(self) -> None:
+        # Arrange
+        from unittest.mock import patch
+
+        Email.objects.create(
+            from_email="noreply@politicalagent.eu",
+            to=["reader@example.com"],
+            subject="exhausted",
+            attempts=3,
+        )
+        # Act
+        with patch("emails.services.timezone.now", return_value=self.clock):
+            sent, pending = send_batch()
+        # Assert
+        self.assertEqual(sent, 0)
+        self.assertEqual(pending, 1)

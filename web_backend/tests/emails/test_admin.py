@@ -42,6 +42,14 @@ class EmailAdminPermissionTest(TestCase):
         # Assert
         self.assertFalse(allowed)
 
+    def test_rows_cannot_be_deleted(self) -> None:
+        # Arrange
+        email_admin = django_admin.site._registry[Email]
+        # Act
+        allowed = email_admin.has_delete_permission(None)
+        # Assert
+        self.assertFalse(allowed)
+
     def test_the_changelist_searches_the_json_to_column(self) -> None:
         # Arrange
         make_row("searchable subject", to="needle@example.com")
@@ -86,6 +94,31 @@ class EmailAdminResendActionTest(TestCase):
         self.assertEqual(row.resend_count, 1)
         self.assertContains(response, "1 email(s) set to pending.")
 
+    def test_a_staff_user_without_change_permission_is_refused_the_resend_action(self) -> None:
+        # Arrange
+        # A staff member without the `change` model permission: view-only.
+        self.client.force_login(
+            User.objects.create_user(
+                email="readonly@example.com",
+                password="resolute-amber-8",
+                is_staff=True,
+            )
+        )
+        row = make_row("sent row")
+        row.status = Email.Status.SENT
+        row.save()
+        changelist = reverse("admin:emails_email_changelist")
+        action_data = {
+            "action": "resend_selected",
+            "_selected_action": [str(row.pk)],
+        }
+        # Act
+        response = self.client.post(changelist, action_data, follow=True)
+        # Assert
+        row.refresh_from_db()
+        self.assertNotEqual(row.status, Email.Status.PENDING)
+        self.assertEqual(row.resend_count, 0)
+
 
 @override_settings(MAILERS=TEST_MAILERS)
 class SendPendingNowButtonTest(TestCase):
@@ -95,7 +128,9 @@ class SendPendingNowButtonTest(TestCase):
             email="boss@example.com", password="resolute-amber-8"
         )
         cls.passerby = User.objects.create_user(
-            email="passerby@example.com", password="resolute-amber-8"
+            email="passerby@example.com",
+            password="resolute-amber-8",
+            is_staff=True,
         )
 
     def test_a_superuser_post_sends_a_slice_and_redirects_to_the_changelist(self) -> None:
@@ -129,6 +164,20 @@ class SendPendingNowButtonTest(TestCase):
         # Assert
         self.assertEqual(response.status_code, 302)
         self.assertIn("/admin/login/", response["Location"])
+
+    def test_a_staff_user_without_change_permission_gets_a_403(self) -> None:
+        # Arrange
+        self.client.force_login(self.passerby)
+        make_row("not sent without permission")
+        url = reverse("admin:emails_email_send_pending_now")
+        # Act
+        response = self.client.post(url)
+        # Assert
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(len(mail.outbox), 0)
+        self.assertEqual(
+            Email.objects.filter(status=Email.Status.SENT).count(), 0
+        )
 
     def test_the_changelist_shows_the_pending_count_and_the_oldest_age(self) -> None:
         # Arrange
