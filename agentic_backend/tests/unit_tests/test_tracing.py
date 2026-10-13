@@ -1,7 +1,11 @@
+import asyncio
 import sys
 import types
+from typing import Any
 
 import pytest
+from openinference.semconv.trace import SpanAttributes
+from opentelemetry import context as otel_context
 from opentelemetry import trace
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
@@ -218,3 +222,40 @@ def test_start_span_survives_a_failing_langchain_lookup(
     finished = list(captured_spans.get_finished_spans())
     assert [s.name for s in finished] == ["fetch_source"]
     assert finished[0].parent is None
+
+
+@pytest.mark.anyio
+async def test_bind_trace_user_puts_the_user_in_context() -> None:
+    # Arrange
+    outcomes: dict[str, Any] = {}
+
+    async def sibling() -> None:
+        await asyncio.sleep(0)
+        outcomes["sibling"] = otel_context.get_value(SpanAttributes.USER_ID)
+
+    # Act
+    task = asyncio.create_task(sibling())
+    await asyncio.sleep(0)  # let the sibling task start before the bind
+    tracing.bind_trace_user(7)
+    bound = otel_context.get_value(SpanAttributes.USER_ID)
+    await task
+
+    # Assert
+    assert bound == "7"
+    assert outcomes["sibling"] is None
+
+
+@pytest.mark.anyio
+async def test_start_span_carries_the_bound_user(
+    captured_spans: InMemorySpanExporter,
+) -> None:
+    # Arrange
+    tracing.bind_trace_user(7)
+    # Act
+    with tracing.start_span("fetch_source") as span:
+        span.end()
+    # Assert
+    finished = list(captured_spans.get_finished_spans())
+    attributes = finished[0].attributes
+    assert attributes is not None
+    assert attributes[SpanAttributes.USER_ID] == "7"

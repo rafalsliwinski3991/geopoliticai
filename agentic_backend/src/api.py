@@ -59,7 +59,7 @@ from db.web.sql import (
     title_from,
 )
 from models import PipelineError, ReportNotPendingError
-from tracing import init_tracing
+from tracing import bind_trace_user, init_tracing
 
 logger = logging.getLogger(__name__)
 
@@ -616,6 +616,7 @@ async def run_pipeline_stream_endpoint(
 ) -> StreamingResponse:
     """Run the pipeline and stream progress, pause, and answer frames over SSE."""
     bind_log_context(thread_id=payload.thread_id, user_id=identity.user_id)
+    bind_trace_user(identity.user_id)
     _enforce_rate_limit(request, identity)
     # No checkpoint read happens here: see `_turn_input`. The rate limit stays
     # pre-stream because it is the one failure that must not commit a 200.

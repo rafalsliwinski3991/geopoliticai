@@ -127,7 +127,17 @@ thread.
 There is one root `.env`; never modify it or commit secrets. It supplies API,
 tests, Studio, and Compose. API startup requires `OPENAI_API_KEY`,
 `BRAVE_SEARCH_KEY`, `DATABASE_URL`, and `JWT_SIGNING_KEY`; tracing is optional, idempotent, and
-unredacted when enabled. Compose has Postgres, agentic-backend, web-backend, frontend, and Phoenix;
+unredacted when enabled. Every custom span opens through `tracing.start_span`,
+which parents it on the current LangChain run's span (the LangChain tracer
+never makes its spans current). `fetch_source` (one per page fetch),
+`brave_search`, `deep_research`, `forecast_research`, `evidence_positions`, and
+`watch_video` carry the signals that decide whether to build a corpus
+(brainstorm 2026Oct13). `session.id` comes from LangGraph's `thread_id`
+metadata, and `user.id` (the raw Django id) from `tracing.bind_trace_user` in
+the stream endpoint; `start_span` opens spans through `OITracer` so they carry
+`user.id` too. Custom spans carry no `session.id` of their own: they sit in the
+session's trace. Compose has Postgres, agentic-backend, web-backend, frontend,
+and Phoenix;
 development ports are 8082, 8083, 3001, 55432, and loopback 6006. Production uses TLS
 and fail-closed Basic Auth for `/admin/` and `/phoenix/` — `/api/*` is guarded
 by bearer JWTs (verified in `auth.py`). Production deploys only through the

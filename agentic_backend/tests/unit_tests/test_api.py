@@ -2485,3 +2485,26 @@ async def test_no_forecaster_node_is_an_answer_node() -> None:
         set(build_graph().get_graph().nodes) - {"__start__", "__end__"}
     ) | {"deep_forecaster"}
     assert forecaster_nodes & api.ANSWER_NODES == set()
+
+
+@pytest.mark.anyio
+async def test_stream_endpoint_binds_the_trace_user(client: httpx.AsyncClient) -> None:
+    # Arrange
+    async def stream(
+        graph_input: Any, thread_id: str
+    ) -> AsyncIterator[tuple[str, str]]:
+        yield ("token", "answer")
+
+    calls: list[int] = []
+
+    def spy(user_id: int) -> None:
+        calls.append(user_id)
+
+    # Act
+    with patch("api.bind_trace_user", spy), patch("api._astream_answer", stream):
+        response = await client.post(
+            "/api/run_pipeline/stream", json={"query": "x", "thread_id": "t-1"}
+        )
+    # Assert
+    assert response.status_code == 200
+    assert calls == [1]
