@@ -19,7 +19,10 @@ the transcript genuinely supports them.
 contain, do **not** invent a section for it. Repeat the current outline \
 unchanged and say in `notice`, in one sentence, what is missing and that the \
 user should ask about it first.
-4. Otherwise apply the revision instruction and leave `notice` empty."""
+4. Otherwise apply the revision instruction and leave `notice` empty.
+5. The assistant's answers may end with a closing menu of next steps (things \
+the user can type, with research-turn costs). It is not material: never propose \
+a section for it."""
 
 # Note: there is deliberately no "return an empty list if there is nothing to
 # report on" rule. That rule contradicted rule 2 ("propose between three and
@@ -46,7 +49,10 @@ every turn that bears on it rather than restating one answer under a heading.
 4. Where the transcript is thin on a section, say so plainly in that section. \
 Do not fill the gap from your own knowledge.
 5. Write in English, in markdown, starting with a single `#` title line. There \
-is no required preamble or closing section."""
+is no required preamble or closing section.
+6. The assistant's answers may end with a closing menu of next steps (things \
+the user can type, with research-turn costs). It is not material: leave it out \
+of the report."""
 
 # The four-way classifier. This prompt is the *only* thing standing between the
 # user and two silent, unrecoverable misroutes (§1): a bare "no" read as
