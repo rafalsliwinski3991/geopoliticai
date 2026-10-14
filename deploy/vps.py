@@ -218,7 +218,21 @@ def deploy(sha: str) -> None:
     )
     compose("stop", "agentic-backend")
     compose("run", "--rm", "agentic-backend", ".venv/bin/alembic", "upgrade", "head")
-    compose("up", "-d", "--no-build", "--wait", "--remove-orphans")
+    try:
+        compose("up", "-d", "--no-build", "--wait", "--remove-orphans")
+    except subprocess.CalledProcessError:
+        # `--wait` reports only "container ... is unhealthy"; the reason is in
+        # the app's own startup output, which discard's restart then replaces.
+        compose(
+            "logs",
+            "--no-color",
+            "--tail",
+            "100",
+            "agentic-backend",
+            "web-backend",
+            check=False,
+        )
+        raise
 
 
 # Record a release that passed the public health check.

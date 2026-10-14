@@ -153,6 +153,20 @@ def test_failed_pg_dump_leaves_no_snapshot(vps: Vps) -> None:
     assert not (vps.root / "releases" / sha(1) / ".snapshot").exists()
 
 
+def test_unhealthy_start_prints_the_app_logs(vps: Vps) -> None:
+    # Arrange
+    vps.ship(1)
+
+    # Act
+    deployed = vps.run("deploy", sha(1), fail_on="--remove-orphans")
+
+    # Assert
+    assert deployed.returncode != 0
+    assert (
+        "logs --no-color --tail 100 agentic-backend web-backend" in vps.docker_calls()
+    )
+
+
 def test_discard_after_failed_migration_restores_and_restarts_previous(
     vps: Vps,
 ) -> None:
