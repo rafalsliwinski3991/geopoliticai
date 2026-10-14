@@ -45,6 +45,14 @@ four tables with staff-only, read-only raw-SQL admin pages — it defines no
 Django models and issues no writes; the only SQL that deletes from them stays
 in `chat`.
 
+The `emails` app owns the `emails_email` table. All Django mail goes through
+`MAILERS["default"]` (the queue) and is sent by `emails.services.send_batch()`
+through `MAILERS["smtp"]`; the host crontab runs
+`manage.py send_queued_emails` every minute (README's "Queued email" section
+has the line). All queue rules — attempts, retry wait, slice, hourly
+cap — live in `emails/services.py`; the cap's value is
+`settings.EMAIL_MAX_PER_HOUR`, not a services constant.
+
 Agents live in `agentic_backend/src/agents/<name>/` with graph, state, config, prompts,
 `consts/`, and node modules. Put fixed editorial data in `consts/`, prompts in
 the agent's `prompts.py`, and hardcoded tuning in dataclass config. Keep all

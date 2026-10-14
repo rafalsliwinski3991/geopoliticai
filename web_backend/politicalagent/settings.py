@@ -53,6 +53,9 @@ INSTALLED_APPS = [
     # checkpointer owns in `agentic`. Django defines no models for them; the
     # schema is Alembic's business, the deletes are `chat`'s signals.
     "checkpointer.apps.CheckpointerConfig",
+    # The outgoing-mail queue: every Django email lands in its `emails_email`
+    # table first (see `emails/services.py`).
+    "emails",
 ]
 
 MIDDLEWARE = [
@@ -154,17 +157,53 @@ SIMPLE_JWT = {
 }
 ACCESS_TOKEN_SECONDS = int(SIMPLE_JWT["ACCESS_TOKEN_LIFETIME"].total_seconds())
 
-# Q20: the existing domain mailbox over SMTP. Settings only, no dependency —
-# switching to a relay later is an EMAIL_HOST change (flag 3).
-EMAIL_BACKEND = os.getenv(
-    "DJANGO_EMAIL_BACKEND", "django.core.mail.backends.smtp.EmailBackend"
-)
-EMAIL_HOST = os.getenv("EMAIL_HOST", "")
-EMAIL_PORT = int(os.getenv("EMAIL_PORT", "587"))
-EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER", "")
-EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD", "")
-EMAIL_USE_TLS = os.getenv("EMAIL_USE_TLS", "true").lower() == "true"
+# Q20: mailers. The `default` mailer is the queue — every email Django
+# sends (allauth included) is stored in `emails_email` and sent later by
+# `emails.services.send_batch` through the `smtp` mailer, which holds the
+# domain mailbox over SMTP. Switching to a relay later is an `smtp` change.
+SMTP_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
+# An empty value means the default, not a broken backend.
+_DJANGO_EMAIL_BACKEND = os.getenv("DJANGO_EMAIL_BACKEND") or SMTP_BACKEND
+MAILERS = {
+    "default": {"BACKEND": "emails.backend.QueueBackend"},
+    "smtp": {
+        "BACKEND": _DJANGO_EMAIL_BACKEND,
+        # OPTIONS must match the backend: Django raises InvalidMailer for
+        # options an overridden backend does not accept (the console backend,
+        # for example).
+        "OPTIONS": {
+            **(
+                {
+                    "host": os.getenv("EMAIL_HOST", ""),
+                    "port": int(os.getenv("EMAIL_PORT", "587")),
+                    "username": os.getenv("EMAIL_HOST_USER", ""),
+                    "password": os.getenv("EMAIL_HOST_PASSWORD", ""),
+                    "use_tls": os.getenv("EMAIL_USE_TLS", "true").lower()
+                    == "true",
+                    # A hung SMTP host must not block the batch (and its row
+                    # locks) forever: `EMAIL_TIMEOUT` defaults to 30 s.
+                    "timeout": int(os.getenv("EMAIL_TIMEOUT", "30")),
+                }
+                if _DJANGO_EMAIL_BACKEND == SMTP_BACKEND
+                else {}
+            ),
+        },
+    },
+}
+# The most mail the sender hands to OVH in any 60 minutes; OVH's real limit
+# is unconfirmed (a forum post reports 200 per hour per mailbox).
+EMAIL_MAX_PER_HOUR = int(os.getenv("EMAIL_MAX_PER_HOUR", "100"))
 DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "noreply@politicalagent.eu")
+
+# Without this, Python's fallback handler drops everything below WARNING,
+# so the queue's INFO lines (queued, sent, requeued, batch summary) would
+# never reach the container logs.
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "handlers": {"console": {"class": "logging.StreamHandler"}},
+    "loggers": {"emails": {"handlers": ["console"], "level": "INFO"}},
+}
 
 STATIC_URL = "/static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"

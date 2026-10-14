@@ -36,7 +36,7 @@
     </nav>
   </div>
 </header>
-<main class="shell">{% block content %}{% endblock %}</main>
+<main class="shell">{% block main %}{% block content %}{% endblock %}{% endblock %}</main>
 <footer class="shell">
   <div class="foot">
     <span>PoliticalAgent — geopolitical research with named sources</span>
