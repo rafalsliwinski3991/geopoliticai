@@ -47,6 +47,7 @@ from agents.deep_forecaster.state import ResearchRun
 from agents.deep_forecaster.video import VideoUnavailableError, watch_video
 from models import SearchUnavailableError, Source, SourcePolicy
 from search import fetch_sources, search_allowlisted
+from tracing import start_span
 
 UNKNOWN_FORECASTER_MESSAGE = "Unknown forecaster id. Use one of: {ids}."
 EMPTY_QUERY_MESSAGE = "The query was empty. Search again with a focused query."
@@ -247,7 +248,10 @@ def build_tools(run: ResearchRun) -> list[BaseTool]:
             )
             run.reserved += 1
             try:
-                notes = await watch_video(video, question, run.store)
+                # The google-genai instrumentor's spans parent on the current
+                # OTel span; without this one they would be orphan traces.
+                with start_span("watch_video"):
+                    notes = await watch_video(video, question, run.store)
             except VideoUnavailableError:
                 logger.warning("ask_video failed", exc_info=True)
                 return VIDEO_UNAVAILABLE_MESSAGE
