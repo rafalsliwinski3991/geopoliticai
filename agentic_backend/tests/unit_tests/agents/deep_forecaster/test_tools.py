@@ -8,6 +8,7 @@ from typing import Any
 
 import pytest
 from langchain_core.tools import BaseTool
+from opentelemetry import trace
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
     InMemorySpanExporter,
 )
@@ -683,17 +684,28 @@ async def test_ask_video_opens_a_watch_video_span(
     url = "https://www.youtube.com/watch?v=abcdefghijk"
     run.candidates[url] = _candidate(url, domain="youtube.com", title="A talk")
 
+    encountered: list[int] = []
+
     async def fake(video: str, question: str, store: Any = None) -> str:
+        # The fake runs inside the wrapper: the current span must be the
+        # `watch_video` span itself, or the Gemini spans it opens would be
+        # orphans (review thread, #193).
+        span = trace.get_current_span()
+        span_id = span.get_span_context().span_id
+        if span_id is None:
+            pytest.fail("watch_video ran with no current span context")
+        encountered.append(span_id)
         return "Notes " * 40
 
     monkeypatch.setattr(tools_module, "watch_video", fake)
     # Act
     result = await tools["ask"].ainvoke({"url": url, "question": "q"})
     # Assert
-    assert result.startswith("--- SOURCE ---") or "Gemini's notes" in result
+    assert result.startswith("--- SOURCE ---")
     matches = [
         span
         for span in captured_spans.get_finished_spans()
         if span.name == "watch_video"
     ]
     assert len(matches) == 1
+    assert encountered == [matches[0].context.span_id]

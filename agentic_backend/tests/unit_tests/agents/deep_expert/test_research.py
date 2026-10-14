@@ -284,13 +284,19 @@ async def test_research_span_records_the_wall_limit(
     spy.sleep_for = 1.0
 
     monkeypatch.setattr(research_module, "build_graph", lambda run: spy.bind_run(run))
-    # Act + Assert
+    # Act
     with pytest.raises(ResearchLimitError, match="0.01-second"):
         await research_module.research("q", lambda e: None)
     span = _span_by_name(captured_spans, "deep_research")
+    # Assert
     attributes = span.attributes
     assert attributes is not None
     assert attributes["research.time_limit_hit"] is True
+    # 0 searches: the wall ended the run below the search cap, so a constant
+    # `search_budget_hit` failure cannot hide behind the at-cap asserts (review
+    # thread, #193).
+    assert attributes["research.search_budget_hit"] is False
+    assert attributes["research.searches_used"] == 0
 
 
 @pytest.mark.anyio
@@ -303,9 +309,11 @@ async def test_the_wall_time_cap_is_a_research_limit_error(
     spy.sleep_for = 1.0
     monkeypatch.setattr(research_module, "build_graph", lambda run: spy.bind_run(run))
 
-    # Act + Assert
+    # Act
+    run = research_module.research("q", lambda e: None)
+    # Assert
     with pytest.raises(ResearchLimitError, match="0.01-second"):
-        await research_module.research("q", lambda e: None)
+        await run
 
 
 @pytest.mark.anyio
@@ -322,9 +330,11 @@ async def test_an_inner_timeout_becomes_llm_invocation_error(
     spy.fail_with = TimeoutError()
     monkeypatch.setattr(research_module, "build_graph", lambda run: spy.bind_run(run))
 
-    # Act + Assert
+    # Act
+    call = research_module.research("q", lambda e: None)
+    # Assert
     with pytest.raises(LLMInvocationError):
-        await research_module.research("q", lambda e: None)
+        await call
 
 
 @pytest.mark.anyio

@@ -681,7 +681,7 @@ async def test_research_span_records_a_full_source_budget(
 ) -> None:
     # Arrange
     def fill_sources(run: ResearchRun) -> None:
-        for index in range(1, 21):
+        for index in range(research_module.LIMITS.max_sources):
             run.sources[f"https://a.example/{index}"] = Source(
                 "t", f"https://a.example/{index}", "text " * 100
             )
@@ -695,6 +695,37 @@ async def test_research_span_records_a_full_source_budget(
     assert attributes is not None
     assert attributes["research.source_budget_hit"] is True
     assert attributes["research.search_budget_hit"] is False
+
+
+@pytest.mark.anyio
+async def test_research_span_records_the_search_budget_reached(
+    monkeypatch: pytest.MonkeyPatch,
+    events: list[dict[str, Any]],
+    captured_spans: InMemorySpanExporter,
+) -> None:
+    # Arrange
+    def exhaust_the_budget(run: ResearchRun) -> None:
+        run.searches = research_module.LIMITS.max_searches
+        run.failed_searches = 2
+        run.videos = 1
+        for index in range(3):
+            run.sources[f"https://a.example/{index}"] = Source(
+                "t", f"https://a.example/{index}", "text " * 100
+            )
+
+    _patch_agent(monkeypatch, lambda run: _FakeAgent(run, mutate=exhaust_the_budget))
+    # Act
+    await research_module.research({"question": "q"}, _runtime(events))
+    span = _span_by_name(captured_spans, "forecast_research")
+    # Assert
+    attributes = span.attributes
+    assert attributes is not None
+    assert attributes["research.searches_used"] == research_module.LIMITS.max_searches
+    assert attributes["research.search_budget_hit"] is True
+    assert attributes["research.source_budget_hit"] is False
+    assert attributes["research.failed_searches"] == 2
+    assert attributes["research.videos_used"] == 1
+    assert attributes["research.sources_read"] == 3
 
 
 @pytest.mark.anyio
