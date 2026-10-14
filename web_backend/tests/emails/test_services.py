@@ -730,3 +730,140 @@ class SendBatchBoundaryTest(TestCase):
         # Assert
         self.assertEqual(sent, 0)
         self.assertEqual(pending, 1)
+
+
+@override_settings(MAILERS=TEST_MAILERS)
+class QueueLoggingTest(TestCase):
+    def test_a_sent_row_logs_its_id_and_the_batch_summary(self) -> None:
+        # Arrange
+        row = Email.objects.create(
+            from_email="noreply@politicalagent.eu",
+            to=["reader@example.com"],
+            subject="logged send",
+        )
+        # Act
+        with self.assertLogs("emails.services", level="INFO") as logs:
+            send_batch()
+        # Assert
+        self.assertIn(f"sent queued email {row.pk} on attempt 1", logs.output[0])
+        self.assertIn("1 claimed, 1 sent, 0 still pending", logs.output[1])
+
+    def test_a_pending_row_inside_its_retry_wait_logs_why_nothing_was_sent(self) -> None:
+        # Arrange
+        Email.objects.create(
+            from_email="noreply@politicalagent.eu",
+            to=["reader@example.com"],
+            subject="waiting retry",
+            attempts=1,
+            last_attempt_at=timezone.now() - timedelta(minutes=2),
+        )
+        # Act
+        with self.assertLogs("emails.services", level="INFO") as logs:
+            send_batch()
+        # Assert
+        self.assertIn("no queued email ready: 1 pending", logs.output[0])
+
+    def test_a_reached_hourly_cap_logs_a_warning(self) -> None:
+        # Arrange
+        Email.objects.create(
+            from_email="noreply@politicalagent.eu",
+            to=["sent@example.com"],
+            subject="already sent",
+            status=Email.Status.SENT,
+            sent_at=timezone.now() - timedelta(minutes=5),
+        )
+        # Act
+        with override_settings(EMAIL_MAX_PER_HOUR=1):
+            with self.assertLogs("emails.services", level="WARNING") as logs:
+                send_batch()
+        # Assert
+        self.assertIn(
+            "hourly email cap reached: 1 sent in the last hour, cap 1",
+            logs.output[0],
+        )
+
+    def test_a_row_failing_its_last_attempt_logs_an_error(self) -> None:
+        # Arrange
+        from unittest.mock import patch
+
+        row = Email.objects.create(
+            from_email="noreply@politicalagent.eu",
+            to=["reader@example.com"],
+            subject="last failure",
+            attempts=MAX_ATTEMPTS - 1,
+        )
+        # Act
+        with patch(
+            "django.core.mail.backends.locmem.EmailBackend.send_messages",
+            side_effect=Exception("SMTP refused"),
+        ):
+            with self.assertLogs("emails.services", level="ERROR") as logs:
+                send_batch()
+        # Assert
+        self.assertIn(
+            f"queued email {row.pk} failed for good after {MAX_ATTEMPTS} attempts",
+            logs.output[0],
+        )
+
+    def test_requeue_emails_logs_how_many_rows_it_requeued(self) -> None:
+        # Arrange
+        Email.objects.create(
+            from_email="noreply@politicalagent.eu",
+            to=["reader@example.com"],
+            subject="resend me",
+            status=Email.Status.SENT,
+            sent_at=timezone.now(),
+        )
+        # Act
+        with self.assertLogs("emails.services", level="INFO") as logs:
+            requeue_emails(Email.objects.all())
+        # Assert
+        self.assertIn("requeued 1 email(s) for resend", logs.output[0])
+
+    def test_a_retryable_smtp_error_logs_its_type_and_attempt(self) -> None:
+        # Arrange
+        import smtplib
+        from unittest.mock import patch
+
+        row = Email.objects.create(
+            from_email="noreply@politicalagent.eu",
+            to=["reader@example.com"],
+            subject="auth refused",
+        )
+        # Act
+        with patch(
+            "django.core.mail.backends.locmem.EmailBackend.send_messages",
+            side_effect=smtplib.SMTPAuthenticationError(535, b"bad credentials"),
+        ):
+            with self.assertLogs("emails.services", level="WARNING") as logs:
+                send_batch()
+        # Assert
+        self.assertIn(
+            f"queued email {row.pk} failed on attempt 1 of {MAX_ATTEMPTS}",
+            logs.output[0],
+        )
+        self.assertIn("SMTPAuthenticationError", logs.output[0])
+
+    def test_an_smtp_connection_error_logs_how_many_emails_went_unsent(self) -> None:
+        # Arrange
+        from unittest.mock import patch
+
+        for i in range(2):
+            Email.objects.create(
+                from_email="noreply@politicalagent.eu",
+                to=[f"reader{i}@example.com"],
+                subject=f"unreachable {i}",
+            )
+        # Act
+        with patch(
+            "django.core.mail.backends.locmem.EmailBackend.open",
+            side_effect=ConnectionRefusedError("SMTP host down"),
+        ):
+            with self.assertLogs("emails.services", level="ERROR") as logs:
+                send_batch()
+        # Assert
+        self.assertIn(
+            "SMTP connection error aborted the queue batch: 2 of 2 claimed",
+            logs.output[0],
+        )
+        self.assertIn("ConnectionRefusedError: SMTP host down", logs.output[0])

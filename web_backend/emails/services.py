@@ -17,7 +17,7 @@ from django.utils import timezone
 from emails.models import Email
 
 MAX_ATTEMPTS = 3
-RETRY_WAIT = timedelta(minutes=5)
+RETRY_WAIT = timedelta(minutes=1)
 SLICE_SIZE = 20
 CAP_WINDOW = timedelta(hours=1)
 MAILER_ALIAS = "smtp"
@@ -62,7 +62,7 @@ def queue_message(message: EmailMessage) -> Email:
         body, html = "", message.body
     else:
         body = message.body
-    return Email.objects.create(
+    row = Email.objects.create(
         from_email=message.from_email,
         to=list(message.to),
         cc=list(message.cc),
@@ -72,6 +72,10 @@ def queue_message(message: EmailMessage) -> Email:
         body=body,
         html=html,
     )
+    logger.info(
+        "queued email %d for %d recipient(s)", row.pk, len(message.recipients())
+    )
+    return row
 
 
 def build_message(email: Email) -> EmailMessage:
@@ -119,9 +123,23 @@ def send_batch() -> tuple[int, int]:
     """
     rows = _claim_rows(timezone.now())
     if not rows:
-        return 0, _pending_count()
+        still_pending = _pending_count()
+        if still_pending:
+            logger.info(
+                "no queued email ready: %d pending wait for their retry "
+                "wait, the hourly cap, or another runner",
+                still_pending,
+            )
+        return 0, still_pending
     sent_now = _send_rows(rows)
-    return sent_now, _pending_count()
+    still_pending = _pending_count()
+    logger.info(
+        "queue batch done: %d claimed, %d sent, %d still pending",
+        len(rows),
+        sent_now,
+        still_pending,
+    )
+    return sent_now, still_pending
 
 
 def _claim_rows(now) -> list[Email]:
@@ -140,7 +158,13 @@ def _claim_rows(now) -> list[Email]:
                 )
         sent_in_window = Email.objects.filter(sent_at__gt=now - CAP_WINDOW).count()
         room = min(SLICE_SIZE, settings.EMAIL_MAX_PER_HOUR - sent_in_window)
-        if room > 0:
+        if room <= 0:
+            logger.warning(
+                "hourly email cap reached: %d sent in the last hour, cap %d",
+                sent_in_window,
+                settings.EMAIL_MAX_PER_HOUR,
+            )
+        else:
             claimable = (
                 Email.objects.filter(
                     status=Email.Status.PENDING,
@@ -168,22 +192,29 @@ def _claim_rows(now) -> list[Email]:
 def _send_rows(rows: list[Email]) -> int:
     """Send each claimed row through the `smtp` mailer and save its outcome."""
     sent_now = 0
+    handled = 0
     try:
         with mail.mailers[MAILER_ALIAS] as backend:
             for row in rows:
+                handled += 1
                 try:
                     delivered = backend.send_messages([build_message(row)])
                 except Exception as exc:
                     # A failed connection would fail every later row: force
                     # the next send_messages call to open a fresh one.
                     backend.close()
-                    _record_failure(row, str(exc))
+                    _record_failure(row, f"{type(exc).__name__}: {exc}")
                 else:
                     if delivered == 1:
                         sent_now += 1
                         row.status = Email.Status.SENT
                         row.sent_at = timezone.now()
                         row.save(update_fields=["status", "sent_at"])
+                        logger.info(
+                            "sent queued email %d on attempt %d",
+                            row.pk,
+                            row.attempts,
+                        )
                     else:
                         _record_failure(
                             row,
@@ -193,7 +224,13 @@ def _send_rows(rows: list[Email]) -> int:
         # open()/QUIT failures escape the per-row handler. The claim is
         # already durable (attempts consumed, rows retry after RETRY_WAIT),
         # so log it and report what was saved so far instead of aborting.
-        logger.exception("queue batch aborted by a mailer connection error")
+        logger.exception(
+            "SMTP connection error aborted the queue batch: %d of %d claimed "
+            "email(s) never reached the server and retry after %s",
+            len(rows) - handled,
+            len(rows),
+            RETRY_WAIT,
+        )
     return sent_now
 
 
@@ -204,10 +241,24 @@ def _pending_count() -> int:
 
 def _record_failure(row: Email, error: str) -> None:
     """Charge a failed send: the attempt was consumed at claim time."""
-    logger.warning("queued email %d failed to send: %s", row.pk, error)
     row.last_error = error[:LAST_ERROR_MAX_CHARS]
     if row.attempts >= MAX_ATTEMPTS:
         row.status = Email.Status.FAILED
+        logger.error(
+            "queued email %d failed for good after %d attempts: %s",
+            row.pk,
+            row.attempts,
+            error,
+        )
+    else:
+        logger.warning(
+            "queued email %d failed on attempt %d of %d, retries after %s: %s",
+            row.pk,
+            row.attempts,
+            MAX_ATTEMPTS,
+            RETRY_WAIT,
+            error,
+        )
     row.last_attempt_at = timezone.now()
     row.save(update_fields=["last_error", "status", "last_attempt_at"])
 
@@ -220,10 +271,12 @@ def requeue_emails(queryset) -> int:
     work nobody asked for. `sent_at` and `last_error` are left as they
     are: a later attempt only overwrites them once it has actually sent.
     """
-    return queryset.filter(
+    count = queryset.filter(
         status__in=[Email.Status.SENT, Email.Status.FAILED]
     ).update(
         status=Email.Status.PENDING,
         attempts=0,
         resend_count=models.F("resend_count") + 1,
     )
+    logger.info("requeued %d email(s) for resend", count)
+    return count

@@ -195,6 +195,16 @@ MAILERS = {
 EMAIL_MAX_PER_HOUR = int(os.getenv("EMAIL_MAX_PER_HOUR", "100"))
 DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "noreply@politicalagent.eu")
 
+# Without this, Python's fallback handler drops everything below WARNING,
+# so the queue's INFO lines (queued, sent, requeued, batch summary) would
+# never reach the container logs.
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "handlers": {"console": {"class": "logging.StreamHandler"}},
+    "loggers": {"emails": {"handlers": ["console"], "level": "INFO"}},
+}
+
 STATIC_URL = "/static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 STATICFILES_DIRS = [BASE_DIR / "static"]

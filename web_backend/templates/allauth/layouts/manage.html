@@ -1,0 +1,8 @@
+{% extends "allauth/layouts/base.html" %}
+{% block account_nav %}
+<p class="alt">
+  <a href="{% url 'account_email' %}">Email addresses</a> ·
+  <a href="{% url 'account_change_password' %}">Change password</a> ·
+  <a href="{% url 'account_logout' %}">Sign out</a>
+</p>
+{% endblock %}

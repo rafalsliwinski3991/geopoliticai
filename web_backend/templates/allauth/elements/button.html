@@ -1,0 +1,14 @@
+{% load allauth %}
+{% comment %} djlint:off {% endcomment %}
+{% comment %}Allauth's own button element with the site's button classes: "cancel", "link", "secondary" and "danger" tags render as the quiet variant.{% endcomment %}
+<{% if attrs.href %}a href="{{ attrs.href }}"{% else %}button{% endif %}
+class="btn{% if 'cancel' in attrs.tags or 'link' in attrs.tags or 'secondary' in attrs.tags or 'danger' in attrs.tags %} btn--quiet{% endif %}"
+{% if attrs.form %}form="{{ attrs.form }}"{% endif %}
+{% if attrs.id %}id="{{ attrs.id }}"{% endif %}
+{% if attrs.name %}name="{{ attrs.name }}"{% endif %}
+{% if attrs.value %}value="{{ attrs.value }}"{% endif %}
+{% if attrs.type %}type="{{ attrs.type }}"{% endif %}
+>
+{% slot %}
+{% endslot %}
+</{% if attrs.href %}a{% else %}button{% endif %}>

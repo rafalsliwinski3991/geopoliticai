@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% comment %}Every allauth page, entrance and manage alike, renders inside the site layout and its narrow auth column.{% endcomment %}
+{% block title %}{% block head_title %}{% endblock %} — PoliticalAgent{% endblock %}
+{% block main %}
+<div class="auth">
+  {% if messages %}
+    <ul class="messages">
+      {% for message in messages %}<li>{{ message }}</li>{% endfor %}
+    </ul>
+  {% endif %}
+  {% block content %}{% endblock %}
+  {% block account_nav %}{% endblock %}
+</div>
+{% endblock %}
