@@ -152,6 +152,7 @@ def test_init_tracing_ax_requires_credentials(
 def test_start_span_records_a_named_span(
     captured_spans: InMemorySpanExporter,
 ) -> None:
+    # Arrange
     # Act
     with tracing.start_span("fetch_source") as span:
         span.end()

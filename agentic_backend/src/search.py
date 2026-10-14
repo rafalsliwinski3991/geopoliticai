@@ -10,6 +10,7 @@ import hashlib
 import json
 import logging
 import os
+import unicodedata
 from collections import Counter
 from collections.abc import Sequence
 from html.parser import HTMLParser
@@ -279,6 +280,9 @@ def _extract_page_sync(body: str) -> ExtractedPage:
     parse pass runs as a second hop on a body the fetch already read.
     `bare_extraction(with_metadata=True)` returns the same text as `extract`
     with the same flags, plus the date (plan 2026Oct13, pinned by a test).
+    Trafilatura 2.2.0 normalizes to NFC only in `extract`'s output conversion
+    (`determine_returnstring`), not in `bare_extraction`, so the text is
+    normalized here (review thread, #192).
     """
     document = trafilatura.bare_extraction(
         body,
@@ -293,8 +297,11 @@ def _extract_page_sync(body: str) -> ExtractedPage:
     head = _parse_head(body)
     # Typed `Document | dict[str, Any] | None`; a dict only with `as_dict=True`.
     found = document if isinstance(document, Document) else None
+    text = found.text if found is not None else None
+    if text is not None:
+        text = unicodedata.normalize("NFC", text)
     return ExtractedPage(
-        text=found.text if found is not None else None,
+        text=text,
         author=_byline_from(head),
         published=(found.date or "") if found is not None else "",
         lang=_lang_from(head),

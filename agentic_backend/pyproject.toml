@@ -43,6 +43,10 @@ dependencies = [
     "arize-otel>=0.1,<1.0",
     "arize-phoenix-otel>=0.17,<1.0",
     "openinference-instrumentation-langchain>=0.1,<1.0",
+    # Imported directly (`tracing.py` builds its `OITracer` from both even
+    # though no instrumentor package is read there); declared because direct.
+    "openinference-instrumentation>=0.1.59,<0.2",
+    "opentelemetry-api>=1.29,<2.0",
     # 2.12.0 fixed the `crit` header vulnerability; this promotes what was a
     # dev-only transitive of langgraph-api to a runtime dependency.
     "pyjwt>=2.12,<3.0",
