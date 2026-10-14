@@ -79,8 +79,7 @@ def member_model(seat: Seat, model: str, *, max_retries: int) -> Any:
     """Return the ballot-producing chain for `model` on `seat`.
 
     Structured output goes through tool calling, which every roster model
-    advertises; `qwen/qwen3.7-flash` does not advertise
-    `structured_outputs` (Q4). `TAG_NOSTREAM` keeps every ballot out of
+    advertises (Q4). `TAG_NOSTREAM` keeps every ballot out of
     `stream_mode="messages"`.
     """
     return (

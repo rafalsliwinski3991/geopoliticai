@@ -561,7 +561,7 @@ def test_the_council_is_seven_paid_openrouter_seats_one_per_vendor() -> None:
         ("anthropic/claude-haiku-5.5", None),
         ("z-ai/glm-5.3-flash", None),
         ("deepseek/deepseek-v4.1-flash", None),
-        ("qwen/qwen3.7-flash", None),
+        ("qwen/qwen3.8-flash", None),
         ("mistralai/mistral-small-2603", None),
     ]
     vendors = [seat.model.split("/")[0] for seat in COUNCIL]
