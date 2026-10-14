@@ -237,3 +237,6 @@ User actions after the `seo-blog` deploy:
    - `https://politicalagent.eu/sitemap.xml` uses only `politicalagent.eu` URLs
    - Google Rich Results Test on one post after pasting it
    - Lighthouse shows no request to `fonts.googleapis.com`
+
+
+:)
