@@ -5,9 +5,9 @@ Its hand-written sources state only what was public on its `as_of` date and
 are synthetic (any resemblance to real reporting on that date is incidental);
 a future recording of real, as-of-public articles can replace them. The forecast runs as of `as_of` (`ForecastRun.today`), so its claims
 fall after that date. A leakage probe asks every model that can vote (each
-seat's own model, 7 models) the question with no sources (the OpenRouter
-models' training cutoffs are unpublished, and gpt-5-mini's alone predates
-every question):
+seat's own model, 7 models, all on OpenRouter) the question with no sources
+(their training cutoffs are unpublished, so none is known to predate every
+question):
 - a model that already knows the outcome fails
   `outcome_unknown_without_sources`, and that question must be replaced;
 - a model that cannot answer at all (an error, a rate limit, a retired id)
@@ -82,9 +82,7 @@ async def run_forecast_backtest(input: dict[str, Any]) -> dict[str, Any]:
     from agents.deep_expert.graph import NO_CHECKPOINTER_CONFIG
     from agents.deep_forecaster.graph import build_graph
     from agents.deep_forecaster.state import ForecastRun
-    from config import require_env
 
-    require_env(("GEMINI_API_KEY",))
     sources = load_sources(input["sources"])
     with recorded_sources(lambda: sources):
         state = await build_graph().ainvoke(

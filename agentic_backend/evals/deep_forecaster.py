@@ -1,8 +1,8 @@
 """Deep forecaster eval: one whole forecast per example, from recorded sources.
 
-The council's members are called live (OpenAI, Gemini, and OpenRouter's paid
-models): 14 council calls per example, 10 of them on the OpenRouter key's
-credits, a few cents at the prices listed on 2026-10-08. The 3 model judges
+The council's members are called live, all seven seats on OpenRouter: 14
+council calls per example on the OpenRouter key's credits, about $0.15 per
+forecast by the plan's estimate at the prices listed on 2026-10-14. The 3 model judges
 spend the OpenRouter account's shared free budget (F8). Brave and Gemini's video
 reading are never called: every search returns the recorded set, and no
 recorded source is a video. The whole graph is invoked, not `forecast()`, so
@@ -59,11 +59,7 @@ async def run_deep_forecaster(input: dict[str, Any]) -> dict[str, Any]:
     from agents.deep_expert.graph import NO_CHECKPOINTER_CONFIG
     from agents.deep_forecaster.graph import build_graph
     from agents.deep_forecaster.state import ForecastRun
-    from config import require_env
 
-    # The council's Gemini seat; the runner itself requires only OpenAI and
-    # OpenRouter (`evals/helpers/run.py`, EVAL_ENV_VARS).
-    require_env(("GEMINI_API_KEY",))
     sources = load_sources(input["sources"])
     with recorded_sources(lambda: sources):
         state = await build_graph().ainvoke(

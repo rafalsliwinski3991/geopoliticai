@@ -5,7 +5,7 @@ same instructions and the same evidence. Members are "Member 1" … "Member 7"
 wherever a reader or another member sees them; which model holds which seat
 is logged for the operator and never shown (Q21).
 
-Every seat is a paid model; a seat that fails — an error, its timeout, no
+Every seat is a paid model on OpenRouter; a seat that fails — an error, its timeout, no
 ballot, or a ballot `validate_ballot` refuses — has no ballot for that round,
 and the client's own retries (429, 5xx, connection errors) are the recovery
 (user decision 2026-10-08, ending the free-roster fallback of 2026-10-01).
@@ -28,6 +28,7 @@ from typing import Any
 from langchain_core.messages import BaseMessage
 from langchain_openai import ChatOpenAI
 from langgraph.constants import TAG_NOSTREAM
+from pydantic import SecretStr
 
 from agents.deep_forecaster.config import (
     COUNCIL,
@@ -42,35 +43,25 @@ from agents.deep_forecaster.state import ClaimTally
 from llm import DEFAULT_MAX_RETRIES
 from models import LLMInvocationError
 
-PROVIDER_BASE_URLS = {
-    "gemini": "https://generativelanguage.googleapis.com/v1beta/openai/",
-    "openrouter": "https://openrouter.ai/api/v1",
-}
-PROVIDER_KEY_ENV = {"gemini": "GEMINI_API_KEY", "openrouter": "OPENROUTER_API_KEY"}
+OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 logger = logging.getLogger(__name__)
 
 
 def member_client(
     seat: Seat, model: str, *, max_retries: int = DEFAULT_MAX_RETRIES
 ) -> ChatOpenAI:
-    """Return a chat client for `model` on `seat`'s endpoint; built per call.
+    """Return an OpenRouter chat client for `model` on `seat`; built per call.
 
     `model` is the seat's own model. Built at call time: `ChatOpenAI` cannot
     be constructed without a key. The openai SDK retries connection errors,
     timeouts, 408, 409, 429 and 5xx, never a 400; with every seat paid, those
     retries are the recovery for a transient failure (`_cast`).
     `_cast`'s `asyncio.timeout` bounds the attempt, so a round
-    still ends within one member timeout. Non-OpenAI seats never receive
-    `parallel_tool_calls`, which `with_structured_output` sends and Gemini's
-    compatible endpoint has been reported to reject (framework review).
+    still ends within one member timeout. No seat receives
+    `parallel_tool_calls`, which `with_structured_output` sends and
+    OpenRouter's non-OpenAI upstreams have been reported to reject (framework
+    review).
     """
-    connection: dict[str, Any] = {}
-    if seat.provider != "openai":
-        connection = {
-            "base_url": PROVIDER_BASE_URLS[seat.provider],
-            "api_key": os.environ[PROVIDER_KEY_ENV[seat.provider]],
-            "disabled_params": {"parallel_tool_calls": None},
-        }
     return ChatOpenAI(
         model=model,
         max_completion_tokens=MEMBER_MAX_OUTPUT_TOKENS,
@@ -78,16 +69,17 @@ def member_client(
         max_retries=max_retries,
         streaming=False,
         reasoning_effort=seat.reasoning_effort,
-        **connection,
+        base_url=OPENROUTER_BASE_URL,
+        api_key=SecretStr(os.environ["OPENROUTER_API_KEY"]),
+        disabled_params={"parallel_tool_calls": None},
     )
 
 
 def member_model(seat: Seat, model: str, *, max_retries: int) -> Any:
-    """Return the ballot-producing chain for `model` on `seat`'s endpoint.
+    """Return the ballot-producing chain for `model` on `seat`.
 
     Structured output goes through tool calling, which every roster model
-    advertises; five of seven seats do not advertise
-    `structured_outputs` (Q4). `TAG_NOSTREAM` keeps every ballot out of
+    advertises (Q4). `TAG_NOSTREAM` keeps every ballot out of
     `stream_mode="messages"`.
     """
     return (

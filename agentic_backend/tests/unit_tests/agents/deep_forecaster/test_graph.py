@@ -14,6 +14,7 @@ from langgraph.errors import NodeTimeoutError
 from langgraph.graph import END, START, StateGraph
 from typing_extensions import TypedDict
 
+from agents.deep_forecaster.config import COUNCIL
 from agents.deep_forecaster.models import Analysis, ClaimDiscussion
 from agents.deep_forecaster.state import ForecastRun, ResearchRun
 from models import LLMInvocationError, NoSourcesError, ResearchLimitError, Source
@@ -290,9 +291,9 @@ async def test_a_forecast_runs_every_step_once_inside_a_checkpointed_parent(
     model_reads: list[str] = []
     scripted = {
         # Member 3's model fails round 1; the seat is dropped and sits round 2 out.
-        "nvidia/nemotron-3-ultra-550b-a55b": {"fail_first": True},
+        COUNCIL[2].model: {"fail_first": True},
         # Member 7's model fails round 2, and it keeps its round-1 vote.
-        "inclusionai/ling-3.0-flash": {"fail_second": True},
+        COUNCIL[6].model: {"fail_second": True},
     }
     counters: dict[str, int] = {}
 
@@ -386,8 +387,8 @@ async def test_a_forecast_runs_every_step_once_inside_a_checkpointed_parent(
     assert len(member_calls) == 13
     assert len([call for call in member_calls if call[2] == "failed"]) == 2
     assert {call[0] for call in member_calls if call[2] == "failed"} == {
-        "nvidia/nemotron-3-ultra-550b-a55b",
-        "inclusionai/ling-3.0-flash",
+        COUNCIL[2].model,
+        COUNCIL[6].model,
     }
     # No member read the text of a paragraph no claim points at.
     assert not any("Alpha two." in read for read in model_reads)

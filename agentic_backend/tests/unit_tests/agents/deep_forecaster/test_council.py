@@ -271,10 +271,10 @@ class TestConvene:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         behavior = {
-            "nvidia/nemotron-3-ultra-550b-a55b": "raise",
-            "qwen/qwen3.8-27b": "slow",
-            "poolside/laguna-s-2.1": "invalid",
-            "deepseek/deepseek-v4-flash": "none",
+            COUNCIL[2].model: "raise",
+            COUNCIL[3].model: "slow",
+            COUNCIL[4].model: "invalid",
+            COUNCIL[5].model: "none",
         }
         self._fakes(monkeypatch, behavior)
         import agents.deep_forecaster.config as config
@@ -340,7 +340,7 @@ class TestConvene:
         import logging
 
         caplog.set_level(logging.WARNING, logger=council_module.__name__)
-        behavior = {"gpt-5-mini": "raise"}
+        behavior = {COUNCIL[0].model: "raise"}
         self._fakes(monkeypatch, behavior)
         await convene(
             1,
@@ -350,7 +350,7 @@ class TestConvene:
             quoted_by_claim=QUOTED_BY_CLAIM,
             quorum=1,
         )
-        assert "gpt-5-mini: RuntimeError" in caplog.text
+        assert f"{COUNCIL[0].model}: RuntimeError" in caplog.text
         assert "dropped" in caplog.text
 
         await convene(
@@ -518,43 +518,33 @@ class TestMemberClient:
         monkeypatch.setattr(council_module, "ChatOpenAI", fake_chat_openai)
         return recorded
 
-    def test_member_clients_by_provider(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_every_member_client_uses_openrouter(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         # Arrange
-        monkeypatch.setenv("GEMINI_API_KEY", "gemini-key")
         monkeypatch.setenv("OPENROUTER_API_KEY", "router-key")
+        monkeypatch.delenv("GEMINI_API_KEY", raising=False)
         recorded = self._recorded(monkeypatch)
         # Act
-        member_client(COUNCIL[0], COUNCIL[0].model)
-        member_client(COUNCIL[1], COUNCIL[1].model)
-        router_seat = COUNCIL[2]
-        member_client(router_seat, router_seat.model)
+        for seat in COUNCIL:
+            member_client(seat, seat.model)
         # Assert
-        openai_client = recorded[0]
-        gemini_client = recorded[1]
-        router_client = recorded[2]
-        assert "base_url" not in openai_client
-        assert (
-            gemini_client["base_url"]
-            == "https://generativelanguage.googleapis.com/v1beta/openai/"
-        )
-        assert gemini_client["api_key"] == "gemini-key"
-        assert router_client["base_url"] == "https://openrouter.ai/api/v1"
-        assert router_client["api_key"] == "router-key"
-        assert gemini_client["disabled_params"] == {"parallel_tool_calls": None}
-        assert router_client["disabled_params"] == {"parallel_tool_calls": None}
-        assert "disabled_params" not in openai_client
-        for kwargs in recorded:
+        assert len(recorded) == len(COUNCIL)
+        for seat, kwargs in zip(COUNCIL, recorded, strict=True):
+            assert kwargs["model"] == seat.model
+            assert kwargs["base_url"] == "https://openrouter.ai/api/v1"
+            assert kwargs["api_key"].get_secret_value() == "router-key"
+            assert kwargs["disabled_params"] == {"parallel_tool_calls": None}
+            assert kwargs["reasoning_effort"] == seat.reasoning_effort
             assert kwargs["timeout"] == 100.0
             assert kwargs["max_completion_tokens"] == 8_192
             assert kwargs["streaming"] is False
-        assert openai_client["max_retries"] == 2
-        assert router_client["max_retries"] == 2
+            assert kwargs["max_retries"] == 2
 
     def test_the_member_client_carries_the_max_retries_override(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         # Arrange
-        monkeypatch.setenv("GEMINI_API_KEY", "gemini-key")
         monkeypatch.setenv("OPENROUTER_API_KEY", "router-key")
         recorded = self._recorded(monkeypatch)
         # Act
@@ -563,10 +553,18 @@ class TestMemberClient:
         assert recorded[0]["max_retries"] == 0
 
 
-def test_the_openrouter_roster_is_one_paid_seat_per_vendor() -> None:
+def test_the_council_is_seven_paid_openrouter_seats_one_per_vendor() -> None:
     # Assert
-    vendors = [seat.model.split("/")[0] for seat in COUNCIL if "/" in seat.model]
+    assert [(seat.model, seat.reasoning_effort) for seat in COUNCIL] == [
+        ("openai/gpt-6-luna", "low"),
+        ("google/gemini-3.5-flash-lite", "low"),
+        ("anthropic/claude-haiku-5.5", None),
+        ("z-ai/glm-5.3-flash", None),
+        ("deepseek/deepseek-v4.1-flash", None),
+        ("qwen/qwen3.8-flash", None),
+        ("mistralai/mistral-small-2603", None),
+    ]
+    vendors = [seat.model.split("/")[0] for seat in COUNCIL]
     assert len(vendors) == len(set(vendors))
-    for seat in COUNCIL:
-        if seat.provider == "openrouter":
-            assert not seat.model.endswith(":free")
+    assert not any(seat.model.endswith(":free") for seat in COUNCIL)
+    assert not any(hasattr(seat, "provider") for seat in COUNCIL)
