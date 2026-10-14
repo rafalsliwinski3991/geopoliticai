@@ -126,7 +126,8 @@ thread.
 
 There is one root `.env`; never modify it or commit secrets. It supplies API,
 tests, Studio, and Compose. API startup requires `OPENAI_API_KEY`,
-`BRAVE_SEARCH_KEY`, `DATABASE_URL`, and `JWT_SIGNING_KEY`; tracing is optional, idempotent, and
+`BRAVE_SEARCH_KEY`, `DATABASE_URL`, `JWT_SIGNING_KEY`, `OPENROUTER_API_KEY`, and
+`GEMINI_API_KEY`; a deploy whose app fails to start prints its last 100 log lines; tracing is optional, idempotent, and
 unredacted when enabled. Every custom span opens through `tracing.start_span`,
 which parents it on the current LangChain run's span (the LangChain tracer
 never makes its spans current). `fetch_source` (one per page fetch),
