@@ -141,7 +141,7 @@ and Phoenix;
 development ports are 8082, 8083, 3001, 55432, and loopback 6006. Production uses TLS
 and fail-closed Basic Auth for `/admin/` and `/phoenix/` — `/api/*` is guarded
 by bearer JWTs (verified in `auth.py`). Production deploys only through the
-dispatch-only `deploy.yml`, from `main`. It runs `tests.yml` (via
+dispatch-only `deploy.yml`, from `main` or a tag. It runs `tests.yml` (via
 `workflow_call`), pushes the three images to GHCR as `:<sha>` and `:latest`, and
 runs `deploy/vps.py` on the VPS: a pre-deploy `pg_dump`, Django then Alembic
 migrations inside the containers, and `up --wait`, followed by a public
