@@ -95,7 +95,8 @@ def start_span(name: str) -> Iterator[trace.Span]:
     trace. The run's span is looked up only once tracing is on: with no tracer,
     the lookup prints a warning to stdout on every call. `OITracer` copies the
     context attributes (`user.id` from `bind_trace_user`) onto the span, which a
-    plain tracer does not. Without a configured provider the span records
+    plain tracer does not. Each span is a `CHAIN`, so Phoenix shows a kind
+    instead of `UNKNOWN`. Without a configured provider the span records
     nothing, so tracing still cannot fail a request.
     """
     parent = None
@@ -106,7 +107,9 @@ def start_span(name: str) -> Iterator[trace.Span]:
             logger.debug("No LangChain parent span: %s", exc)
     parent_context = trace.set_span_in_context(parent) if parent is not None else None
     tracer = OITracer(trace.get_tracer(TRACER_NAME), config=TraceConfig())
-    with tracer.start_as_current_span(name, context=parent_context) as span:
+    with tracer.start_as_current_span(
+        name, context=parent_context, openinference_span_kind="chain"
+    ) as span:
         yield span
 
 

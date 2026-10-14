@@ -165,6 +165,18 @@ def test_start_span_records_a_named_span(
     assert [span.name for span in spans] == ["fetch_source"]
 
 
+def test_start_span_marks_the_span_a_chain(
+    captured_spans: InMemorySpanExporter,
+) -> None:
+    # Act
+    with tracing.start_span("fetch_source"):
+        pass
+    # Assert
+    (span,) = captured_spans.get_finished_spans()
+    assert span.attributes is not None
+    assert span.attributes[SpanAttributes.OPENINFERENCE_SPAN_KIND] == "CHAIN"
+
+
 def test_start_span_parents_on_the_langchain_span_when_tracing_is_on(
     monkeypatch: pytest.MonkeyPatch, captured_spans: InMemorySpanExporter
 ) -> None:

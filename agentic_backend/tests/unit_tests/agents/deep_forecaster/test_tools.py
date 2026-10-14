@@ -95,6 +95,47 @@ async def test_a_search_is_narrowed_to_one_forecaster(
 
 
 @pytest.mark.anyio
+async def test_a_site_operator_in_the_query_is_dropped(
+    tools: dict[str, BaseTool], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Arrange
+    calls: list[str] = []
+
+    async def fake(query: str, policy: Any) -> list[Candidate]:
+        calls.append(query)
+        return []
+
+    monkeypatch.setattr(tools_module, "search_allowlisted", fake)
+    # Act
+    await tools["search"].ainvoke(
+        {
+            "forecaster": "gabuev",
+            "query": "site:kcl.ac.uk Russia SITE:x.com China -site:y.org",
+        }
+    )
+    # Assert
+    assert calls == ["Gabuev Russia China"]
+
+
+@pytest.mark.anyio
+async def test_a_query_of_only_site_operators_spends_nothing(
+    tools: dict[str, BaseTool], run: ResearchRun, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Arrange
+    async def fake(query: str, policy: Any) -> list[Candidate]:
+        raise AssertionError("Brave must not be called")
+
+    monkeypatch.setattr(tools_module, "search_allowlisted", fake)
+    # Act
+    result = await tools["search"].ainvoke(
+        {"forecaster": "gabuev", "query": "site:kcl.ac.uk"}
+    )
+    # Assert
+    assert result == EMPTY_QUERY_MESSAGE
+    assert run.searches == 0
+
+
+@pytest.mark.anyio
 async def test_an_unknown_forecaster_spends_nothing(
     tools: dict[str, BaseTool], run: ResearchRun, monkeypatch: pytest.MonkeyPatch
 ) -> None:

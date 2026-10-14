@@ -82,6 +82,9 @@ SEARCH_FAILED_MESSAGE = (
 )
 VIDEO_TITLE = "Gemini's notes on the video: {title}"
 VIDEO_ID_RE = re.compile(r"^[A-Za-z0-9_-]{11}$")
+# A model-written `site:` names a site outside the forecaster's own domains,
+# so the search can only come back empty (Phoenix, 2026-10-14: 6 of 21).
+SITE_OPERATOR_RE = re.compile(r"-?\bsite:\S*", re.IGNORECASE)
 logger = logging.getLogger(__name__)
 
 
@@ -138,7 +141,7 @@ def build_tools(run: ResearchRun) -> list[BaseTool]:
             return UNKNOWN_FORECASTER_MESSAGE.format(ids=", ".join(FORECASTERS_BY_ID))
         # Model output: a blank query would fail `search.build_batch_query`
         # and surface as a 503 blaming Brave (deep expert, plan v2 row 3).
-        query = " ".join(query.split())
+        query = " ".join(SITE_OPERATOR_RE.sub(" ", query).split())
         if not query:
             return EMPTY_QUERY_MESSAGE
         if run.searches >= LIMITS.max_searches:

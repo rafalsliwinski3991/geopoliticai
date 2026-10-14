@@ -104,7 +104,8 @@ def build_research_agent(run: ResearchRun) -> Any:
             }
         ],
         checkpointer=False,
-        name="forecast_research",
+        # Not "forecast_research", the span below: one name, one span in Phoenix.
+        name="forecast_lead",
     )
 
 
