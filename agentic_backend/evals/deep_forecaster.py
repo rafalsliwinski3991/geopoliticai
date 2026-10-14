@@ -59,11 +59,7 @@ async def run_deep_forecaster(input: dict[str, Any]) -> dict[str, Any]:
     from agents.deep_expert.graph import NO_CHECKPOINTER_CONFIG
     from agents.deep_forecaster.graph import build_graph
     from agents.deep_forecaster.state import ForecastRun
-    from config import require_env
 
-    # The council's Gemini seat; the runner itself requires only OpenAI and
-    # OpenRouter (`evals/helpers/run.py`, EVAL_ENV_VARS).
-    require_env(("GEMINI_API_KEY",))
     sources = load_sources(input["sources"])
     with recorded_sources(lambda: sources):
         state = await build_graph().ainvoke(

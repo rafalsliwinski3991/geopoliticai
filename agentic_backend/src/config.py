@@ -22,9 +22,10 @@ REQUIRED_ENV_VARS = (
     "OPENAI_API_KEY",
     "BRAVE_SEARCH_KEY",
     "JWT_SIGNING_KEY",
-    # The forecaster's council seats and its video reading (brainstorm
-    # 2026Sep30 Q4, Q26, F10): a forecast without them loses two to six of its
-    # seven members and falls below quorum, so the API does not start.
+    # The forecaster's council seats (all seven, via OpenRouter) and its video
+    # reading (Gemini, called directly; brainstorm 2026Sep30 Q4, Q26, F10): a
+    # forecast without the first has no council and without the second loses
+    # `ask_video`, so the API does not start.
     "OPENROUTER_API_KEY",
     "GEMINI_API_KEY",
 )

@@ -39,7 +39,7 @@ async def run_e2e_deep_forecaster(input: dict[str, Any]) -> dict[str, Any]:
     from config import require_env
     from evals.deep_forecaster import forecast_output
 
-    # The council's Gemini seat runs live too, and Brave is not patched away.
+    # `ask_video` calls Gemini live, and Brave is not patched away.
     require_env(
         ("OPENAI_API_KEY", "OPENROUTER_API_KEY", "GEMINI_API_KEY", "BRAVE_SEARCH_KEY")
     )

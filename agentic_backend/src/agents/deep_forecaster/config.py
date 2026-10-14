@@ -8,7 +8,6 @@ editorial data in `consts/forecasters.py`.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Literal
 
 from config import LLMSettings
 
@@ -49,47 +48,40 @@ MEMBER_MAX_OUTPUT_TOKENS = 8_192
 
 @dataclass(frozen=True)
 class Seat:
-    """One council seat's model; `provider` picks its endpoint (brainstorm Q4, Q26).
+    """One council seat's model, an OpenRouter slug (brainstorm Q4, Q26).
 
-    All five OpenRouter seats are paid models (user decision 2026-10-08): the
-    free tier's shared pool and its churn — retired `:free` slugs returning
-    404, upstream-provider 429s — broke round-1 quorum twice in the first
-    smoke week, while every paid fallback answered on its first try.
+    Every seat is a paid model on OpenRouter (user decisions 2026-10-08 and
+    2026-10-14): the free tier's shared pool and its churn — retired `:free`
+    slugs returning 404, upstream-provider 429s — broke round-1 quorum twice
+    in the first smoke week.
     """
 
     model: str
-    provider: Literal["openai", "gemini", "openrouter"]
     reasoning_effort: str | None = None
 
 
-# One seat per vendor (Q3, Q4, Q26): OpenAI directly, Gemini through its
-# OpenAI-compatible endpoint, five paid OpenRouter models, one per vendor
-# (all list `tools` and `tool_choice`; prices checked 2026-10-08, from
-# inclusionAI's $0.02/M in, $0.06/M out to qwen's $0.43/M in, $2.55/M out).
-# The roster was five `:free` models with paid twins (2026-09-30, user
-# decision 2026-10-01 adding the twins as one-shot fallbacks) until the
-# trace of 2026-10-08 lost round-1 quorum: two `:free` slugs had been
-# retired to 404 ("unavailable for free"), one sat behind an
-# upstream-provider 429, and one provider 400'd. dots-3-note-preview has
-# vanished from OpenRouter even paid, so DeepSeek's v4-flash — that seat's
-# fallback, which voted in its place that day — takes the seat. Seat 5 is
-# poolside because `thinkingmachines/inkling:free` is gated to OpenRouter's
-# listed agentic harnesses (403 "only available on agentic harnesses",
-# smoke gate F3 run 1, 2026-10-01 — a permanent refusal for our backend,
-# not a transient one), and poolside's models list `tools` and
-# `tool_choice`, with a 262k context.
+# One seat per vendor (Q3, Q4), all seven on OpenRouter with the one
+# `OPENROUTER_API_KEY` (user decision 2026-10-14, replacing the OpenAI-direct
+# and Gemini-direct seats). Cheap and current, prices checked 2026-10-14 in $
+# per million tokens in/out: luna .10/.50, gemini-3.5-flash-lite .30/2.50,
+# haiku-5.5 .10/.50, glm-5.3-flash .04/.90, deepseek-v4.1-flash .02/.89,
+# qwen3.7-flash .03/.13, mistral-small-2603 .15/.60. Every slug lists `tools`
+# and `tool_choice`, which the ballots' tool calling needs. Seats 1 and 2 keep
+# `reasoning_effort="low"` as before; the others run at their default, as the
+# old OpenRouter seats did. Whether this roster judges as well as the last one
+# is for the `deep_forecaster` eval to say.
 # Member n is COUNCIL[n - 1],
 # so reordering renumbers members. Roster churn is an edit here (brainstorm
 # §5); which model holds which seat, and which one voted, is logged, never
 # shown (Q21).
 COUNCIL: tuple[Seat, ...] = (
-    Seat("gpt-5-mini", "openai", reasoning_effort="low"),
-    Seat("gemini-3.8-flash", "gemini", reasoning_effort="low"),
-    Seat("nvidia/nemotron-3-ultra-550b-a55b", "openrouter"),
-    Seat("qwen/qwen3.8-27b", "openrouter"),
-    Seat("poolside/laguna-s-2.1", "openrouter"),
-    Seat("deepseek/deepseek-v4-flash", "openrouter"),
-    Seat("inclusionai/ling-3.0-flash", "openrouter"),
+    Seat("openai/gpt-6-luna", reasoning_effort="low"),
+    Seat("google/gemini-3.5-flash-lite", reasoning_effort="low"),
+    Seat("anthropic/claude-haiku-5.5"),
+    Seat("z-ai/glm-5.3-flash"),
+    Seat("deepseek/deepseek-v4.1-flash"),
+    Seat("qwen/qwen3.7-flash"),
+    Seat("mistralai/mistral-small-2603"),
 )
 
 

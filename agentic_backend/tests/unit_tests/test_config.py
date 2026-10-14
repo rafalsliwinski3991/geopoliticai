@@ -190,7 +190,7 @@ def test_deep_cost_fits_inside_the_daily_quota() -> None:
     )
 
 
-def test_the_api_requires_the_council_keys() -> None:
+def test_the_api_requires_the_council_and_video_keys() -> None:
     from config import REQUIRED_ENV_VARS
 
     assert {"OPENROUTER_API_KEY", "GEMINI_API_KEY"} <= set(REQUIRED_ENV_VARS)
