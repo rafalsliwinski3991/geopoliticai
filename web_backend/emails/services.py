@@ -117,7 +117,20 @@ def send_batch() -> tuple[int, int]:
     mid-batch therefore cannot lose an attempt or resend delivered mail,
     and a failing QUIT cannot roll back already-sent rows.
     """
-    now = timezone.now()
+    rows = _claim_rows(timezone.now())
+    if not rows:
+        return 0, _pending_count()
+    sent_now = _send_rows(rows)
+    return sent_now, _pending_count()
+
+
+def _claim_rows(now) -> list[Email]:
+    """Claim one slice of `pending` rows under the hourly cap.
+
+    Each claimed row has an attempt consumed while it is locked, which also
+    hides it mid-send from other runners for `RETRY_WAIT`. Rows another
+    process already holds locks on are skipped, not waited for.
+    """
     rows: list[Email] = []
     with transaction.atomic():
         if connection.vendor == "postgresql":
@@ -149,8 +162,11 @@ def send_batch() -> tuple[int, int]:
                 row.last_attempt_at = now
                 row.save(update_fields=["attempts", "last_attempt_at"])
                 rows.append(row)
-    if not rows:
-        return 0, Email.objects.filter(status=Email.Status.PENDING).count()
+    return rows
+
+
+def _send_rows(rows: list[Email]) -> int:
+    """Send each claimed row through the `smtp` mailer and save its outcome."""
     sent_now = 0
     try:
         with mail.mailers[MAILER_ALIAS] as backend:
@@ -178,8 +194,12 @@ def send_batch() -> tuple[int, int]:
         # already durable (attempts consumed, rows retry after RETRY_WAIT),
         # so log it and report what was saved so far instead of aborting.
         logger.exception("queue batch aborted by a mailer connection error")
-    still_pending = Email.objects.filter(status=Email.Status.PENDING).count()
-    return sent_now, still_pending
+    return sent_now
+
+
+def _pending_count() -> int:
+    """Count the rows still waiting in the queue."""
+    return Email.objects.filter(status=Email.Status.PENDING).count()
 
 
 def _record_failure(row: Email, error: str) -> None:
