@@ -65,10 +65,13 @@ class Seat:
 # and Gemini-direct seats). Cheap and current, prices checked 2026-10-14 in $
 # per million tokens in/out: luna .10/.50, gemini-3.5-flash-lite .30/2.50,
 # haiku-5.5 .10/.50, glm-5.3-flash .04/.90, deepseek-v4.1-flash .02/.89,
-# qwen3.8-flash .15/.47, mistral-small-2603 .15/.60. Every slug lists `tools`
-# and `tool_choice`, which the ballots' tool calling needs. Seats 1 and 2 keep
-# `reasoning_effort="low"` as before; the others run at their default, as the
-# old OpenRouter seats did. Whether this roster judges as well as the last one
+# qwen3.8-flash .15/.47, kimi-k2.5 .50/2.50. Every slug lists `tools` and
+# `tool_choice`, which the ballots' tool calling needs. Seats 1 and 2 keep
+# `reasoning_effort="low"` as before, Qwen runs with thinking off, and the
+# others run at their default, as the old OpenRouter seats did. Moonshot
+# replaced Mistral (user decision 2026-10-14): `mistral-small-2603` and
+# `mistral-large-2512` had only Mistral as a provider, and it returned 429 on
+# every attempt. Whether this roster judges as well as the last one
 # is for the `deep_forecaster` eval to say.
 # Member n is COUNCIL[n - 1],
 # so reordering renumbers members. Roster churn is an edit here (brainstorm
@@ -80,8 +83,10 @@ COUNCIL: tuple[Seat, ...] = (
     Seat("anthropic/claude-haiku-5.5"),
     Seat("z-ai/glm-5.3-flash"),
     Seat("deepseek/deepseek-v4.1-flash"),
-    Seat("qwen/qwen3.8-flash"),
-    Seat("mistralai/mistral-small-2603"),
+    # Thinking off: in thinking mode Alibaba rejects the forced `tool_choice`
+    # every ballot sends (400 on every call, probe 2026-10-14).
+    Seat("qwen/qwen3.8-flash", reasoning_effort="none"),
+    Seat("moonshotai/kimi-k2.5"),
 )
 
 

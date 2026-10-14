@@ -309,6 +309,8 @@ async def test_build_research_agent_wires_the_recorded_shape(
     agent = research_module.build_research_agent(run)
     # Assert
     assert agent is not None
+    # Not "forecast_research": that name is the node's own summary span.
+    assert recorded["name"] == "forecast_lead"
     subagents = recorded["subagents"]
     assert len(subagents) == 1
     scout = subagents[0]
