@@ -168,6 +168,7 @@ def test_start_span_records_a_named_span(
 def test_start_span_marks_the_span_a_chain(
     captured_spans: InMemorySpanExporter,
 ) -> None:
+    # Arrange
     # Act
     with tracing.start_span("fetch_source"):
         pass
