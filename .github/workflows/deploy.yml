@@ -17,8 +17,8 @@ jobs:
   deploy:
     needs: tests
     runs-on: ubuntu-latest
-    # The environment (not the YAML below) enforces main-only deploys: its
-    # deployment branches rule is main, and the VPS_* secrets live there.
+    # The environment's deployment branches and tags rule must allow main and
+    # tags; the VPS_* secrets live there.
     environment: production
     timeout-minutes: 30
     permissions:
@@ -29,8 +29,12 @@ jobs:
       SSH_TARGET: ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}
       RELEASE: /srv/geopoliticai/releases/${{ github.sha }}
     steps:
-      - name: Refuse anything but main
-        run: test "$GITHUB_REF" = refs/heads/main
+      - name: Refuse anything but main or a tag
+        run: |
+          case "$GITHUB_REF" in
+            refs/heads/main|refs/tags/*) ;;
+            *) echo "Refusing to deploy $GITHUB_REF"; exit 1 ;;
+          esac
 
       - name: Checkout code
         uses: actions/checkout@v4
