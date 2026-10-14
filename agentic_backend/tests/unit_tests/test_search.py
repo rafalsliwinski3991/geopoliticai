@@ -1,11 +1,17 @@
 import asyncio
+import dataclasses
+import unicodedata
+from collections.abc import Mapping, Sequence
 
 import httpx
 import pytest
+import trafilatura
+from opentelemetry.sdk.trace import ReadableSpan
+from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
 import search
 from agents.expert.consts.sources import EXPERT_SOURCES
-from models import Candidate, SearchUnavailableError
+from models import Candidate, SearchUnavailableError, SourcePolicy
 
 _HTML = (
     "<html><body><article><p>"
@@ -173,6 +179,99 @@ async def test_search_preserves_cancellation(
         await search.search_allowlisted("question", EXPERT_SOURCES)
 
 
+@pytest.mark.anyio
+async def test_search_span_counts_results_and_failed_batches(
+    monkeypatch: pytest.MonkeyPatch,
+    captured_spans: InMemorySpanExporter,
+) -> None:
+    """One failed batch must not lose the surviving batches' counts on the span."""
+
+    # Arrange
+    async def fake_batch(
+        client: httpx.AsyncClient,
+        query: str,
+        domains: Sequence[str],
+        policy: SourcePolicy,
+    ) -> list[Candidate]:
+        if "reuters.com" in domains:
+            return [
+                Candidate("r1", "https://reuters.com/one", "reuters.com"),
+                Candidate("r2", "https://reuters.com/two", "reuters.com"),
+            ]
+        if "apnews.com" in domains:
+            return [Candidate("a1", "https://apnews.com/one", "apnews.com")]
+        raise httpx.ConnectError("batch down")
+
+    monkeypatch.setattr(search, "_brave_batch", fake_batch)
+    # Act
+    candidates = await search.search_allowlisted("question", EXPERT_SOURCES)
+    span = _span_by_name(captured_spans, "brave_search")
+    # Assert
+    assert len(candidates) == 3  # 2 reuters + 1 apnews survive the merge
+    attributes = _attrs(span)
+    assert attributes["search.batches"] == 3
+    assert attributes["search.failed_batches"] == 1
+    per_batch = attributes["search.results_per_batch"]
+    # OTel records sequence attributes as tuples; normalize before comparing.
+    assert isinstance(per_batch, tuple)
+    assert list(per_batch) == [2, 1]
+    assert attributes["search.candidates"] == len(candidates)
+
+
+@pytest.mark.anyio
+async def test_search_span_names_the_policy_domains(
+    monkeypatch: pytest.MonkeyPatch,
+    captured_spans: InMemorySpanExporter,
+) -> None:
+    # Arrange
+    async def fake_batch(
+        client: httpx.AsyncClient,
+        query: str,
+        domains: Sequence[str],
+        policy: SourcePolicy,
+    ) -> list[Candidate]:
+        return [Candidate("a", "https://reuters.com/one", "reuters.com")]
+
+    monkeypatch.setattr(search, "_brave_batch", fake_batch)
+    # Act
+    await search.search_allowlisted("question", EXPERT_SOURCES)
+    span = _span_by_name(captured_spans, "brave_search")
+    # Assert
+    # OTel records sequence attributes as tuples; normalize before comparing.
+    recorded = _attrs(span)["search.domains"]
+    assert isinstance(recorded, tuple)
+    assert list(recorded) == sorted(EXPERT_SOURCES.allowed_domains)
+
+
+@pytest.mark.anyio
+async def test_the_search_span_records_every_batch_failing(
+    monkeypatch: pytest.MonkeyPatch,
+    captured_spans: InMemorySpanExporter,
+) -> None:
+    # Arrange
+    async def failing_batch(
+        client: httpx.AsyncClient,
+        query: str,
+        domains: Sequence[str],
+        policy: SourcePolicy,
+    ) -> list[Candidate]:
+        raise httpx.ConnectError("batch down")
+
+    monkeypatch.setattr(search, "_brave_batch", failing_batch)
+    # Act
+    with pytest.raises(SearchUnavailableError):
+        await search.search_allowlisted("question", EXPERT_SOURCES)
+    span = _span_by_name(captured_spans, "brave_search")
+    # Assert
+    attributes = _attrs(span)
+    assert attributes["search.batches"] == len(EXPERT_SOURCES.batches)
+    assert attributes["search.failed_batches"] == attributes["search.batches"]
+    per_batch = attributes["search.results_per_batch"]
+    assert isinstance(per_batch, tuple)
+    assert list(per_batch) == []
+    assert "search.candidates" not in attributes
+
+
 def _html(
     body: str, status: int = 200, headers: dict[str, str] | None = None
 ) -> httpx.Response:
@@ -225,10 +324,10 @@ async def test_mixed_extraction_failure_does_not_abort(
         calls.append(url)
         return _html(_HTML)
 
-    async def fake_extract_page(body: str) -> tuple[str | None, str]:
+    async def fake_extract_page(body: str) -> search.ExtractedPage:
         if "bad" in body:
             raise ValueError("broken parser")
-        return "good " * 200, ""
+        return search.ExtractedPage("good " * 200, "", "", "")
 
     monkeypatch.setattr(httpx.AsyncClient, "get", fake_get)
     monkeypatch.setattr(search, "_extract_page", fake_extract_page)
@@ -268,7 +367,7 @@ async def test_all_extraction_failures_return_empty(
     ) -> httpx.Response:
         return _html(_HTML)
 
-    async def extract(body: str) -> tuple[str | None, str]:
+    async def extract(body: str) -> search.ExtractedPage:
         raise ValueError("broken parser")
 
     monkeypatch.setattr(httpx.AsyncClient, "get", fake_get)
@@ -330,8 +429,8 @@ async def test_same_domain_redirect_is_followed(
             return _html("", 302, {"location": "/final", "content-type": "text/html"})
         return _html(_HTML)
 
-    async def extract(body: str) -> tuple[str | None, str]:
-        return "article " * 200, ""
+    async def extract(body: str) -> search.ExtractedPage:
+        return search.ExtractedPage("article " * 200, "", "", "")
 
     monkeypatch.setattr(httpx.AsyncClient, "get", fake_get)
     monkeypatch.setattr(search, "_extract_page", extract)
@@ -394,8 +493,8 @@ async def test_fetch_caps_extracted_text(monkeypatch: pytest.MonkeyPatch) -> Non
 
     monkeypatch.setattr(httpx.AsyncClient, "get", fake_get)
 
-    async def extract(body: str) -> tuple[str | None, str]:
-        return "x " * 40_000, ""
+    async def extract(body: str) -> search.ExtractedPage:
+        return search.ExtractedPage("x " * 40_000, "", "", "")
 
     monkeypatch.setattr(search, "_extract_page", extract)
     # Act
@@ -588,3 +687,376 @@ async def test_a_byline_failure_keeps_the_page(monkeypatch: pytest.MonkeyPatch) 
     )
     # Assert
     assert source is not None and source.author == ""
+
+
+def _span_by_name(captured: InMemorySpanExporter, name: str) -> ReadableSpan:
+    """The one finished span called `name`, with its attributes set."""
+    matches = [
+        span
+        for span in captured.get_finished_spans()
+        if span.name == name and span.attributes is not None
+    ]
+    assert len(matches) == 1, f"expected exactly one {name} span, got {len(matches)}"
+    return matches[0]
+
+
+def _attrs(span: ReadableSpan) -> Mapping[str, object]:
+    """Return the span's attributes, typed `object` for plain asserts."""
+    attributes: Mapping[str, object] = span.attributes or {}
+    return attributes
+
+
+@pytest.mark.anyio
+async def test_fetch_span_records_cut_page(
+    monkeypatch: pytest.MonkeyPatch,
+    captured_spans: InMemorySpanExporter,
+) -> None:
+    # Arrange
+    policy = dataclasses.replace(EXPERT_SOURCES, max_source_chars=20000)
+
+    async def fake_get(
+        self: httpx.AsyncClient,
+        url: str,
+        *,
+        timeout: object | None = None,
+        follow_redirects: bool = False,
+    ) -> httpx.Response:
+        return _html(_HTML)
+
+    monkeypatch.setattr(httpx.AsyncClient, "get", fake_get)
+
+    async def extract(body: str) -> search.ExtractedPage:
+        # A fake 40,000-character page body: one page, one outcome.
+        return search.ExtractedPage("a" * 40_000, "A. Byline", "2025-03-01", "pl")
+
+    monkeypatch.setattr(search, "_extract_page", extract)
+    # Act
+    source = await search._fetch_and_extract(
+        httpx.AsyncClient(),
+        Candidate("t", "https://reuters.com/x", "reuters.com"),
+        policy,
+    )
+    span = _span_by_name(captured_spans, "fetch_source")
+    # Assert
+    assert source is not None
+    attributes = _attrs(span)
+    assert attributes["source.outcome"] == "ok"
+    assert attributes["source.chars_full"] == 40000
+    assert attributes["source.chars_kept"] == 20000
+    assert attributes["source.truncated"] is True
+    assert attributes["source.domain"] == "reuters.com"
+    assert attributes["source.url"] == "https://reuters.com/x"
+    assert attributes["source.lang"] == "pl"
+    assert attributes["source.published"] == "2025-03-01"
+    content_hash = attributes["source.content_hash"]
+    assert isinstance(content_hash, str)
+    assert len(content_hash) == 40
+    assert set(content_hash) <= set("0123456789abcdef")
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    ("text_len", "expected_truncated"),
+    [(599, False), (600, False), (601, True)],
+)
+async def test_fetch_span_keeps_text_at_the_cap_edges(
+    monkeypatch: pytest.MonkeyPatch,
+    captured_spans: InMemorySpanExporter,
+    text_len: int,
+    expected_truncated: bool,
+) -> None:
+    # Arrange
+    # A 600-character cap just above the policy's 500-character `too_short`
+    # floor: the cap-1, cap, and cap+1 edges.
+    policy = dataclasses.replace(EXPERT_SOURCES, max_source_chars=600)
+
+    async def fake_get(
+        self: httpx.AsyncClient,
+        url: str,
+        *,
+        timeout: object | None = None,
+        follow_redirects: bool = False,
+    ) -> httpx.Response:
+        return _html(_HTML)
+
+    monkeypatch.setattr(httpx.AsyncClient, "get", fake_get)
+
+    async def extract(body: str) -> search.ExtractedPage:
+        return search.ExtractedPage("a" * text_len, "", "", "")
+
+    monkeypatch.setattr(search, "_extract_page", extract)
+    # Act
+    source = await search._fetch_and_extract(
+        httpx.AsyncClient(),
+        Candidate("t", "https://reuters.com/x", "reuters.com"),
+        policy,
+    )
+    span = _span_by_name(captured_spans, "fetch_source")
+    # Assert
+    assert source is not None
+    attributes = _attrs(span)
+    assert attributes["source.chars_full"] == text_len
+    assert attributes["source.chars_kept"] == min(text_len, 600)
+    assert attributes["source.truncated"] is expected_truncated
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    ("label", "expected_outcome"),
+    [
+        ("off_list", "off_list"),
+        ("fetch_failed", "fetch_failed"),
+        ("redirect_limit", "redirect_limit"),
+        ("not_html", "not_html"),
+        ("too_short", "too_short"),
+        ("extract_failed", "extract_failed"),
+        # One trigger per branch label: a status error is a distinct trigger
+        # for the `fetch_failed` outcome, an off-list redirect is a distinct
+        # trigger for `off_list`, and a missing Location is a distinct trigger
+        # for `redirect_limit` (review thread, #192).
+        ("404_is_a_fetch_failure", "fetch_failed"),
+        ("off_list_redirect", "off_list"),
+        ("redirect_with_no_location", "redirect_limit"),
+    ],
+)
+async def test_fetch_span_records_each_drop_reason(
+    monkeypatch: pytest.MonkeyPatch,
+    captured_spans: InMemorySpanExporter,
+    label: str,
+    expected_outcome: str,
+) -> None:
+    # Arrange
+    async def slow_response(
+        self: httpx.AsyncClient,
+        url: str,
+        *,
+        timeout: object | None = None,
+        follow_redirects: bool = False,
+    ) -> httpx.Response:
+        raise httpx.ReadTimeout("slow")
+
+    async def redirect_response(
+        self: httpx.AsyncClient,
+        url: str,
+        *,
+        timeout: object | None = None,
+        follow_redirects: bool = False,
+    ) -> httpx.Response:
+        return _html(
+            "",
+            302,
+            {"location": "https://reuters.com/loop", "content-type": "text/html"},
+        )
+
+    async def off_list_redirect_response(
+        self: httpx.AsyncClient,
+        url: str,
+        *,
+        timeout: object | None = None,
+        follow_redirects: bool = False,
+    ) -> httpx.Response:
+        return _html(
+            "",
+            302,
+            {"location": "https://evil.example/x", "content-type": "text/html"},
+        )
+
+    async def redirect_without_a_location_response(
+        self: httpx.AsyncClient,
+        url: str,
+        *,
+        timeout: object | None = None,
+        follow_redirects: bool = False,
+    ) -> httpx.Response:
+        return _html("", 302, {"content-type": "text/html"})
+
+    async def error_status_response(
+        self: httpx.AsyncClient,
+        url: str,
+        *,
+        timeout: object | None = None,
+        follow_redirects: bool = False,
+    ) -> httpx.Response:
+        return _html("", 404)
+
+    async def json_response(
+        self: httpx.AsyncClient,
+        url: str,
+        *,
+        timeout: object | None = None,
+        follow_redirects: bool = False,
+    ) -> httpx.Response:
+        return _response([])
+
+    async def html_response(
+        self: httpx.AsyncClient,
+        url: str,
+        *,
+        timeout: object | None = None,
+        follow_redirects: bool = False,
+    ) -> httpx.Response:
+        return _html(_HTML)
+
+    candidate = Candidate("t", "https://reuters.com/x", "reuters.com")
+    if label == "off_list":
+        fake_get = slow_response
+        candidate = Candidate("t", "https://evil.example/x", "reuters.com")
+    elif label == "fetch_failed":
+        fake_get = slow_response
+    elif label == "404_is_a_fetch_failure":
+        fake_get = error_status_response
+    elif label == "redirect_limit":
+        fake_get = redirect_response
+    elif label == "redirect_with_no_location":
+        fake_get = redirect_without_a_location_response
+    elif label == "off_list_redirect":
+        fake_get = off_list_redirect_response
+    elif label == "not_html":
+        fake_get = json_response
+    else:
+        fake_get = html_response
+
+    async def raising_extract(body: str) -> search.ExtractedPage:
+        raise ValueError("broken parser")
+
+    async def short_extract(body: str) -> search.ExtractedPage:
+        return search.ExtractedPage("tiny", "", "", "")
+
+    monkeypatch.setattr(httpx.AsyncClient, "get", fake_get)
+    if label == "too_short":
+        monkeypatch.setattr(search, "_extract_page", short_extract)
+    else:
+        monkeypatch.setattr(search, "_extract_page", raising_extract)
+    # Act
+    source = await search._fetch_and_extract(
+        httpx.AsyncClient(), candidate, EXPERT_SOURCES
+    )
+    span = _span_by_name(captured_spans, "fetch_source")
+    # Assert
+    assert source is None
+    assert _attrs(span)["source.outcome"] == expected_outcome
+
+
+@pytest.mark.anyio
+async def test_extract_page_reads_date_and_declared_language(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Arrange
+    monkeypatch.setenv("TZ", "UTC")
+    body = (
+        '<html lang="pl-PL"><head>'
+        '<meta property="article:published_time" content="2025-03-01">'
+        "</head><body><article><p>"
+        + ("Real reporting. " * 80)
+        + "</p></article></body></html>"
+    )
+    # Act
+    page = await search._extract_page(body)
+    # Assert
+    assert page.lang == "pl"
+    assert page.published == "2025-03-01"
+
+
+@pytest.mark.anyio
+async def test_extract_page_reads_declared_language_with_underscore_variant(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Arrange
+    body = (
+        '<html lang="pl_PL"><head>'
+        '<meta property="article:published_time" content="2025-03-01">'
+        "</head><body><article><p>"
+        + ("Real reporting. " * 80)
+        + "</p></article></body></html>"
+    )
+    # Act
+    page = await search._extract_page(body)
+    # Assert
+    assert page.lang == "pl"
+
+
+@pytest.mark.anyio
+async def test_extract_page_ignores_dates_in_links() -> None:
+    # Arrange
+    body = (
+        '<html><body><a href="/2023/01/10/other-story">x</a><article><p>'
+        + ("Real reporting. " * 80)
+        + "</p></article></body></html>"
+    )
+    # Act
+    page = await search._extract_page(body)
+    # Assert
+    assert page.published == ""
+
+
+@pytest.mark.anyio
+async def test_a_telemetry_failure_keeps_the_page(
+    monkeypatch: pytest.MonkeyPatch,
+    captured_spans: InMemorySpanExporter,
+) -> None:
+    # Arrange
+    def broken_attributes(*args: object, **kwargs: object) -> dict[str, object]:
+        raise RuntimeError("broken attribute collector")
+
+    monkeypatch.setattr(search, "_page_attributes", broken_attributes)
+
+    async def fake_get(
+        self: httpx.AsyncClient,
+        url: str,
+        *,
+        timeout: object | None = None,
+        follow_redirects: bool = False,
+    ) -> httpx.Response:
+        return _html(_HTML)
+
+    monkeypatch.setattr(httpx.AsyncClient, "get", fake_get)
+
+    async def extract(body: str) -> search.ExtractedPage:
+        return search.ExtractedPage("article " * 200, "Byline", "", "")
+
+    monkeypatch.setattr(search, "_extract_page", extract)
+    # Act
+    source = await search._fetch_and_extract(
+        httpx.AsyncClient(),
+        Candidate("t", "https://reuters.com/x", "reuters.com"),
+        EXPERT_SOURCES,
+    )
+    span = _span_by_name(captured_spans, "fetch_source")
+    # Assert
+    assert source is not None
+    assert _attrs(span)["source.outcome"] == "ok"
+
+
+@pytest.mark.anyio
+async def test_extract_page_text_matches_trafilatura_extract() -> None:
+    # Arrange
+    overwritten = "Údolí"
+    decomposed = unicodedata.normalize("NFD", overwritten)
+    body = (
+        "<html><head><title>t</title></head><body><article>"
+        f"<h1>{decomposed}Údolí</h1><p>First paragraph.</p><p>Second paragraph.</p>"
+        "<ul><li>One</li><li>Two</li></ul>"
+        "</article></body></html>"
+    )
+    # Act
+    page = await search._extract_page(body)
+    # Assert
+    expected = trafilatura.extract(
+        body, include_comments=False, include_tables=False, favor_precision=True
+    )
+    assert page.text == expected
+    assert page.text is not None and overwritten in page.text
+    # The match is not settled by the page itself being NFC: a decomposed body
+    # must come back normalized to the same text as `extract` would return.
+    assert page.text == unicodedata.normalize("NFC", page.text)
+
+
+@pytest.mark.anyio
+async def test_an_overlong_html_lang_is_capped() -> None:
+    # Arrange
+    lang_value = "a" * 100
+    body = f'<html lang="{lang_value}"><body></body></html>'
+    # Act
+    page = await search._extract_page(body)
+    # Assert
+    assert page.lang == search.MAX_LANG_CHARS * "a"

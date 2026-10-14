@@ -2,13 +2,10 @@ import sys
 import types
 
 import pytest
+from opentelemetry import trace
+from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
 import tracing
-
-
-@pytest.fixture(autouse=True)
-def _reset_initialized() -> None:
-    tracing._initialized = False
 
 
 def _install_fake_phoenix_otel(
@@ -150,3 +147,74 @@ def test_init_tracing_ax_requires_credentials(
     # Act + Assert
     assert tracing.init_tracing() is False
     assert calls == []
+
+
+def test_start_span_records_a_named_span(
+    captured_spans: InMemorySpanExporter,
+) -> None:
+    # Arrange
+    # Act
+    with tracing.start_span("fetch_source") as span:
+        span.end()
+    # Assert
+    spans = list(captured_spans.get_finished_spans())
+    assert [span.name for span in spans] == ["fetch_source"]
+
+
+def test_start_span_parents_on_the_langchain_span_when_tracing_is_on(
+    monkeypatch: pytest.MonkeyPatch, captured_spans: InMemorySpanExporter
+) -> None:
+    # Arrange
+    tracer = trace.get_tracer("test")
+    span = tracer.start_span("parent")
+    monkeypatch.setattr(tracing, "get_langchain_span", lambda: span, raising=False)
+    monkeypatch.setattr(tracing, "_initialized", True)
+    # Act
+    with tracing.start_span("fetch_source") as child:
+        child.end()
+    span.end()
+    # Assert
+    finished = {s.name: s for s in captured_spans.get_finished_spans()}
+    child_parent = finished["fetch_source"].parent
+    assert child_parent is not None
+    assert child_parent.span_id == span.get_span_context().span_id
+
+
+def test_start_span_skips_the_langchain_lookup_when_tracing_is_off(
+    monkeypatch: pytest.MonkeyPatch, captured_spans: InMemorySpanExporter
+) -> None:
+    # Arrange
+    calls: list[object] = []
+
+    def spy() -> object:
+        calls.append("called")
+        raise RuntimeError("must not be called")
+
+    monkeypatch.setattr(tracing, "get_langchain_span", spy, raising=False)
+    monkeypatch.setattr(tracing, "_initialized", False)
+    # Act
+    with tracing.start_span("fetch_source") as span:
+        span.end()
+    # Assert
+    assert calls == []
+    assert [span.name for span in captured_spans.get_finished_spans()] == [
+        "fetch_source"
+    ]
+
+
+def test_start_span_survives_a_failing_langchain_lookup(
+    monkeypatch: pytest.MonkeyPatch, captured_spans: InMemorySpanExporter
+) -> None:
+    # Arrange
+    def broken() -> object:
+        raise AttributeError("no instrumented run here")
+
+    monkeypatch.setattr(tracing, "get_langchain_span", broken, raising=False)
+    monkeypatch.setattr(tracing, "_initialized", True)
+    # Act
+    with tracing.start_span("fetch_source") as span:
+        span.end()
+    # Assert
+    finished = list(captured_spans.get_finished_spans())
+    assert [s.name for s in finished] == ["fetch_source"]
+    assert finished[0].parent is None

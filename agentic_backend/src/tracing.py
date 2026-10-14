@@ -10,10 +10,20 @@ from __future__ import annotations
 
 import logging
 import os
+from collections.abc import Iterator
+from contextlib import contextmanager
+
+from openinference.instrumentation import OITracer, TraceConfig
+from openinference.instrumentation.langchain import (
+    get_current_span as get_langchain_span,
+)
+from opentelemetry import trace
 
 from config import get_arize_platform, get_trace_endpoint
 
 logger = logging.getLogger(__name__)
+# The name every span this repo opens is created under (not the project name).
+TRACER_NAME = "geopoliticai"
 
 _initialized = False
 
@@ -71,3 +81,28 @@ def init_tracing() -> bool:
         return False
     _initialized = True
     return True
+
+
+@contextmanager
+def start_span(name: str) -> Iterator[trace.Span]:
+    """Open a span inside the current LangChain run's span, or the current span.
+
+    The OpenInference LangChain tracer never makes its spans current (attaching
+    from callbacks is unsafe, `openinference/instrumentation/langchain/_tracer.py`),
+    so a plain `start_as_current_span` in a node or tool would start a new
+    trace. The run's span is looked up only once tracing is on: with no tracer,
+    the lookup prints a warning to stdout on every call. `OITracer` copies the
+    context attributes (`user.id` from `bind_trace_user`) onto the span, which a
+    plain tracer does not. Without a configured provider the span records
+    nothing, so tracing still cannot fail a request.
+    """
+    parent = None
+    if _initialized:
+        try:
+            parent = get_langchain_span()
+        except Exception as exc:  # noqa: BLE001 - tracing never fails a request
+            logger.debug("No LangChain parent span: %s", exc)
+    parent_context = trace.set_span_in_context(parent) if parent is not None else None
+    tracer = OITracer(trace.get_tracer(TRACER_NAME), config=TraceConfig())
+    with tracer.start_as_current_span(name, context=parent_context) as span:
+        yield span
