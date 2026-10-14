@@ -17,7 +17,7 @@ from django.utils import timezone
 from emails.models import Email
 
 MAX_ATTEMPTS = 3
-RETRY_WAIT = timedelta(minutes=1)
+RETRY_WAIT = timedelta(minutes=5)
 SLICE_SIZE = 20
 CAP_WINDOW = timedelta(hours=1)
 MAILER_ALIAS = "smtp"
