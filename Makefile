@@ -83,7 +83,9 @@ test-web-integration:
 
 # Skills excluded from both non-Claude harnesses: they need a Claude-only
 # runtime, so neither `sync-copilot` nor `link-skills` propagates them.
-SKIP_SKILLS := swarm
+# `e2e` drives Claude-only tools (`AskUserQuestion`) and this repo's Compose
+# stack; it has no port.
+SKIP_SKILLS := swarm e2e
 
 # `sync-copilot` rebuilds .github/skills from scratch: copying in place leaves a
 # skill that was deleted from the canonical tree behind forever, and a stale copy
