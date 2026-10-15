@@ -218,6 +218,35 @@ as enabling the queue, or verification mails will be stored but never sent:
 Check the OVH panel for the mailbox's real hourly limit and set
 `EMAIL_MAX_PER_HOUR` accordingly (a forum post reports 200 per hour per mailbox).
 
+### End-to-end tests
+
+Playwright tests in `e2e/` drive the real app under Docker Compose at `http://localhost:8082`. Each chat
+test spends one of the test user's 20 daily research units. Specs are plain English in
+`e2e/test_specs/`; the tests in `e2e/tests/` are generated from them.
+
+One-time setup:
+
+1. Add `E2E_EMAIL` and `E2E_PASSWORD` to the root `.env`. Use letters and digits only in the password:
+   the leak check compares it literally.
+2. `make up`, then `docker compose up -d --force-recreate web-backend` so the container reads the new
+   variables.
+3. `make e2e-user` creates (or resets) the test user. It refuses unless `DEBUG` is on.
+4. `cd e2e && npm ci && npx playwright install chromium`. `@playwright/cli` (used by `/e2e` walks)
+   ships on a pre-release Playwright core, never on a final release, so it runs a newer core than
+   `@playwright/test`; the skew is deliberate.
+
+Running, from `e2e/`:
+
+- `npx playwright test` runs the login setup and every test; results land in `test-results/` and
+  `playwright-report/`.
+- `npx playwright show-report` opens the HTML report.
+- `bash check-no-password.sh` fails if the password reached any trace, result or report file.
+
+If a run hits a 429 (quota spent), `make e2e-user` refills the user's quota.
+
+In Claude Code, `/e2e new "<prompt>"`, `/e2e run [name]` and `/e2e update <name>` write, run and explain
+tests from the specs.
+
 ### After the SEO launch (one-time, then upkeep)
 
 User actions after the `seo-blog` deploy:

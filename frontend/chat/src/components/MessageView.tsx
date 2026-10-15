@@ -73,6 +73,9 @@ export function MessageView({ message }: { message: Message }) {
         <span className="who">PoliticalAgent</span>
         <div
           className="content"
+          // A named article lets end-to-end tests find the answer by role, not position.
+          role="article"
+          aria-label="Answer"
           // The HTML is sanitized by `renderMarkdown` (DOMPurify + the URI
           // allow-list); the raw model text never reaches the DOM directly.
           dangerouslySetInnerHTML={{ __html: renderMarkdown(message.text) }}

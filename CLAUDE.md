@@ -71,6 +71,15 @@ section is a review-blocking defect. Frontend unit tests are Vitest in
 compiled graph gets its
 own `tests/unit_tests/agents/<name>/test_graph.py`.
 
+End-to-end tests live in root `e2e/`, a Playwright project with its own pinned `package.json`; run its
+commands from `e2e/`. Plain-English specs in `e2e/test_specs/` are the only files a person edits;
+`e2e/tests/*.spec.ts` are generated from them by the `/e2e` skill and start with
+`// spec-sha256: <hash of the spec>`. Tests run against the Compose stack at `http://localhost:8082` with
+the real backend, so each spends the test user's research quota; assertions are shape checks only. The
+test user comes from `make e2e-user` (`users.services.ensure_e2e_user`, which also refills its quota and
+refuses unless `DEBUG` is on). `.github/workflows/e2e.yml` runs the dev configuration on dispatch only and
+gates nothing.
+
 ```text
 START -> classify -> expert -> END
                   \-> chat   -> END

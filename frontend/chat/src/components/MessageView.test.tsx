@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { render, screen, act, cleanup, fireEvent } from "@testing-library/react";
+import { render, screen, act, cleanup, fireEvent, within } from "@testing-library/react";
 import { MessageView, OutlineCard, TRUNCATED_NOTE, reportFileName } from "./MessageView";
 import { renderMarkdown, ALLOWED_URI_REGEXP } from "../lib/markdown";
 
@@ -83,6 +83,22 @@ describe("message rendering", () => {
     // Assert
     expect(document.querySelector("img")).toBeNull();
     screen.getByText('<img src=x onerror="alert(1)">');
+  });
+
+  it("names an assistant answer so it can be found by role", () => {
+    // Arrange
+    const message = {
+      role: "assistant" as const,
+      text: "Hello [x](https://a.example)",
+      kind: "answer" as const,
+      truncated: false,
+    };
+    // Act
+    render(<MessageView message={message} />);
+    // Assert
+    const article = screen.getByRole("article", { name: "Answer" });
+    expect(article.textContent).toContain("Hello");
+    expect(within(article).getAllByRole("link")).toHaveLength(1);
   });
 });
 
