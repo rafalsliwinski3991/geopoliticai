@@ -50,6 +50,30 @@ class CreateE2eUserCommandTests(TestCase):
         self.assertFalse(User.objects.exists())
 
     @override_settings(DEBUG=True)
+    def test_command_refuses_a_blank_email(self):
+        # Arrange
+        with mock.patch.dict(os.environ, {**ENV, "E2E_EMAIL": "   "}):
+            # Act
+            with self.assertRaisesMessage(CommandError, "Set E2E_EMAIL and E2E_PASSWORD"):
+                call_command("create_e2e_user", stdout=StringIO())
+
+        # Assert
+        self.assertFalse(User.objects.exists())
+
+    @override_settings(DEBUG=True)
+    def test_command_refuses_a_staff_account(self):
+        # Arrange
+        User.objects.create_superuser("e2e@example.com", "admin-pass-123")
+
+        # Act
+        with mock.patch.dict(os.environ, ENV):
+            with self.assertRaisesMessage(CommandError, "staff account"):
+                call_command("create_e2e_user", stdout=StringIO())
+
+        # Assert
+        self.assertTrue(User.objects.get().check_password("admin-pass-123"))
+
+    @override_settings(DEBUG=True)
     def test_command_creates_the_user_and_prints_no_password(self):
         # Arrange
         out = StringIO()

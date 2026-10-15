@@ -20,9 +20,12 @@ class Command(BaseCommand):
     def handle(self, *args, **options) -> None:
         if not settings.DEBUG:
             raise CommandError("Refusing to create the E2E user: DEBUG is off (development only).")
-        email = os.environ.get("E2E_EMAIL", "")
-        password = os.environ.get("E2E_PASSWORD", "")
+        email = os.environ.get("E2E_EMAIL", "").strip()
+        password = os.environ.get("E2E_PASSWORD", "").strip()
         if not email or not password:
             raise CommandError("Set E2E_EMAIL and E2E_PASSWORD in the root .env first.")
-        user = ensure_e2e_user(email, password)
+        try:
+            user = ensure_e2e_user(email, password)
+        except ValueError as error:
+            raise CommandError(str(error)) from error
         self.stdout.write(f"E2E user ready: {user.email}")

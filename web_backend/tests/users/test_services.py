@@ -48,13 +48,39 @@ class EnsureE2eUserTests(TestCase):
         self.assertEqual(user.email, "e2e@example.com")
         self.assertEqual(EmailAddress.objects.get().email, "e2e@example.com")
 
-    def test_ensure_e2e_user_refills_the_quota(self):
+    def test_ensure_e2e_user_refills_only_its_own_quota(self):
         # Arrange
         user = ensure_e2e_user("e2e@example.com", "s3cret-pass-1")
-        Quota.objects.create(user=user, day=timezone.now().date(), used=20)
+        other = User.objects.create_user("other@example.com", "other-pass-1")
+        today = timezone.now().date()
+        Quota.objects.create(user=user, day=today, used=20)
+        Quota.objects.create(user=other, day=today, used=5)
 
         # Act
         ensure_e2e_user("e2e@example.com", "s3cret-pass-1")
 
         # Assert
         self.assertFalse(Quota.objects.filter(user=user).exists())
+        self.assertTrue(Quota.objects.filter(user=other).exists())
+
+    def test_ensure_e2e_user_reactivates_an_inactive_user(self):
+        # Arrange
+        User.objects.create_user("e2e@example.com", "old-pass-123", is_active=False)
+
+        # Act
+        user = ensure_e2e_user("e2e@example.com", "s3cret-pass-1")
+
+        # Assert
+        user.refresh_from_db()
+        self.assertTrue(user.is_active)
+
+    def test_ensure_e2e_user_refuses_a_staff_account(self):
+        # Arrange
+        User.objects.create_superuser("e2e@example.com", "admin-pass-123")
+
+        # Act
+        with self.assertRaisesMessage(ValueError, "staff account"):
+            ensure_e2e_user("e2e@example.com", "s3cret-pass-1")
+
+        # Assert
+        self.assertTrue(User.objects.get().check_password("admin-pass-123"))
