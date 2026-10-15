@@ -23,6 +23,8 @@ untouched by that target.
 `Makefile`, read by `sync-copilot` and `link-skills` alike). It needs the
 `@langchain/quickjs` code interpreter and a `swarm_task` PTC tool, which neither
 provides; loading it there would offer the model tools that do not exist.
+`e2e` is excluded the same way: it drives Claude's `AskUserQuestion` and this
+repo's Compose stack, and has no port.
 
 `disable-model-invocation: true` is honoured by Claude Code only. OpenCode
 loads every skill it finds and keeps no invocation flag, so the three Python
@@ -79,8 +81,8 @@ reusing the brainstorm's date with its own topic slug.
 ## Copilot
 
 `.github/skills/` mirrors `.claude/skills/` as real copies (Copilot does not
-read the Claude tree), refreshed by `make sync-copilot`. `swarm` is excluded for
-the same runtime reason as OpenCode.
+read the Claude tree), refreshed by `make sync-copilot`. `swarm` and `e2e` are
+excluded for the same reasons as in OpenCode.
 
 Claude commands are ported to `.github/prompts/<name>.prompt.md`, Copilot's
 slash-command format: `allowed-tools` becomes `tools` with Copilot tool names,

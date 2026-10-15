@@ -1,7 +1,7 @@
 # Harness guide
 
 This repository ships one set of AI workflows to three harnesses: Claude Code, OpenCode, and GitHub
-Copilot. The workflows are thirteen `rs-*` commands, 25 skills, and a handful of subagents. The commands
+Copilot. The workflows are thirteen `rs-*` commands, 26 skills, and a handful of subagents. The commands
 take an idea from a first conversation to merged pull requests. The skills hold know-how for one area of
 the code and load when the work touches that area.
 
@@ -194,8 +194,8 @@ and `red-team` when the diff calls for them.
 ## Skills
 
 Skills load on their own when a task matches their description; you can also call one by name. Three
-quickstarts carry `disable-model-invocation: true`, so Claude Code loads them only when you ask (OpenCode
-ignores the flag).
+quickstarts and `e2e` carry `disable-model-invocation: true`, so Claude Code loads them only when you ask
+(OpenCode ignores the flag).
 
 ### Writing
 
@@ -241,6 +241,7 @@ ignores the flag).
 | `eval-engineering` | Agent evals, benchmarks, Harbor tasks, verifiers, calibration |
 | `langsmith-online-eval-engineering` | Creating LangSmith online evaluators from traces |
 | `swarm` | Fanning many independent items out to subagents. Claude Code only: it needs a `swarm_task` tool the other harnesses lack |
+| `e2e` | Only on `/e2e`: writing, running, or explaining a Playwright test of the app. Claude Code only: it drives `AskUserQuestion` and this repo's Compose stack |
 
 ## Where the outputs land
 
@@ -272,7 +273,7 @@ Exceptions to know about:
 - A port carries a short harness note above the body only where a step dispatches something that
   harness cannot reach, such as Claude's read-only lenses. `rs-code-review` and `rs-improve-plan` have
   notes in both ports, and `rs-implement-plan` in Copilot's.
-- `swarm` is skipped in both ports (`SKIP_SKILLS` in the `Makefile`).
+- `swarm` and `e2e` are skipped in both ports (`SKIP_SKILLS` in the `Makefile`).
 - Anything hand-written under `.github/skills/` is deleted by the next `make sync-copilot`. Edit
   `.claude/skills/` and re-run the target.
 

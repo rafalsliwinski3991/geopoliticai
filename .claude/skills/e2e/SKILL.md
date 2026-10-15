@@ -23,7 +23,9 @@ Rules that hold in every subcommand:
   run `npm ci && npx playwright install chromium` first.
 - No AI judging of answer content. Assertions are shape checks: the answer is not empty, it contains at least
   one link, no error bubble is shown, plus what the spec's expected results say about visible structure.
-- Every chat turn spends one of the test user's 20 daily research units; a deep turn spends 10.
+- Every turn spends the test user's daily research units (`DAILY_RESEARCH_TURNS` in
+  `agentic_backend/src/config.py`): a chat turn 1, a deep turn `DEEP_RESEARCH_TURN_COST`, a forecast
+  `FORECAST_TURN_COST`. Read the numbers there; never restate them.
 
 ## Preflight (every subcommand)
 
@@ -55,10 +57,16 @@ Rules that hold in every subcommand:
      report shows it;
    - the copied lines, with `http://localhost:8082` stripped to relative paths (`baseURL` supplies it);
    - waits as `toBeVisible({ timeout: ANSWER_TIMEOUT_MS })` and `toHaveCount(0, { timeout: ANSWER_TIMEOUT_MS })`
-     with `ANSWER_TIMEOUT_MS = 150_000`; at most two such waits per turn;
+     with `ANSWER_TIMEOUT_MS = 150_000`; at most two such waits per turn. A deep turn delivers its answer
+     once, at the end, after up to 480 s, so its answer wait uses `DEEP_ANSWER_TIMEOUT_MS = 500_000`;
+   - when the test's waits add up to more than the config's 330 s test timeout (two turns, or one deep
+     turn), call `test.setTimeout(<sum of the waits> + 30_000)` first;
+   - never `waitForLoadState('networkidle')` (Playwright marks it discouraged for tests): wait on a web
+     assertion for the settled UI instead, such as the sidebar list or the quota meter;
    - one assertion per expected result, with role-and-name locators (`exact: true`); select the newest answer
      with `.last()` when a spec asks more than one question.
-4. Run the test (see `/e2e run`, steps 3–6) and report the verdict.
+4. Run the test (see `/e2e run`, steps 3–6) and report the verdict. Skip this step when `/e2e run` called
+   Regenerate: Run's own step 3 runs the test.
 
 ## `/e2e new "<prompt>"`
 
@@ -74,21 +82,27 @@ Rules that hold in every subcommand:
 1. Preflight.
 2. For each selected spec (one, or every file in `test_specs/`): compare its `sha256sum` with its test's
    header. If the test is missing or the hash differs, say "spec changed since generation; regenerating" and
-   Regenerate it first.
+   Regenerate it first, without its step 4. If Regenerate stops without writing a test, report that and
+   leave that spec out of step 3.
 3. `npx playwright test` (or `npx playwright test tests/<name>.spec.ts`), then `bash check-no-password.sh`.
    If the check exits 1, report which files hold the password and stop. If it exits 2, report why it could
    not check and stop.
-4. Read `test-results/results.json`. For each test give one line:
+4. If step 3's run exited non-zero without any test failing, or `test-results/results.json` lacks an entry
+   for a selected test, report "the run did not complete" with the last lines of its output and stop.
+   Otherwise read `test-results/results.json`. For each test give one line:
    - passed: `✓ <title>  <duration>  saw: <what the assertions confirmed>  screenshot: <path>`;
    - failed: `✗ <title>`, then the error message, the screenshot path, the trace command
      (`npx playwright show-trace <path>/trace.zip`), the likely cause, and a call: **app bug** (the app did
      something the spec says it must not) or **test bug** (the spec's intent holds on the page but the
      test's locator or wait is wrong), with the evidence for that call from the error, the screenshot, and
      `error-context.md`.
+   - skipped, flaky, timedOut, or interrupted: `<status> <title>` and the error message if any; a flaky
+     test passed only on retry and counts as unverified.
    - A timeout on the answer wait and "Test timeout … exceeded" are the same case: the turn did not finish.
    - If the Error bubble inside the `Conversation` region (not the sidebar meter) reads "Daily research limit
      reached" or "Rate limit exceeded…", report "Environment problem: quota spent (429). Run `make e2e-user`
-     to refill it." and do not count it as a failure.
+     to refill it." Do not count it as a failure, but list those tests as unverified: they have no verdict
+     until they are re-run after the refill.
 5. When the evidence is not enough, pause the failing test and look. Run in the background:
    `PLAYWRIGHT_HTML_OPEN=never npx playwright test tests/<name>.spec.ts --project=e2e --no-deps --debug=cli`
    (`--no-deps` skips the login, which Preflight already ran, so the pause never lands on the password form;
