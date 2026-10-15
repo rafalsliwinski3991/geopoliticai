@@ -38,7 +38,7 @@ REQUIRED_ENV_VARS = (
 # operator's bill, because signup is public and nothing caps the number of
 # accounts. The site-wide ceiling is its own `site_quota` table (one row per
 # UTC day), spent by INCREMENT_SITE_QUOTA just before the caller's own count.
-DAILY_RESEARCH_TURNS = 20
+DAILY_RESEARCH_TURNS = 50
 DAILY_RESEARCH_TURNS_ALL_USERS = 500
 # A deep-expert turn costs roughly 10-30x an expert turn, so it spends this many
 # units from both counters (brainstorm 2026Sep28 Q3; review decision 2026Sep30:
