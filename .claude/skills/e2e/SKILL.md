@@ -45,7 +45,8 @@ Rules that hold in every subcommand:
      `fill <ref> "<text>"`, `click <ref>`, `press <key>`, `select <ref> <value>` or `check <ref>`. Copy the
      line each action prints after "Ran Playwright code:".
    - To wait for an answer, repeat `snapshot` until the `list "Progress"` is gone and an `article "Answer"`
-     is present. Send each question once.
+     is present, for at most `ANSWER_TIMEOUT_MS` (150 s). Past that, close the session and report that the
+     turn did not finish; write no test. Send each question once.
    - `npx playwright-cli -s=e2e close`.
 3. Write `tests/<name>.spec.ts`, following `tests/ask-shows-source.spec.ts`:
    - line 1: `// spec-sha256: ` + the hash from `sha256sum test_specs/<name>.md`;
@@ -57,7 +58,7 @@ Rules that hold in every subcommand:
      with `ANSWER_TIMEOUT_MS = 150_000`; at most two such waits per turn;
    - one assertion per expected result, with role-and-name locators (`exact: true`); select the newest answer
      with `.last()` when a spec asks more than one question.
-4. Run the test (see Run, steps 3–6) and report the verdict.
+4. Run the test (see `/e2e run`, steps 3–6) and report the verdict.
 
 ## `/e2e new "<prompt>"`
 
