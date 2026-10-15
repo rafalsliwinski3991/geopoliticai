@@ -166,6 +166,25 @@
     </div>
   </section>
 
+  <section class="section" id="forecasters">
+    <h2>Who a forecast reads</h2>
+    <p class="section-note">
+      A forecast does not search the news list. It reads the published work of
+      these {{ FORECASTERS|length }} forecasters on their own sites, then a council of seven
+      AI models votes on dated claims drawn from it.
+    </p>
+
+    <div class="limits">
+      {% for forecaster in FORECASTERS %}
+      <div class="limit">
+        <h3>{{ forecaster.name }}</h3>
+        <p>{{ forecaster.focus|capfirst }}</p>
+        <p class="annot">{{ forecaster.domains|join:" · " }}</p>
+      </div>
+      {% endfor %}
+    </div>
+  </section>
+
   <section class="section" id="limits">
     <h2>What it will not do</h2>
     <p class="section-note">
