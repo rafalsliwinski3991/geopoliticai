@@ -272,8 +272,8 @@ the release images, production nginx or production cookie settings.
 
 User actions after the `seo-blog` deploy:
 
-1. Create the `contact@politicalagent.eu` alias and confirm `blog@politicalagent.eu`
-   exists — the blog's subscribe link and the privacy notice both name these addresses.
+1. Confirm `blog@politicalagent.eu` exists — the blog's subscribe link and the privacy
+   notice both name it.
 2. Paste the three post drafts from `docs/blog/` into `/admin/`: fill `summary`
    (≤160 characters), set `published_at`, and tick `is_published`.
 3. Verify the domain in Google Search Console with a DNS TXT record and submit

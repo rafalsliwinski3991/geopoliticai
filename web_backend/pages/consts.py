@@ -14,7 +14,6 @@ from pages.roster_types import Band, _Roster
 OPERATOR = {
     "name": "Rafal Sliwinski",
     "address": "ul. Modrzewiowa 16/10, 21-040 Swidnik, Poland",
-    "email": "contact@politicalagent.eu",
 }
 
 # The forecasters a forecast reads, copied from

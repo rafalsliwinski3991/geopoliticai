@@ -20,7 +20,7 @@ class AboutPageTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Rafal Sliwinski")
         self.assertContains(response, "21-040 Swidnik")
-        self.assertContains(response, "contact@politicalagent.eu")
+        self.assertNotContains(response, "contact@politicalagent.eu")
         self.assertContains(
             response,
             '<meta name="description" content="Who runs PoliticalAgent, how to contact us, '
@@ -39,7 +39,7 @@ class PrivacyPageTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Rafal Sliwinski")
         self.assertContains(response, "21-040 Swidnik")
-        self.assertContains(response, "contact@politicalagent.eu")
+        self.assertNotContains(response, "contact@politicalagent.eu")
         self.assertContains(response, "OpenAI")
         self.assertContains(response, "Brave")
         self.assertContains(response, "OVHcloud")
