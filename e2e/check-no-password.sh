@@ -34,10 +34,17 @@ if [ -f playwright-report/index.html ]; then
   unzip -qo "$tmp/report.zip" -d "$tmp/report"
 fi
 
+# grep exits 0 on a match and 1 on none; anything else means it could not read.
+dirs=("$tmp")
+for dir in test-results playwright-report; do [ -d "$dir" ] && dirs+=("$dir"); done
+status=0
+matches="$(grep -rlF --exclude='*.zip' -- "$E2E_PASSWORD" "${dirs[@]}")" || status=$?
+if [ "$status" -gt 1 ]; then echo "e2e: grep failed (exit $status); cannot check" >&2; exit 2; fi
 while IFS= read -r file; do
+  [ -n "$file" ] || continue
   echo "e2e: the test password appears in ${file#"$tmp/"}" >&2
   found=1
-done < <(grep -rlF --exclude='*.zip' -- "$E2E_PASSWORD" test-results playwright-report "$tmp" 2>/dev/null || true)
+done <<< "$matches"
 
 if [ "$found" -eq 0 ]; then echo "e2e: no password in test-results/ or playwright-report/"; fi
 exit "$found"
