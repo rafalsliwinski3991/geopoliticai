@@ -231,7 +231,9 @@ One-time setup:
 2. `make up`, then `docker compose up -d --force-recreate web-backend` so the container reads the new
    variables.
 3. `make e2e-user` creates (or resets) the test user. It refuses unless `DEBUG` is on.
-4. `cd e2e && npm ci && npx playwright install chromium`.
+4. `cd e2e && npm ci && npx playwright install chromium`. `@playwright/cli` (used by `/e2e` walks)
+   ships on a pre-release Playwright core, never on a final release, so it runs a newer core than
+   `@playwright/test`; the skew is deliberate.
 
 Running, from `e2e/`:
 
