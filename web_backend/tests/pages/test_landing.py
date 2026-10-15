@@ -7,8 +7,10 @@ from pathlib import Path
 
 from django.test import SimpleTestCase
 from django.urls import reverse
+from django.utils.html import escape
+from django.utils.text import capfirst
 
-from pages.consts import LANDING_SECTIONS
+from pages.consts import FORECASTERS, LANDING_SECTIONS
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 allow_list_path = _REPO_ROOT / "agentic_backend" / "src" / "agents" / "expert" / "consts" / "sources.py"
@@ -38,6 +40,29 @@ def canonical_allow_domains() -> frozenset[str]:
             )
             return frozenset(ast.literal_eval(value))
     raise AssertionError("ALLOWED_DOMAINS not found in the expert's sources.py")
+
+
+def canonical_forecasters() -> tuple[tuple[str, str, tuple[str, ...]], ...]:
+    """The deep forecaster's FORECASTERS as (name, focus, domains), read by AST."""
+    path = (
+        _REPO_ROOT
+        / "agentic_backend"
+        / "src"
+        / "agents"
+        / "deep_forecaster"
+        / "consts"
+        / "forecasters.py"
+    )
+    tree = ast.parse(path.read_text())
+    calls = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "Forecaster"
+    ]
+    rows = [tuple(ast.literal_eval(arg) for arg in call.args) for call in calls]
+    return tuple((row[1], row[3], row[5]) for row in rows)
 
 
 def advertised_daily_research_turns() -> int:
@@ -115,6 +140,25 @@ class LandingPageTests(SimpleTestCase):
         self.assertEqual(
             frozenset(LANDING_SECTIONS.domains()), canonical_allow_domains()
         )
+
+    def test_the_forecaster_roster_is_the_deep_forecaster_list_verbatim(self) -> None:
+        # Arrange
+        expected = canonical_forecasters()
+        # Act
+        actual = tuple((f["name"], f["focus"], f["domains"]) for f in FORECASTERS)
+        # Assert
+        self.assertEqual(actual, expected)
+
+    def test_every_forecaster_is_shown_on_the_page(self) -> None:
+        # Arrange
+        # Act
+        response = self.client.get("/")
+        # Assert
+        for forecaster in FORECASTERS:
+            self.assertContains(response, forecaster["name"])
+            self.assertContains(response, escape(capfirst(forecaster["focus"])))
+            for domain in forecaster["domains"]:
+                self.assertContains(response, domain)
 
     def test_the_advertised_daily_quota_is_the_enforced_value(self) -> None:
         """The landing copy's `20` must equal DAILY_RESEARCH_TURNS."""

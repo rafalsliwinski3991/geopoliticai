@@ -5,7 +5,7 @@ from __future__ import annotations
 from django.views import generic
 
 from blog.models import Post
-from pages.consts import LANDING_SECTIONS, OPERATOR
+from pages.consts import FORECASTERS, LANDING_SECTIONS, OPERATOR
 
 
 class LandingView(generic.TemplateView):
@@ -15,6 +15,7 @@ class LandingView(generic.TemplateView):
         context = super().get_context_data(**kwargs)
         context["LANDING_SECTIONS"] = LANDING_SECTIONS
         context["total_domains"] = LANDING_SECTIONS.total
+        context["FORECASTERS"] = FORECASTERS
         return context
 
 

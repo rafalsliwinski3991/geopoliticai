@@ -17,8 +17,7 @@
       "@id": "{{ SITE_ORIGIN }}/#organization",
       "name": "PoliticalAgent",
       "url": "{{ SITE_ORIGIN }}/",
-      "logo": "{{ SITE_ORIGIN }}{% static 'site/logo-512.png' %}",
-      "email": "contact@politicalagent.eu"
+      "logo": "{{ SITE_ORIGIN }}{% static 'site/logo-512.png' %}"
     },
     {
       "@type": "WebSite",
@@ -166,6 +165,25 @@
     </div>
   </section>
 
+  <section class="section" id="forecasters">
+    <h2>Who a forecast reads</h2>
+    <p class="section-note">
+      A forecast does not search the news list. It reads the published work of
+      these {{ FORECASTERS|length }} forecasters on their own sites, then a council of seven
+      AI models votes on dated claims drawn from it.
+    </p>
+
+    <div class="limits">
+      {% for forecaster in FORECASTERS %}
+      <div class="limit">
+        <h3>{{ forecaster.name }}</h3>
+        <p>{{ forecaster.focus|capfirst }}</p>
+        <p class="annot">{{ forecaster.domains|join:" · " }}</p>
+      </div>
+      {% endfor %}
+    </div>
+  </section>
+
   <section class="section" id="limits">
     <h2>What it will not do</h2>
     <p class="section-note">
@@ -192,7 +210,7 @@
       </div>
       <div class="limit">
         <h3>Work in other languages yet</h3>
-        <p>Questions and answers are English. The sources are English-language.</p>
+        <p>Questions and answers are English, and so are the news sources. One forecaster publishes in Polish; a forecast reads that work and summarises it in English.</p>
       </div>
       <div class="limit">
         <h3>Take long inputs</h3>
