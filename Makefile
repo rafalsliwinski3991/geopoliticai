@@ -1,5 +1,5 @@
 .PHONY: up down restart logs services ps config help migrate-web migrate-agentic \
-	createsuperuser test-web-backend test-web-integration sync-copilot inventory link-skills
+	createsuperuser e2e-user test-web-backend test-web-integration sync-copilot inventory link-skills
 
 COMPOSE ?= docker compose
 FRONTEND_PORT ?= 8082
@@ -66,6 +66,13 @@ migrate-agentic:
 
 createsuperuser:
 	$(DJANGO_HOST_ENV) uv run --directory web_backend python manage.py createsuperuser
+
+# Runs inside the web-backend container: Compose's env_file is what hands it
+# E2E_EMAIL/E2E_PASSWORD, so recreate the container after adding them to .env.
+# The command refuses unless DEBUG is on (docker-compose.override.yml sets it).
+# Re-running also refills the test user's daily research quota.
+e2e-user:
+	$(COMPOSE) exec web-backend .venv/bin/python manage.py create_e2e_user
 
 test-web-backend:
 	$(DJANGO_HOST_ENV) uv run --directory web_backend python manage.py collectstatic --noinput
