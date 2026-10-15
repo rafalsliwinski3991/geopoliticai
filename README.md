@@ -1,22 +1,31 @@
 # geopoliticai
 
-An English-language geopolitical research assistant built on LangGraph.
+An English-language geopolitical research assistant built on LangGraph, live at
+[politicalagent.eu](https://politicalagent.eu). It answers only from pages it
+fetched from a fixed list of named publications and institutes.
 
 ## What it is
 
-The API runs an orchestrator that routes each turn to one of three branches:
+The API runs an orchestrator that routes each turn to one of five branches:
 
 ```text
 START -> classify -> expert -> END
                   \-> chat   -> END
+                  \-> deep_expert -> END
+                  \-> deep_forecaster -> END
                   \-> reporter -> END
 ```
 
 Geopolitical turns are delegated to the nested expert. Other turns are answered
 by the orchestrator's own general-assistant branch, without source citations.
-Report requests pause at an outline the user approves, revises, or cancels by
-typing a reply; the static frontend distinguishes the finished report, giving
-it Download .md and Copy actions.
+An explicit request for depth goes to the deep expert, a `deepagents` agent
+that plans, searches, and revises its draft against a rubric. An explicit
+request for a forecast goes to the deep forecaster, a fixed workflow that reads
+twelve forecasters' own writing and has a council of seven models from
+different vendors vote on dated claims in two Delphi rounds. Report requests
+pause at an outline the user approves, revises, or cancels by typing a reply;
+the static frontend distinguishes the finished report, giving it Download .md
+and Copy actions.
 
 The expert remains separately available in LangGraph Studio and is a two-node
 graph:
@@ -48,15 +57,18 @@ through LangGraph's store, the deep forecaster's cached video notes.
 
 The stream caps emitted answers at 50,000 characters, but `_generate` continues
 draining an over-limit upstream stream before emitting the capped result so the
-checkpoint can complete. Production nginx applies Basic Auth to `/admin/` and `/phoenix/`; the
-API is guarded by bearer JWTs verified by `auth.py`; `AUTH_REQUIRED=true` fails closed when credentials are missing, while
-the local development configuration remains unauthenticated.
+checkpoint can complete. Every `/api/*` route requires a bearer JWT minted by
+Django at `GET /accounts/token/` and verified by `auth.py`. Production nginx
+applies Basic Auth to `/admin/` and `/phoenix/`; there `AUTH_REQUIRED=true`
+fails closed when `AUTH_USER` or `AUTH_PASSWORD` is missing, while local
+development leaves those two surfaces open.
 
 The maintained application lives under `agentic_backend/`. `agentic_backend/README.md` documents setup,
 the API contract, and the static English frontend; `agentic_backend/src/` is the Python
 import root. The FastAPI app exposes `GET /api/health`,
-`POST /api/run_pipeline/stream`, and `/` for the frontend, with no synchronous
-pipeline route. The streaming endpoint emits SSE `progress`, `token`, `pause`,
+`POST /api/run_pipeline/stream`, and the `/api/threads` read routes, with no
+synchronous pipeline route; it serves no HTML, and nginx serves the chat SPA
+at `/chat`. The streaming endpoint emits SSE `progress`, `token`, `pause`,
 `result`, and `error` events, with `result` carrying `kind` and `truncated`;
 a paused turn ends with `pause` and no `result` until the user's reply
 resumes it.
@@ -276,3 +288,7 @@ User actions after the `seo-blog` deploy:
 
 
 :)
+
+## License
+
+[MIT](LICENSE).
