@@ -221,7 +221,7 @@ Check the OVH panel for the mailbox's real hourly limit and set
 ### End-to-end tests
 
 Playwright tests in `e2e/` drive the real app under Docker Compose at `http://localhost:8082`. Each chat
-test spends one of the test user's 20 daily research units. Specs are plain English in
+test spends the test user's daily research units (`DAILY_RESEARCH_TURNS` in `agentic_backend/src/config.py`). Specs are plain English in
 `e2e/test_specs/`; the tests in `e2e/tests/` are generated from them.
 
 One-time setup:
@@ -246,6 +246,13 @@ If a run hits a 429 (quota spent), `make e2e-user` refills the user's quota.
 
 In Claude Code, `/e2e new "<prompt>"`, `/e2e run [name]` and `/e2e update <name>` write, run and explain
 tests from the specs.
+
+In GitHub Actions, dispatch the `E2E` workflow by hand before a deploy; nothing waits for it. It builds the
+stack from the dispatched commit with a throwaway `.env` and a random test password, runs the suite, and
+uploads the `playwright-report` artifact (report, traces and screenshots, kept 14 days) even when red;
+download it from the run's page. It needs the `BRAVE_SEARCH_KEY` secret in the `dev` environment, next to
+the OpenAI, OpenRouter and Gemini keys. It tests the dev configuration (`docker-compose.override.yml`), not
+the release images, production nginx or production cookie settings.
 
 ### After the SEO launch (one-time, then upkeep)
 

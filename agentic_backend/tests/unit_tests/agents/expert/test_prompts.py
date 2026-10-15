@@ -19,7 +19,7 @@ def test_answer_prompt_states_costs_from_config() -> None:
         ),
         (
             "Forecast whether",
-            f"Needs all {FORECAST_TURN_COST} of your {DAILY_RESEARCH_TURNS}",
+            f"Uses {FORECAST_TURN_COST} of your {DAILY_RESEARCH_TURNS} daily research turns",
         ),
         (
             "Write me a report on this conversation",

@@ -76,8 +76,9 @@ commands from `e2e/`. Plain-English specs in `e2e/test_specs/` are the only file
 `e2e/tests/*.spec.ts` are generated from them by the `/e2e` skill and start with
 `// spec-sha256: <hash of the spec>`. Tests run against the Compose stack at `http://localhost:8082` with
 the real backend, so each spends the test user's research quota; assertions are shape checks only. The
-test user comes from `make e2e-user` (`users.services.ensure_e2e_user`, which also refills its quota and
-refuses unless `DEBUG` is on). `.github/workflows/e2e.yml` runs the dev configuration on dispatch only and
+test user comes from `make e2e-user` (the `create_e2e_user` command, which refuses unless `DEBUG` is on,
+calling `users.services.ensure_e2e_user`, which also refills its quota). `e2e/check-no-password.sh` fails a
+run whose artifacts hold the test password (exit 1; exit 2 when it cannot check). `.github/workflows/e2e.yml` runs the dev configuration on dispatch only and
 gates nothing.
 
 ```text

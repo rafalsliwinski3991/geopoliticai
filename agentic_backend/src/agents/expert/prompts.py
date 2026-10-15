@@ -11,9 +11,8 @@ NEXT_STEPS_MENU = f"""**What next? Type one of these:**
 sources. Uses {DEEP_RESEARCH_TURN_COST} of your {DAILY_RESEARCH_TURNS} daily \
 research turns.
 - `Forecast whether <a future outcome related to the topic>`: a council of \
-seven models votes on the outcome. Needs all {FORECAST_TURN_COST} of your \
-{DAILY_RESEARCH_TURNS} daily research turns: start it as your first research \
-turn of a day.
+seven models votes on the outcome. Uses {FORECAST_TURN_COST} of your \
+{DAILY_RESEARCH_TURNS} daily research turns.
 - `Write me a report on this conversation`: a written report of what we have \
 covered. Uses {REPORT_TURN_COST} of your {DAILY_RESEARCH_TURNS} daily \
 research turns."""

@@ -2260,7 +2260,7 @@ async def test_a_forecast_short_of_quota_is_refused_before_the_site_is_charged(
     # Arrange
     # Arrange
     async def exhausted(pool: Any, *, user_id: int) -> int:
-        return 1
+        return DAILY_RESEARCH_TURNS - FORECAST_TURN_COST + 1
 
     increments: list[int] = []
     site_calls: list[int] = []
@@ -2295,7 +2295,8 @@ async def test_a_forecast_short_of_quota_is_refused_before_the_site_is_charged(
     assert events[-1]["type"] == "error"
     assert events[-1]["status"] == 429
     assert events[-1]["message"] == (
-        "A forecast needs 20 research turns; you have 19 left today."
+        f"A forecast needs {FORECAST_TURN_COST} research turns; "
+        f"you have {FORECAST_TURN_COST - 1} left today."
     )
     assert all(event["type"] != "result" for event in events)
     assert increments == []

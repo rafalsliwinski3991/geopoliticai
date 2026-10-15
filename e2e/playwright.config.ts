@@ -34,6 +34,9 @@ if (!process.env.TEST_WORKER_INDEX) warnOnStaleTests();
 export default defineConfig({
   testDir: '.',
   timeout: TEST_TIMEOUT_MS,
+  // One test at a time: every test is the same user, and two tests asking the same question at once
+  // would each see the other's conversation in the sidebar.
+  workers: 1,
   reporter: [['list'], ['html', { open: 'never' }], ['json', { outputFile: 'test-results/results.json' }]],
   use: { baseURL: 'http://localhost:8082', screenshot: 'on', trace: 'on' },
   projects: [
