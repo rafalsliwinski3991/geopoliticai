@@ -1,0 +1,13 @@
+{
+  "name": "geopoliticai-e2e",
+  "private": true,
+  "description": "Playwright end-to-end tests generated from e2e/test_specs/ by /e2e. Run every command from e2e/.",
+  "scripts": {
+    "test": "playwright test",
+    "check:secrets": "bash check-no-password.sh"
+  },
+  "devDependencies": {
+    "@playwright/cli": "0.1.22",
+    "@playwright/test": "1.63.0"
+  }
+}
