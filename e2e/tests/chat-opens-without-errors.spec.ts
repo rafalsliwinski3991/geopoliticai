@@ -18,13 +18,14 @@ test('chat opens without errors', { annotation: { type: 'spec', description: SPE
   });
 
   await page.goto('/chat');
-  await expect(page.getByRole('textbox', { name: 'Ask a question' })).toBeVisible();
-  await page.waitForLoadState('networkidle');
+  // The meter and the conversation list render from /api responses: once both show, the page has settled.
+  const sidebar = page.getByRole('navigation', { name: 'Conversations', exact: true });
+  await expect(page.getByRole('img', { name: /^\d+ of \d+ research turns used today$/ })).toBeVisible();
+  await expect(sidebar).toBeVisible();
 
+  await expect(page.getByRole('textbox', { name: 'Ask a question' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Send', exact: true })).toBeVisible();
-  await expect(page.getByRole('navigation', { name: 'Conversations', exact: true })).toBeVisible();
   await expect(page.getByText('Research turns today')).toBeVisible();
-  await expect(page.getByRole('img', { name: /research turns used today/ })).toBeVisible();
   await expect(
     page.getByRole('region', { name: 'Conversation' }).locator('.who', { hasText: /^Error$/ }),
   ).toHaveCount(0);

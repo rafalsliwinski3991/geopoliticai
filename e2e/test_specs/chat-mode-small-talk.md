@@ -14,3 +14,5 @@
 - Neither answer contains a link, because chat mode has no sources.
 - No research progress list stays visible after either answer.
 - The second answer is a new article, so the thread now holds two answers.
+- The daily research meter shows the same number of turns used after both answers as before the first:
+  chat turns are free (a research turn would add 1).
