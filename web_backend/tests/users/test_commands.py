@@ -17,7 +17,7 @@ class CreateE2eUserCommandTests(TestCase):
         # Arrange
         with mock.patch.dict(os.environ, ENV):
             # Act
-            with self.assertRaises(CommandError):
+            with self.assertRaisesMessage(CommandError, "DEBUG is off"):
                 call_command("create_e2e_user", stdout=StringIO())
 
         # Assert
@@ -30,7 +30,20 @@ class CreateE2eUserCommandTests(TestCase):
             os.environ.pop("E2E_EMAIL")
 
             # Act
-            with self.assertRaises(CommandError):
+            with self.assertRaisesMessage(CommandError, "Set E2E_EMAIL and E2E_PASSWORD"):
+                call_command("create_e2e_user", stdout=StringIO())
+
+        # Assert
+        self.assertFalse(User.objects.exists())
+
+    @override_settings(DEBUG=True)
+    def test_command_refuses_without_the_password(self):
+        # Arrange
+        with mock.patch.dict(os.environ, ENV):
+            os.environ.pop("E2E_PASSWORD")
+
+            # Act
+            with self.assertRaisesMessage(CommandError, "Set E2E_EMAIL and E2E_PASSWORD"):
                 call_command("create_e2e_user", stdout=StringIO())
 
         # Assert
