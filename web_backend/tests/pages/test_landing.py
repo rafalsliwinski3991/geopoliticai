@@ -7,6 +7,8 @@ from pathlib import Path
 
 from django.test import SimpleTestCase
 from django.urls import reverse
+from django.utils.html import escape
+from django.utils.text import capfirst
 
 from pages.consts import FORECASTERS, LANDING_SECTIONS
 
@@ -147,13 +149,16 @@ class LandingPageTests(SimpleTestCase):
         # Assert
         self.assertEqual(actual, expected)
 
-    def test_every_forecaster_is_named_on_the_page(self) -> None:
+    def test_every_forecaster_is_shown_on_the_page(self) -> None:
         # Arrange
         # Act
         response = self.client.get("/")
         # Assert
         for forecaster in FORECASTERS:
             self.assertContains(response, forecaster["name"])
+            self.assertContains(response, escape(capfirst(forecaster["focus"])))
+            for domain in forecaster["domains"]:
+                self.assertContains(response, domain)
 
     def test_the_advertised_daily_quota_is_the_enforced_value(self) -> None:
         """The landing copy's `20` must equal DAILY_RESEARCH_TURNS."""

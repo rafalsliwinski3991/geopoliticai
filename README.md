@@ -1,8 +1,10 @@
 # geopoliticai
 
 An English-language geopolitical research assistant built on LangGraph, live at
-[politicalagent.eu](https://politicalagent.eu). It answers only from pages it
-fetched from a fixed list of named publications and institutes.
+[politicalagent.eu](https://politicalagent.eu). Its sourced answers (expert,
+deep expert, and forecast) read only pages it fetched from fixed lists: named
+publications and institutes, or, for a forecast, twelve forecasters' own sites
+and one forecaster's public YouTube videos.
 
 ## What it is
 
@@ -57,8 +59,8 @@ through LangGraph's store, the deep forecaster's cached video notes.
 
 The stream caps emitted answers at 50,000 characters, but `_generate` continues
 draining an over-limit upstream stream before emitting the capped result so the
-checkpoint can complete. Every `/api/*` route requires a bearer JWT minted by
-Django at `GET /accounts/token/` and verified by `auth.py`. Production nginx
+checkpoint can complete. Every `/api/*` route except `GET /api/health` requires
+a bearer JWT minted by Django at `GET /accounts/token/` and verified by `auth.py`. Production nginx
 applies Basic Auth to `/admin/` and `/phoenix/`; there `AUTH_REQUIRED=true`
 fails closed when `AUTH_USER` or `AUTH_PASSWORD` is missing, while local
 development leaves those two surfaces open.
