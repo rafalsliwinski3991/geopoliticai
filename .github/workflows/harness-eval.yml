@@ -133,10 +133,10 @@ jobs:
     # Postgres; the root Makefile's targets reach it on 127.0.0.1:55432.
     services:
       postgres:
-        # Docker Hub's anonymous CI pull budget is shared across GitHub's
-        # runner IPs and exhausts without warning; the AWS public gallery
-        # mirrors the official image with no rate limit.
-        image: public.ecr.aws/docker/library/postgres:16-alpine
+        # Docker Hub's and the AWS public gallery's anonymous pull budgets are
+        # shared across GitHub's runner IPs and exhaust without warning;
+        # Google's Docker Hub mirror serves the official image.
+        image: mirror.gcr.io/library/postgres:16-alpine
         env:
           POSTGRES_DB: geopoliticai
           POSTGRES_USER: geopoliticai
