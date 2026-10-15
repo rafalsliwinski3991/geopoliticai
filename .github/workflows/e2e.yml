@@ -8,6 +8,9 @@ name: E2E
 on:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   e2e:
     runs-on: ubuntu-latest
@@ -104,7 +107,3 @@ jobs:
       - name: Print the app logs
         if: ${{ failure() }}
         run: docker compose logs --tail=100 agentic-backend web-backend
-
-      - name: Stop the stack
-        if: ${{ always() }}
-        run: docker compose down -v

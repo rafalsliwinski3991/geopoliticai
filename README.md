@@ -221,7 +221,7 @@ Check the OVH panel for the mailbox's real hourly limit and set
 ### End-to-end tests
 
 Playwright tests in `e2e/` drive the real app under Docker Compose at `http://localhost:8082`. Each chat
-test spends one of the test user's 20 daily research units. Specs are plain English in
+test spends the test user's daily research units (`DAILY_RESEARCH_TURNS` in `agentic_backend/src/config.py`). Specs are plain English in
 `e2e/test_specs/`; the tests in `e2e/tests/` are generated from them.
 
 One-time setup:

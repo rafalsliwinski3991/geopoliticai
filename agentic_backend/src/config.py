@@ -39,13 +39,13 @@ REQUIRED_ENV_VARS = (
 # accounts. The site-wide ceiling is its own `site_quota` table (one row per
 # UTC day), spent by INCREMENT_SITE_QUOTA just before the caller's own count.
 DAILY_RESEARCH_TURNS = 50
-DAILY_RESEARCH_TURNS_ALL_USERS = 500
+DAILY_RESEARCH_TURNS_ALL_USERS = 2500
 # A deep-expert turn costs roughly 10-30x an expert turn, so it spends this many
 # units from both counters (brainstorm 2026Sep28 Q3; review decision 2026Sep30:
 # 10, not 5, keeps one deep turn from crowding out an expert user's whole day).
 DEEP_RESEARCH_TURN_COST = 10
-# A forecast (agents/deep_forecaster/) spends a user's whole day: research over
-# the forecasters' sites, a 7-member council voting twice, and up to 14 minutes
+# A forecast (agents/deep_forecaster/) spends this many of a user's daily units:
+# research over the forecasters' sites, a 7-member council voting twice, and up to 14 minutes
 # of wall time (brainstorm 2026Sep30 Q22, Q25). Follow-ups are ordinary turns.
 FORECAST_TURN_COST = 20
 SUPPORTED_ARIZE_PLATFORMS = frozenset({"AX", "PHOENIX"})
