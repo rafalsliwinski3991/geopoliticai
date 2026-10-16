@@ -14,6 +14,8 @@ Confirm `git branch --show-current` matches the branch in the brief before you e
 
 ## Tests first
 
+Read `.opencode/skills/unit-tests/SKILL.md` before writing a test, and write every test by it.
+
 When the unit changes production behavior:
 
 1. Write the unit's new tests from the brief.

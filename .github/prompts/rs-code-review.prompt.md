@@ -194,7 +194,7 @@ Always on for standard and full:
   `.github/copilot-instructions.md`, and whether those files still describe the code truthfully.
 - A `testing` pass — missing negative paths and error branches, untested
   guard clauses, boundary values, order-dependent or clock-dependent tests, real network calls in
-  tests, and new public functions with no coverage.
+  tests, new public functions with no coverage, and tests that break the `unit-tests` skill's rules.
 
 Conditional, made only when the signal is real:
 
