@@ -39,7 +39,7 @@ Run every agent check once and log its result. Each should fail now. If one alre
 Repeat until the exit test (item 6) passes:
 
 1. Pick the smallest slice that turns one unmet checklist item green.
-2. Red: write the failing test and watch it fail.
+2. Red: write the failing test by the `unit-tests` skill and watch it fail.
 3. Green: write the smallest code that passes it, then run the narrowest check that covers it.
 4. Gate: run the suites, as `CLAUDE.md` gives them, for each area the change touched: `make test` and `make lint` from `agentic_backend/`; `make test-web-backend` from the root (needs the dev Postgres); `npm test` from `frontend/chat/`. When they pass, commit. Log a suite that cannot run as not run, never as passed.
 5. Log the iteration: what changed, and each check's command with its result.

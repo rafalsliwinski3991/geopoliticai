@@ -167,6 +167,7 @@ you rewrite or add meets the bar a fresh plan of its tier must meet: exact files
 validation commands, and for a full plan, real before/after code fitted to this repo, with imports
 and both sides of any public interface it touches. Leave no placeholders such as `TBD`, "add
 appropriate handling", or "write tests".
+Any test section you rewrite or add is the `unit-tests` skill's edge-case catalogue.
 
 The new version keeps the previous version's tier and appropriate section structure: lightweight
 plans keep scope, change steps, validation, and applicable follow-up; standard plans keep scope,

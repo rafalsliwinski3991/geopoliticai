@@ -119,7 +119,8 @@ Keep every ordered plan unit independently reviewable and compatible with GitHub
 For every feature, bug fix, refactor, or other production behavior change in every plan tier, use
 red-green-refactor:
 
-1. Write one focused test for the behavior that is missing or must change.
+1. Write one focused test for the behavior that is missing or must change, by the `unit-tests`
+   skill.
 2. Run it and confirm it fails for the expected reason, not due to a typo or broken setup.
 3. Write the smallest production change that makes it pass.
 4. Re-run the focused test and the plan's relevant gate. Refactor only while both remain green.

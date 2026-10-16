@@ -164,6 +164,10 @@ Full-plan steps must be independently executable and testable. Prefer focused
 checkbox steps for test, implementation, validation, and commit actions; do not
 leave placeholders such as `TBD`, "add appropriate handling", or "write tests".
 
+In every tier, write the tests as the `unit-tests` skill's edge-case catalogue: a lightweight
+plan's Validation, a standard plan's test notes, and a full plan's test plan each hold one row per
+rule, the test name that guards it, and its file.
+
 ## Step 4 — Review passes
 
 For a **lightweight plan**, self-review it before reporting back: verify it covers
