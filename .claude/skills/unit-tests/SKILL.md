@@ -51,7 +51,7 @@ A fake proves the code calls the database or framework correctly; it cannot prov
 framework does what the code assumes. When the rule lives in SQL (a `GREATEST`, a `WHERE` on the
 conflict target) or in framework behaviour (cancellation, streaming), add one integration test against
 the real thing in `tests/integration_tests/`. A browser-visible rule the stack can trigger for real
-(a disconnect, a full answer) also gets an e2e spec through the `e2e` skill; a failure the stack cannot
+(a disconnect, a full answer) also gets a plain-English e2e spec in `e2e/test_specs/`; a failure the stack cannot
 be made to produce stays a unit test.
 
 ## In a plan

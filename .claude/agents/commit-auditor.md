@@ -27,8 +27,8 @@ Reply with only these parts:
 
 - `PASS` or `FAIL`.
 - `Important`: wrong behavior, a missed requirement, a test that cannot fail, an assertion on a fake,
-  an expected value computed by the code under test, or an edge case the plan's test catalogue names
-  with no test. Each with a concrete failure scenario.
+  an expected value computed by the code under test, a test missing an `# Arrange`, `# Act`, or
+  `# Assert` section, or an edge case the plan's test catalogue names with no test. Each with a concrete failure scenario.
 - `Minor`: polish, including a test that breaks the `unit-tests` skill's readability rules. A minor
   does not fail the unit.
 
