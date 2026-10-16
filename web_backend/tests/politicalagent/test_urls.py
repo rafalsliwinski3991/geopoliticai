@@ -62,47 +62,33 @@ class AuthScreensTest(TestCase):
         self.assertIn("/admin/login/", response["Location"])
 
 
-class SignupRequiresVerificationTest(TestCase):
-    """Email-only signup with mandatory verification (Q16)."""
+class SignupOpensSessionTest(TestCase):
+    """Email and one password open a session at once, with no verification mail."""
 
-    def test_signup_sends_verification_mail_and_blocks_login(self) -> None:
+    def test_signup_logs_in_and_mints_a_token_without_mail(self) -> None:
         # Arrange
         # Act
         response = self.client.post(
             reverse("account_signup"),
-            {
-                "email": "patient@example.com",
-                "password1": SIGNUP_PASSWORD,
-                "password2": SIGNUP_PASSWORD,
-            },
+            {"email": "patient@example.com", "password1": SIGNUP_PASSWORD},
         )
 
         # Assert
-        # Mandatory verification: no session is opened after signup; the flow
-        # lands on the verification-sent screen instead.
         self.assertEqual(response.status_code, 302)
-        self.assertEqual(
-            response["Location"], reverse("account_email_verification_sent")
-        )
-        self.assertTrue(User.objects.filter(email="patient@example.com").exists())
-        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(response["Location"], "/chat")
+        user = User.objects.get(email="patient@example.com")
+        self.assertEqual(self.client.session["_auth_user_id"], str(user.pk))
+        self.assertEqual(len(mail.outbox), 0)
+        self.assertEqual(self.client.get(reverse("token")).status_code, 200)
 
-        # An unverified account cannot log in: allauth refuses to open a
-        # session and redirects to the email-verification screen instead.
+    def test_signup_form_asks_for_the_password_once(self) -> None:
         # Arrange
         # Act
-        response = self.client.post(
-            reverse("account_login"),
-            {"login": "patient@example.com", "password": SIGNUP_PASSWORD},
-        )
+        response = self.client.get(reverse("account_signup"))
 
         # Assert
-        self.assertEqual(
-            response["Location"], reverse("account_email_verification_sent")
-        )
-        self.assertNotIn("_auth_user_id", self.client.session)
-        response = self.client.get(reverse("token"))
-        self.assertEqual(response.status_code, 401)
+        self.assertContains(response, 'name="password1"')
+        self.assertNotContains(response, 'name="password2"')
 
 
 class NginxAdminGuardTest(TestCase):

@@ -109,12 +109,16 @@ AUTHENTICATION_BACKENDS = [
 ]
 SITE_ID = 1
 
-# Email-only identity: no username anywhere, and an account is unusable until
-# the address is verified (Q16 — this is what gives the daily quota its teeth).
+# Email-only identity: no username anywhere. Signup is one email and one
+# password, and the session opens at once: no verification mail (user decision
+# 2026-10-16, replacing Q16's mandatory verification to cut signup friction).
+# An unverified address can still be reset: the reset form also matches
+# unverified addresses. The per-user daily quota no longer has an
+# address-ownership check behind it; the site-wide ceiling still bounds spend.
 AUTH_USER_MODEL = "users.User"
 ACCOUNT_LOGIN_METHODS = {"email"}
-ACCOUNT_SIGNUP_FIELDS = ["email*", "password1*", "password2*"]
-ACCOUNT_EMAIL_VERIFICATION = "mandatory"
+ACCOUNT_SIGNUP_FIELDS = ["email*", "password1*"]
+ACCOUNT_EMAIL_VERIFICATION = "none"
 # Valid ONLY because AUTH_USER_MODEL above has no username field. Against
 # Django's stock `auth.User` this setting is a production bug: allauth's docs
 # list it under "Custom User Models", and with the stock model (username

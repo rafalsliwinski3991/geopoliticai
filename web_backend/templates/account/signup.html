@@ -5,7 +5,7 @@
 
 {% block content %}
 <h1>Create an account</h1>
-<p class="lede">One email address, one account — we verify every address.</p>
+<p class="lede">An email address and a password — you are in straight away.</p>
 <form method="post" action="{% url 'account_signup' %}">
   {% csrf_token %}
   {{ form.as_p }}

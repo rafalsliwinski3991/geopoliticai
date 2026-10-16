@@ -76,7 +76,7 @@ a paused turn ends with `pause` and no `result` until the user's reply
 resumes it.
 
 A second service, `web_backend/`, hosts the Django identity service: accounts
-(allauth, email-only with mandatory verification), the admin, and the
+(allauth, email-only: one email and one password, no verification), the admin, and the
 application tables. Its dev port is `ACCOUNTS_PORT` (default 8083). From the
 host, `make migrate-web` runs its migrations (always first, before anything in
 `agentic_backend` touches the database), `make createsuperuser` creates an
@@ -223,7 +223,7 @@ out over SMTP. The batch sends at most 20 mails per run and never more than
 to the other `EMAIL_*` lines.
 
 One-time VPS step, as `deploy` (`crontab -e`) — needed in the same deploy window
-as enabling the queue, or verification mails will be stored but never sent:
+as enabling the queue, or password-reset mails will be stored but never sent:
 
 ```
 * * * * * cd /srv/geopoliticai/current && docker compose -f docker-compose.yml -f docker-compose.prod.yml exec -T web-backend .venv/bin/python manage.py send_queued_emails >> /srv/backups/emails.log 2>&1

@@ -1,6 +1,6 @@
 """The queue as Django's `MAILERS["default"]`: `mail.send_mail` queues,
-allauth's signup confirmation and password reset queue, and nothing is
-sent until `send_batch` runs.
+allauth's password reset queues, signup sends nothing, and nothing is sent
+until `send_batch` runs.
 """
 
 from django.contrib.auth import get_user_model
@@ -42,24 +42,16 @@ class SendMailQueuesTest(TestCase):
 
 @override_settings(MAILERS=TEST_MAILERS)
 class AllauthMailQueuesTest(TestCase):
-    def test_a_real_signup_queues_the_confirmation_mail_with_its_link(self) -> None:
+    def test_a_real_signup_queues_no_mail(self) -> None:
         # Arrange
         # Act
         response = self.client.post(
             reverse("account_signup"),
-            {
-                "email": "patient@example.com",
-                "password1": SIGNUP_PASSWORD,
-                "password2": SIGNUP_PASSWORD,
-            },
+            {"email": "patient@example.com", "password1": SIGNUP_PASSWORD},
         )
         # Assert
         self.assertEqual(response.status_code, 302)
-        row = Email.objects.get()
-        self.assertEqual(row.status, Email.Status.PENDING)
-        storing = row.body or row.html
-        self.assertIn("confirm-email", storing)
-        self.assertIn("patient@example.com", row.to)
+        self.assertFalse(Email.objects.exists())
         self.assertEqual(len(mail.outbox), 0)
 
     def test_a_real_password_reset_request_queues_the_reset_mail_with_its_link(self) -> None:
@@ -67,13 +59,13 @@ class AllauthMailQueuesTest(TestCase):
         User.objects.create_user(
             email="resevoir@example.com", password=SIGNUP_PASSWORD
         )
-        # allauth's reset flow only mails for an existing address, and the
-        # address has to be verified for the reset view to continue.
+        # Signup no longer verifies addresses, so the reset has to work for
+        # an unverified one: that is how every new account's row looks.
         user = User.objects.get(email="resevoir@example.com")
         from allauth.account.models import EmailAddress
 
         EmailAddress.objects.create(
-            user=user, email=user.email, verified=True, primary=True
+            user=user, email=user.email, verified=False, primary=True
         )
         # Act
         response = self.client.post(

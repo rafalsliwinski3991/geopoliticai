@@ -11,8 +11,8 @@ from users.models import User
 def ensure_e2e_user(email: str, password: str) -> User:
     """Create or reset the end-to-end test user: password, verified email, full quota.
 
-    allauth's mandatory verification refuses a login whose address has no
-    verified `EmailAddress` row, so the row is part of the user. Re-running
+    Login no longer requires a verified address, but the verified
+    `EmailAddress` row keeps the user a complete allauth account. Re-running
     resets the password (keeping it in step with `.env`) and deletes the
     user's spent `quota` rows, so every run of the suite starts with a full
     day's research turns. It refuses a staff or superuser account, so a known
