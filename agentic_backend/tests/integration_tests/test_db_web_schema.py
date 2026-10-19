@@ -428,6 +428,30 @@ def test_refund_quota_gives_back_the_cost(
     assert used == 0
 
 
+def test_a_partial_refund_gives_back_part_of_the_charge(
+    conn: Connection[dict[str, Any]], user_id: int
+) -> None:
+    """A refund subtracts the cost, it does not zero the day: a charge of 20
+    with 5 refunded leaves 15, which a `used = 0` write would not show."""
+    # Arrange: charged 20 on DAY.
+    run(
+        conn,
+        sql.INCREMENT_QUOTA,
+        {"user_id": user_id, "day": DAY, "limit": 50, "cost": 20},
+    )
+
+    # Act: refund part of it.
+    run(conn, sql.REFUND_QUOTA, {"user_id": user_id, "day": DAY, "cost": 5})
+
+    # Assert
+    used = fetch_one(
+        conn,
+        "SELECT used FROM quota WHERE user_id = %s AND day = %s",
+        (user_id, DAY),
+    )["used"]
+    assert used == 15
+
+
 def test_a_refund_never_goes_below_zero(
     conn: Connection[dict[str, Any]], user_id: int
 ) -> None:
