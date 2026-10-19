@@ -791,6 +791,7 @@ async def test_a_crashed_writer_fails_the_forecast(rig: ForecastRig) -> None:
     with pytest.raises(LLMInvocationError) as raised:
         await rig.run()
     # Assert
+    assert rig.writer.calls == 1  # a crash, not a retry: the writer ran once
     assert raised.value.status == 502
     assert str(raised.value) == "The forecast failed."
 

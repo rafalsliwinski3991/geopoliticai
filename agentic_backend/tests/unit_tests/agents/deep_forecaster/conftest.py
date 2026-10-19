@@ -31,7 +31,21 @@ from agents.deep_forecaster.state import (
 )
 from models import Source
 
+graph_module: Any = importlib.import_module("agents.deep_forecaster.graph")
+research_module: Any = importlib.import_module("agents.deep_forecaster.nodes.research")
+draft_claims_module: Any = importlib.import_module(
+    "agents.deep_forecaster.nodes.draft_claims"
+)
+write_analysis_module: Any = importlib.import_module(
+    "agents.deep_forecaster.nodes.write_analysis"
+)
+council_module: Any = importlib.import_module("agents.deep_forecaster.council")
+
 TODAY = date(2026, 9, 30)
+
+# A scripted reply that never returns: the step's own timeout, or the wall
+# cap, is what ends it.
+HANG = object()
 
 
 @pytest.fixture
@@ -125,11 +139,6 @@ def state(
     )
 
 
-# A scripted reply that never returns: the step's own timeout, or the wall
-# cap, is what ends it.
-HANG = object()
-
-
 @dataclass
 class PinnedRun(ForecastRun):
     """`ForecastRun` whose "today" is `TODAY`, so claim deadlines never age."""
@@ -209,20 +218,14 @@ class ForecastRig:
     member_calls: list[tuple[int, int]] = field(default_factory=list)  # (round, member)
 
     def install(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        graph = importlib.import_module("agents.deep_forecaster.graph")
-        research = importlib.import_module("agents.deep_forecaster.nodes.research")
-        drafter = importlib.import_module("agents.deep_forecaster.nodes.draft_claims")
-        writer = importlib.import_module("agents.deep_forecaster.nodes.write_analysis")
-        council = importlib.import_module("agents.deep_forecaster.council")
-        monkeypatch.setattr(graph, "ForecastRun", PinnedRun)
-        monkeypatch.setattr(research, "build_research_agent", self._agent)
-        monkeypatch.setattr(drafter, "ainvoke_structured", self._draft)
-        monkeypatch.setattr(council, "member_model", self._member)
-        monkeypatch.setattr(writer, "ainvoke_structured", self._write)
+        monkeypatch.setattr(graph_module, "ForecastRun", PinnedRun)
+        monkeypatch.setattr(research_module, "build_research_agent", self._agent)
+        monkeypatch.setattr(draft_claims_module, "ainvoke_structured", self._draft)
+        monkeypatch.setattr(council_module, "member_model", self._member)
+        monkeypatch.setattr(write_analysis_module, "ainvoke_structured", self._write)
 
     async def run(self) -> str:
-        graph = importlib.import_module("agents.deep_forecaster.graph")
-        answer: str = await graph.forecast("Will it happen?")
+        answer: str = await graph_module.forecast("Will it happen?")
         return answer
 
     def _agent(self, run: ResearchRun) -> Any:
@@ -285,13 +288,12 @@ def rig(monkeypatch: pytest.MonkeyPatch) -> ForecastRig:
 
 def shorten_step(monkeypatch: pytest.MonkeyPatch, name: str, seconds: float) -> None:
     """Give one graph step a short LangGraph node timeout (`graph.STEPS`)."""
-    graph = importlib.import_module("agents.deep_forecaster.graph")
     monkeypatch.setattr(
-        graph,
+        graph_module,
         "STEPS",
         tuple(
             (step, node, seconds if step == name else timeout)
-            for step, node, timeout in graph.STEPS
+            for step, node, timeout in graph_module.STEPS
         ),
     )
 
