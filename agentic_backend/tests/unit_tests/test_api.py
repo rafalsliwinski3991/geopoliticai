@@ -1,6 +1,8 @@
+import asyncio
 import json
 import logging
 import os
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta, timezone
 from typing import Any, AsyncIterator, cast
@@ -11,6 +13,7 @@ import jwt
 import pytest
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.types import Command
+from psycopg.errors import OperationalError
 
 import api
 import auth
@@ -29,6 +32,7 @@ from config import (
     DAILY_RESEARCH_TURNS_ALL_USERS,
     DEEP_RESEARCH_TURN_COST,
     FORECAST_TURN_COST,
+    MAX_DAILY_REFUND_UNITS,
     LogContextFilter,
 )
 from db.web.sql import ThreadRow
@@ -36,6 +40,7 @@ from models import (
     LLMInvocationError,
     NoSourcesError,
     PipelineError,
+    ResearchLimitError,
     SearchUnavailableError,
     Source,
 )
@@ -64,6 +69,7 @@ def _client_with_token(token: str) -> httpx.AsyncClient:
 @pytest.fixture
 def client() -> httpx.AsyncClient:
     api._rate_limit_store.clear()
+    api._refunded_units.clear()
     api.app.state.pool = None  # every test patches the threads helpers it needs
     return httpx.AsyncClient(
         transport=httpx.ASGITransport(app=api.app),
@@ -130,6 +136,9 @@ class RecordingQuota:
     def refunds(self) -> list[tuple[Any, ...]]:
         return [call for call in self.calls if call[0] == "refund"]
 
+    def site_calls(self) -> list[tuple[Any, ...]]:
+        return [call for call in self.calls if call[0] == "site"]
+
 
 @pytest.fixture(autouse=True)
 def quota(monkeypatch: pytest.MonkeyPatch) -> RecordingQuota:
@@ -138,6 +147,7 @@ def quota(monkeypatch: pytest.MonkeyPatch) -> RecordingQuota:
     recording = RecordingQuota()
     monkeypatch.setattr(api, "increment_quota", recording.increment_quota)
     monkeypatch.setattr(api, "increment_site_quota", recording.increment_site_quota)
+    monkeypatch.setattr(api, "refund_quota", recording.refund_quota)
     monkeypatch.setattr(api, "quota_day", lambda: CHARGE_DAY)
     return recording
 
@@ -148,6 +158,24 @@ def _events(body: str) -> list[dict[str, Any]]:
         for line in body.splitlines()
         if line.startswith("data: ")
     ]
+
+
+def _turn_stream(
+    destination: Any, *events: tuple[str, Any], error: BaseException | None = None
+) -> Callable[[Any, str], AsyncIterator[tuple[str, Any]]]:
+    """Build a fake `_astream_answer` for one turn: the counted frame, then
+    the case's events or a raise."""
+
+    async def stream(
+        graph_input: Any, thread_id: str
+    ) -> AsyncIterator[tuple[str, Any]]:
+        yield ("counted", destination)
+        for event in events:
+            yield event
+        if error is not None:
+            raise error
+
+    return stream
 
 
 def _progress_labels(events: list[dict[str, Any]]) -> list[str]:
@@ -1610,6 +1638,52 @@ async def test_a_client_that_disconnects_mid_stream_is_still_counted(
                     break
     # Assert
     assert quota.charged() == [("user", 1, CHARGE_DAY, DAILY_RESEARCH_TURNS, 1)]
+    assert quota.refunds() == []
+
+
+@pytest.mark.anyio
+async def test_a_cancelled_response_is_still_counted(
+    client: httpx.AsyncClient, quota: RecordingQuota
+) -> None:
+    """A response abandoned mid-run is still counted, and refunds nothing.
+
+    `ASGITransport` only hands the body back once the app has finished, so
+    breaking out of `aiter_lines` above reads a finished buffer. The disconnect
+    a browser really causes is the cancellation of the app's task while the
+    run is still streaming — and that cancellation gives no units back.
+    """
+
+    # Arrange — the run signals past the counted frame, then hangs until the
+    # cancellation reaches it.
+    past_the_count = asyncio.Event()
+
+    async def stream(
+        graph_input: Any, thread_id: str
+    ) -> AsyncIterator[tuple[str, Any]]:
+        yield ("counted", None)
+        yield ("token", "partial answer")
+        past_the_count.set()
+        await asyncio.Event().wait()  # never set: the run hangs until cancelled
+
+    async def abandon() -> None:
+        with patch("api._astream_answer", stream):
+            async with client.stream(
+                "POST",
+                "/api/run_pipeline/stream",
+                json={"query": "x", "thread_id": "t-1"},
+            ):
+                pass  # the body never completes; the task is cancelled instead
+
+    # Act — cancel the response while the run is still streaming.
+    abandoned = asyncio.create_task(abandon())
+    await past_the_count.wait()
+    abandoned.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await abandoned
+
+    # Assert
+    assert quota.charged() == [("user", 1, CHARGE_DAY, DAILY_RESEARCH_TURNS, 1)]
+    assert quota.refunds() == []
 
 
 @pytest.mark.anyio
@@ -2330,3 +2404,524 @@ async def test_stream_endpoint_binds_the_trace_user(client: httpx.AsyncClient) -
     # Assert
     assert response.status_code == 200
     assert calls == [1]
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    ("error", "status"),
+    [
+        (NoSourcesError("no usable sources"), 422),
+        (SearchUnavailableError("every search failed"), 503),
+        (LLMInvocationError("the council died"), 502),
+        (ResearchLimitError("the forecast ran out of time"), 504),
+    ],
+    ids=["no sources 422", "outage 503", "model 502", "time limit 504"],
+)
+async def test_a_forecast_failure_reaches_the_browser_and_refunds(
+    client: httpx.AsyncClient, quota: RecordingQuota, error: PipelineError, status: int
+) -> None:
+    """A forecast the user paid 20 units for must not eat the charge when it
+    fails: every error frame gives the units back, or a user with a
+    reproducible failure (a topic with no sources) pays for every retry and
+    simply stops using forecasts."""
+
+    # Arrange — the counted forecast frame streams, then the case's error raises.
+    stream = _turn_stream("forecast", error=error)
+
+    # Act
+    with patch("api._astream_answer", stream):
+        response = await client.post(
+            "/api/run_pipeline/stream", json={"query": "x", "thread_id": "t-1"}
+        )
+
+    # Assert
+    events = _events(response.text)
+    assert events[-1]["type"] == "error"
+    assert events[-1]["status"] == status
+    assert quota.refunds() == [("refund", 1, CHARGE_DAY, FORECAST_TURN_COST)]
+    # Site units never come back: the site ceiling is touched once, by the
+    # turn's own charge, never by the refund.
+    assert quota.site_calls() == [
+        ("site", DAILY_RESEARCH_TURNS_ALL_USERS, FORECAST_TURN_COST)
+    ]
+
+
+@pytest.mark.anyio
+async def test_an_unexpected_failure_gives_the_units_back(
+    client: httpx.AsyncClient, quota: RecordingQuota
+) -> None:
+    """The generic 500 path is still an error frame: a counted turn that dies
+    of a bug gives its one unit back like any other failed turn."""
+
+    # Arrange — the counted turn streams, then dies of a bug.
+    stream = _turn_stream(None, error=RuntimeError("graph exploded"))
+
+    # Act
+    with patch("api._astream_answer", stream):
+        response = await client.post(
+            "/api/run_pipeline/stream", json={"query": "x", "thread_id": "t-1"}
+        )
+
+    # Assert
+    events = _events(response.text)
+    assert events[-1]["type"] == "error"
+    assert events[-1]["status"] == 500
+    assert quota.refunds() == [("refund", 1, CHARGE_DAY, 1)]
+    # Site units never come back: the site ceiling is touched once, by the
+    # turn's own charge, never by the refund.
+    assert quota.site_calls() == [("site", DAILY_RESEARCH_TURNS_ALL_USERS, 1)]
+
+
+@pytest.mark.anyio
+async def test_an_empty_answer_gives_the_units_back(
+    client: httpx.AsyncClient, quota: RecordingQuota
+) -> None:
+    """An answer that produced no text is the 502 path: the charge is given
+    back before the error frame reaches the browser."""
+
+    # Arrange — the counted frame streams, then the stream ends with no answer.
+    stream = _turn_stream(None)
+
+    # Act
+    with patch("api._astream_answer", stream):
+        response = await client.post(
+            "/api/run_pipeline/stream", json={"query": "x", "thread_id": "t-1"}
+        )
+
+    # Assert
+    events = _events(response.text)
+    assert events[-1]["type"] == "error"
+    assert events[-1]["status"] == 502
+    assert quota.refunds() == [("refund", 1, CHARGE_DAY, 1)]
+    # Site units never come back: the site ceiling is touched once, by the
+    # turn's own charge, never by the refund.
+    assert quota.site_calls() == [("site", DAILY_RESEARCH_TURNS_ALL_USERS, 1)]
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    "events",
+    [
+        [("token", "The answer.")],
+        [("token", "x" * (api.MAX_ANSWER_CHARS + 1))],
+        [("pause", {"outline": ["Section one"]})],
+    ],
+    ids=["answer", "truncated", "pause"],
+)
+async def test_an_answered_turn_keeps_its_charge(
+    client: httpx.AsyncClient, quota: RecordingQuota, events: list[tuple[str, Any]]
+) -> None:
+    """Only an error frame gives units back: a turn that delivered something —
+    a full answer, a long clipped-answer, or a pause the browser has the
+    outline for — keeps its charge."""
+
+    # Arrange
+    stream = _turn_stream(None, *events)
+
+    # Act
+    with patch("api._astream_answer", stream):
+        response = await client.post(
+            "/api/run_pipeline/stream", json={"query": "x", "thread_id": "t-1"}
+        )
+
+    # Assert
+    assert response.status_code == 200
+    assert quota.refunds() == []
+    assert quota.charged() == [("user", 1, CHARGE_DAY, DAILY_RESEARCH_TURNS, 1)]
+
+
+@pytest.mark.anyio
+async def test_a_failed_free_turn_refunds_nothing(
+    client: httpx.AsyncClient, quota: RecordingQuota
+) -> None:
+    """Nothing was taken, so nothing is given back: a chat-path failure that
+    never reached the counted branch must not even look at the counters."""
+
+    # Arrange
+    async def stream(
+        graph_input: Any, thread_id: str
+    ) -> AsyncIterator[tuple[str, str]]:
+        raise NoSourcesError("down")
+        yield ("token", "never")
+
+    # Act
+    with patch("api._astream_answer", stream):
+        response = await client.post(
+            "/api/run_pipeline/stream", json={"query": "x", "thread_id": "t-1"}
+        )
+
+    # Assert
+    events = _events(response.text)
+    assert events[-1]["type"] == "error"
+    assert events[-1]["status"] == 422
+    assert quota.calls == []
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    ("kind", "destination", "cost"),
+    [
+        ("headroom", "deep", DEEP_RESEARCH_TURN_COST),
+        ("headroom", "forecast", FORECAST_TURN_COST),
+        ("site ceiling", "deep", DEEP_RESEARCH_TURN_COST),
+        ("site ceiling", "forecast", FORECAST_TURN_COST),
+        ("lost race", "deep", DEEP_RESEARCH_TURN_COST),
+        ("lost race", "forecast", FORECAST_TURN_COST),
+    ],
+    ids=[
+        "headroom deep",
+        "headroom forecast",
+        "site ceiling deep",
+        "site ceiling forecast",
+        "lost race deep",
+        "lost race forecast",
+    ],
+)
+async def test_a_refused_turn_refunds_nothing(
+    client: httpx.AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+    quota: RecordingQuota,
+    kind: str,
+    destination: str,
+    cost: int,
+) -> None:
+    """A turn refused with a 429 was never counted, so a refund would double
+    the user's units: every refusal path gives nothing back."""
+
+    # Arrange — each refusal fires before the user's own counter is charged.
+    if kind == "headroom":
+        # One short of affordable: the advisory pre-read refuses first.
+        async def nearly_exhausted(pool: Any, *, user_id: int) -> int:
+            return DAILY_RESEARCH_TURNS - cost + 1
+
+        monkeypatch.setattr(api, "quota_used", nearly_exhausted)
+    elif kind == "site ceiling":
+        # The caller has headroom; the site-wide ceiling is spent.
+        quota.site_has_room = False
+    else:  # lost race
+        # The pre-read sees a fresh day; a concurrent turn wins the upsert.
+        async def fresh(pool: Any, *, user_id: int) -> int:
+            return 0
+
+        monkeypatch.setattr(api, "quota_used", fresh)
+        quota.user_has_room = False
+
+    stream = _turn_stream(destination)
+
+    # Act
+    with patch("api._astream_answer", stream):
+        response = await client.post(
+            "/api/run_pipeline/stream", json={"query": "x", "thread_id": "t-1"}
+        )
+
+    # Assert
+    events = _events(response.text)
+    assert events[-1]["type"] == "error"
+    assert events[-1]["status"] == 429
+    site_charge = ("site", DAILY_RESEARCH_TURNS_ALL_USERS, cost)
+    charged_turn = ("user", 1, CHARGE_DAY, DAILY_RESEARCH_TURNS, cost)
+    if kind == "headroom":
+        expected_calls: list[tuple[Any, ...]] = []
+    elif kind == "site ceiling":
+        expected_calls = [site_charge]
+    else:
+        expected_calls = [site_charge, charged_turn]
+    assert quota.calls == expected_calls
+    assert quota.refunds() == []
+
+
+@pytest.mark.anyio
+async def test_a_refund_goes_to_the_charge_day(
+    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch, quota: RecordingQuota
+) -> None:
+    """The units go back to the day they were taken from, not to the day the
+    turn failed: a forecast straddling midnight UTC must not pay back the
+    wrong day and leave the user charged for a blank."""
+
+    # Arrange — the turn is charged today; tomorrow arrives mid-turn.
+    tomorrow = CHARGE_DAY + timedelta(days=1)
+    reads = 0
+
+    def day() -> date:
+        nonlocal reads
+        reads += 1
+        return CHARGE_DAY if reads == 1 else tomorrow
+
+    monkeypatch.setattr(api, "quota_day", day)
+    stream = _turn_stream("forecast", error=NoSourcesError("no usable sources"))
+
+    # Act
+    with patch("api._astream_answer", stream):
+        response = await client.post(
+            "/api/run_pipeline/stream", json={"query": "x", "thread_id": "t-1"}
+        )
+
+    # Assert
+    assert _events(response.text)[-1]["type"] == "error"
+    assert reads == 1  # the refund does not ask for the day again
+    assert quota.refunds() == [("refund", 1, CHARGE_DAY, FORECAST_TURN_COST)]
+
+
+@pytest.mark.anyio
+async def test_a_failed_refund_keeps_the_original_error(
+    client: httpx.AsyncClient,
+    quota: RecordingQuota,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A refund the database refuses is logged and swallowed: the user is
+    about to see the turn's real error, and the refund's failure must not
+    replace it."""
+
+    # Arrange
+    quota.refund_error = OperationalError("db down")
+    error = NoSourcesError("no usable sources")
+    stream = _turn_stream("forecast", error=error)
+
+    # Act
+    with caplog.at_level(logging.ERROR, logger="api"):
+        with patch("api._astream_answer", stream):
+            response = await client.post(
+                "/api/run_pipeline/stream", json={"query": "x", "thread_id": "t-1"}
+            )
+
+    # Assert
+    events = _events(response.text)
+    assert events[-1] == {"type": "error", "status": 422, "message": str(error)}
+    assert "Refunding 20 research units failed." in caplog.messages
+
+
+@pytest.mark.anyio
+async def test_a_failed_refund_gives_the_cap_back(
+    client: httpx.AsyncClient,
+    quota: RecordingQuota,
+) -> None:
+    """A refund write that fails transiently does not spend the day's cap:
+    the reservation is only kept when the units actually went back, so a
+    database outage cannot leave every later failure unrefunded."""
+
+    # Arrange — the refund write fails the way a momentary outage does.
+    quota.refund_error = OperationalError("db down")
+    stream = _turn_stream("forecast", error=NoSourcesError("none"))
+
+    # Act
+    with patch("api._astream_answer", stream):
+        response = await client.post(
+            "/api/run_pipeline/stream", json={"query": "x", "thread_id": "t-1"}
+        )
+
+    # Assert
+    assert _events(response.text)[-1]["status"] == 422
+    assert quota.refunds() == [("refund", 1, CHARGE_DAY, FORECAST_TURN_COST)]
+    assert api._refunded_units == {}
+
+
+@pytest.mark.anyio
+async def test_refunds_stop_at_the_daily_cap(
+    client: httpx.AsyncClient, quota: RecordingQuota
+) -> None:
+    """The day's refunds stop at one forecast's worth: a second failed
+    forecast still gets its error frame but no units back, so a user who can
+    force failures cannot spend the site's ceiling for free all day."""
+
+    # Arrange — two failed forecasts in one day: the fake streams the counted
+    # forecast frame, then raises, for each turn below.
+    stream = _turn_stream("forecast", error=NoSourcesError("none"))
+
+    # Act — the first failed forecast is refunded in full.
+    with patch("api._astream_answer", stream):
+        first = await client.post(
+            "/api/run_pipeline/stream", json={"query": "x", "thread_id": "t-1"}
+        )
+    # Assert
+    assert _events(first.text)[-1]["status"] == 422
+    assert quota.refunds() == [("refund", 1, CHARGE_DAY, FORECAST_TURN_COST)]
+
+    # Act — a second failure that day gets its frame and nothing else.
+    with patch("api._astream_answer", stream):
+        second = await client.post(
+            "/api/run_pipeline/stream", json={"query": "x", "thread_id": "t-1"}
+        )
+    # Assert
+    assert _events(second.text)[-1]["status"] == 422
+    assert quota.refunds() == [("refund", 1, CHARGE_DAY, FORECAST_TURN_COST)]
+    # Site units never come back: each turn charges the site ceiling itself,
+    # and no refund touches it.
+    assert (
+        quota.site_calls()
+        == [("site", DAILY_RESEARCH_TURNS_ALL_USERS, FORECAST_TURN_COST)] * 2
+    )
+
+
+@pytest.mark.anyio
+async def test_the_cap_counts_units(
+    client: httpx.AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+    quota: RecordingQuota,
+) -> None:
+    """The cap is measured in units, not failed turns: twenty one-unit
+    failures spend it and the twenty-first gives nothing back — a cap in
+    turns would have refunded twenty forecasts' worth."""
+
+    # Arrange — the transport rate limit is not this rule's subject, and 21
+    # turns inside one window would 429 before the cap could.
+    monkeypatch.setattr(api, "_enforce_rate_limit", lambda *args: None)
+
+    # Act — one failed turn at a time, twenty times, then the twenty-first.
+    refunded_bodies: list[str] = []
+    with patch("api._astream_answer", _turn_stream(None, error=NoSourcesError("none"))):
+        for _ in range(MAX_DAILY_REFUND_UNITS):
+            refunded_turn = await client.post(
+                "/api/run_pipeline/stream", json={"query": "x", "thread_id": "t-1"}
+            )
+            refunded_bodies.append(refunded_turn.text)
+        capped = await client.post(
+            "/api/run_pipeline/stream", json={"query": "x", "thread_id": "t-1"}
+        )
+
+    # Assert
+    assert [_events(body)[-1]["status"] for body in refunded_bodies] == [
+        422
+    ] * MAX_DAILY_REFUND_UNITS
+    assert quota.refunds() == [("refund", 1, CHARGE_DAY, 1)] * MAX_DAILY_REFUND_UNITS
+    assert _events(capped.text)[-1]["status"] == 422
+    # Site units never come back: each of the 21 turns is charged to the site
+    # by its own charge, and no refund touches it.
+    assert quota.site_calls() == [("site", DAILY_RESEARCH_TURNS_ALL_USERS, 1)] * (
+        MAX_DAILY_REFUND_UNITS + 1
+    )
+
+
+@pytest.mark.anyio
+async def test_the_cap_is_per_user(
+    client: httpx.AsyncClient, quota: RecordingQuota
+) -> None:
+    """The cap is one user's bookkeeping: the first user spends theirs and the
+    second still gets a full day's refunds."""
+
+    # Arrange
+    other = _client_with_token(_mint_token(user_id=2))
+
+    # Act
+    with patch(
+        "api._astream_answer", _turn_stream("forecast", error=NoSourcesError("none"))
+    ):
+        at_the_cap = await client.post(
+            "/api/run_pipeline/stream", json={"query": "x", "thread_id": "t-1"}
+        )
+        capped = await other.post(
+            "/api/run_pipeline/stream", json={"query": "x", "thread_id": "t-2"}
+        )
+
+    # Assert
+    assert _events(at_the_cap.text)[-1]["status"] == 422
+    assert _events(capped.text)[-1]["status"] == 422
+    assert quota.refunds() == [
+        ("refund", 1, CHARGE_DAY, FORECAST_TURN_COST),
+        ("refund", 2, CHARGE_DAY, FORECAST_TURN_COST),
+    ]
+    # Site units never come back: each turn charges the site ceiling itself,
+    # and no refund touches it.
+    assert (
+        quota.site_calls()
+        == [("site", DAILY_RESEARCH_TURNS_ALL_USERS, FORECAST_TURN_COST)] * 2
+    )
+
+
+@pytest.mark.anyio
+async def test_the_cap_resets_on_the_next_day(
+    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch, quota: RecordingQuota
+) -> None:
+    """A new UTC day is a new cap: yesterday's refund bookkeeping is dropped,
+    so the user who spent it getting one failed forecast back is whole again."""
+
+    # Arrange — nothing refunded yet, and tomorrow's date at hand.
+    tomorrow = CHARGE_DAY + timedelta(days=1)
+
+    # Act — today's failed forecast spends the whole day's cap.
+    with patch(
+        "api._astream_answer", _turn_stream("forecast", error=NoSourcesError("none"))
+    ):
+        before_midnight = await client.post(
+            "/api/run_pipeline/stream", json={"query": "x", "thread_id": "t-1"}
+        )
+
+    # Assert
+    assert _events(before_midnight.text)[-1]["status"] == 422
+    assert quota.refunds() == [("refund", 1, CHARGE_DAY, FORECAST_TURN_COST)]
+    assert (1, CHARGE_DAY) in api._refunded_units
+
+    # Arrange — midnight UTC passes.
+    monkeypatch.setattr(api, "quota_day", lambda: tomorrow)
+
+    # Act — the next day's first failure is refunded again.
+    with patch(
+        "api._astream_answer", _turn_stream("forecast", error=NoSourcesError("none"))
+    ):
+        after_midnight = await client.post(
+            "/api/run_pipeline/stream", json={"query": "x", "thread_id": "t-1"}
+        )
+
+    # Assert
+    assert _events(after_midnight.text)[-1]["status"] == 422
+    assert quota.refunds() == [
+        ("refund", 1, CHARGE_DAY, FORECAST_TURN_COST),
+        ("refund", 1, tomorrow, FORECAST_TURN_COST),
+    ]
+    assert (1, CHARGE_DAY) not in api._refunded_units
+    # Site units never come back: each turn charges the site ceiling itself,
+    # and no refund touches it.
+    assert (
+        quota.site_calls()
+        == [("site", DAILY_RESEARCH_TURNS_ALL_USERS, FORECAST_TURN_COST)] * 2
+    )
+
+
+@pytest.mark.anyio
+async def test_concurrent_failed_forecasts_refund_once(
+    client: httpx.AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+    quota: RecordingQuota,
+) -> None:
+    """Two failures finishing at once give one refund back: the cap is
+    reserved before the await, so a turn that checks it while the first
+    refund is still in flight finds it spent."""
+
+    # Arrange — the first refund in flight blocks until the second turn has
+    # finished, so the second turn's cap check runs against a live refund.
+    first_in_flight = asyncio.Event()
+    second_done = asyncio.Event()
+
+    async def slow_refund(pool: Any, *, user_id: int, day: date, cost: int) -> None:
+        if not first_in_flight.is_set():
+            first_in_flight.set()
+            await second_done.wait()
+        quota.calls.append(("refund", user_id, day, cost))
+
+    monkeypatch.setattr(api, "refund_quota", slow_refund)
+
+    async def turn() -> str:
+        with patch(
+            "api._astream_answer",
+            _turn_stream("forecast", error=NoSourcesError("none")),
+        ):
+            response = await client.post(
+                "/api/run_pipeline/stream", json={"query": "x", "thread_id": "t-1"}
+            )
+        return response.text
+
+    # Act — both failed forecasts run at once; the first refund holds the cap
+    # while the second turn checks it.
+    first = asyncio.create_task(turn())
+    await first_in_flight.wait()
+    second = asyncio.create_task(turn())
+    await second
+    second_done.set()
+    body = await first
+
+    # Assert
+    assert _events(body)[-1]["status"] == 422
+    assert (
+        quota.charged()
+        == [("user", 1, CHARGE_DAY, DAILY_RESEARCH_TURNS, FORECAST_TURN_COST)] * 2
+    )
+    assert quota.refunds() == [("refund", 1, CHARGE_DAY, FORECAST_TURN_COST)]

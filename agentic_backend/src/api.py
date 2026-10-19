@@ -10,6 +10,7 @@ import time
 from asyncio import Lock as AsyncLock
 from collections import deque
 from contextlib import asynccontextmanager
+from datetime import date
 from threading import Lock
 from typing import Annotated, Any, AsyncGenerator
 
@@ -40,6 +41,7 @@ from config import (
     DAILY_RESEARCH_TURNS_ALL_USERS,
     DEEP_RESEARCH_TURN_COST,
     FORECAST_TURN_COST,
+    MAX_DAILY_REFUND_UNITS,
     bind_log_context,
     init_environment,
     require_env,
@@ -57,6 +59,7 @@ from db.web.sql import (
     owns_thread,
     quota_day,
     quota_used,
+    refund_quota,
     title_from,
 )
 from models import PipelineError, ReportNotPendingError
@@ -182,11 +185,51 @@ _rate_limit_lock = Lock()
 # concurrent forecast requests must not each take `cost` site units before the
 # user's own upsert disqualifies all but one (see `_astream_answer`).
 _costly_turn_locks: dict[int, AsyncLock] = {}
+# Units refunded per (user, UTC day), for the daily refund cap. In process
+# memory, like `_rate_limit_store`: a restart forgets it, which allows at most
+# one more capped refund per user per restart (user decision 2026-10-16).
+_refunded_units: dict[tuple[int, date], int] = {}
 
 
 def _costly_turn_lock(user_id: int) -> AsyncLock:
     """Return the per-user lock serializing a counted turn's quota commit."""
     return _costly_turn_locks.setdefault(user_id, AsyncLock())
+
+
+async def _refund_turn(
+    pool: AsyncConnectionPool[AsyncConnection[DictRow]],
+    *,
+    user_id: int,
+    day: date,
+    cost: int,
+) -> None:
+    """Give a failed turn's units back, unless the user's daily refund cap is spent.
+
+    The cap is reserved before the await, so two failures finishing at once
+    cannot both pass it. A failed refund is logged and swallowed, and gives
+    its reservation back: the user is about to get the turn's real error, and
+    this must not replace it — nor spend the day's cap for nothing.
+    """
+    for stale in [key for key in _refunded_units if key[1] < day]:
+        del _refunded_units[stale]
+    refunded = _refunded_units.get((user_id, day), 0)
+    if refunded + cost > MAX_DAILY_REFUND_UNITS:
+        logger.info("Refund of %d units refused: the daily refund cap is spent.", cost)
+        return
+    _refunded_units[(user_id, day)] = refunded + cost
+    try:
+        await refund_quota(pool, user_id=user_id, day=day, cost=cost)
+    except Exception:  # noqa: BLE001 - logged; the turn's own error wins
+        logger.exception("Refunding %d research units failed.", cost)
+        # Subtracting, not restoring the value read above: another coroutine
+        # may have reserved since, and each failure removes only its own add.
+        left = _refunded_units.get((user_id, day), 0) - cost
+        if left > 0:
+            _refunded_units[(user_id, day)] = left
+        else:
+            _refunded_units.pop((user_id, day), None)
+        return
+    logger.info("Refunded %d research units to the day %s.", cost, day)
 
 
 async def _require_migrated_checkpointer_schema(
@@ -654,6 +697,17 @@ async def run_pipeline_stream_endpoint(
         paused = False
         is_report = False
         clipped = False
+        # What this turn took from the user's own counter, and from which
+        # quota day; None until `increment_quota` succeeds. Every error frame
+        # below refunds it (brainstorm 2026Oct16 Q1); a disconnect does not.
+        charge: tuple[date, int] | None = None
+
+        async def refund() -> None:
+            if charge is not None:
+                await _refund_turn(
+                    pool, user_id=identity.user_id, day=charge[0], cost=charge[1]
+                )
+
         try:
             yield _sse({"type": "progress", **THINKING_PROGRESS})
             # The checkpoint read and the intent call happen here, not in the
@@ -733,10 +787,11 @@ async def run_pipeline_stream_endpoint(
                                 }
                             )
                             return
+                        day = quota_day()
                         if not await increment_quota(
                             pool,
                             user_id=identity.user_id,
-                            day=quota_day(),
+                            day=day,
                             limit=DAILY_RESEARCH_TURNS,
                             cost=cost,
                         ):
@@ -754,6 +809,7 @@ async def run_pipeline_stream_endpoint(
                                 }
                             )
                             return
+                        charge = (day, cost)
                     continue
                 if kind not in ("token", "notice"):
                     # An event kind this layer does not know. Ignoring it is
@@ -791,6 +847,7 @@ async def run_pipeline_stream_endpoint(
                     # A pause is a complete, successful turn: the run stopped on
                     # purpose and the browser already has the outline.
                     return
+                await refund()
                 yield _sse(
                     {
                         "type": "error",
@@ -819,9 +876,11 @@ async def run_pipeline_stream_endpoint(
             )
         except PipelineError as exc:
             logger.warning("Streaming pipeline failed: %s", exc)
+            await refund()
             yield _sse({"type": "error", "status": exc.status, "message": str(exc)})
         except Exception:
             logger.exception("Streaming pipeline failed unexpectedly.")
+            await refund()
             yield _sse(
                 {
                     "type": "error",
