@@ -36,10 +36,15 @@ REMOVED_LINK = "(link removed)"
 # already does. Only this exact form is linked. Anything between `source:` and
 # `)` is captured, so `(source:3.4)` or `(source:x)` reaches the number check.
 SOURCE_LINK = re.compile(r"\]\(source:([^)\s]*)\)", re.IGNORECASE)
-# Every place the prose names a source by number, in any form. A count above
-# the `SOURCE_LINK` count means a citation the answer cannot link (a title, a
-# space, angle brackets, a bare `(source:3)`), which would ship as dead text.
-SOURCE_MENTION = re.compile(r"source:\s*<?\s*[0-9]", re.IGNORECASE)
+# Every place the prose names a source by number, in citation shape only: not
+# part of a longer word ("resource:", "open-source:") and a number of one to
+# three digits not swallowed by a longer run, so "(Source: 2024 yearbook)"
+# stays prose. A count above the `SOURCE_LINK` count means a citation the
+# answer cannot link (a title, a space, angle brackets, a bare `(source:3)`),
+# which would ship as dead text.
+SOURCE_MENTION = re.compile(
+    r"(?<![\w-])source:\s*<?\s*[0-9]{1,3}(?![0-9])", re.IGNORECASE
+)
 # A valid source number: one to three ASCII digits. `str.isdigit` also accepts
 # "²", which `int` rejects (framework review).
 SOURCE_NUMBER = re.compile(r"[0-9]{1,3}")
@@ -53,11 +58,6 @@ def render_reason(reason: str) -> str:
 def links_in(text: str) -> list[str]:
     """Return every clickable link in model-written Markdown, as written."""
     return [url.rstrip(TRAILING_PUNCTUATION) for url in LINK.findall(text)]
-
-
-def cited_sources(text: str) -> list[str]:
-    """Return what every `](source:N)` citation in `text` names, as written."""
-    return SOURCE_LINK.findall(text)
 
 
 def link_sources(text: str, sources: Sequence[Source]) -> str:

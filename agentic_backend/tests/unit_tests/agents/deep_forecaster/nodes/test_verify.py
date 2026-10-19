@@ -325,6 +325,67 @@ def test_an_unlinkable_citation_raises(broken: str) -> None:
         checked(forecast_state, analysis_)
 
 
+PROSE_THAT_NAMES_A_NUMBER = [
+    pytest.param("resource: 3 pilots", id="a word ending in source"),
+    pytest.param("(Source: 2024 yearbook)", id="a prose source line with a year"),
+]
+
+
+@pytest.mark.parametrize("prose", PROSE_THAT_NAMES_A_NUMBER)
+def test_ordinary_prose_is_not_a_citation(prose: str) -> None:
+    """`SOURCE_MENTION` matches citation shapes only: prose whose word ends in
+    "source", or a source line whose number is a year, is neither a citation
+    nor a reason to fail the writer."""
+
+    # Arrange
+    first = six_voters()
+    forecast_state = state(round_1=first, round_2=dict(first))
+    forecast_state["tally"] = VOTING6_TALLY
+    analysis_ = Analysis(
+        overview=f"The council leans yes. [A](source:1). See {prose}.",
+        claims=[
+            ClaimDiscussion(claim=1, discussion="Alpha reasons."),
+            ClaimDiscussion(claim=2, discussion="Beta reasons."),
+        ],
+    )
+
+    # Act
+    answer = checked(forecast_state, analysis_)
+
+    # Assert
+    assert prose in answer
+
+
+@pytest.mark.parametrize(
+    "citation",
+    [
+        pytest.param("[B](source:2)", id="lowercase source"),
+        pytest.param("[B](SOURCE:2)", id="uppercase SOURCE"),
+    ],
+)
+def test_a_citation_links_regardless_of_its_case(citation: str) -> None:
+    """`SOURCE_LINK` keeps its `re.IGNORECASE`: `[B](SOURCE:2)` is linked to
+    source 2's URL, not shipped as dead text."""
+
+    # Arrange
+    first = six_voters()
+    forecast_state = state(round_1=first, round_2=dict(first))
+    forecast_state["tally"] = VOTING6_TALLY
+    analysis_ = Analysis(
+        overview=f"The council leans yes. {citation}",
+        claims=[
+            ClaimDiscussion(claim=1, discussion="Alpha reasons. [A](source:1)"),
+            ClaimDiscussion(claim=2, discussion="Beta reasons. [A](source:1)"),
+        ],
+    )
+
+    # Act
+    answer = checked(forecast_state, analysis_)
+
+    # Assert
+    assert "The council leans yes. [B](https://reuters.com/b)" in answer
+
+
 @pytest.mark.parametrize(
     "url",
     [

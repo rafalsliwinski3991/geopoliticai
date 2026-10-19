@@ -3,8 +3,8 @@
 from datetime import date
 
 import agents.deep_forecaster.config as config
+from agents.deep_forecaster import evidence
 from agents.deep_forecaster.evidence import (
-    cited_sources,
     link_sources,
     links_in,
     paragraphs,
@@ -57,11 +57,11 @@ def test_a_source_number_becomes_its_url() -> None:
     assert linked == "[A](https://reuters.com/b)"
 
 
-def test_cited_sources_returns_every_citation() -> None:
+def test_source_link_returns_every_citation_as_written() -> None:
     """`verify` reads what each citation names as written, so any bad form is caught."""
     # Arrange
     # Act
-    named = cited_sources("[A](source:1), [B](source:2), [C](source:x)")
+    named = evidence.SOURCE_LINK.findall("[A](source:1), [B](source:2), [C](source:x)")
     # Assert
     assert named == ["1", "2", "x"]
 

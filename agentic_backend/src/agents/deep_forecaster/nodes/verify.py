@@ -27,9 +27,9 @@ from agents.deep_forecaster.consts.forecasters import FORECASTER_SOURCES, VIDEO_
 from agents.deep_forecaster.consts.progress import VERIFY_LABEL
 from agents.deep_forecaster.council import final_ballots
 from agents.deep_forecaster.evidence import (
+    SOURCE_LINK,
     SOURCE_MENTION,
     SOURCE_NUMBER,
-    cited_sources,
     link_sources,
     links_in,
     quoted_sources,
@@ -138,7 +138,7 @@ def checked_answer(
         raise LLMInvocationError(
             "The analysis wrote a URL; it must cite sources only as [anchor](source:N)."
         )
-    cited = cited_sources(text)
+    cited = SOURCE_LINK.findall(text)
     if len(SOURCE_MENTION.findall(text)) > len(cited):
         raise LLMInvocationError(
             "The analysis wrote a citation the answer cannot link; write each one "
