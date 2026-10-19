@@ -1,6 +1,6 @@
 ---
 name: unit-tests
-description: "INVOKE THIS SKILL when writing, planning, or reviewing unit tests: pytest in agentic_backend/ or web_backend/, Vitest in frontend/chat/. Use it before naming a test, building a fake, or writing a plan's test section."
+description: "INVOKE THIS SKILL when writing, planning, or reviewing unit tests: pytest in agentic_backend/, Django TestCase in web_backend/, Vitest in frontend/chat/. Use it before naming a test, building a fake, or writing a plan's test section."
 ---
 
 A unit test here is documentation that runs. A junior developer reading one test, and nothing else,
@@ -15,8 +15,9 @@ rule regresses.
   reader who only sees the name in a failing run knows what broke. (Vitest: the `it("...")` string.)
 - **Docstring is the reason.** One or two sentences on why the rule exists: the incident, the abuse it
   blocks, the user decision behind it. Say what goes wrong without the rule.
-- **Arrange, act, assert.** `# Arrange`, `# Act`, `# Assert` in that order, a review-blocking repo
-  rule. Act is one call. Assert checks the observable result: a return value, a frame the
+- **Arrange, act, assert.** `# Arrange`, `# Act`, `# Assert` in that order (`//` in Vitest), a
+  review-blocking repo rule. When the act cannot stand apart from its assert, as a call inside
+  `pytest.raises` cannot, one `# Act + Assert` section holds both. Act is one call. Assert checks the observable result: a return value, a frame the
   browser sees, a row, a call a recording fake captured.
 - **One behaviour per test.** Two rules are two tests. A parametrised test is one rule over many
   inputs.
