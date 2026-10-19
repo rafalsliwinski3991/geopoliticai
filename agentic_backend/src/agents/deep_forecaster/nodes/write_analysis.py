@@ -11,6 +11,8 @@ from agents.deep_forecaster.config import WRITE_LLM_SETTINGS
 from agents.deep_forecaster.consts.progress import REWRITE_LABEL, WRITE_LABEL
 from agents.deep_forecaster.council import final_ballots
 from agents.deep_forecaster.evidence import (
+    LINK,
+    REMOVED_LINK,
     render_ballot,
     render_claims,
     render_deadline,
@@ -62,7 +64,8 @@ def _brief(state: ForecastState) -> str:
         for member, ballot in sorted(final.items())
     )
     return (
-        f"Question: {state['question']}\n\nClaims:\n{render_claims(state['claims'])}"
+        f"Question: {LINK.sub(REMOVED_LINK, state['question'])}\n\n"
+        f"Claims:\n{render_claims(state['claims'])}"
         f"\n\nThe council's verdicts:\n{verdicts}\n\nFinal-round votes:\n{votes}"
         f"\n\nSources:\n\n{render_sources(state['sources'], urls=False)}"
     )

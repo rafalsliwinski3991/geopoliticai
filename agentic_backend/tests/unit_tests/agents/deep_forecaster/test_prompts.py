@@ -67,7 +67,12 @@ def test_the_write_prompt_asks_for_source_numbers() -> None:
 
 def test_the_retry_instructions_fill_with_the_defect() -> None:
     """The rewrite prompt fills with the defect and leaks no template braces."""
-    # Act + Assert
-    filled = RETRY_INSTRUCTIONS.format(defect="x")
-    assert "x" in filled
+    # Arrange
+    defect = "claim 9 is missing"
+
+    # Act
+    filled = RETRY_INSTRUCTIONS.format(defect=defect)
+
+    # Assert
+    assert defect in filled
     assert "{" not in filled

@@ -32,7 +32,9 @@ from models import (
     Source,
 )
 from unit_tests.agents.deep_forecaster.conftest import (
+    DEFECTS,
     HANG,
+    MISSING_CLAIM,
     TODAY,
     ForecastRig,
     ScriptedWriter,
@@ -43,7 +45,6 @@ from unit_tests.agents.deep_forecaster.conftest import (
     shorten_step,
     sources,
 )
-from unit_tests.agents.deep_forecaster.nodes.test_verify import DEFECTS, MISSING_CLAIM
 
 graph_module: Any = importlib.import_module("agents.deep_forecaster.graph")
 research_node: Any = importlib.import_module("agents.deep_forecaster.nodes.research")

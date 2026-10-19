@@ -19,7 +19,16 @@ from agents.deep_forecaster.models import (
 )
 from agents.deep_forecaster.state import ClaimTally, ResearchOutcome
 from models import LLMInvocationError, Source
-from unit_tests.agents.deep_forecaster.conftest import ballot, runtime, sources, state
+from unit_tests.agents.deep_forecaster.conftest import (
+    DEFECTS,
+    MARKER,
+    MISSING_CLAIM,
+    MISSING_CLAIM_DEFECT,
+    ballot,
+    runtime,
+    sources,
+    state,
+)
 
 verify_module: Any = importlib.import_module("agents.deep_forecaster.nodes.verify")
 
@@ -522,99 +531,6 @@ def test_an_analysis_with_no_citation_raises() -> None:
     # Assert: the raise is the assertion.
 
 
-# Unit 05: the plan's six named broken analyses (plan §5), each a passing
-# analysis with exactly one defect a rewrite can fix. Every one carries the
-# marker `INJECTED-7f3a` in its prose, and inside its defective link or
-# citation where it has one, so a defect that echoed the writer's own text
-# would leak the marker.
-MARKER = "INJECTED-7f3a"
-MARKER_URL = f"https://carnegieendowment.org/{MARKER}"
-
-MISSING_CLAIM = Analysis(
-    overview=f"The council leans yes. [A](source:1) — {MARKER} saw it.",
-    claims=[ClaimDiscussion(claim=1, discussion="Alpha reasons. [A](source:1)")],
-)
-EMPTY_SECTION = Analysis(
-    overview="The council leans yes. [A](source:1)",
-    claims=[
-        ClaimDiscussion(claim=1, discussion=""),
-        ClaimDiscussion(
-            claim=2, discussion=f"Beta reasons. [B](source:2) — {MARKER} saw it."
-        ),
-    ],
-)
-RAW_URL = Analysis(
-    overview=f"The council leans yes. [A](source:1). See [more]({MARKER_URL}).",
-    claims=[
-        ClaimDiscussion(
-            claim=1, discussion=f"Alpha reasons. [A](source:1) — {MARKER} saw it."
-        ),
-        ClaimDiscussion(claim=2, discussion="Beta reasons. [B](source:2)"),
-    ],
-)
-UNLINKABLE_CITATION = Analysis(
-    overview=f'The council leans yes. See [a {MARKER} note](source:1 "t").',
-    claims=[
-        ClaimDiscussion(claim=1, discussion=f"Alpha reasons. {MARKER} saw it."),
-        ClaimDiscussion(claim=2, discussion="Beta reasons."),
-    ],
-)
-NO_CITATION = Analysis(
-    overview=f"The council leans yes. {MARKER} agrees.",
-    claims=[
-        ClaimDiscussion(claim=1, discussion="Alpha reasons."),
-        ClaimDiscussion(claim=2, discussion="Beta reasons."),
-    ],
-)
-UNREAD_SOURCE = Analysis(
-    overview=f"The council leans yes. [{MARKER}](source:9)",
-    claims=[
-        ClaimDiscussion(claim=1, discussion="Alpha reasons. [A](source:1)"),
-        ClaimDiscussion(claim=2, discussion="Beta reasons. [B](source:2)"),
-    ],
-)
-
-# The exact defect `find_defect` must return for each named analysis, written
-# by hand from the rules, never computed.
-MISSING_CLAIM_DEFECT = (
-    "The analysis did not discuss every claim exactly once: it needs one "
-    "section for each of claims 1 and 2 and wrote sections for 1."
-)
-EMPTY_SECTION_DEFECT = "The analysis left a section empty: claim 1."
-RAW_URL_DEFECT = (
-    "The analysis wrote a URL; it must cite sources only as [anchor](source:N)."
-)
-UNLINKABLE_CITATION_DEFECT = (
-    "The analysis wrote a citation the answer cannot link; write each one "
-    "exactly as [anchor](source:N)."
-)
-NO_CITATION_DEFECT = "The analysis cited none of the sources it read."
-UNREAD_SOURCE_DEFECT = (
-    "The analysis cites 1 source number outside 1 to 2, the sources the "
-    "forecast read; cite whole source numbers such as (source:3)."
-)
-
-DEFECTS = [
-    pytest.param(MISSING_CLAIM, MISSING_CLAIM_DEFECT, id="a missing claim"),
-    pytest.param(EMPTY_SECTION, EMPTY_SECTION_DEFECT, id="an empty section"),
-    pytest.param(RAW_URL, RAW_URL_DEFECT, id="a raw url"),
-    pytest.param(
-        UNLINKABLE_CITATION, UNLINKABLE_CITATION_DEFECT, id="an unlinkable citation"
-    ),
-    pytest.param(NO_CITATION, NO_CITATION_DEFECT, id="no citation"),
-    pytest.param(UNREAD_SOURCE, UNREAD_SOURCE_DEFECT, id="an unread source"),
-]
-
-BROKEN_ANALYSES = [
-    pytest.param(MISSING_CLAIM, id="a missing claim"),
-    pytest.param(EMPTY_SECTION, id="an empty section"),
-    pytest.param(RAW_URL, id="a raw url"),
-    pytest.param(UNLINKABLE_CITATION, id="an unlinkable citation"),
-    pytest.param(NO_CITATION, id="no citation"),
-    pytest.param(UNREAD_SOURCE, id="an unread source"),
-]
-
-
 @pytest.mark.parametrize(("broken_analysis", "expected_defect"), DEFECTS)
 def test_find_defect_names_the_defect(
     broken_analysis: Analysis, expected_defect: str
@@ -627,8 +543,10 @@ def test_find_defect_names_the_defect(
     assert defect == expected_defect
 
 
-@pytest.mark.parametrize("broken_analysis", BROKEN_ANALYSES)
-def test_a_defect_never_echoes_the_writers_text(broken_analysis: Analysis) -> None:
+@pytest.mark.parametrize(("broken_analysis", "_defect"), DEFECTS)
+def test_a_defect_never_echoes_the_writers_text(
+    broken_analysis: Analysis, _defect: str
+) -> None:
     """The defect is code's text: it must never quote model-written output.
 
     Every prose excerpt, URL, and citation in the model's analysis carries the

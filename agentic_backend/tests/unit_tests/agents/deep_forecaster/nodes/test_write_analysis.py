@@ -11,8 +11,12 @@ from agents.deep_forecaster.consts.progress import REWRITE_LABEL, WRITE_LABEL
 from agents.deep_forecaster.models import Analysis, ClaimDiscussion
 from agents.deep_forecaster.prompts import RETRY_INSTRUCTIONS
 from agents.deep_forecaster.state import ClaimTally
-from unit_tests.agents.deep_forecaster.conftest import ballot, runtime, state
-from unit_tests.agents.deep_forecaster.nodes.test_verify import MISSING_CLAIM_DEFECT
+from unit_tests.agents.deep_forecaster.conftest import (
+    MISSING_CLAIM_DEFECT,
+    ballot,
+    runtime,
+    state,
+)
 
 write_analysis_module: Any = importlib.import_module(
     "agents.deep_forecaster.nodes.write_analysis"
@@ -91,6 +95,28 @@ async def test_the_writer_reads_verdicts_votes_and_sources(
     assert events == [
         {"type": "progress", "node": "deep_forecaster", "label": WRITE_LABEL}
     ]
+
+
+@pytest.mark.anyio
+async def test_a_url_in_the_question_never_reaches_the_writer(
+    monkeypatch: pytest.MonkeyPatch, events: list[dict[str, Any]]
+) -> None:
+    """The writer sees no URL anywhere in its brief — the question included:
+    a URL there would be copied into the analysis and cost the one rewrite."""
+
+    # Arrange
+    recorded, a_fake = briefing_writer(a_written_analysis())
+    monkeypatch.setattr(write_analysis_module, "ainvoke_structured", a_fake)
+    forecast_state: Any = a_tallied_state()
+    forecast_state["question"] = "Will it happen? See https://evil.example/q"
+
+    # Act
+    await write_analysis_module.write_analysis(forecast_state, runtime(events))
+
+    # Assert
+    human = str(recorded["messages"][0].content)
+    assert "Question: Will it happen? See (link removed)" in human
+    assert "https://" not in human
 
 
 @pytest.mark.anyio
