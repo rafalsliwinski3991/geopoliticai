@@ -3,7 +3,8 @@
 <!--
 Maintainers: a line belongs here only if agents need it across tasks and cannot learn it from the
 code, its config, or another guidance file. Name a constant instead of copying its value. Changes to
-harness tooling (commands, skills, agents, plugins) need no update here.
+harness tooling (commands, skills, agents, plugins) need no update here. AGENTS.md is a symlink to
+this file, so OpenCode and Copilot read it too: name no tool or path that only one harness has.
 -->
 
 ## Working rules
@@ -148,8 +149,8 @@ deep_forecaster  START -> research -> draft_claims -> council_round_1 -> council
   `# Arrange`, `# Act`, and `# Assert` sections.
 - End-to-end tests are a Playwright project in `e2e/`; run its commands from there. People edit only
   the plain-English specs in `e2e/test_specs/`. The `e2e/tests/*.spec.ts` files are generated from
-  them by a command only the user runs (`/e2e` in Claude Code), so an agent edits the spec and asks
-  the user to regenerate the test. The tests hit the real Compose stack, spending the test user's
+  them by a command only the user runs (README, "End-to-end tests"), so an agent edits the spec
+  and asks the user to regenerate the test. The tests hit the real Compose stack, spending the test user's
   quota (`make e2e-user` creates the user and refills it), and check shapes only.
 
 ## Evals
