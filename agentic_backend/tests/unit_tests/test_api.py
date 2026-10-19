@@ -28,11 +28,11 @@ from agents.reporter.consts.messages import (
 )
 from agents.reporter.consts.progress import OUTLINE_PROGRESS, REPORT_PROGRESS
 from config import (
-    DAILY_REFUND_UNITS,
     DAILY_RESEARCH_TURNS,
     DAILY_RESEARCH_TURNS_ALL_USERS,
     DEEP_RESEARCH_TURN_COST,
     FORECAST_TURN_COST,
+    MAX_DAILY_REFUND_UNITS,
     LogContextFilter,
 )
 from db.web.sql import ThreadRow
@@ -2769,7 +2769,7 @@ async def test_the_cap_counts_units(
     # Act — one failed turn at a time, twenty times, then the twenty-first.
     refunded_bodies: list[str] = []
     with patch("api._astream_answer", _turn_stream(None, error=NoSourcesError("none"))):
-        for _ in range(DAILY_REFUND_UNITS):
+        for _ in range(MAX_DAILY_REFUND_UNITS):
             refunded_turn = await client.post(
                 "/api/run_pipeline/stream", json={"query": "x", "thread_id": "t-1"}
             )
@@ -2781,13 +2781,13 @@ async def test_the_cap_counts_units(
     # Assert
     assert [_events(body)[-1]["status"] for body in refunded_bodies] == [
         422
-    ] * DAILY_REFUND_UNITS
-    assert quota.refunds() == [("refund", 1, CHARGE_DAY, 1)] * DAILY_REFUND_UNITS
+    ] * MAX_DAILY_REFUND_UNITS
+    assert quota.refunds() == [("refund", 1, CHARGE_DAY, 1)] * MAX_DAILY_REFUND_UNITS
     assert _events(capped.text)[-1]["status"] == 422
     # Site units never come back: each of the 21 turns is charged to the site
     # by its own charge, and no refund touches it.
     assert quota.site_calls() == [("site", DAILY_RESEARCH_TURNS_ALL_USERS, 1)] * (
-        DAILY_REFUND_UNITS + 1
+        MAX_DAILY_REFUND_UNITS + 1
     )
 
 

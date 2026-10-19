@@ -53,7 +53,7 @@ FORECAST_TURN_COST = 20
 # Without a cap, a user who can force failures (a question that makes the
 # writer cite URLs, a topic with no sources) spends site units for free at the
 # rate limit, and the site ceiling falls in hours. Site units are never refunded.
-DAILY_REFUND_UNITS = FORECAST_TURN_COST
+MAX_DAILY_REFUND_UNITS = FORECAST_TURN_COST
 SUPPORTED_ARIZE_PLATFORMS = frozenset({"AX", "PHOENIX"})
 LOG_FORMAT = (
     "%(asctime)s %(levelname)s %(name)s "

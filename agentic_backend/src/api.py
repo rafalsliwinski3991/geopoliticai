@@ -37,11 +37,11 @@ from agents.orchestrator import graph as _default_graph
 from agents.reporter import classify_resume_intent
 from auth import Identity, require_identity
 from config import (
-    DAILY_REFUND_UNITS,
     DAILY_RESEARCH_TURNS,
     DAILY_RESEARCH_TURNS_ALL_USERS,
     DEEP_RESEARCH_TURN_COST,
     FORECAST_TURN_COST,
+    MAX_DAILY_REFUND_UNITS,
     bind_log_context,
     init_environment,
     require_env,
@@ -213,7 +213,7 @@ async def _refund_turn(
     for stale in [key for key in _refunded_units if key[1] < day]:
         del _refunded_units[stale]
     refunded = _refunded_units.get((user_id, day), 0)
-    if refunded + cost > DAILY_REFUND_UNITS:
+    if refunded + cost > MAX_DAILY_REFUND_UNITS:
         logger.info("Refund of %d units refused: the daily refund cap is spent.", cost)
         return
     _refunded_units[(user_id, day)] = refunded + cost

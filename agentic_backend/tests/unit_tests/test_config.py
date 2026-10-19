@@ -8,12 +8,12 @@ import pytest
 
 from config import (
     _REPO_ROOT_ENV,
-    DAILY_REFUND_UNITS,
     DAILY_RESEARCH_TURNS,
     DAILY_RESEARCH_TURNS_ALL_USERS,
     DEEP_RESEARCH_TURN_COST,
     DEFAULT_LLM_SETTINGS,
     FORECAST_TURN_COST,
+    MAX_DAILY_REFUND_UNITS,
     LLMSettings,
     LogContextFilter,
     bind_log_context,
@@ -197,7 +197,7 @@ def test_the_daily_refund_cap_is_one_forecast() -> None:
     failures multiply one forecast's units into several."""
 
     # Assert
-    assert DAILY_REFUND_UNITS == FORECAST_TURN_COST
+    assert MAX_DAILY_REFUND_UNITS == FORECAST_TURN_COST
 
 
 def test_the_api_requires_the_council_and_video_keys() -> None:
