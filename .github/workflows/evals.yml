@@ -11,6 +11,7 @@ jobs:
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      BRAVE_SEARCH_KEY: ${{ secrets.BRAVE_SEARCH_KEY }}
       ARIZE_PLATFORM: AX
       ARIZE_COLLECTOR_ENDPOINT: ${{ secrets.ARIZE_COLLECTOR_ENDPOINT }}
       ARIZE_SPACE_ID: ${{ secrets.ARIZE_SPACE_ID }}
