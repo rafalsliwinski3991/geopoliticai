@@ -18,6 +18,8 @@ from db.web.sql import (
 
 ROWS: dict[str, list[dict[str, Any]]] = {}
 
+CHARGE_DAY = datetime.date(2026, 10, 16)
+
 
 class _FakeCursor:
     """Returns what the test scripted, one statement at a time."""
@@ -160,6 +162,15 @@ async def test_is_staff_reads_the_database(_fake_pool: _FakePool) -> None:
     assert not await is_staff(pool(_fake_pool), user_id=1)
 
 
+def test_quota_day_is_the_utc_date() -> None:
+    """The quota resets at midnight UTC, so the day is taken in UTC, never in
+    the test host's local time."""
+    # Act
+    day = sql.quota_day()
+    # Assert
+    assert day == datetime.datetime.now(datetime.timezone.utc).date()
+
+
 @pytest.mark.anyio
 async def test_quota_used_returns_the_spent_count() -> None:
     # Arrange
@@ -175,7 +186,7 @@ async def test_quota_used_returns_the_spent_count() -> None:
     statement, params = fake.conn.executed[0]
     assert statement == sql.SELECT_QUOTA_USED
     assert params["user_id"] == 1
-    # The quota day is UTC (`sql._today()`), not the test host's local date.
+    # The quota day is UTC (`sql.quota_day()`), not the test host's local date.
     assert params["day"] == datetime.datetime.now(datetime.timezone.utc).date()
 
 
@@ -197,7 +208,7 @@ async def test_increment_quota_sends_the_conditional_upsert() -> None:
     fake = _FakePool({sql.INCREMENT_QUOTA: [{"used": 1}]})
 
     # Act
-    used = await sql.increment_quota(pool(fake), user_id=1, limit=20)
+    used = await sql.increment_quota(pool(fake), user_id=1, day=CHARGE_DAY, limit=20)
 
     # Assert
     assert used == 1
@@ -205,7 +216,7 @@ async def test_increment_quota_sends_the_conditional_upsert() -> None:
     assert statement == sql.INCREMENT_QUOTA
     assert params == {
         "user_id": 1,
-        "day": datetime.datetime.now(datetime.timezone.utc).date(),
+        "day": CHARGE_DAY,
         "limit": 20,
         "cost": 1,
     }
@@ -217,7 +228,7 @@ async def test_increment_quota_returns_falsy_at_the_cap() -> None:
     fake = _FakePool({sql.INCREMENT_QUOTA: []})
 
     # Act
-    used = await sql.increment_quota(pool(fake), user_id=1, limit=20)
+    used = await sql.increment_quota(pool(fake), user_id=1, day=CHARGE_DAY, limit=20)
 
     # Assert
     assert not used
@@ -230,7 +241,9 @@ async def test_increment_quota_refuses_an_over_cap_cost_before_any_sql() -> None
     fake = _FakePool({sql.INCREMENT_QUOTA: [{"used": 3}]})
 
     # Act
-    used = await sql.increment_quota(pool(fake), user_id=1, limit=2, cost=3)
+    used = await sql.increment_quota(
+        pool(fake), user_id=1, day=CHARGE_DAY, limit=2, cost=3
+    )
 
     # Assert
     assert used is None
@@ -243,7 +256,9 @@ async def test_increment_quota_refuses_a_non_positive_cost_before_any_sql() -> N
     fake = _FakePool({sql.INCREMENT_QUOTA: [{"used": 1}]})
 
     # Act
-    used = await sql.increment_quota(pool(fake), user_id=1, limit=20, cost=0)
+    used = await sql.increment_quota(
+        pool(fake), user_id=1, day=CHARGE_DAY, limit=20, cost=0
+    )
 
     # Assert
     assert used is None
@@ -275,7 +290,7 @@ async def test_increment_site_quota_sends_the_conditional_upsert() -> None:
     assert used == 1
     statement, params = fake.conn.executed[0]
     assert statement == sql.INCREMENT_SITE_QUOTA
-    # The quota day is UTC (`sql._today()`), not the test host's local date.
+    # The quota day is UTC (`sql.quota_day()`), not the test host's local date.
     assert params == {
         "day": datetime.datetime.now(datetime.timezone.utc).date(),
         "limit": 500,
@@ -289,7 +304,9 @@ async def test_increment_quota_sends_the_cost() -> None:
     fake = _FakePool({sql.INCREMENT_QUOTA: [{"used": 6}]})
 
     # Act
-    used = await sql.increment_quota(pool(fake), user_id=1, limit=20, cost=5)
+    used = await sql.increment_quota(
+        pool(fake), user_id=1, day=CHARGE_DAY, limit=20, cost=5
+    )
 
     # Assert
     assert used == 6
@@ -297,10 +314,31 @@ async def test_increment_quota_sends_the_cost() -> None:
     assert statement == sql.INCREMENT_QUOTA
     assert params == {
         "user_id": 1,
-        "day": datetime.datetime.now(datetime.timezone.utc).date(),
+        "day": CHARGE_DAY,
         "limit": 20,
         "cost": 5,
     }
+
+
+@pytest.mark.anyio
+async def test_increment_quota_charges_the_day_it_is_given() -> None:
+    """The charge lands on the day the caller gives, never the clock: a turn
+    charged just before midnight UTC must stay refundable on its own day
+    after the date rolls over."""
+    # Arrange: CHARGE_DAY is a fixed past date, so a `day` taken from the
+    # clock instead of the caller cannot equal it.
+    fake = _FakePool({sql.INCREMENT_QUOTA: [{"used": 20}]})
+
+    # Act
+    used = await sql.increment_quota(
+        pool(fake), user_id=1, day=CHARGE_DAY, limit=50, cost=20
+    )
+
+    # Assert
+    assert used == 20
+    statement, params = fake.conn.executed[0]
+    assert statement == sql.INCREMENT_QUOTA
+    assert params["day"] == CHARGE_DAY
 
 
 @pytest.mark.anyio
@@ -332,3 +370,34 @@ async def test_increment_site_quota_returns_none_at_the_ceiling() -> None:
 
     # Assert
     assert used is None
+
+
+@pytest.mark.anyio
+async def test_refund_quota_sends_the_cost_user_and_day() -> None:
+    """A refund gives `cost` units back to exactly this user's row for this
+    day: the statement is scoped by both, so no other row can move."""
+    # Arrange
+    fake = _FakePool({})
+
+    # Act
+    await sql.refund_quota(pool(fake), user_id=7, day=CHARGE_DAY, cost=20)
+
+    # Assert: one statement, the refund, named for the user, day, and cost.
+    assert fake.conn.executed == [
+        (sql.REFUND_QUOTA, {"user_id": 7, "day": CHARGE_DAY, "cost": 20})
+    ]
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("cost", [0, -1], ids=["zero", "negative"])
+async def test_refund_quota_ignores_a_non_positive_cost(cost: int) -> None:
+    """Only a real charge gives units back: a zero or negative refund is a
+    caller bug, and running the UPDATE for it would write for nothing."""
+    # Arrange
+    fake = _FakePool({})
+
+    # Act
+    await sql.refund_quota(pool(fake), user_id=7, day=CHARGE_DAY, cost=cost)
+
+    # Assert
+    assert fake.conn.executed == []
