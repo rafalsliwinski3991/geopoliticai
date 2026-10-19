@@ -8,6 +8,7 @@ import pytest
 
 from config import (
     _REPO_ROOT_ENV,
+    DAILY_REFUND_UNITS,
     DAILY_RESEARCH_TURNS,
     DAILY_RESEARCH_TURNS_ALL_USERS,
     DEEP_RESEARCH_TURN_COST,
@@ -188,6 +189,15 @@ def test_deep_cost_fits_inside_the_daily_quota() -> None:
         < DEEP_RESEARCH_TURN_COST
         <= min(DAILY_RESEARCH_TURNS, DAILY_RESEARCH_TURNS_ALL_USERS)
     )
+
+
+def test_the_daily_refund_cap_is_one_forecast() -> None:
+    """One forecast's worth is the day's refund cap: less would strand a user
+    whose only turn of the day failed, more would let a user who can force
+    failures multiply one forecast's units into several."""
+
+    # Assert
+    assert DAILY_REFUND_UNITS == FORECAST_TURN_COST
 
 
 def test_the_api_requires_the_council_and_video_keys() -> None:
