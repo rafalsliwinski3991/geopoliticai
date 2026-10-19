@@ -164,9 +164,10 @@ async def _run_agent(agent: Any, question: str) -> bool:
 
     The box ending is not an error (user decision 2026-09-30): the forecast
     continues on what was read, and the answer's evidence line says so. The
-    box is a dedicated-task cancel (`time_limits.run_under_time_limits`): the pregel runner
-    absorbs a `CancelledError` raised inside its own loop, so the frame's
-    `asyncio.timeout` alone does not end a hung agent (smoke gate F3, run 1).
+    box is a dedicated-task cancel (`time_limits.run_under_time_limits`): in
+    smoke gate F3, run 1, the frame's `asyncio.timeout` alone did not end a hung
+    agent, and the task is cancelled repeatedly, then abandoned, whatever
+    swallows a cancel.
     """
     try:
         _, timed_out = await run_under_time_limits(

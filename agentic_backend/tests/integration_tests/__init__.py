@@ -1,7 +1,7 @@
 """Tests that need a real, Django-migrated Postgres — everything else is a unit test.
 
-`agentic_backend/` owns no schema and runs no migrations. It addresses Django's
-tables by name in raw SQL (`src/db/web/sql.py`), so nothing at import time, and no
+`agentic_backend/` migrates only its own `agentic` schema (Alembic), never
+Django's. It addresses Django's tables by name in raw SQL (`src/db/web/sql.py`), so nothing at import time, and no
 amount of mocking, notices when a `web_backend` migration renames a column. The
 statement is a string until Postgres parses it. These tests are the only place
 that parsing happens before production does it.

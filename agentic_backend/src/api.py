@@ -157,7 +157,7 @@ ONE_UNIT: tuple[int, str] = (1, "")
 # queries, so search_path is the only way to put them anywhere but `public`.
 # `agentic` first means setup() creates there; `public` second means
 # db/web/sql.py still resolves Django's tables. Verified against
-# langgraph-checkpoint-postgres 3.0.5, whose package contains no schema support.
+# langgraph-checkpoint-postgres 3.1.2, whose package contains no schema support.
 POSTGRES_SEARCH_PATH = "agentic,public"
 POSTGRES_CONNECTION_KWARGS: dict[str, Any] = {
     "autocommit": True,

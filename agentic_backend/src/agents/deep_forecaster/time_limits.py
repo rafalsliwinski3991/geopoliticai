@@ -1,10 +1,11 @@
 """Wall-time limits that survive a hung agent run (smoke gate F3, run 1, 2026-10-01).
 
-langgraph 1.2.12's pregel runner absorbs a `CancelledError` delivered while
-its agent loop is running (measured: `asyncio.timeout` in the calling frame
-does not end a deepagents run whose model call hangs; the run limps on until
-its own client timeouts, spending searches and paid calls the whole way).
-The limit therefore runs the work in a dedicated task and, on expiry, cancels
+In that run, `asyncio.timeout` in the calling frame did not end a deepagents
+run whose model call hung; the run limped on until its own client timeouts,
+spending searches and paid calls the whole way. What swallowed the cancel was
+not pinned down: langgraph 1.2.12 itself cancels a hung async model call
+cleanly, in the agent and in a `task` subagent (the deep expert's wall-cap test
+in `test_graph.py`). The limit therefore runs the work in a dedicated task and, on expiry, cancels
 that task directly; a task that swallows cancels is cancelled repeatedly and,
 if it still outlives the grace, abandoned with a warning — it dies at its own
 client timeouts, and the caller's limit error is not delayed (the module is
@@ -75,7 +76,7 @@ async def run_under_time_limits(coro: Any, limit_seconds: float) -> tuple[Any, b
         return None, True
     except BaseException:
         # The caller was cancelled (or failed): the inner run must not outlive
-        # it (review thread, #144). A pregel runner can absorb one cancel, so
+        # it (review thread, #144). The agent stack can absorb one cancel, so
         # the same bounded repeat-cancel-with-grace loop runs here, shielded
         # because the caller's cancellation may re-deliver while we wait.
         for _ in range(REPEATS):

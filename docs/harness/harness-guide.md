@@ -217,29 +217,19 @@ quickstarts and `e2e` carry `disable-model-invocation: true`, so Claude Code loa
 
 | Skill | Load it when |
 |---|---|
-| `ecosystem-primer` | First, for any LangChain, LangGraph, or Deep Agents work; it points to the next skill |
 | `langgraph-fundamentals` | Writing any LangGraph code: state, nodes, edges, `Command`, `Send`, streaming |
 | `langgraph-persistence` | Checkpointers, `thread_id`, Store, subgraph persistence |
 | `langgraph-human-in-the-loop` | `interrupt()`, `Command(resume=...)`, approval flows |
-| `langgraph-cli` | `langgraph dev`, `build`, `deploy`, `langgraph.json` |
-| `langchain-fundamentals` | `create_agent`, tools, middleware basics |
 | `langchain-middleware` | Human approval of tool calls, custom middleware, structured output |
 | `langchain-rag` | Building retrieval: loaders, splitters, embeddings, vector stores |
-| `langchain-dependencies` | Package versions and installation |
 | `deep-agents-core` | Any Deep Agents app: `create_deep_agent()` and its configuration |
 | `deep-agents-memory` | Deep Agents memory, persistence, and filesystem backends |
 | `deep-agents-orchestration` | Deep Agents subagents, todo planning, human approval |
-| `managed-deep-agents` | Managed Deep Agents in LangSmith, the `mda` CLI |
-| `langgraph-python-quickstart` | Only on request: scaffold a minimal LangGraph agent |
-| `langchain-python-quickstart` | Only on request: scaffold a minimal LangChain agent |
-| `deepagents-python-quickstart` | Only on request: scaffold a minimal Deep Agent |
 
-### Evals and parallel work
+### Parallel work and e2e
 
 | Skill | Load it when |
 |---|---|
-| `eval-engineering` | Agent evals, benchmarks, Harbor tasks, verifiers, calibration |
-| `langsmith-online-eval-engineering` | Creating LangSmith online evaluators from traces |
 | `swarm` | Fanning many independent items out to subagents. Claude Code only: it needs a `swarm_task` tool the other harnesses lack |
 | `e2e` | Only on `/e2e`: writing, running, or explaining a Playwright test of the app. Claude Code only: it drives `AskUserQuestion` and this repo's Compose stack |
 
