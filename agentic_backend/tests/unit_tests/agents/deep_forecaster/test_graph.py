@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import dataclasses
 import importlib
+from datetime import timedelta
 from types import SimpleNamespace
 from typing import Any
 
@@ -15,10 +16,32 @@ from langgraph.graph import END, START, StateGraph
 from typing_extensions import TypedDict
 
 from agents.deep_forecaster.config import COUNCIL
-from agents.deep_forecaster.models import Analysis, ClaimDiscussion
+from agents.deep_forecaster.models import (
+    Analysis,
+    Ballot,
+    Claim,
+    ClaimDiscussion,
+    EvidenceRef,
+)
 from agents.deep_forecaster.state import ForecastRun, ResearchRun
-from models import LLMInvocationError, NoSourcesError, ResearchLimitError, Source
-from unit_tests.agents.deep_forecaster.conftest import ballot, claims
+from models import (
+    LLMInvocationError,
+    NoSourcesError,
+    ResearchLimitError,
+    SearchUnavailableError,
+    Source,
+)
+from unit_tests.agents.deep_forecaster.conftest import (
+    HANG,
+    TODAY,
+    ForecastRig,
+    ScriptedWriter,
+    ballot,
+    claims,
+    shorten_limit,
+    shorten_step,
+    sources,
+)
 
 graph_module: Any = importlib.import_module("agents.deep_forecaster.graph")
 research_node: Any = importlib.import_module("agents.deep_forecaster.nodes.research")
@@ -39,6 +62,52 @@ STEP_NAMES = [
     "write_analysis",
     "verify",
 ]
+
+SEAT_DOWN = RuntimeError("provider 500")
+# A ballot voting only claim 1: the shape trace 8a80df9c saw in round 2.
+BALLOT_MISSING_A_CLAIM = ballot(["for"])
+BALLOT_CITING_AN_UNQUOTED_SOURCE = ballot(["for", "for"], evidence={2: [2]})
+# The pinned run's "today" plus one day: the nearest deadline a claim may carry.
+TOMORROW = TODAY + timedelta(days=1)
+# Short node, member and wall limits, so a hung fake ends the run in milliseconds.
+SHORT_STEP_SECONDS = 0.05
+SHORT_MEMBER_SECONDS = 0.05
+SHORT_WALL_SECONDS = 0.2
+
+
+def n_claims(count: int) -> list[Claim]:
+    """`count` distinct claims, each due `TOMORROW` and quoting source 1."""
+    statements = ["Alpha", "Beta", "Gamma", "Delta", "Epsilon"]
+    return [
+        Claim(
+            statement=f"{statements[number]} happens.",
+            deadline=TOMORROW,
+            evidence=[EvidenceRef(source=1, paragraph=1)],
+        )
+        for number in range(count)
+    ]
+
+
+def analysis_of(drafted: list[Claim]) -> Analysis:
+    """An analysis with one section per claim, citing only the first source."""
+    return Analysis(
+        overview="The council leans yes. [A](https://carnegieendowment.org/a)",
+        claims=[
+            ClaimDiscussion(
+                claim=number,
+                discussion=f"Section {number}. [A](https://carnegieendowment.org/a)",
+            )
+            for number in range(1, len(drafted) + 1)
+        ],
+    )
+
+
+def four_vote_ballot() -> Ballot:
+    """A ballot voting 'for' on all four claims, citing the source they quote."""
+    return ballot(
+        ["for", "for", "for", "for"],
+        evidence={number: [1] for number in range(1, 5)},
+    )
 
 
 def test_the_graph_has_exactly_the_seven_steps() -> None:
@@ -164,47 +233,6 @@ async def test_a_step_timeout_is_a_research_limit_error(
         await graph_module.forecast("Will it happen?")
     assert raised.value.status == 504
     assert "90-second" in str(raised.value)
-    assert "Drafting the claims" in str(raised.value)
-
-
-@pytest.mark.anyio
-async def test_a_real_step_timeout_is_a_research_limit_error(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    def mutate(run: ResearchRun) -> None:
-        run.searches = 2
-        run.sources["https://a.example/1"] = Source("A", "https://a.example/1", "One.")
-        run.sources["https://b.example/2"] = Source("B", "https://b.example/2", "Two.")
-
-    class FakeAgent:
-        def __init__(self, run: ResearchRun) -> None:
-            self.run = run
-
-        async def ainvoke(self, agent_input: Any, *, config: Any = None) -> Any:
-            mutate(self.run)
-            return {"messages": []}
-
-    monkeypatch.setattr(
-        research_node, "build_research_agent", lambda run: FakeAgent(run)
-    )
-
-    async def slow_claims(
-        system: Any, messages: Any, schema: Any, **kwargs: Any
-    ) -> Any:
-        await asyncio.sleep(1)
-        raise AssertionError("the step should have timed out first")
-
-    monkeypatch.setattr(draft_claims_node, "ainvoke_structured", slow_claims)
-    steps = [
-        (name, node, 0.05 if name == "draft_claims" else timeout)
-        for name, node, timeout in graph_module.STEPS
-    ]
-    monkeypatch.setattr(graph_module, "STEPS", tuple(steps))
-    # Act
-    with pytest.raises(ResearchLimitError) as raised:
-        await graph_module.forecast("Will it happen?")
-    # Assert
-    assert raised.value.status == 504
     assert "Drafting the claims" in str(raised.value)
 
 
@@ -447,3 +475,337 @@ async def test_the_parent_store_reaches_the_research_step(
     await parent.ainvoke({"answer": ""}, config={"configurable": {"thread_id": "t"}})
     # Assert: the ResearchRun the fake was built with carries the parent's store.
     assert received["run"].store is store
+
+
+@pytest.mark.anyio
+async def test_a_forecast_that_reads_no_source_fails_before_drafting(
+    rig: ForecastRig,
+) -> None:
+    """Research that reads nothing is a 422: no claims are drafted on thin air."""
+    # Arrange
+    rig.sources = []
+    # Act
+    with pytest.raises(NoSourcesError) as raised:
+        await rig.run()
+    # Assert
+    assert raised.value.status == 422
+    assert str(raised.value) == (
+        "The forecast found no readable writing by the forecasters on this question."
+    )
+    assert rig.drafter_calls == 0
+
+
+@pytest.mark.anyio
+async def test_a_forecast_whose_every_search_failed_reports_an_outage(
+    rig: ForecastRig,
+) -> None:
+    """Every search failing is an outage (503), not an empty-reading 422."""
+    # Arrange
+    rig.sources = []
+    rig.searches = 3
+    rig.failed_searches = 3
+    # Act
+    with pytest.raises(SearchUnavailableError) as raised:
+        await rig.run()
+    # Assert
+    assert raised.value.status == 503
+    assert str(raised.value) == "Every search for this forecast failed."
+    assert rig.drafter_calls == 0
+
+
+@pytest.mark.anyio
+async def test_a_crashed_research_agent_fails_the_forecast(
+    rig: ForecastRig,
+) -> None:
+    """A research crash is a 502 naming the research step, never a partial forecast."""
+    # Arrange
+    rig.research_error = RuntimeError("boom")
+    # Act
+    with pytest.raises(LLMInvocationError) as raised:
+        await rig.run()
+    # Assert
+    assert raised.value.status == 502
+    assert str(raised.value) == "The forecast's research failed."
+    assert rig.drafter_calls == 0
+
+
+@pytest.mark.anyio
+async def test_one_failed_search_with_a_source_read_still_forecasts(
+    rig: ForecastRig,
+) -> None:
+    """A failed search is not an error while a source was read: the answer says so."""
+    # Arrange
+    rig.sources = sources()[:1]
+    rig.searches = 3
+    rig.failed_searches = 2
+    rig.writer = ScriptedWriter(analysis_of(claims()))
+    # Act
+    answer = await rig.run()
+    # Assert
+    assert "2 of 3 searches failed." in answer
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    ("drafted", "expected_message"),
+    [
+        pytest.param(
+            n_claims(1),
+            "The forecast drafted 1 claims; it needs 2 to 4.",
+            id="one claim",
+        ),
+        pytest.param(
+            n_claims(5),
+            "The forecast drafted 5 claims; it needs 2 to 4.",
+            id="five claims",
+        ),
+        pytest.param(
+            [
+                Claim(
+                    statement="",
+                    deadline=TOMORROW,
+                    evidence=[EvidenceRef(source=1, paragraph=1)],
+                )
+            ]
+            + n_claims(1),
+            "The forecast drafted an empty claim.",
+            id="an empty statement",
+        ),
+        pytest.param(
+            n_claims(1) + n_claims(1),
+            "The forecast drafted the same claim twice.",
+            id="the same claim twice",
+        ),
+        pytest.param(
+            [
+                Claim(
+                    statement="Alpha happens. https://reuters.com/b",
+                    deadline=TOMORROW,
+                    evidence=[EvidenceRef(source=1, paragraph=1)],
+                )
+            ]
+            + n_claims(1),
+            "The forecast wrote a claim statement with a link or a line break.",
+            id="a link in a statement",
+        ),
+        pytest.param(
+            [
+                Claim(
+                    statement="Alpha happens\nby 2027.",
+                    deadline=TOMORROW,
+                    evidence=[EvidenceRef(source=1, paragraph=1)],
+                )
+            ]
+            + n_claims(1),
+            "The forecast wrote a claim statement with a link or a line break.",
+            id="a line break in a statement",
+        ),
+        pytest.param(
+            [
+                Claim(
+                    statement="Alpha happens.",
+                    deadline=TODAY,
+                    evidence=[EvidenceRef(source=1, paragraph=1)],
+                )
+            ]
+            + n_claims(1),
+            "The forecast drafted a claim whose deadline is not in the future.",
+            id="a deadline of today",
+        ),
+        pytest.param(
+            [
+                Claim(
+                    statement="Alpha happens.",
+                    deadline=TOMORROW,
+                    evidence=[EvidenceRef(source=1, paragraph=99)],
+                )
+            ]
+            + n_claims(1),
+            "The forecast drafted a claim with no passage its sources contain.",
+            id="no passage the sources contain",
+        ),
+    ],
+)
+async def test_a_broken_claim_set_stops_before_the_council(
+    rig: ForecastRig, drafted: list[Claim], expected_message: str
+) -> None:
+    """A claim set breaking a `checked_claims` rule is a 502 before any seat votes."""
+    # Arrange
+    rig.drafted = drafted
+    # Act
+    with pytest.raises(LLMInvocationError) as raised:
+        await rig.run()
+    # Assert
+    assert raised.value.status == 502
+    assert str(raised.value) == expected_message
+    assert rig.member_calls == []
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    "drafted",
+    [
+        pytest.param(n_claims(2), id="two claims"),
+        pytest.param(n_claims(4), id="four claims"),
+    ],
+)
+async def test_the_claim_count_limits_are_inclusive(
+    rig: ForecastRig, drafted: list[Claim]
+) -> None:
+    """Two and four claims are both drafted: the count limits bound inclusively."""
+    # Arrange
+    rig.drafted = drafted
+    rig.writer = ScriptedWriter(analysis_of(drafted))
+    if len(drafted) == 4:
+        # The default seat ballot votes on two claims; four claims need four votes.
+        rig.round_1 = {member: four_vote_ballot() for member in range(1, 8)}
+        rig.round_2 = {member: four_vote_ballot() for member in range(1, 8)}
+    # Act
+    answer = await rig.run()
+    # Assert
+    for number in range(1, len(drafted) + 1):
+        assert f"### Claim {number}:" in answer
+
+
+@pytest.mark.anyio
+async def test_a_hung_drafter_is_a_research_limit_error(
+    rig: ForecastRig, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A drafter that never returns ends at the step's own timeout, a 504."""
+    # Arrange
+    rig.drafted = HANG
+    shorten_step(monkeypatch, "draft_claims", SHORT_STEP_SECONDS)
+    # Act
+    with pytest.raises(ResearchLimitError) as raised:
+        await rig.run()
+    # Assert
+    assert raised.value.status == 504
+    assert "Drafting the claims" in str(raised.value)
+    assert rig.member_calls == []
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    ("round_1_replies", "member_seconds"),
+    [
+        pytest.param(
+            {5: SEAT_DOWN, 6: SEAT_DOWN, 7: SEAT_DOWN},
+            None,
+            id="seats are down",
+        ),
+        pytest.param(
+            {
+                5: BALLOT_MISSING_A_CLAIM,
+                6: BALLOT_MISSING_A_CLAIM,
+                7: BALLOT_MISSING_A_CLAIM,
+            },
+            None,
+            id="a ballot misses a claim",
+        ),
+        pytest.param(
+            {
+                5: BALLOT_CITING_AN_UNQUOTED_SOURCE,
+                6: BALLOT_CITING_AN_UNQUOTED_SOURCE,
+                7: BALLOT_CITING_AN_UNQUOTED_SOURCE,
+            },
+            None,
+            id="a vote cites an unquoted source",
+        ),
+        pytest.param(
+            {5: HANG, 6: HANG, 7: HANG},
+            SHORT_MEMBER_SECONDS,
+            id="seats time out",
+        ),
+    ],
+)
+async def test_a_council_below_quorum_stops_before_writing(
+    rig: ForecastRig,
+    monkeypatch: pytest.MonkeyPatch,
+    round_1_replies: dict[int, Any],
+    member_seconds: float | None,
+) -> None:
+    """Round 1 below a quorum of 5 is a 502: no analysis is written."""
+    # Arrange
+    rig.round_1 = round_1_replies
+    if member_seconds is not None:
+        shorten_limit(monkeypatch, "council", member_seconds=member_seconds)
+    # Act
+    with pytest.raises(LLMInvocationError) as raised:
+        await rig.run()
+    # Assert
+    assert raised.value.status == 502
+    assert str(raised.value) == (
+        "Only 4 of 7 council members could vote in round 1; the council needs 5."
+    )
+    assert rig.writer.calls == 0
+
+
+@pytest.mark.anyio
+async def test_exactly_a_quorum_is_enough(rig: ForecastRig) -> None:
+    """Five voting seats are the quorum: the forecast stands and reports the count."""
+    # Arrange
+    rig.round_1 = {6: SEAT_DOWN, 7: SEAT_DOWN}
+    # Act
+    answer = await rig.run()
+    # Assert
+    assert "Members voting: 5 of 7 (2 unavailable)." in answer
+
+
+@pytest.mark.anyio
+async def test_a_silent_round_two_keeps_every_round_one_vote(
+    rig: ForecastRig,
+) -> None:
+    """A member with no round-2 ballot keeps its round-1 vote: silence is 'no change'."""
+    # Arrange
+    rig.round_2 = {member: SEAT_DOWN for member in range(1, 8)}
+    # Act
+    answer = await rig.run()
+    # Assert
+    assert (
+        "Round 2: 7 of 7 kept their round-1 vote because they did not answer." in answer
+    )
+
+
+@pytest.mark.anyio
+async def test_a_hung_writer_is_a_research_limit_error(
+    rig: ForecastRig, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A writer that never returns ends at the step's own timeout, a 504."""
+    # Arrange
+    rig.writer = ScriptedWriter(HANG)
+    shorten_step(monkeypatch, "write_analysis", SHORT_STEP_SECONDS)
+    # Act
+    with pytest.raises(ResearchLimitError) as raised:
+        await rig.run()
+    # Assert
+    assert raised.value.status == 504
+    assert "Writing the analysis" in str(raised.value)
+
+
+@pytest.mark.anyio
+async def test_a_crashed_writer_fails_the_forecast(rig: ForecastRig) -> None:
+    """A writer that raises is the boundary's 502, never a partial answer."""
+    # Arrange
+    rig.writer = ScriptedWriter(RuntimeError("bug"))
+    # Act
+    with pytest.raises(LLMInvocationError) as raised:
+        await rig.run()
+    # Assert
+    assert raised.value.status == 502
+    assert str(raised.value) == "The forecast failed."
+
+
+@pytest.mark.anyio
+async def test_the_wall_cap_ends_a_real_run(
+    rig: ForecastRig, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A run hung past the wall is cancelled and names the step it was in."""
+    # Arrange
+    rig.writer = ScriptedWriter(HANG)
+    shorten_limit(monkeypatch, "graph", wall_seconds=SHORT_WALL_SECONDS)
+    # Act
+    with pytest.raises(ResearchLimitError) as raised:
+        await rig.run()
+    # Assert
+    assert raised.value.status == 504
+    assert str(raised.value).endswith("during this step: Writing the analysis.")

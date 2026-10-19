@@ -2,17 +2,32 @@
 
 from __future__ import annotations
 
+import asyncio
+import dataclasses
+import importlib
+from dataclasses import dataclass, field
 from datetime import date
 from types import SimpleNamespace
 from typing import Any
 
 import pytest
 
-from agents.deep_forecaster.models import Ballot, Claim, EvidenceRef, Stance, Vote
+from agents.deep_forecaster.config import COUNCIL
+from agents.deep_forecaster.models import (
+    Analysis,
+    Ballot,
+    Claim,
+    ClaimDiscussion,
+    DraftedClaims,
+    EvidenceRef,
+    Stance,
+    Vote,
+)
 from agents.deep_forecaster.state import (
     ForecastRun,
     ForecastState,
     ResearchOutcome,
+    ResearchRun,
 )
 from models import Source
 
@@ -108,3 +123,182 @@ def state(
         ballots_round_1=round_1,
         ballots_round_2=round_2 or {},
     )
+
+
+# A scripted reply that never returns: the step's own timeout, or the wall
+# cap, is what ends it.
+HANG = object()
+
+
+@dataclass
+class PinnedRun(ForecastRun):
+    """`ForecastRun` whose "today" is `TODAY`, so claim deadlines never age."""
+
+    today: date = TODAY
+
+
+def passing_analysis() -> Analysis:
+    """An analysis of `claims()` that passes every verify check."""
+    return Analysis(
+        overview="The council leans yes. [A](https://carnegieendowment.org/a)",
+        claims=[
+            ClaimDiscussion(
+                claim=1, discussion="Alpha. [A](https://carnegieendowment.org/a)"
+            ),
+            ClaimDiscussion(claim=2, discussion="Beta. [B](https://reuters.com/b)"),
+        ],
+    )
+
+
+class ScriptedWriter:
+    """Stands in for the writer's model call: returns its script in order.
+
+    Each reply is an `Analysis`, an exception to raise, or `HANG`. Every
+    brief it is sent is recorded, and a call past the end of the script
+    fails the test, so "the writer ran exactly twice" is provable.
+    """
+
+    def __init__(self, *replies: Any) -> None:
+        self.replies = list(replies)
+        self.briefs: list[str] = []
+
+    async def __call__(
+        self, system: str, messages: Any, schema: Any, **kwargs: Any
+    ) -> Analysis:
+        self.briefs.append(str(messages[-1].content))
+        if not self.replies:
+            raise AssertionError("the writer was called more often than scripted")
+        reply = self.replies.pop(0)
+        if reply is HANG:
+            await asyncio.sleep(3600)
+        if isinstance(reply, BaseException):
+            raise reply
+        # The script's remaining reply is the analysis; narrowed, because
+        # mypy --strict refuses a returned Any (as `council._attempt` does).
+        analysis: Analysis = reply
+        return analysis
+
+    @property
+    def calls(self) -> int:
+        return len(self.briefs)
+
+
+@dataclass
+class ForecastRig:
+    """The real forecast graph, with one fake at each of its four seams.
+
+    The defaults run a clean forecast: research reads `sources()` in two
+    searches, the drafter returns `claims()`, all seven seats vote
+    `ballot(["for", "unsure"])` in both rounds, and the writer returns
+    `passing_analysis()` once. A test changes one field to break one seam,
+    then awaits `run()`. The record fields say how far the run got.
+    """
+
+    sources: list[Source] = field(default_factory=sources)
+    searches: int = 2
+    failed_searches: int = 0
+    research_error: BaseException | None = None
+    drafted: Any = field(default_factory=claims)  # list[Claim], an exception, or HANG
+    # Member number -> reply, per round; a member missing here votes the default.
+    round_1: dict[int, Any] = field(default_factory=dict)
+    round_2: dict[int, Any] = field(default_factory=dict)
+    writer: ScriptedWriter = field(
+        default_factory=lambda: ScriptedWriter(passing_analysis())
+    )
+    drafter_calls: int = 0
+    member_calls: list[tuple[int, int]] = field(default_factory=list)  # (round, member)
+
+    def install(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        graph = importlib.import_module("agents.deep_forecaster.graph")
+        research = importlib.import_module("agents.deep_forecaster.nodes.research")
+        drafter = importlib.import_module("agents.deep_forecaster.nodes.draft_claims")
+        writer = importlib.import_module("agents.deep_forecaster.nodes.write_analysis")
+        council = importlib.import_module("agents.deep_forecaster.council")
+        monkeypatch.setattr(graph, "ForecastRun", PinnedRun)
+        monkeypatch.setattr(research, "build_research_agent", self._agent)
+        monkeypatch.setattr(drafter, "ainvoke_structured", self._draft)
+        monkeypatch.setattr(council, "member_model", self._member)
+        monkeypatch.setattr(writer, "ainvoke_structured", self._write)
+
+    async def run(self) -> str:
+        graph = importlib.import_module("agents.deep_forecaster.graph")
+        answer: str = await graph.forecast("Will it happen?")
+        return answer
+
+    def _agent(self, run: ResearchRun) -> Any:
+        rig = self
+
+        class Agent:
+            async def ainvoke(self, agent_input: Any, *, config: Any = None) -> Any:
+                if rig.research_error is not None:
+                    raise rig.research_error
+                run.searches = rig.searches
+                run.failed_searches = rig.failed_searches
+                for source in rig.sources:
+                    run.sources[source.url] = source
+                return {"messages": []}
+
+        return Agent()
+
+    async def _draft(
+        self, system: str, messages: Any, schema: Any, **kwargs: Any
+    ) -> Any:
+        self.drafter_calls += 1
+        if self.drafted is HANG:
+            await asyncio.sleep(3600)
+        if isinstance(self.drafted, BaseException):
+            raise self.drafted
+        return DraftedClaims(claims=self.drafted)
+
+    def _member(self, seat: Any, model: str, *, max_retries: int) -> Any:
+        rig = self
+        member = [s.model for s in COUNCIL].index(model) + 1
+
+        class Member:
+            async def ainvoke(self, messages: Any) -> Any:
+                round_number = 1 + sum(1 for _, m in rig.member_calls if m == member)
+                rig.member_calls.append((round_number, member))
+                script = rig.round_1 if round_number == 1 else rig.round_2
+                reply = script.get(member, ballot(["for", "unsure"]))
+                if reply is HANG:
+                    await asyncio.sleep(3600)
+                if isinstance(reply, BaseException):
+                    raise reply
+                return reply
+
+        return Member()
+
+    async def _write(
+        self, system: str, messages: Any, schema: Any, **kwargs: Any
+    ) -> Analysis:
+        """Delegate to the `writer` field at call time, so a test may swap it."""
+        return await self.writer(system, messages, schema, **kwargs)
+
+
+@pytest.fixture
+def rig(monkeypatch: pytest.MonkeyPatch) -> ForecastRig:
+    """A `ForecastRig` already installed; tests change its fields before `run()`."""
+    forecast_rig = ForecastRig()
+    forecast_rig.install(monkeypatch)
+    return forecast_rig
+
+
+def shorten_step(monkeypatch: pytest.MonkeyPatch, name: str, seconds: float) -> None:
+    """Give one graph step a short LangGraph node timeout (`graph.STEPS`)."""
+    graph = importlib.import_module("agents.deep_forecaster.graph")
+    monkeypatch.setattr(
+        graph,
+        "STEPS",
+        tuple(
+            (step, node, seconds if step == name else timeout)
+            for step, node, timeout in graph.STEPS
+        ),
+    )
+
+
+def shorten_limit(
+    monkeypatch: pytest.MonkeyPatch, module: str, **limits: float
+) -> None:
+    """Replace fields of a module's frozen `LIMITS` (e.g. `wall_seconds`)."""
+    target = importlib.import_module(f"agents.deep_forecaster.{module}")
+    monkeypatch.setattr(target, "LIMITS", dataclasses.replace(target.LIMITS, **limits))
