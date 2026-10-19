@@ -1,6 +1,7 @@
 """Graph construction for the deep forecaster (brainstorm 2026Sep30 Q27).
 
-A fixed workflow: every step runs once, in this order, with typed state
+A fixed workflow: every step runs once, in this order, except that `verify`
+may send the analysis back to `write_analysis` once, with typed state
 between steps. Only `research` is autonomous. The council runs exactly once
 because the edges say so, not because a prompt asks.
 
@@ -64,8 +65,15 @@ def build_graph() -> Any:
         builder.add_node(name, node, timeout=timeout)
         builder.add_edge(previous, name)
         previous = name
-    builder.add_edge(previous, END)
+    # The one backward edge: `verify` sends a defective analysis back to the
+    # writer once (it raises on a second defect, so this cannot loop).
+    builder.add_conditional_edges("verify", route_after_verify, ["write_analysis", END])
     return builder.compile(name="deep_forecaster", checkpointer=False)
+
+
+def route_after_verify(state: ForecastState) -> str:
+    """Finish once verify wrote the answer; otherwise rewrite the analysis."""
+    return END if "answer" in state else "write_analysis"
 
 
 async def forecast(query: str, store: Any | None = None) -> str:

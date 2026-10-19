@@ -75,6 +75,10 @@ class ForecastState(TypedDict):
     ballots_round_2: NotRequired[dict[int, Ballot]]
     tally: NotRequired[list[ClaimTally]]
     analysis: NotRequired[Analysis]
+    # Set by `verify` on the analysis's first defect and read by the writer's
+    # one rewrite (brainstorm 2026Oct16 Q8); its presence means the rewrite
+    # is spent. Written by code, never by a model.
+    feedback: NotRequired[str]
     answer: NotRequired[str]
 
 

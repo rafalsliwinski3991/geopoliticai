@@ -163,3 +163,11 @@ the outlet.
 """
     + _UNTRUSTED_RULE
 )
+
+# Appended to the writer's brief on its one rewrite (`nodes.write_analysis`).
+# `{defect}` is `verify.find_defect`'s text: written by code, never a model's.
+RETRY_INSTRUCTIONS = """An automatic check rejected your previous analysis: \
+{defect}
+
+Write the whole analysis again from the material above. Fix that problem and \
+keep every rule."""

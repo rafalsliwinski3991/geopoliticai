@@ -8,16 +8,18 @@ from langchain_core.messages import HumanMessage
 from langgraph.runtime import Runtime
 
 from agents.deep_forecaster.config import WRITE_LLM_SETTINGS
-from agents.deep_forecaster.consts.progress import WRITE_LABEL
+from agents.deep_forecaster.consts.progress import REWRITE_LABEL, WRITE_LABEL
 from agents.deep_forecaster.council import final_ballots
 from agents.deep_forecaster.evidence import (
+    LINK,
+    REMOVED_LINK,
     render_ballot,
     render_claims,
     render_deadline,
     render_sources,
 )
 from agents.deep_forecaster.models import Analysis
-from agents.deep_forecaster.prompts import WRITE_SYSTEM_PROMPT
+from agents.deep_forecaster.prompts import RETRY_INSTRUCTIONS, WRITE_SYSTEM_PROMPT
 from agents.deep_forecaster.state import ForecastRun, ForecastState
 from llm import ainvoke_structured
 
@@ -26,10 +28,16 @@ async def write_analysis(
     state: ForecastState, runtime: Runtime[ForecastRun]
 ) -> dict[str, Any]:
     """Write the overview and one section per claim from the council's record."""
-    runtime.context.enter(WRITE_LABEL, runtime.stream_writer)
+    feedback = state.get("feedback")
+    runtime.context.enter(
+        REWRITE_LABEL if feedback else WRITE_LABEL, runtime.stream_writer
+    )
+    brief = _brief(state)
+    if feedback:
+        brief += "\n\n" + RETRY_INSTRUCTIONS.format(defect=feedback)
     analysis = await ainvoke_structured(
         WRITE_SYSTEM_PROMPT.format(today=render_deadline(runtime.context.today)),
-        [HumanMessage(_brief(state))],
+        [HumanMessage(brief)],
         Analysis,
         settings=WRITE_LLM_SETTINGS,
     )
@@ -56,7 +64,8 @@ def _brief(state: ForecastState) -> str:
         for member, ballot in sorted(final.items())
     )
     return (
-        f"Question: {state['question']}\n\nClaims:\n{render_claims(state['claims'])}"
+        f"Question: {LINK.sub(REMOVED_LINK, state['question'])}\n\n"
+        f"Claims:\n{render_claims(state['claims'])}"
         f"\n\nThe council's verdicts:\n{verdicts}\n\nFinal-round votes:\n{votes}"
         f"\n\nSources:\n\n{render_sources(state['sources'], urls=False)}"
     )

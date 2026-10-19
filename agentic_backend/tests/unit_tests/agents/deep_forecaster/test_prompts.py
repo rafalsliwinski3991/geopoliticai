@@ -5,6 +5,7 @@ from agents.deep_forecaster.prompts import (
     DRAFT_CLAIMS_PROMPT,
     LEAD_SYSTEM_PROMPT,
     MEMBER_SYSTEM_PROMPT,
+    RETRY_INSTRUCTIONS,
     ROUND_TWO_INSTRUCTIONS,
     SCOUT_PROMPT,
     VIDEO_NOT_DISCUSSED,
@@ -59,6 +60,19 @@ def test_the_write_prompt_fills_with_today_and_carries_the_untrusted_rule() -> N
 
 def test_the_write_prompt_asks_for_source_numbers() -> None:
     """The writer cites `[anchor](source:N)`: it never sees a URL to copy."""
-    # Assert
+    # Act + Assert
     assert "(source:3)" in WRITE_SYSTEM_PROMPT
     assert "Copy the URL" not in WRITE_SYSTEM_PROMPT
+
+
+def test_the_retry_instructions_fill_with_the_defect() -> None:
+    """The rewrite prompt fills with the defect and leaks no template braces."""
+    # Arrange
+    defect = "claim 9 is missing"
+
+    # Act
+    filled = RETRY_INSTRUCTIONS.format(defect=defect)
+
+    # Assert
+    assert defect in filled
+    assert "{" not in filled

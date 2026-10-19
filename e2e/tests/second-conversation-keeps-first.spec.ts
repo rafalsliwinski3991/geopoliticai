@@ -10,8 +10,9 @@ const QUESTION = "What is NATO's Article 5?";
 test('second conversation keeps the first', { annotation: { type: 'spec', description: SPEC } }, async ({ page }) => {
   await page.goto('/chat');
   const sidebar = page.getByRole('navigation', { name: 'Conversations', exact: true });
-  // The meter renders from /api/quota; once it shows, the conversation list has loaded too.
-  await expect(page.getByRole('img', { name: /^\d+ of \d+ research turns used today$/ })).toBeVisible();
+  // The meter and the conversation list settle together, when the meter's limit turns non-zero:
+  // it reads "0 of 0" while loading, so a count taken then would be 0.
+  await expect(page.getByRole('img', { name: /^\d+ of [1-9]\d* research turns used today$/ })).toBeVisible();
   // Earlier runs leave identical titles behind, so count them instead of looking for one.
   const firstConversations = sidebar.getByRole('link', { name: /^What is NATO's Article 5\?/ });
   const listedBefore = await firstConversations.count();
