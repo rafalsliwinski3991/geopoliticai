@@ -19,7 +19,7 @@ from agents.deep_forecaster.models import (
 )
 from agents.deep_forecaster.state import ClaimTally, ResearchOutcome
 from models import LLMInvocationError, Source
-from unit_tests.agents.deep_forecaster.conftest import ballot, runtime, state
+from unit_tests.agents.deep_forecaster.conftest import ballot, runtime, sources, state
 
 verify_module: Any = importlib.import_module("agents.deep_forecaster.nodes.verify")
 
@@ -524,3 +524,154 @@ def test_an_analysis_with_no_citation_raises() -> None:
         # Act
         checked(forecast_state, analysis_)
     # Assert: the raise is the assertion.
+
+
+# Unit 05: the plan's six named broken analyses (plan §5), each a passing
+# analysis with exactly one defect a rewrite can fix. Every one carries the
+# marker `INJECTED-7f3a` in its prose, and inside its defective link or
+# citation where it has one, so a defect that echoed the writer's own text
+# would leak the marker.
+MARKER = "INJECTED-7f3a"
+MARKER_URL = f"https://carnegieendowment.org/{MARKER}"
+
+MISSING_CLAIM = Analysis(
+    overview=f"The council leans yes. [A](source:1) — {MARKER} saw it.",
+    claims=[ClaimDiscussion(claim=1, discussion="Alpha reasons. [A](source:1)")],
+)
+EMPTY_SECTION = Analysis(
+    overview="The council leans yes. [A](source:1)",
+    claims=[
+        ClaimDiscussion(claim=1, discussion=""),
+        ClaimDiscussion(
+            claim=2, discussion=f"Beta reasons. [B](source:2) — {MARKER} saw it."
+        ),
+    ],
+)
+RAW_URL = Analysis(
+    overview=f"The council leans yes. [A](source:1). See [more]({MARKER_URL}).",
+    claims=[
+        ClaimDiscussion(
+            claim=1, discussion=f"Alpha reasons. [A](source:1) — {MARKER} saw it."
+        ),
+        ClaimDiscussion(claim=2, discussion="Beta reasons. [B](source:2)"),
+    ],
+)
+UNLINKABLE_CITATION = Analysis(
+    overview=f'The council leans yes. See [a {MARKER} note](source:1 "t").',
+    claims=[
+        ClaimDiscussion(claim=1, discussion=f"Alpha reasons. {MARKER} saw it."),
+        ClaimDiscussion(claim=2, discussion="Beta reasons."),
+    ],
+)
+NO_CITATION = Analysis(
+    overview=f"The council leans yes. {MARKER} agrees.",
+    claims=[
+        ClaimDiscussion(claim=1, discussion="Alpha reasons."),
+        ClaimDiscussion(claim=2, discussion="Beta reasons."),
+    ],
+)
+UNREAD_SOURCE = Analysis(
+    overview=f"The council leans yes. [{MARKER}](source:9)",
+    claims=[
+        ClaimDiscussion(claim=1, discussion="Alpha reasons. [A](source:1)"),
+        ClaimDiscussion(claim=2, discussion="Beta reasons. [B](source:2)"),
+    ],
+)
+
+# The exact defect `find_defect` must return for each named analysis, written
+# by hand from the rules, never computed.
+MISSING_CLAIM_DEFECT = (
+    "The analysis did not discuss every claim exactly once: it needs one "
+    "section for each of claims 1 and 2 and wrote sections for 1."
+)
+EMPTY_SECTION_DEFECT = "The analysis left a section empty: claim 1."
+RAW_URL_DEFECT = (
+    "The analysis wrote a URL; it must cite sources only as [anchor](source:N)."
+)
+UNLINKABLE_CITATION_DEFECT = (
+    "The analysis wrote a citation the answer cannot link; write each one "
+    "exactly as [anchor](source:N)."
+)
+NO_CITATION_DEFECT = "The analysis cited none of the sources it read."
+UNREAD_SOURCE_DEFECT = (
+    "The analysis cites 1 source number outside 1 to 2, the sources the "
+    "forecast read; cite whole source numbers such as (source:3)."
+)
+
+DEFECTS = [
+    pytest.param(MISSING_CLAIM, MISSING_CLAIM_DEFECT, id="a missing claim"),
+    pytest.param(EMPTY_SECTION, EMPTY_SECTION_DEFECT, id="an empty section"),
+    pytest.param(RAW_URL, RAW_URL_DEFECT, id="a raw url"),
+    pytest.param(
+        UNLINKABLE_CITATION, UNLINKABLE_CITATION_DEFECT, id="an unlinkable citation"
+    ),
+    pytest.param(NO_CITATION, NO_CITATION_DEFECT, id="no citation"),
+    pytest.param(UNREAD_SOURCE, UNREAD_SOURCE_DEFECT, id="an unread source"),
+]
+
+BROKEN_ANALYSES = [
+    pytest.param(MISSING_CLAIM, id="a missing claim"),
+    pytest.param(EMPTY_SECTION, id="an empty section"),
+    pytest.param(RAW_URL, id="a raw url"),
+    pytest.param(UNLINKABLE_CITATION, id="an unlinkable citation"),
+    pytest.param(NO_CITATION, id="no citation"),
+    pytest.param(UNREAD_SOURCE, id="an unread source"),
+]
+
+
+@pytest.mark.parametrize(("broken_analysis", "expected_defect"), DEFECTS)
+def test_find_defect_names_the_defect(
+    broken_analysis: Analysis, expected_defect: str
+) -> None:
+    """Each defect text names the problem, so the writer's one rewrite can fix it."""
+    # Arrange
+    # Act
+    defect = verify_module.find_defect(broken_analysis, VOTING6_TALLY, sources())
+    # Assert
+    assert defect == expected_defect
+
+
+@pytest.mark.parametrize("broken_analysis", BROKEN_ANALYSES)
+def test_a_defect_never_echoes_the_writers_text(broken_analysis: Analysis) -> None:
+    """The defect is code's text: it must never quote model-written output.
+
+    Every prose excerpt, URL, and citation in the model's analysis carries the
+    marker `INJECTED-7f3a`; echoing the text would ship it back to the writer
+    and, through it, potentially to a reader.
+    """
+    # Arrange
+    # Act
+    defect = verify_module.find_defect(broken_analysis, VOTING6_TALLY, sources())
+    # Assert
+    assert MARKER not in defect
+
+
+@pytest.mark.anyio
+async def test_a_first_defect_returns_feedback(events: list[dict[str, Any]]) -> None:
+    """On the analysis's first defect, verify sends it back once, named."""
+    # Arrange
+    first = six_voters()
+    forecast_state: Any = state(round_1=first, round_2=dict(first))
+    forecast_state["tally"] = VOTING6_TALLY
+    forecast_state["analysis"] = MISSING_CLAIM
+    # Act
+    out = await verify_module.verify(forecast_state, runtime(events))
+    # Assert
+    assert out == {"feedback": MISSING_CLAIM_DEFECT}
+    assert "answer" not in out
+
+
+@pytest.mark.anyio
+async def test_a_second_defect_raises(events: list[dict[str, Any]]) -> None:
+    """With the one rewrite spent, a defect is a hard 502 naming the defect."""
+    # Arrange
+    first = six_voters()
+    forecast_state: Any = state(round_1=first, round_2=dict(first))
+    forecast_state["tally"] = VOTING6_TALLY
+    forecast_state["analysis"] = MISSING_CLAIM
+    forecast_state["feedback"] = MISSING_CLAIM_DEFECT
+    # Act + Assert
+    with pytest.raises(LLMInvocationError) as raised:
+        await verify_module.verify(forecast_state, runtime(events))
+    assert raised.value.status == 502
+    assert str(raised.value) == MISSING_CLAIM_DEFECT

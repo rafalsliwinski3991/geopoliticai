@@ -3,8 +3,9 @@
 Every verdict a reader sees is written here, from the tally: the writer's
 schema has no verdict, so its prose cannot put a different one in a heading.
 Every citation names a source the forecast read, cited by number; the URL
-comes from the source list. Any failure is a hard error, never a repaired
-answer.
+comes from the source list. A defect the writer can fix goes back to it once
+with the defect named (`find_defect`); anything else is a hard error, never
+a repaired answer.
 
 The vote list opens with lines counted here, never by a model (user
 decisions 2026-09-30 and 2026-10-01): how many members voted, how many kept a
@@ -51,8 +52,15 @@ logger = logging.getLogger(__name__)
 
 
 async def verify(state: ForecastState, runtime: Runtime[ForecastRun]) -> dict[str, Any]:
-    """Check the analysis and return the answer the reader sees."""
+    """Check the analysis; send it back once with its defect, or return the answer."""
     runtime.context.enter(VERIFY_LABEL, runtime.stream_writer)
+    defect = find_defect(state["analysis"], state["tally"], state["sources"])
+    if defect is not None:
+        if "feedback" in state:
+            # The one rewrite is spent (brainstorm 2026Oct16 Q6).
+            raise LLMInvocationError(defect)
+        logger.warning("verify: sending the analysis back once: %s", defect)
+        return {"feedback": defect}
     revised = state["ballots_round_2"]
     return {
         "answer": checked_answer(
@@ -80,6 +88,68 @@ def _site(url: str) -> str:
 def _counted(number: int, noun: str) -> str:
     """Return e.g. "1 source" or "8 sources"."""
     return f"{number} {noun}" if number == 1 else f"{number} {noun}s"
+
+
+def _listed(numbers: Sequence[int]) -> str:
+    """Return e.g. "1, 2 and 3"."""
+    words = [str(n) for n in numbers]
+    return " and ".join([", ".join(words[:-1]), words[-1]] if len(words) > 1 else words)
+
+
+def find_defect(
+    analysis: Analysis, tally: Sequence[ClaimTally], sources: Sequence[Source]
+) -> str | None:
+    """Return the analysis's first defect a rewrite can fix, or None.
+
+    Checks 1-4 of the brainstorm (2026Oct16): every claim discussed once, no
+    empty section, citations by number only and all linkable, every number a
+    source read. Each text names the defect for the writer's rewrite and
+    quotes no model text (section numbers are validated integers). Check 5,
+    the answer's length, is not here: a rewrite shortens only the analysis,
+    never the vote list, so it stays a hard error in `checked_answer`.
+    """
+    written = sorted(section.claim for section in analysis.claims)
+    expected = [counted.claim for counted in tally]
+    if written != expected:
+        return (
+            "The analysis did not discuss every claim exactly once: it needs one "
+            f"section for each of claims {_listed(expected)} and wrote sections "
+            f"for {_listed(written) or 'none'}."
+        )
+    sections = sorted(analysis.claims, key=lambda section: section.claim)
+    if not analysis.overview.strip():
+        return "The analysis left a section empty: the overview."
+    empty = [s.claim for s in sections if not s.discussion.strip()]
+    if empty:
+        return f"The analysis left a section empty: claim {_listed(empty)}."
+    text = "\n".join([analysis.overview, *(s.discussion for s in sections)])
+    written_urls = links_in(text)
+    if written_urls:
+        logger.error("verify: the analysis wrote %d URL(s)", len(written_urls))
+        return (
+            "The analysis wrote a URL; it must cite sources only as [anchor](source:N)."
+        )
+    cited = SOURCE_LINK.findall(text)
+    if len(SOURCE_MENTION.findall(text)) > len(cited):
+        return (
+            "The analysis wrote a citation the answer cannot link; write each one "
+            "exactly as [anchor](source:N)."
+        )
+    if not cited:
+        return "The analysis cited none of the sources it read."
+    bad = [
+        n
+        for n in cited
+        if not (SOURCE_NUMBER.fullmatch(n) and 1 <= int(n) <= len(sources))
+    ]
+    if bad:
+        # The count, never the text: what follows `source:` is model-written.
+        return (
+            f"The analysis cites {_counted(len(bad), 'source number')} outside "
+            f"1 to {len(sources)}, the sources the forecast read; cite whole "
+            "source numbers such as (source:3)."
+        )
+    return None
 
 
 def evidence_line(
@@ -120,44 +190,10 @@ def checked_answer(
     research: ResearchOutcome,
 ) -> str:
     """Return the analysis followed by the vote list, or raise if it breaks a rule."""
+    defect = find_defect(analysis, tally, sources)
+    if defect is not None:
+        raise LLMInvocationError(defect)
     sections = sorted(analysis.claims, key=lambda section: section.claim)
-    if [section.claim for section in sections] != [t.claim for t in tally]:
-        raise LLMInvocationError(
-            "The analysis did not discuss every claim exactly once."
-        )
-    prose = [analysis.overview, *(section.discussion for section in sections)]
-    if not all(text.strip() for text in prose):
-        raise LLMInvocationError("The analysis left a section empty.")
-    text = "\n".join(prose)
-    # Every clickable form counts (correctness review): page text could make
-    # the writer emit a bare or reference link, and none may reach a reader.
-    written = links_in(text)
-    if written:
-        # Logged, never shown: how often the writer still writes URLs.
-        logger.error("verify: the analysis wrote %d URL(s)", len(written))
-        raise LLMInvocationError(
-            "The analysis wrote a URL; it must cite sources only as [anchor](source:N)."
-        )
-    cited = SOURCE_LINK.findall(text)
-    if len(SOURCE_MENTION.findall(text)) > len(cited):
-        raise LLMInvocationError(
-            "The analysis wrote a citation the answer cannot link; write each one "
-            "exactly as [anchor](source:N)."
-        )
-    if not cited:
-        raise LLMInvocationError("The analysis cited none of the sources it read.")
-    bad = [
-        n
-        for n in cited
-        if not (SOURCE_NUMBER.fullmatch(n) and 1 <= int(n) <= len(sources))
-    ]
-    if bad:
-        # The count, never the text: what follows `source:` is model-written.
-        raise LLMInvocationError(
-            f"The analysis cites {_counted(len(bad), 'source number')} outside "
-            f"1 to {len(sources)}, the sources the forecast read; cite whole "
-            "source numbers such as (source:3)."
-        )
     parts = [link_sources(analysis.overview.strip(), sources)]
     for section, counted, claim in zip(sections, tally, claims, strict=True):
         parts.append(
@@ -168,7 +204,8 @@ def checked_answer(
     parts.append(_vote_list(tally, ballots, revised, sources, research, claims))
     answer = "\n\n".join(parts)
     # A vote list the delivery layer's clip cuts off is a design failure
-    # (review thread, #143): the reader must see every verdict.
+    # (review thread, #143): the reader must see every verdict. A rewrite can
+    # only shorten the analysis, never the vote list, so this is not a defect.
     if len(answer) > MAX_ANSWER_CHARS:
         raise LLMInvocationError(
             f"The answer is {len(answer)} characters; it exceeds "

@@ -38,10 +38,12 @@ from unit_tests.agents.deep_forecaster.conftest import (
     ScriptedWriter,
     ballot,
     claims,
+    passing_analysis,
     shorten_limit,
     shorten_step,
     sources,
 )
+from unit_tests.agents.deep_forecaster.nodes.test_verify import DEFECTS, MISSING_CLAIM
 
 graph_module: Any = importlib.import_module("agents.deep_forecaster.graph")
 research_node: Any = importlib.import_module("agents.deep_forecaster.nodes.research")
@@ -115,6 +117,13 @@ def test_the_graph_has_exactly_the_seven_steps() -> None:
 
 
 def test_the_steps_run_in_a_fixed_chain() -> None:
+    """The edges are the seven-step chain plus exactly one backward edge.
+
+    It cannot loop: `verify` raises on a second defect, so `write_analysis`
+    runs at most twice. The comparison uses `(source, target)` pairs only, as
+    LangGraph's conditional edges carry a `conditional` flag and a branch
+    label that do not change where the run can go.
+    """
     graph = graph_module.build_graph()
     edges = {(edge.source, edge.target) for edge in graph.get_graph().edges}
     assert edges == {
@@ -125,6 +134,8 @@ def test_the_steps_run_in_a_fixed_chain() -> None:
         ("council_round_2", "tally"),
         ("tally", "write_analysis"),
         ("write_analysis", "verify"),
+        # The one backward edge: verify's feedback path back to the writer.
+        ("verify", "write_analysis"),
         ("verify", "__end__"),
     }
 
@@ -810,3 +821,89 @@ async def test_the_wall_cap_ends_a_real_run(
     # Assert
     assert raised.value.status == 504
     assert str(raised.value).endswith("during this step: Writing the analysis.")
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(("broken_analysis", "defect"), DEFECTS)
+async def test_a_broken_analysis_is_rewritten_once_and_the_fixed_one_ships(
+    rig: ForecastRig, broken_analysis: Analysis, defect: str
+) -> None:
+    """The first defect goes back to the writer once, named; the fixed analysis ships."""
+    # Arrange
+    rig.writer = ScriptedWriter(broken_analysis, passing_analysis())
+    # Act
+    answer = await rig.run()
+    # Assert
+    assert "### Claim 1: ACCEPTED" in answer
+    assert rig.writer.calls == 2
+    # The rewrite brief names the defect; the first brief carries no retry text.
+    assert defect in rig.writer.briefs[1]
+    assert "rejected" not in rig.writer.briefs[0]
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(("broken_analysis", "defect"), DEFECTS)
+async def test_a_second_broken_analysis_fails_the_forecast(
+    rig: ForecastRig, broken_analysis: Analysis, defect: str
+) -> None:
+    """A second defect after the one spent rewrite is a 502 naming that defect."""
+    # Arrange
+    rig.writer = ScriptedWriter(broken_analysis, broken_analysis)
+    # Act + Assert
+    with pytest.raises(LLMInvocationError) as raised:
+        await rig.run()
+    assert raised.value.status == 502
+    assert str(raised.value) == defect
+    assert rig.writer.calls == 2
+
+
+@pytest.mark.anyio
+async def test_a_good_analysis_is_written_once(rig: ForecastRig) -> None:
+    """A passing analysis ships on the first writer call, with no second one."""
+    # Arrange: the rig's default script, one passing analysis.
+    rig.writer = ScriptedWriter(passing_analysis())
+    # Act
+    answer = await rig.run()
+    # Assert
+    assert "### Claim 1: ACCEPTED" in answer
+    assert rig.writer.calls == 1
+
+
+def over_cap_analysis() -> Analysis:
+    """A passing analysis whose rendered answer is over `MAX_ANSWER_CHARS` (50,000)."""
+    return Analysis(
+        # The citation passes check 4; a lead-in plus 50,001 x's is far over the cap.
+        overview="The council leans yes. [A](source:1) " + "x" * 50_001,
+        claims=[
+            ClaimDiscussion(claim=1, discussion="Alpha. [A](source:1)"),
+            ClaimDiscussion(claim=2, discussion="Beta. [B](source:2)"),
+        ],
+    )
+
+
+@pytest.mark.anyio
+async def test_an_over_long_answer_is_not_retried(rig: ForecastRig) -> None:
+    """The delivery cap stays a hard error: a rewrite can only shorten the analysis, and the vote list would still be cut."""
+    # Arrange
+    rig.writer = ScriptedWriter(over_cap_analysis())
+    # Act + Assert
+    with pytest.raises(LLMInvocationError, match="exceeds the delivery cap") as raised:
+        await rig.run()
+    assert raised.value.status == 502
+    assert rig.writer.calls == 1
+
+
+@pytest.mark.anyio
+async def test_a_hung_rewrite_is_a_research_limit_error(
+    rig: ForecastRig, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A writer hung on its rewrite ends at the step's own timeout, a 504 naming the rewrite."""
+    # Arrange
+    rig.writer = ScriptedWriter(MISSING_CLAIM, HANG)
+    shorten_step(monkeypatch, "write_analysis", SHORT_STEP_SECONDS)
+    # Act
+    with pytest.raises(ResearchLimitError) as raised:
+        await rig.run()
+    # Assert
+    assert raised.value.status == 504
+    assert "Rewriting the analysis" in str(raised.value)

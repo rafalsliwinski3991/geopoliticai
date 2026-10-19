@@ -48,7 +48,8 @@ orchestrator     START -> classify -> expert | chat | deep_expert | deep_forecas
 expert           START -> search_and_fetch -> answer -> END
 reporter         START -> outline -> gate | END;  gate -> outline | write | END;  write -> END
 deep_forecaster  START -> research -> draft_claims -> council_round_1 -> council_round_2
-                       -> tally -> write_analysis -> verify -> END
+                      -> tally -> write_analysis -> verify -> END
+                      verify -> write_analysis (once, on a defect)
 ```
 
 ## agentic_backend
@@ -97,12 +98,13 @@ deep_forecaster  START -> research -> draft_claims -> council_round_1 -> council
   message to the model; the wall cap is a 504; an unsatisfied grader ships the last draft; a grader
   crash, no source read, or no cited source is an error. `NO_CHECKPOINTER_CONFIG` sets LangGraph's
   private `__pregel_checkpointer` key: re-check it on every langgraph upgrade.
-- Deep forecaster: a fixed workflow. Only `research` is autonomous (a deepagents lead and scouts over
-  the forecasters' sites, plus `ask_video`), and it returns what the scouts' tools recorded, never
-  the lead's text. The council, one paid model per vendor through OpenRouter, reads only the
-  passages the drafter points at and votes in two Delphi rounds; code counts every verdict; the
-  writer sees no URL and cites sources by number (`[anchor](source:N)`), and `verify` puts in the
-  URLs. The wall
+- Deep forecaster: a fixed workflow with one backward edge. Only `research` is autonomous (a
+  deepagents lead and scouts over the forecasters' sites, plus `ask_video`), and it returns what
+  the scouts' tools recorded, never the lead's text. The council, one paid model per vendor through
+  OpenRouter, reads only the passages the drafter points at and votes in two Delphi rounds; code
+  counts every verdict; the writer sees no URL and cites sources by number (`[anchor](source:N)`),
+  and `verify` puts in the URLs. `verify` sends an analysis with a defect back to the writer once,
+  with the defect named; a second defect, or an answer over the delivery cap, is a hard error. The wall
   cap runs the forecast in its own task (`time_limits.run_under_time_limits`) and cancels it
   repeatedly, because smoke gate F3 saw a hung run outlive an in-frame `asyncio.timeout`.
 
