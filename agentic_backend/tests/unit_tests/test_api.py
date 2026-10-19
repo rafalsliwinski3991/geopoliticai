@@ -2376,8 +2376,11 @@ async def test_a_forecast_failure_reaches_the_browser_and_refunds(
     reproducible failure (a topic with no sources) pays for every retry and
     simply stops using forecasts."""
 
+    # Arrange — the counted forecast frame streams, then the case's error raises.
+    stream = _turn_stream("forecast", error=error)
+
     # Act
-    with patch("api._astream_answer", _turn_stream("forecast", error=error)):
+    with patch("api._astream_answer", stream):
         response = await client.post(
             "/api/run_pipeline/stream", json={"query": "x", "thread_id": "t-1"}
         )
@@ -2401,11 +2404,11 @@ async def test_an_unexpected_failure_gives_the_units_back(
     """The generic 500 path is still an error frame: a counted turn that dies
     of a bug gives its one unit back like any other failed turn."""
 
+    # Arrange — the counted turn streams, then dies of a bug.
+    stream = _turn_stream(None, error=RuntimeError("graph exploded"))
+
     # Act
-    with patch(
-        "api._astream_answer",
-        _turn_stream(None, error=RuntimeError("graph exploded")),
-    ):
+    with patch("api._astream_answer", stream):
         response = await client.post(
             "/api/run_pipeline/stream", json={"query": "x", "thread_id": "t-1"}
         )
@@ -2415,6 +2418,11 @@ async def test_an_unexpected_failure_gives_the_units_back(
     assert events[-1]["type"] == "error"
     assert events[-1]["status"] == 500
     assert quota.refunds() == [("refund", 1, CHARGE_DAY, 1)]
+    # Site units never come back: the site ceiling is touched once, by the
+    # turn's own charge, never by the refund.
+    assert [call for call in quota.calls if call[0] == "site"] == [
+        ("site", DAILY_RESEARCH_TURNS_ALL_USERS, 1)
+    ]
 
 
 @pytest.mark.anyio
@@ -2424,8 +2432,11 @@ async def test_an_empty_answer_gives_the_units_back(
     """An answer that produced no text is the 502 path: the charge is given
     back before the error frame reaches the browser."""
 
+    # Arrange — the counted frame streams, then the stream ends with no answer.
+    stream = _turn_stream(None)
+
     # Act
-    with patch("api._astream_answer", _turn_stream(None)):
+    with patch("api._astream_answer", stream):
         response = await client.post(
             "/api/run_pipeline/stream", json={"query": "x", "thread_id": "t-1"}
         )
@@ -2435,6 +2446,11 @@ async def test_an_empty_answer_gives_the_units_back(
     assert events[-1]["type"] == "error"
     assert events[-1]["status"] == 502
     assert quota.refunds() == [("refund", 1, CHARGE_DAY, 1)]
+    # Site units never come back: the site ceiling is touched once, by the
+    # turn's own charge, never by the refund.
+    assert [call for call in quota.calls if call[0] == "site"] == [
+        ("site", DAILY_RESEARCH_TURNS_ALL_USERS, 1)
+    ]
 
 
 @pytest.mark.anyio
@@ -2637,10 +2653,12 @@ async def test_refunds_stop_at_the_daily_cap(
     forecast still gets its error frame but no units back, so a user who can
     force failures cannot spend the site's ceiling for free all day."""
 
+    # Arrange — two failed forecasts in one day: the fake streams the counted
+    # forecast frame, then raises, for each turn below.
+    stream = _turn_stream("forecast", error=NoSourcesError("none"))
+
     # Act — the first failed forecast is refunded in full.
-    with patch(
-        "api._astream_answer", _turn_stream("forecast", error=NoSourcesError("none"))
-    ):
+    with patch("api._astream_answer", stream):
         first = await client.post(
             "/api/run_pipeline/stream", json={"query": "x", "thread_id": "t-1"}
         )
@@ -2649,15 +2667,18 @@ async def test_refunds_stop_at_the_daily_cap(
     assert quota.refunds() == [("refund", 1, CHARGE_DAY, FORECAST_TURN_COST)]
 
     # Act — a second failure that day gets its frame and nothing else.
-    with patch(
-        "api._astream_answer", _turn_stream("forecast", error=NoSourcesError("none"))
-    ):
+    with patch("api._astream_answer", stream):
         second = await client.post(
             "/api/run_pipeline/stream", json={"query": "x", "thread_id": "t-1"}
         )
     # Assert
     assert _events(second.text)[-1]["status"] == 422
     assert quota.refunds() == [("refund", 1, CHARGE_DAY, FORECAST_TURN_COST)]
+    # Site units never come back: each turn charges the site ceiling itself,
+    # and no refund touches it.
+    assert [call for call in quota.calls if call[0] == "site"] == [
+        ("site", DAILY_RESEARCH_TURNS_ALL_USERS, FORECAST_TURN_COST)
+    ] * 2
 
 
 @pytest.mark.anyio
@@ -2675,19 +2696,28 @@ async def test_the_cap_counts_units(
     monkeypatch.setattr(api, "_enforce_rate_limit", lambda *args: None)
 
     # Act — one failed turn at a time, twenty times, then the twenty-first.
+    refunded_bodies: list[str] = []
     with patch("api._astream_answer", _turn_stream(None, error=NoSourcesError("none"))):
         for _ in range(DAILY_REFUND_UNITS):
-            response = await client.post(
+            refunded_turn = await client.post(
                 "/api/run_pipeline/stream", json={"query": "x", "thread_id": "t-1"}
             )
-            assert _events(response.text)[-1]["status"] == 422
+            refunded_bodies.append(refunded_turn.text)
         capped = await client.post(
             "/api/run_pipeline/stream", json={"query": "x", "thread_id": "t-1"}
         )
 
     # Assert
+    assert [_events(body)[-1]["status"] for body in refunded_bodies] == [
+        422
+    ] * DAILY_REFUND_UNITS
     assert quota.refunds() == [("refund", 1, CHARGE_DAY, 1)] * DAILY_REFUND_UNITS
     assert _events(capped.text)[-1]["status"] == 422
+    # Site units never come back: each of the 21 turns is charged to the site
+    # by its own charge, and no refund touches it.
+    assert [call for call in quota.calls if call[0] == "site"] == [
+        ("site", DAILY_RESEARCH_TURNS_ALL_USERS, 1)
+    ] * (DAILY_REFUND_UNITS + 1)
 
 
 @pytest.mark.anyio
@@ -2718,6 +2748,11 @@ async def test_the_cap_is_per_user(
         ("refund", 1, CHARGE_DAY, FORECAST_TURN_COST),
         ("refund", 2, CHARGE_DAY, FORECAST_TURN_COST),
     ]
+    # Site units never come back: each turn charges the site ceiling itself,
+    # and no refund touches it.
+    assert [call for call in quota.calls if call[0] == "site"] == [
+        ("site", DAILY_RESEARCH_TURNS_ALL_USERS, FORECAST_TURN_COST)
+    ] * 2
 
 
 @pytest.mark.anyio
@@ -2760,3 +2795,8 @@ async def test_the_cap_resets_on_the_next_day(
         ("refund", 1, tomorrow, FORECAST_TURN_COST),
     ]
     assert (1, CHARGE_DAY) not in api._refunded_units
+    # Site units never come back: each turn charges the site ceiling itself,
+    # and no refund touches it.
+    assert [call for call in quota.calls if call[0] == "site"] == [
+        ("site", DAILY_RESEARCH_TURNS_ALL_USERS, FORECAST_TURN_COST)
+    ] * 2
