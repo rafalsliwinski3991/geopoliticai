@@ -4,6 +4,8 @@ from datetime import date
 
 import agents.deep_forecaster.config as config
 from agents.deep_forecaster.evidence import (
+    cited_sources,
+    link_sources,
     links_in,
     paragraphs,
     quoted_sources,
@@ -42,6 +44,28 @@ def test_links_in_collects_every_clickable_form() -> None:
     ]
 
 
+def test_a_source_number_becomes_its_url() -> None:
+    """A `(source:N)` citation points at source N's URL: code, never the writer, links.
+
+    The writer cannot see a URL, so a correct citation can only name a number;
+    the number is checked against the sources read before this substitution.
+    """
+    # Arrange
+    # Act
+    linked = link_sources("[A](source:2)", sources())
+    # Assert
+    assert linked == "[A](https://reuters.com/b)"
+
+
+def test_cited_sources_returns_every_citation() -> None:
+    """`verify` reads what each citation names as written, so any bad form is caught."""
+    # Arrange
+    # Act
+    named = cited_sources("[A](source:1), [B](source:2), [C](source:x)")
+    # Assert
+    assert named == ["1", "2", "x"]
+
+
 def test_sources_are_numbered_from_one_and_show_missing_bylines() -> None:
     # Arrange
     rendered = render_sources(sources())
@@ -52,6 +76,20 @@ def test_sources_are_numbered_from_one_and_show_missing_bylines() -> None:
     assert "Byline: none" in rendered
     assert "[1.1] Alpha one." in rendered
     assert "[2.3] Beta three." in rendered
+
+
+def test_sources_render_without_urls_for_the_writer() -> None:
+    """The writer's brief shows no URL: a writer that never sees one cannot copy one wrong.
+
+    The drafter keeps the default rendering, which still shows every URL.
+    """
+    # Arrange
+    # Act
+    rendered = render_sources(sources(), urls=False)
+    # Assert
+    assert "https://" not in rendered
+    assert "A article" in rendered and "[1.1] Alpha one." in rendered
+    assert "URL: https://carnegieendowment.org/a" in render_sources(sources())
 
 
 def test_paragraphs_are_the_non_blank_lines() -> None:

@@ -149,9 +149,10 @@ claim's verdict is printed above its discussion automatically.
 Rules:
 1. A claim's verdict is the council's; never soften, overturn or restate it \
 differently. An UNRESOLVED claim is one the council could not settle.
-2. Every sentence that states a fact carries an inline markdown link, \
-[short anchor text](URL), to a source below. Copy the URL exactly. Link \
-nowhere else.
+2. Every sentence that states a fact carries an inline markdown link to a \
+source below, written with the source's number and nothing else: \
+[short anchor text](source:3) for SOURCE 3, never a paragraph number such as \
+3.4. Never write a URL; the links are filled in automatically.
 3. Name a forecaster only when the source's byline names them; otherwise name \
 the outlet.
 4. Call members "Member 1", "Member 2", and so on, and claims "Claim 1", \

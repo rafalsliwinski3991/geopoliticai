@@ -31,6 +31,18 @@ TRAILING_PUNCTUATION = ".,;:!?'\""
 # (Q12). Evidence goes through source numbers, which code turns into links to
 # sources read; a link a model wrote into a reason never reaches anyone.
 REMOVED_LINK = "(link removed)"
+# The writer cites a source by its number, `[anchor](source:3)`; code puts in
+# the URL the forecast read (brainstorm 2026Oct16 Q3), as `verify._vote_list`
+# already does. Only this exact form is linked. Anything between `source:` and
+# `)` is captured, so `(source:3.4)` or `(source:x)` reaches the number check.
+SOURCE_LINK = re.compile(r"\]\(source:([^)\s]*)\)", re.IGNORECASE)
+# Every place the prose names a source by number, in any form. A count above
+# the `SOURCE_LINK` count means a citation the answer cannot link (a title, a
+# space, angle brackets, a bare `(source:3)`), which would ship as dead text.
+SOURCE_MENTION = re.compile(r"source:\s*<?\s*[0-9]", re.IGNORECASE)
+# A valid source number: one to three ASCII digits. `str.isdigit` also accepts
+# "²", which `int` rejects (framework review).
+SOURCE_NUMBER = re.compile(r"[0-9]{1,3}")
 
 
 def render_reason(reason: str) -> str:
@@ -41,6 +53,21 @@ def render_reason(reason: str) -> str:
 def links_in(text: str) -> list[str]:
     """Return every clickable link in model-written Markdown, as written."""
     return [url.rstrip(TRAILING_PUNCTUATION) for url in LINK.findall(text)]
+
+
+def cited_sources(text: str) -> list[str]:
+    """Return what every `](source:N)` citation in `text` names, as written."""
+    return SOURCE_LINK.findall(text)
+
+
+def link_sources(text: str, sources: Sequence[Source]) -> str:
+    """Return `text` with each `](source:N)` pointing at source N's URL.
+
+    Call only after `verify` has checked every N is a source read.
+    """
+    return SOURCE_LINK.sub(
+        lambda match: f"]({sources[int(match.group(1)) - 1].url})", text
+    )
 
 
 def render_deadline(deadline: date) -> str:
@@ -79,11 +106,17 @@ def paragraphs(text: str) -> list[str]:
     return found
 
 
-def render_sources(sources: Sequence[Source]) -> str:
-    """Return every source in full, numbered, with its byline, URL and numbered paragraphs."""
+def render_sources(sources: Sequence[Source], *, urls: bool = True) -> str:
+    """Return every source in full, numbered, with its byline, URL and numbered paragraphs.
+
+    The writer's brief passes `urls=False`: a writer that never sees a URL
+    cannot copy one wrong (brainstorm 2026Oct16, trace 8a80df9c).
+    """
     return "\n\n".join(
         f"--- SOURCE {number} ---\nTitle: {source.title}\n"
-        f"Byline: {source.author or 'none'}\nURL: {source.url}\n\n"
+        f"Byline: {source.author or 'none'}\n"
+        + (f"URL: {source.url}\n" if urls else "")
+        + "\n"
         + "\n".join(
             f"[{number}.{index}] {paragraph}"
             for index, paragraph in enumerate(paragraphs(source.text), start=1)

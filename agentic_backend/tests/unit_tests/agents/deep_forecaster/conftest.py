@@ -149,12 +149,10 @@ class PinnedRun(ForecastRun):
 def passing_analysis() -> Analysis:
     """An analysis of `claims()` that passes every verify check."""
     return Analysis(
-        overview="The council leans yes. [A](https://carnegieendowment.org/a)",
+        overview="The council leans yes. [A](source:1)",
         claims=[
-            ClaimDiscussion(
-                claim=1, discussion="Alpha. [A](https://carnegieendowment.org/a)"
-            ),
-            ClaimDiscussion(claim=2, discussion="Beta. [B](https://reuters.com/b)"),
+            ClaimDiscussion(claim=1, discussion="Alpha. [A](source:1)"),
+            ClaimDiscussion(claim=2, discussion="Beta. [B](source:2)"),
         ],
     )
 

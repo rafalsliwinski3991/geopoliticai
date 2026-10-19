@@ -100,7 +100,9 @@ deep_forecaster  START -> research -> draft_claims -> council_round_1 -> council
 - Deep forecaster: a fixed workflow. Only `research` is autonomous (a deepagents lead and scouts over
   the forecasters' sites, plus `ask_video`), and it returns what the scouts' tools recorded, never
   the lead's text. The council, one paid model per vendor through OpenRouter, reads only the
-  passages the drafter points at and votes in two Delphi rounds; code counts every verdict. The wall
+  passages the drafter points at and votes in two Delphi rounds; code counts every verdict; the
+  writer sees no URL and cites sources by number (`[anchor](source:N)`), and `verify` puts in the
+  URLs. The wall
   cap runs the forecast in its own task (`time_limits.run_under_time_limits`) and cancels it
   repeatedly, because smoke gate F3 saw a hung run outlive an in-frame `asyncio.timeout`.
 

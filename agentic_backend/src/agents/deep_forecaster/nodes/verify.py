@@ -2,8 +2,9 @@
 
 Every verdict a reader sees is written here, from the tally: the writer's
 schema has no verdict, so its prose cannot put a different one in a heading.
-Every link must be a source the forecast read (brainstorm §3), compared after
-normalising the URL. Any failure is a hard error, never a repaired answer.
+Every citation names a source the forecast read, cited by number; the URL
+comes from the source list. Any failure is a hard error, never a repaired
+answer.
 
 The vote list opens with lines counted here, never by a model (user
 decisions 2026-09-30 and 2026-10-01): how many members voted, how many kept a
@@ -26,6 +27,10 @@ from agents.deep_forecaster.consts.forecasters import FORECASTER_SOURCES, VIDEO_
 from agents.deep_forecaster.consts.progress import VERIFY_LABEL
 from agents.deep_forecaster.council import final_ballots
 from agents.deep_forecaster.evidence import (
+    SOURCE_MENTION,
+    SOURCE_NUMBER,
+    cited_sources,
+    link_sources,
     links_in,
     quoted_sources,
     render_deadline,
@@ -65,22 +70,6 @@ async def verify(state: ForecastState, runtime: Runtime[ForecastRun]) -> dict[st
 def _host(url: str) -> str:
     """Return `url`'s host, lowercased, without `www.`."""
     return urlsplit(url).netloc.lower().removeprefix("www.")
-
-
-def _normalized(url: str) -> str:
-    """Return `url` without the differences a writer introduces when copying it.
-
-    The scheme is kept (review thread, #143): `http://host/path` cannot
-    validate against a source read at `https://host/path`, so a model-written
-    citation can never inside-import readers to an insecure URL the forecast
-    did not read. Host case, `www.`, a trailing slash and the fragment are
-    normalized; a scheme-less `www.` link is read as https.
-    """
-    url = url if "://" in url else f"https://{url}"
-    parts = urlsplit(url)
-    path = parts.path.rstrip("/")
-    query = f"?{parts.query}" if parts.query else ""
-    return f"{parts.scheme}://{_host(url)}{path}{query}"
 
 
 def _site(url: str) -> str:
@@ -139,29 +128,42 @@ def checked_answer(
     prose = [analysis.overview, *(section.discussion for section in sections)]
     if not all(text.strip() for text in prose):
         raise LLMInvocationError("The analysis left a section empty.")
-    # Every clickable form counts, not only inline links (correctness review):
-    # injected page text could make the writer emit a bare or reference link.
-    linked = {_normalized(url) for url in links_in("\n".join(prose))}
-    if not linked:
-        raise LLMInvocationError("The analysis cited none of the sources it read.")
-    unread = linked - {_normalized(source.url) for source in sources}
-    if unread:
-        # Logged, never shown: the smoke runs and evals read which URL forms
-        # the writer invents (F3).
-        logger.error(
-            "verify: the analysis links to %d unread URL(s): %s",
-            len(unread),
-            ", ".join(sorted(unread)),
-        )
+    text = "\n".join(prose)
+    # Every clickable form counts (correctness review): page text could make
+    # the writer emit a bare or reference link, and none may reach a reader.
+    written = links_in(text)
+    if written:
+        # Logged, never shown: how often the writer still writes URLs.
+        logger.error("verify: the analysis wrote %d URL(s)", len(written))
         raise LLMInvocationError(
-            "The analysis links to a page the forecast never read."
+            "The analysis wrote a URL; it must cite sources only as [anchor](source:N)."
         )
-    parts = [analysis.overview.strip()]
+    cited = cited_sources(text)
+    if len(SOURCE_MENTION.findall(text)) > len(cited):
+        raise LLMInvocationError(
+            "The analysis wrote a citation the answer cannot link; write each one "
+            "exactly as [anchor](source:N)."
+        )
+    if not cited:
+        raise LLMInvocationError("The analysis cited none of the sources it read.")
+    bad = [
+        n
+        for n in cited
+        if not (SOURCE_NUMBER.fullmatch(n) and 1 <= int(n) <= len(sources))
+    ]
+    if bad:
+        # The count, never the text: what follows `source:` is model-written.
+        raise LLMInvocationError(
+            f"The analysis cites {_counted(len(bad), 'source number')} outside "
+            f"1 to {len(sources)}, the sources the forecast read; cite whole "
+            "source numbers such as (source:3)."
+        )
+    parts = [link_sources(analysis.overview.strip(), sources)]
     for section, counted, claim in zip(sections, tally, claims, strict=True):
         parts.append(
             f"## Claim {counted.claim}: {claim.statement}\n"
             f"By {render_deadline(claim.deadline)}. Council verdict: **{counted.verdict}**"
-            f"\n\n{section.discussion.strip()}"
+            f"\n\n{link_sources(section.discussion.strip(), sources)}"
         )
     parts.append(_vote_list(tally, ballots, revised, sources, research, claims))
     answer = "\n\n".join(parts)
