@@ -20,8 +20,9 @@ concurrency:
 jobs:
   rollback:
     runs-on: ubuntu-latest
-    # Same environment (and secret placement) as the deploy job: main-only
-    # deployment branches, enforced by GitHub, not the YAML.
+    # Same environment (and secret placement) as the deploy job: its
+    # deployment branches and tags rule allows main and tags, enforced by
+    # GitHub, not the YAML.
     environment: production
     timeout-minutes: 30
     env:
