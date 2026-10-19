@@ -27,7 +27,6 @@ services:
   web-backend:
     ports:
       - "${ACCOUNTS_PORT:-8083}:8000"
-      - "${ACCOUNTS_PORT:-8083}:8000"
     # Dev only: with DJANGO_DEBUG=false the settings set
     # SESSION_COOKIE_SECURE/CSRF_COOKIE_SECURE, so over plain HTTP the session
     # cookie is dropped and every successful admin login bounces back to
@@ -44,6 +43,9 @@ services:
       - ./web_backend/accounts_api:/app/accounts_api
       - ./web_backend/pages:/app/pages
       - ./web_backend/blog:/app/blog
+      - ./web_backend/chat:/app/chat
+      - ./web_backend/checkpointer:/app/checkpointer
+      - ./web_backend/emails:/app/emails
       # The blog's content lives outside its package: templates resolve from
       # BASE_DIR/templates and the stylesheet from STATICFILES_DIRS, so without
       # these two mounts an edit to the HTML or CSS only lands after a rebuild.
