@@ -126,9 +126,12 @@ class ForecastLimits:
     (`frontend/chat/src/lib/sse.ts`). The slack covers the unbudgeted work
     (building the agent, tally, verify, cancelling research), so a forecast
     whose every step uses its whole budget still finishes instead of hitting
-    the wall (pinned by `test_config`). One stalled seat already pins each
-    round at `member_seconds`, so the rounds' 200 s is the normal case. The
-    budgets are estimates until the smoke runs (F3) measure them.
+    the wall (pinned by `test_config`). The sum describes the first pass
+    only: `verify` can send the analysis back to the writer once, and that
+    retry runs in whatever time is left before the wall. One stalled seat
+    already pins each round at `member_seconds`, so the rounds' 200 s is the
+    normal case. The budgets are estimates until the smoke runs (F3) measure
+    them.
 
     `max_sources` bounds what the claims drafter and the writer read: 20
     pages of at most 20,000 characters is ~100k tokens. Gemini's video notes

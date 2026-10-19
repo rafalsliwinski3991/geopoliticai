@@ -1533,7 +1533,9 @@ async def test_a_research_routed_turn_increments_exactly_once(
 async def test_a_turn_that_fails_after_routing_still_increments_once(
     client: httpx.AsyncClient, quota: RecordingQuota
 ) -> None:
-    """The model call the turn paid for already happened; the money is spent."""
+    """The charge happened once when routing counted the turn, and the error
+    frame gives its unit back to the charge day: a failed turn must not eat
+    the user's units."""
 
     # Arrange
     async def stream(
@@ -1553,6 +1555,7 @@ async def test_a_turn_that_fails_after_routing_still_increments_once(
     events = _events(response.text)
     assert events[-1]["type"] == "error"
     assert quota.charged() == [("user", 1, CHARGE_DAY, DAILY_RESEARCH_TURNS, 1)]
+    assert quota.refunds() == [("refund", 1, CHARGE_DAY, 1)]
 
 
 @pytest.mark.anyio

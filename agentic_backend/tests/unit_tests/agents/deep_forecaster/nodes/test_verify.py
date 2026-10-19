@@ -464,12 +464,12 @@ async def test_an_all_carried_round_two_is_disclosed(
 )
 def test_a_broken_claim_section_list_raises(sections: list[int]) -> None:
     # Arrange
+    # Citations by number: a URL in the prose is itself a defect, so this
+    # test must not hand `find_defect` one (final review).
     analysis_ = Analysis(
-        overview="Overview. [A](https://carnegieendowment.org/a)",
+        overview="Overview. [A](source:1)",
         claims=[
-            ClaimDiscussion(
-                claim=number, discussion="Discussion. [B](https://reuters.com/b)"
-            )
+            ClaimDiscussion(claim=number, discussion="Discussion. [B](source:2)")
             for number in sections
         ],
     )
@@ -492,12 +492,8 @@ def test_an_empty_overview_raises() -> None:
     analysis_ = Analysis(
         overview="   ",
         claims=[
-            ClaimDiscussion(
-                claim=1, discussion="Discussion. [B](https://reuters.com/b)"
-            ),
-            ClaimDiscussion(
-                claim=2, discussion="More. [A](https://carnegieendowment.org/a)"
-            ),
+            ClaimDiscussion(claim=1, discussion="Discussion. [B](source:2)"),
+            ClaimDiscussion(claim=2, discussion="More. [A](source:1)"),
         ],
     )
     with pytest.raises(LLMInvocationError, match="left a section empty"):

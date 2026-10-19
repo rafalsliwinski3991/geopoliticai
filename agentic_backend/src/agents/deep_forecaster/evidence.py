@@ -110,7 +110,10 @@ def render_sources(sources: Sequence[Source], *, urls: bool = True) -> str:
     """Return every source in full, numbered, with its byline, URL and numbered paragraphs.
 
     The writer's brief passes `urls=False`: a writer that never sees a URL
-    cannot copy one wrong (brainstorm 2026Oct16, trace 8a80df9c).
+    cannot copy one wrong (brainstorm 2026Oct16, trace 8a80df9c). With
+    `urls=False` a URL in a source's own text is neutralised the way
+    `render_reason` does (`LINK.sub(REMOVED_LINK, ...)`), so the writer sees no
+    URL anywhere in its brief and `find_defect` cannot call its prose a defect.
     """
     return "\n\n".join(
         f"--- SOURCE {number} ---\nTitle: {source.title}\n"
@@ -118,7 +121,8 @@ def render_sources(sources: Sequence[Source], *, urls: bool = True) -> str:
         + (f"URL: {source.url}\n" if urls else "")
         + "\n"
         + "\n".join(
-            f"[{number}.{index}] {paragraph}"
+            f"[{number}.{index}] "
+            + (paragraph if urls else LINK.sub(REMOVED_LINK, paragraph))
             for index, paragraph in enumerate(paragraphs(source.text), start=1)
         )
         for number, source in enumerate(sources, start=1)

@@ -2,6 +2,8 @@
 
 from datetime import date
 
+import pytest
+
 import agents.deep_forecaster.config as config
 from agents.deep_forecaster import evidence
 from agents.deep_forecaster.evidence import (
@@ -18,6 +20,9 @@ from agents.deep_forecaster.evidence import (
 from agents.deep_forecaster.models import Ballot, Vote
 from models import Source
 from unit_tests.agents.deep_forecaster.conftest import claims, sources
+
+SOURCE_URL = "https://carnegieendowment.org/a"
+URL_IN_TEXT = "https://x.example/memo"
 
 
 def test_render_deadline_is_in_full_words() -> None:
@@ -78,18 +83,28 @@ def test_sources_are_numbered_from_one_and_show_missing_bylines() -> None:
     assert "[2.3] Beta three." in rendered
 
 
-def test_sources_render_without_urls_for_the_writer() -> None:
-    """The writer's brief shows no URL: a writer that never sees one cannot copy one wrong.
-
+@pytest.mark.parametrize(
+    "url",
+    [
+        pytest.param(SOURCE_URL, id="the metadata line"),
+        pytest.param(URL_IN_TEXT, id="a URL inside the quoted text"),
+    ],
+)
+def test_sources_render_without_urls_for_the_writer(url: str) -> None:
+    """The writer's brief shows no URL anywhere: not the metadata line, and not
+    a URL a source's own text carries, which `find_defect` would call a defect.
     The drafter keeps the default rendering, which still shows every URL.
     """
     # Arrange
+    source = Source("A article", SOURCE_URL, f"Alpha one. {URL_IN_TEXT}")
     # Act
-    rendered = render_sources(sources(), urls=False)
+    rendered = render_sources([source], urls=False)
+    default = render_sources([source])
     # Assert
-    assert "https://" not in rendered
-    assert "A article" in rendered and "[1.1] Alpha one." in rendered
-    assert "URL: https://carnegieendowment.org/a" in render_sources(sources())
+    assert url not in rendered
+    assert "[1.1] Alpha one. (link removed)" in rendered
+    assert f"URL: {SOURCE_URL}" in default
+    assert URL_IN_TEXT in default
 
 
 def test_paragraphs_are_the_non_blank_lines() -> None:

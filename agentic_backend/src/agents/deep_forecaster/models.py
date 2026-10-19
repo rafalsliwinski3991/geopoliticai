@@ -84,7 +84,7 @@ class ClaimDiscussion(BaseModel):
     discussion: str = Field(
         description=(
             "Markdown: the strongest reasons members gave on each side and where "
-            "they disagreed, with inline links to sources."
+            "they disagreed, citing sources by number as [anchor](source:N)."
         )
     )
 
@@ -94,8 +94,8 @@ class Analysis(BaseModel):
 
     overview: str = Field(
         description=(
-            "Markdown: the forecast in two to four paragraphs, with inline "
-            "links to sources."
+            "Markdown: the forecast in two to four paragraphs, citing sources "
+            "by number as [anchor](source:N)."
         )
     )
     claims: list[ClaimDiscussion] = Field(

@@ -7,6 +7,6 @@
 ## Expected results
 - The answer is not empty and contains the heading "How the council voted".
 - It contains at least one link, and every link's href starts with `https://`.
-- The answer text contains no "source:".
+- Every link in the answer is a real URL, and the analysis's prose contains no "source:".
 - No error bubble is shown.
 - The meter shows 20 more used than in step 1.

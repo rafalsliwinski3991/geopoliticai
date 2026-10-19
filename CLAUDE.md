@@ -126,8 +126,11 @@ deep_forecaster  START -> research -> draft_claims -> council_round_1 -> council
 - `DAILY_RESEARCH_TURNS` caps one user's day and `DAILY_RESEARCH_TURNS_ALL_USERS` the site's
   (`config.py`), counted in the Django-owned `quota` and `site_quota` tables per UTC day. Chat turns
   are free, a deep turn spends `DEEP_RESEARCH_TURN_COST`, a forecast `FORECAST_TURN_COST`, and any
-  other research turn one unit. A refused costly turn touches neither counter. A turn that ends in
-  an error frame gives the user's units back to the charge day, up to `MAX_DAILY_REFUND_UNITS` per user
+  other research turn one unit. A costly turn refused before the site's charge
+  touches neither counter; when the site's charge commits and the user's upsert
+  then loses the race, the site's units stay spent and the user's counter is
+  untouched. A turn that ends in an error frame gives the user's units back to
+  the charge day, up to `MAX_DAILY_REFUND_UNITS` per user
   per UTC day (counted in process memory); a disconnect gives nothing back, and site units stay
   spent.
 - A quota number has copies in `web_backend/templates/pages/landing.html` (the daily limit is
