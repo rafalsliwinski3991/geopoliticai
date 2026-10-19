@@ -91,11 +91,11 @@ def n_claims(count: int) -> list[Claim]:
 def analysis_of(drafted: list[Claim]) -> Analysis:
     """An analysis with one section per claim, citing only the first source."""
     return Analysis(
-        overview="The council leans yes. [A](https://carnegieendowment.org/a)",
+        overview="The council leans yes. [A](source:1)",
         claims=[
             ClaimDiscussion(
                 claim=number,
-                discussion=f"Section {number}. [A](https://carnegieendowment.org/a)",
+                discussion=f"Section {number}. [A](source:1)",
             )
             for number in range(1, len(drafted) + 1)
         ],
@@ -304,10 +304,10 @@ async def test_a_forecast_runs_every_step_once_inside_a_checkpointed_parent(
         system: Any, messages: Any, schema: Any, **kwargs: Any
     ) -> Any:
         return Analysis(
-            overview="The council leans yes. [A](https://a.example/1)",
+            overview="The council leans yes. [A](source:1)",
             claims=[
-                ClaimDiscussion(claim=1, discussion="Alpha. [A](https://a.example/1)"),
-                ClaimDiscussion(claim=2, discussion="Beta. [B](https://b.example/2)"),
+                ClaimDiscussion(claim=1, discussion="Alpha. [A](source:1)"),
+                ClaimDiscussion(claim=2, discussion="Beta. [B](source:2)"),
             ],
         )
 

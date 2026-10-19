@@ -58,5 +58,5 @@ def _brief(state: ForecastState) -> str:
     return (
         f"Question: {state['question']}\n\nClaims:\n{render_claims(state['claims'])}"
         f"\n\nThe council's verdicts:\n{verdicts}\n\nFinal-round votes:\n{votes}"
-        f"\n\nSources:\n\n{render_sources(state['sources'])}"
+        f"\n\nSources:\n\n{render_sources(state['sources'], urls=False)}"
     )

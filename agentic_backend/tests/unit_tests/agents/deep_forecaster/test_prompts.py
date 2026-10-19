@@ -55,3 +55,10 @@ def test_the_write_prompt_fills_with_today_and_carries_the_untrusted_rule() -> N
     assert DRAFT_CLAIMS_PROMPT.format(today="30 September 2026")
     assert _UNTRUSTED_RULE in MEMBER_SYSTEM_PROMPT
     assert "Round 2" in ROUND_TWO_INSTRUCTIONS
+
+
+def test_the_write_prompt_asks_for_source_numbers() -> None:
+    """The writer cites `[anchor](source:N)`: it never sees a URL to copy."""
+    # Assert
+    assert "(source:3)" in WRITE_SYSTEM_PROMPT
+    assert "Copy the URL" not in WRITE_SYSTEM_PROMPT

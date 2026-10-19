@@ -64,8 +64,10 @@ async def test_the_writer_reads_verdicts_votes_and_sources(
     assert "Claim 1: ACCEPTED (7 for, 0 against, 0 unsure, of 7 voting)" in human
     assert "Member 4 (did not answer round 2; its round-1 vote):" in human
     assert "Reason 1." in human and "Reason 2." in human
-    assert "https://carnegieendowment.org/a" in human
-    assert "https://reuters.com/b" in human
+    # The writer never sees a URL: it cites by number, and verify links.
+    assert "https://" not in human
+    assert "A article" in human and "Alpha one." in human and "Alpha three." in human
+    assert "B article" in human and "Beta one." in human and "Beta three." in human
     assert "Today is 30 September 2026." in recorded["system"]
     assert recorded["settings"] is write_analysis_module.WRITE_LLM_SETTINGS
     assert events == [
