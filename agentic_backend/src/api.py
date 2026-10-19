@@ -206,8 +206,9 @@ async def _refund_turn(
     """Give a failed turn's units back, unless the user's daily refund cap is spent.
 
     The cap is reserved before the await, so two failures finishing at once
-    cannot both pass it. A failed refund is logged and swallowed: the user is
-    about to get the turn's real error, and this must not replace it.
+    cannot both pass it. A failed refund is logged and swallowed, and gives
+    its reservation back: the user is about to get the turn's real error, and
+    this must not replace it — nor spend the day's cap for nothing.
     """
     for stale in [key for key in _refunded_units if key[1] < day]:
         del _refunded_units[stale]
@@ -220,6 +221,13 @@ async def _refund_turn(
         await refund_quota(pool, user_id=user_id, day=day, cost=cost)
     except Exception:  # noqa: BLE001 - logged; the turn's own error wins
         logger.exception("Refunding %d research units failed.", cost)
+        # Subtracting, not restoring the value read above: another coroutine
+        # may have reserved since, and each failure removes only its own add.
+        left = _refunded_units.get((user_id, day), 0) - cost
+        if left > 0:
+            _refunded_units[(user_id, day)] = left
+        else:
+            _refunded_units.pop((user_id, day), None)
         return
     logger.info("Refunded %d research units to the day %s.", cost, day)
 

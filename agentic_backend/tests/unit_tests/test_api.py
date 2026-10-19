@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 import os
@@ -134,6 +135,9 @@ class RecordingQuota:
 
     def refunds(self) -> list[tuple[Any, ...]]:
         return [call for call in self.calls if call[0] == "refund"]
+
+    def site_calls(self) -> list[tuple[Any, ...]]:
+        return [call for call in self.calls if call[0] == "site"]
 
 
 @pytest.fixture(autouse=True)
@@ -1638,6 +1642,51 @@ async def test_a_client_that_disconnects_mid_stream_is_still_counted(
 
 
 @pytest.mark.anyio
+async def test_a_cancelled_response_is_still_counted(
+    client: httpx.AsyncClient, quota: RecordingQuota
+) -> None:
+    """A response abandoned mid-run is still counted, and refunds nothing.
+
+    `ASGITransport` only hands the body back once the app has finished, so
+    breaking out of `aiter_lines` above reads a finished buffer. The disconnect
+    a browser really causes is the cancellation of the app's task while the
+    run is still streaming — and that cancellation gives no units back.
+    """
+
+    # Arrange — the run signals past the counted frame, then hangs until the
+    # cancellation reaches it.
+    past_the_count = asyncio.Event()
+
+    async def stream(
+        graph_input: Any, thread_id: str
+    ) -> AsyncIterator[tuple[str, Any]]:
+        yield ("counted", None)
+        yield ("token", "partial answer")
+        past_the_count.set()
+        await asyncio.Event().wait()  # never set: the run hangs until cancelled
+
+    async def abandon() -> None:
+        with patch("api._astream_answer", stream):
+            async with client.stream(
+                "POST",
+                "/api/run_pipeline/stream",
+                json={"query": "x", "thread_id": "t-1"},
+            ):
+                pass  # the body never completes; the task is cancelled instead
+
+    # Act — cancel the response while the run is still streaming.
+    abandoned = asyncio.create_task(abandon())
+    await past_the_count.wait()
+    abandoned.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await abandoned
+
+    # Assert
+    assert quota.charged() == [("user", 1, CHARGE_DAY, DAILY_RESEARCH_TURNS, 1)]
+    assert quota.refunds() == []
+
+
+@pytest.mark.anyio
 async def test_a_resume_run_counts_nothing_new(
     client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch, quota: RecordingQuota
 ) -> None:
@@ -2392,7 +2441,7 @@ async def test_a_forecast_failure_reaches_the_browser_and_refunds(
     assert quota.refunds() == [("refund", 1, CHARGE_DAY, FORECAST_TURN_COST)]
     # Site units never come back: the site ceiling is touched once, by the
     # turn's own charge, never by the refund.
-    assert [call for call in quota.calls if call[0] == "site"] == [
+    assert quota.site_calls() == [
         ("site", DAILY_RESEARCH_TURNS_ALL_USERS, FORECAST_TURN_COST)
     ]
 
@@ -2420,9 +2469,7 @@ async def test_an_unexpected_failure_gives_the_units_back(
     assert quota.refunds() == [("refund", 1, CHARGE_DAY, 1)]
     # Site units never come back: the site ceiling is touched once, by the
     # turn's own charge, never by the refund.
-    assert [call for call in quota.calls if call[0] == "site"] == [
-        ("site", DAILY_RESEARCH_TURNS_ALL_USERS, 1)
-    ]
+    assert quota.site_calls() == [("site", DAILY_RESEARCH_TURNS_ALL_USERS, 1)]
 
 
 @pytest.mark.anyio
@@ -2448,9 +2495,7 @@ async def test_an_empty_answer_gives_the_units_back(
     assert quota.refunds() == [("refund", 1, CHARGE_DAY, 1)]
     # Site units never come back: the site ceiling is touched once, by the
     # turn's own charge, never by the refund.
-    assert [call for call in quota.calls if call[0] == "site"] == [
-        ("site", DAILY_RESEARCH_TURNS_ALL_USERS, 1)
-    ]
+    assert quota.site_calls() == [("site", DAILY_RESEARCH_TURNS_ALL_USERS, 1)]
 
 
 @pytest.mark.anyio
@@ -2646,6 +2691,31 @@ async def test_a_failed_refund_keeps_the_original_error(
 
 
 @pytest.mark.anyio
+async def test_a_failed_refund_gives_the_cap_back(
+    client: httpx.AsyncClient,
+    quota: RecordingQuota,
+) -> None:
+    """A refund write that fails transiently does not spend the day's cap:
+    the reservation is only kept when the units actually went back, so a
+    database outage cannot leave every later failure unrefunded."""
+
+    # Arrange — the refund write fails the way a momentary outage does.
+    quota.refund_error = OperationalError("db down")
+    stream = _turn_stream("forecast", error=NoSourcesError("none"))
+
+    # Act
+    with patch("api._astream_answer", stream):
+        response = await client.post(
+            "/api/run_pipeline/stream", json={"query": "x", "thread_id": "t-1"}
+        )
+
+    # Assert
+    assert _events(response.text)[-1]["status"] == 422
+    assert quota.refunds() == [("refund", 1, CHARGE_DAY, FORECAST_TURN_COST)]
+    assert api._refunded_units == {}
+
+
+@pytest.mark.anyio
 async def test_refunds_stop_at_the_daily_cap(
     client: httpx.AsyncClient, quota: RecordingQuota
 ) -> None:
@@ -2676,9 +2746,10 @@ async def test_refunds_stop_at_the_daily_cap(
     assert quota.refunds() == [("refund", 1, CHARGE_DAY, FORECAST_TURN_COST)]
     # Site units never come back: each turn charges the site ceiling itself,
     # and no refund touches it.
-    assert [call for call in quota.calls if call[0] == "site"] == [
-        ("site", DAILY_RESEARCH_TURNS_ALL_USERS, FORECAST_TURN_COST)
-    ] * 2
+    assert (
+        quota.site_calls()
+        == [("site", DAILY_RESEARCH_TURNS_ALL_USERS, FORECAST_TURN_COST)] * 2
+    )
 
 
 @pytest.mark.anyio
@@ -2715,9 +2786,9 @@ async def test_the_cap_counts_units(
     assert _events(capped.text)[-1]["status"] == 422
     # Site units never come back: each of the 21 turns is charged to the site
     # by its own charge, and no refund touches it.
-    assert [call for call in quota.calls if call[0] == "site"] == [
-        ("site", DAILY_RESEARCH_TURNS_ALL_USERS, 1)
-    ] * (DAILY_REFUND_UNITS + 1)
+    assert quota.site_calls() == [("site", DAILY_RESEARCH_TURNS_ALL_USERS, 1)] * (
+        DAILY_REFUND_UNITS + 1
+    )
 
 
 @pytest.mark.anyio
@@ -2750,9 +2821,10 @@ async def test_the_cap_is_per_user(
     ]
     # Site units never come back: each turn charges the site ceiling itself,
     # and no refund touches it.
-    assert [call for call in quota.calls if call[0] == "site"] == [
-        ("site", DAILY_RESEARCH_TURNS_ALL_USERS, FORECAST_TURN_COST)
-    ] * 2
+    assert (
+        quota.site_calls()
+        == [("site", DAILY_RESEARCH_TURNS_ALL_USERS, FORECAST_TURN_COST)] * 2
+    )
 
 
 @pytest.mark.anyio
@@ -2762,6 +2834,7 @@ async def test_the_cap_resets_on_the_next_day(
     """A new UTC day is a new cap: yesterday's refund bookkeeping is dropped,
     so the user who spent it getting one failed forecast back is whole again."""
 
+    # Arrange — nothing refunded yet, and tomorrow's date at hand.
     tomorrow = CHARGE_DAY + timedelta(days=1)
 
     # Act — today's failed forecast spends the whole day's cap.
@@ -2797,6 +2870,58 @@ async def test_the_cap_resets_on_the_next_day(
     assert (1, CHARGE_DAY) not in api._refunded_units
     # Site units never come back: each turn charges the site ceiling itself,
     # and no refund touches it.
-    assert [call for call in quota.calls if call[0] == "site"] == [
-        ("site", DAILY_RESEARCH_TURNS_ALL_USERS, FORECAST_TURN_COST)
-    ] * 2
+    assert (
+        quota.site_calls()
+        == [("site", DAILY_RESEARCH_TURNS_ALL_USERS, FORECAST_TURN_COST)] * 2
+    )
+
+
+@pytest.mark.anyio
+async def test_concurrent_failed_forecasts_refund_once(
+    client: httpx.AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+    quota: RecordingQuota,
+) -> None:
+    """Two failures finishing at once give one refund back: the cap is
+    reserved before the await, so a turn that checks it while the first
+    refund is still in flight finds it spent."""
+
+    # Arrange — the first refund in flight blocks until the second turn has
+    # finished, so the second turn's cap check runs against a live refund.
+    first_in_flight = asyncio.Event()
+    second_done = asyncio.Event()
+
+    async def slow_refund(pool: Any, *, user_id: int, day: date, cost: int) -> None:
+        if not first_in_flight.is_set():
+            first_in_flight.set()
+            await second_done.wait()
+        quota.calls.append(("refund", user_id, day, cost))
+
+    monkeypatch.setattr(api, "refund_quota", slow_refund)
+
+    async def turn() -> str:
+        with patch(
+            "api._astream_answer",
+            _turn_stream("forecast", error=NoSourcesError("none")),
+        ):
+            response = await client.post(
+                "/api/run_pipeline/stream", json={"query": "x", "thread_id": "t-1"}
+            )
+        return response.text
+
+    # Act — both failed forecasts run at once; the first refund holds the cap
+    # while the second turn checks it.
+    first = asyncio.create_task(turn())
+    await first_in_flight.wait()
+    second = asyncio.create_task(turn())
+    await second
+    second_done.set()
+    body = await first
+
+    # Assert
+    assert _events(body)[-1]["status"] == 422
+    assert (
+        quota.charged()
+        == [("user", 1, CHARGE_DAY, DAILY_RESEARCH_TURNS, FORECAST_TURN_COST)] * 2
+    )
+    assert quota.refunds() == [("refund", 1, CHARGE_DAY, FORECAST_TURN_COST)]
