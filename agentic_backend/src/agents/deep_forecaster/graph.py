@@ -78,9 +78,9 @@ async def forecast(query: str, store: Any | None = None) -> str:
     Takes no writer: each step emits its own progress through the graph's
     `runtime.stream_writer`, which reaches the orchestrator's `custom` stream
     under the child namespace (measured, plan §1). The wall cap is a
-    dedicated-task cancel (`time_limits.run_under_time_limits`): the pregel runner absorbs a
-    `CancelledError` raised inside its own loop, so the frame's
-    `asyncio.timeout` alone does not bound a hung run (smoke gate F3, run 1).
+    dedicated-task cancel (`time_limits.run_under_time_limits`): in smoke gate
+    F3, run 1, the frame's `asyncio.timeout` alone did not bound a hung run, and
+    the task is cancelled repeatedly, then abandoned, whatever swallows a cancel.
     """
     run = ForecastRun(store=store)
     try:

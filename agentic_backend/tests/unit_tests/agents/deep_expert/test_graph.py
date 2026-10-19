@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import importlib
 from inspect import signature
 from types import SimpleNamespace
@@ -15,6 +16,11 @@ from agents.deep_expert.state import ResearchRun
 graph_module: Any = importlib.import_module("agents.deep_expert.graph")
 
 DEEP_ANSWER = "A" * 10_000
+# The wall-cap test: a model call hangs far past a short cap, and the run must
+# end well before the hang would have.
+WALL_SECONDS = 0.2
+HANG_SECONDS = 5.0
+ENDED_WITHIN_SECONDS = 2.0
 
 
 def _rubric_messages() -> list[Any]:
@@ -606,3 +612,110 @@ async def test_rubric_loop_at_max_iterations_ships_the_last_draft(
         "needs_revision",
         "max_iterations_reached",
     ]
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    "responses_before_hang",
+    [
+        [],
+        [
+            AIMessage(
+                "",
+                tool_calls=[
+                    {
+                        "name": "task",
+                        "args": {
+                            "description": "dig",
+                            "subagent_type": graph_module.GENERAL_PURPOSE_SUBAGENT_NAME,
+                        },
+                        "id": "k1",
+                    }
+                ],
+            )
+        ],
+    ],
+    ids=["the agent's own call", "a subagent's call"],
+)
+async def test_the_wall_cap_ends_a_run_whose_model_call_hangs(
+    monkeypatch: pytest.MonkeyPatch, responses_before_hang: list[Any]
+) -> None:
+    """A hung model call must not hold the turn past `LIMITS.wall_seconds`.
+
+    The forecaster's smoke gate F3 saw a hung deepagents run outlive an
+    in-frame `asyncio.timeout`; the deep expert caps its run with exactly that,
+    so this runs the real agent (and its `task` subagent) inside a
+    checkpointed parent, as the orchestrator does, and hangs one model call.
+    """
+    # Arrange
+    monkeypatch.setenv("OPENAI_API_KEY", "test")
+
+    from langchain_core.language_models.fake_chat_models import (
+        FakeMessagesListChatModel,
+    )
+    from langchain_core.outputs import ChatGeneration, ChatResult
+    from langgraph.checkpoint.memory import InMemorySaver
+    from langgraph.graph import END, START, StateGraph
+    from langgraph.types import StreamWriter
+    from typing_extensions import TypedDict
+
+    from agents.deep_expert.config import ResearchLimits
+    from models import ResearchLimitError
+
+    research_module: Any = importlib.import_module("agents.deep_expert.research")
+
+    class _HangingModel(FakeMessagesListChatModel):
+        """Plays `responses` in order, hangs on the next call, then refuses more.
+
+        The refusal keeps a regressed cap from looping through the rubric
+        grader: the test then fails in about `HANG_SECONDS` instead of hanging.
+        """
+
+        calls: int = 0
+
+        def bind_tools(self, tools: Any, **kwargs: Any) -> Any:
+            return self
+
+        async def _agenerate(self, *args: Any, **kwargs: Any) -> ChatResult:
+            self.calls += 1
+            if self.calls <= len(self.responses):
+                message = self.responses[self.calls - 1]
+                return ChatResult(generations=[ChatGeneration(message=message)])
+            if self.calls == len(self.responses) + 1:
+                await asyncio.sleep(HANG_SECONDS)
+                return ChatResult(
+                    generations=[ChatGeneration(message=AIMessage("late"))]
+                )
+            raise AssertionError("the scripted model has no call left")
+
+    model = _HangingModel(responses=responses_before_hang)
+    monkeypatch.setattr(graph_module, "build_chat_model", lambda settings: model)
+    monkeypatch.setattr(
+        research_module, "LIMITS", ResearchLimits(wall_seconds=WALL_SECONDS)
+    )
+
+    class ParentState(TypedDict):
+        marker: str
+
+    async def parent_node(state: ParentState, writer: StreamWriter) -> dict[str, Any]:
+        await research_module.research("q", writer)
+        return {"marker": "unreached"}
+
+    builder: "StateGraph[ParentState]" = StateGraph(ParentState)
+    builder.add_node("deep", parent_node)
+    builder.add_edge(START, "deep")
+    builder.add_edge("deep", END)
+    parent: Any = builder.compile(checkpointer=InMemorySaver())
+    loop = asyncio.get_running_loop()
+    started = loop.time()
+
+    # Act
+    with pytest.raises(ResearchLimitError) as caught:
+        await parent.ainvoke(
+            {"marker": ""}, config={"configurable": {"thread_id": "t"}}
+        )
+
+    # Assert
+    assert loop.time() - started < ENDED_WITHIN_SECONDS
+    assert model.calls == len(responses_before_hang) + 1
+    assert "second limit" in str(caught.value)
