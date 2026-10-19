@@ -9,8 +9,7 @@
   "skillOverrides": {
     "deep-agents-core": "off",
     "deep-agents-memory": "off",
-    "deep-agents-orchestration": "off",
-    "managed-deep-agents": "off"
+    "deep-agents-orchestration": "off"
   },
   "enabledPlugins": {
     "context7@claude-plugins-official": true,
