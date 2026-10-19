@@ -218,7 +218,13 @@ EXERCISED_WRITES = {
     "UPSERT_THREAD": "test_upsert_thread_creates_once_and_the_owner_is_read_back",
     "INCREMENT_QUOTA": "test_increment_quota_upserts_increments_and_caps",
     "INCREMENT_SITE_QUOTA": "test_increment_site_quota_upserts_increments_and_caps",
+    "REFUND_QUOTA": "test_refund_quota_gives_back_the_cost",
 }
+
+# Fixed past days for the refund tests: never today's live counters, and the
+# per-test `user_id` fixture deletes every `quota` row it created.
+DAY = date(2026, 10, 16)
+NEXT_DAY = date(2026, 10, 17)
 
 
 def _sql_constants() -> dict[str, str]:
@@ -397,6 +403,171 @@ def test_increment_site_quota_spends_the_whole_cost_or_nothing(
     assert first == 3
     assert refused is None
     assert last == 5
+
+
+def test_refund_quota_gives_back_the_cost(
+    conn: Connection[dict[str, Any]], user_id: int
+) -> None:
+    """A refund subtracts exactly the cost from the day it names."""
+    # Arrange: charged 20 on DAY, the way `INCREMENT_QUOTA` writes it.
+    run(
+        conn,
+        sql.INCREMENT_QUOTA,
+        {"user_id": user_id, "day": DAY, "limit": 50, "cost": 20},
+    )
+
+    # Act
+    run(conn, sql.REFUND_QUOTA, {"user_id": user_id, "day": DAY, "cost": 20})
+
+    # Assert
+    used = fetch_one(
+        conn,
+        "SELECT used FROM quota WHERE user_id = %s AND day = %s",
+        (user_id, DAY),
+    )["used"]
+    assert used == 0
+
+
+def test_a_partial_refund_gives_back_part_of_the_charge(
+    conn: Connection[dict[str, Any]], user_id: int
+) -> None:
+    """A refund subtracts the cost, it does not zero the day: a charge of 20
+    with 5 refunded leaves 15, which a `used = 0` write would not show."""
+    # Arrange: charged 20 on DAY.
+    run(
+        conn,
+        sql.INCREMENT_QUOTA,
+        {"user_id": user_id, "day": DAY, "limit": 50, "cost": 20},
+    )
+
+    # Act: refund part of it.
+    run(conn, sql.REFUND_QUOTA, {"user_id": user_id, "day": DAY, "cost": 5})
+
+    # Assert
+    used = fetch_one(
+        conn,
+        "SELECT used FROM quota WHERE user_id = %s AND day = %s",
+        (user_id, DAY),
+    )["used"]
+    assert used == 15
+
+
+def test_a_refund_never_goes_below_zero(
+    conn: Connection[dict[str, Any]], user_id: int
+) -> None:
+    """`GREATEST` floors the count at zero: an admin may have reset the row
+    since the charge, and Django's `used` is a PositiveIntegerField."""
+    # Arrange: charged 20, then an admin reset the row to 5.
+    run(
+        conn,
+        sql.INCREMENT_QUOTA,
+        {"user_id": user_id, "day": DAY, "limit": 50, "cost": 20},
+    )
+    run(
+        conn,
+        "UPDATE quota SET used = 5 WHERE user_id = %s AND day = %s",
+        (user_id, DAY),
+    )
+
+    # Act: refund the original 20 anyway.
+    run(conn, sql.REFUND_QUOTA, {"user_id": user_id, "day": DAY, "cost": 20})
+
+    # Assert
+    used = fetch_one(
+        conn,
+        "SELECT used FROM quota WHERE user_id = %s AND day = %s",
+        (user_id, DAY),
+    )["used"]
+    assert used == 0
+
+
+def test_a_refund_touches_only_the_charge_day(
+    conn: Connection[dict[str, Any]], user_id: int
+) -> None:
+    """The refund's WHERE names the day, so the next day's row keeps its count."""
+    # Arrange: rows for two consecutive days.
+    run(
+        conn,
+        sql.INCREMENT_QUOTA,
+        {"user_id": user_id, "day": DAY, "limit": 50, "cost": 20},
+    )
+    run(
+        conn,
+        sql.INCREMENT_QUOTA,
+        {"user_id": user_id, "day": NEXT_DAY, "limit": 50, "cost": 20},
+    )
+
+    # Act
+    run(conn, sql.REFUND_QUOTA, {"user_id": user_id, "day": DAY, "cost": 20})
+
+    # Assert
+    charge_day_used = fetch_one(
+        conn,
+        "SELECT used FROM quota WHERE user_id = %s AND day = %s",
+        (user_id, DAY),
+    )["used"]
+    next_day_used = fetch_one(
+        conn,
+        "SELECT used FROM quota WHERE user_id = %s AND day = %s",
+        (user_id, NEXT_DAY),
+    )["used"]
+    assert charge_day_used == 0
+    assert next_day_used == 20
+
+
+def test_a_refund_touches_only_that_user(
+    conn: Connection[dict[str, Any]], user_id: int
+) -> None:
+    """The refund's WHERE names the user, so nobody else's count moves."""
+    # Arrange: a second user, charged the same day as the fixture's user.
+    with conn.cursor() as cursor:
+        cursor.execute(
+            """
+            INSERT INTO users_user (
+                password, is_superuser, is_staff, is_active, date_joined, email,
+                first_name, last_name
+            )
+            VALUES (
+                'integration-test-not-a-real-hash', FALSE, FALSE, TRUE, NOW(), %s,
+                '', ''
+            )
+            RETURNING id
+            """,
+            (f"drift-other-{os.getpid()}-{time.time_ns()}@example.com",),
+        )
+        other_id = cast(Any, cursor.fetchone())["id"]
+    try:
+        run(
+            conn,
+            sql.INCREMENT_QUOTA,
+            {"user_id": user_id, "day": DAY, "limit": 50, "cost": 20},
+        )
+        run(
+            conn,
+            sql.INCREMENT_QUOTA,
+            {"user_id": other_id, "day": DAY, "limit": 50, "cost": 20},
+        )
+
+        # Act: refund only the fixture's user.
+        run(conn, sql.REFUND_QUOTA, {"user_id": user_id, "day": DAY, "cost": 20})
+
+        # Assert
+        own_used = fetch_one(
+            conn,
+            "SELECT used FROM quota WHERE user_id = %s AND day = %s",
+            (user_id, DAY),
+        )["used"]
+        other_used = fetch_one(
+            conn,
+            "SELECT used FROM quota WHERE user_id = %s AND day = %s",
+            (other_id, DAY),
+        )["used"]
+        assert own_used == 0
+        assert other_used == 20
+    finally:
+        with conn.cursor() as cursor:
+            cursor.execute("DELETE FROM quota WHERE user_id = %s", (other_id,))
+            cursor.execute("DELETE FROM users_user WHERE id = %s", (other_id,))
 
 
 def test_deleting_a_user_cascades_into_the_checkpointer_tables(

@@ -1,8 +1,8 @@
 import json
 import logging
 import os
-from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from dataclasses import dataclass, field
+from datetime import date, datetime, timedelta, timezone
 from typing import Any, AsyncIterator, cast
 from unittest.mock import patch
 
@@ -39,6 +39,8 @@ from models import (
     SearchUnavailableError,
     Source,
 )
+
+CHARGE_DAY = date(2026, 10, 16)
 
 
 def _mint_token(user_id: int, *, expired: bool = False) -> str:
@@ -90,14 +92,54 @@ def _owned_thread_with_quota_headroom(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(api, "owns_thread", own)
 
 
+@dataclass
+class RecordingQuota:
+    """Stands in for the quota writes and records every call in order.
+
+    `user_has_room` and `site_has_room` set to False refuse the matching
+    increment, as the conditional upsert does at its cap.
+    """
+
+    user_has_room: bool = True
+    site_has_room: bool = True
+    refund_error: BaseException | None = None
+    calls: list[tuple[Any, ...]] = field(default_factory=list)
+
+    async def increment_quota(
+        self, pool: Any, *, user_id: int, day: date, limit: int, cost: int = 1
+    ) -> int | None:
+        self.calls.append(("user", user_id, day, limit, cost))
+        return cost if self.user_has_room else None
+
+    async def increment_site_quota(
+        self, pool: Any, *, limit: int, cost: int = 1
+    ) -> int | None:
+        self.calls.append(("site", limit, cost))
+        return cost if self.site_has_room else None
+
+    async def refund_quota(
+        self, pool: Any, *, user_id: int, day: date, cost: int
+    ) -> None:
+        self.calls.append(("refund", user_id, day, cost))
+        if self.refund_error is not None:
+            raise self.refund_error
+
+    def charged(self) -> list[tuple[Any, ...]]:
+        return [call for call in self.calls if call[0] == "user"]
+
+    def refunds(self) -> list[tuple[Any, ...]]:
+        return [call for call in self.calls if call[0] == "refund"]
+
+
 @pytest.fixture(autouse=True)
-def _site_has_headroom(monkeypatch: pytest.MonkeyPatch) -> None:
-    """The site-wide ceiling has room, unless a test says otherwise."""
-
-    async def site(pool: Any, *, limit: int, cost: int = 1) -> int | None:
-        return 1
-
-    monkeypatch.setattr(api, "increment_site_quota", site)
+def quota(monkeypatch: pytest.MonkeyPatch) -> RecordingQuota:
+    """Every turn has room on both counters and today is CHARGE_DAY, unless a
+    test says otherwise."""
+    recording = RecordingQuota()
+    monkeypatch.setattr(api, "increment_quota", recording.increment_quota)
+    monkeypatch.setattr(api, "increment_site_quota", recording.increment_site_quota)
+    monkeypatch.setattr(api, "quota_day", lambda: CHARGE_DAY)
+    return recording
 
 
 def _events(body: str) -> list[dict[str, Any]]:
@@ -491,7 +533,7 @@ async def test_an_approve_resume_sends_a_resume_command(
 
 @pytest.mark.anyio
 async def test_an_approve_resume_proceeds_at_the_cap(
-    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch, quota: RecordingQuota
 ) -> None:
     """Approving a pending report is free: the quota must never strand it."""
 
@@ -511,14 +553,6 @@ async def test_an_approve_resume_proceeds_at_the_cap(
     async def exhausted(pool: Any, *, user_id: int) -> int:
         return DAILY_RESEARCH_TURNS
 
-    increments: list[int] = []
-
-    async def increment(
-        pool: Any, *, user_id: int, limit: int, cost: int = 1
-    ) -> int | None:
-        increments.append(user_id)
-        return 1
-
     async def stream(
         graph_input: Any, thread_id: str
     ) -> AsyncIterator[tuple[str, str]]:
@@ -527,7 +561,6 @@ async def test_an_approve_resume_proceeds_at_the_cap(
     monkeypatch.setattr(api, "_pending_pause", pending)
     monkeypatch.setattr(api, "classify_resume_intent", intent)
     monkeypatch.setattr(api, "quota_used", exhausted)
-    monkeypatch.setattr(api, "increment_quota", increment)
     # Act
     with patch("api._astream_answer", stream):
         response = await client.post(
@@ -536,7 +569,7 @@ async def test_an_approve_resume_proceeds_at_the_cap(
     # Assert
     assert response.status_code == 200
     assert _events(response.text)[-1]["type"] == "result"
-    assert increments == []
+    assert quota.calls == []
 
 
 @pytest.mark.anyio
@@ -1300,19 +1333,15 @@ async def test_admin_thread_endpoint_with_is_staff_true_returns_messages(
 
 @pytest.mark.anyio
 async def test_the_21st_research_turn_is_429_mid_stream(
-    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+    client: httpx.AsyncClient, quota: RecordingQuota
 ) -> None:
     """The cap is enforced in the counted branch: a research turn over it is
     refused with a 429 error frame on an HTTP 200, never a result."""
 
     # Arrange
-    # Arrange
-    async def increment(
-        pool: Any, *, user_id: int, limit: int, cost: int = 1
-    ) -> int | None:
-        # The caller's own cap is the one already reached; the site still has
-        # headroom for the refusal (the autouse `_site_has_headroom`).
-        return None
+    # The caller's own cap is the one already reached; the site still has
+    # headroom for the refusal (the autouse `quota` fixture).
+    quota.user_has_room = False
 
     async def stream(
         graph_input: Any, thread_id: str
@@ -1320,7 +1349,6 @@ async def test_the_21st_research_turn_is_429_mid_stream(
         yield ("counted", None)
         yield ("token", "never")
 
-    monkeypatch.setattr(api, "increment_quota", increment)
     # Act
     with patch("api._astream_answer", stream):
         response = await client.post(
@@ -1336,7 +1364,7 @@ async def test_the_21st_research_turn_is_429_mid_stream(
 
 @pytest.mark.anyio
 async def test_a_chat_routed_turn_proceeds_at_the_cap(
-    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch, quota: RecordingQuota
 ) -> None:
     """Chat is free (Q5b): an exhausted user may still chat, and the counted
     branch — the only place a turn is refused — never fires."""
@@ -1346,21 +1374,12 @@ async def test_a_chat_routed_turn_proceeds_at_the_cap(
     async def exhausted(pool: Any, *, user_id: int) -> int:
         return DAILY_RESEARCH_TURNS
 
-    increments: list[int] = []
-
-    async def increment(
-        pool: Any, *, user_id: int, limit: int, cost: int = 1
-    ) -> int | None:
-        increments.append(user_id)
-        return 1
-
     async def stream(
         graph_input: Any, thread_id: str
     ) -> AsyncIterator[tuple[str, str]]:
         yield ("token", "Hello.")
 
     monkeypatch.setattr(api, "quota_used", exhausted)
-    monkeypatch.setattr(api, "increment_quota", increment)
     # Act
     with patch("api._astream_answer", stream):
         response = await client.post(
@@ -1370,31 +1389,19 @@ async def test_a_chat_routed_turn_proceeds_at_the_cap(
     # Assert
     assert response.status_code == 200
     assert _events(response.text)[-1]["type"] == "result"
-    assert increments == []
+    assert quota.calls == []
 
 
 @pytest.mark.anyio
 async def test_a_turn_refused_by_the_site_ceiling_does_not_charge_the_user(
-    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+    client: httpx.AsyncClient, quota: RecordingQuota
 ) -> None:
     """The site increment commits before the user's: a turn the site refuses
     costs the caller nothing, with no advisory read that a race could open."""
 
     # Arrange
-    # Arrange
-    increments: list[int] = []
-
-    async def increment(
-        pool: Any, *, user_id: int, limit: int, cost: int = 1
-    ) -> int | None:
-        increments.append(user_id)
-        return 1
-
-    async def site_full(pool: Any, *, limit: int, cost: int = 1) -> int | None:
-        # The site is already at its ceiling; the caller still has headroom.
-        return None
-
-    monkeypatch.setattr(api, "increment_site_quota", site_full)
+    # The site is already at its ceiling; the caller still has headroom.
+    quota.site_has_room = False
 
     async def stream(
         graph_input: Any, thread_id: str
@@ -1402,7 +1409,6 @@ async def test_a_turn_refused_by_the_site_ceiling_does_not_charge_the_user(
         yield ("counted", None)
         yield ("token", "never")
 
-    monkeypatch.setattr(api, "increment_quota", increment)
     # Act
     with patch("api._astream_answer", stream):
         response = await client.post(
@@ -1414,27 +1420,16 @@ async def test_a_turn_refused_by_the_site_ceiling_does_not_charge_the_user(
     assert events[-1]["status"] == 429
     assert events[-1]["message"] == "The site has used today's research capacity."
     assert all(event["type"] != "result" for event in events)
-    assert increments == []
+    assert quota.charged() == []
 
 
 @pytest.mark.anyio
 async def test_a_chat_routed_turn_does_not_increment_the_quota(
-    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+    client: httpx.AsyncClient, quota: RecordingQuota
 ) -> None:
     """`other` is not a research destination; the increment never fires."""
 
     # Arrange
-    # Arrange
-    increments: list[int] = []
-
-    async def increment(
-        pool: Any, *, user_id: int, limit: int, cost: int = 1
-    ) -> int | None:
-        increments.append(user_id)
-        return 1
-
-    monkeypatch.setattr(api, "increment_quota", increment)
-
     async def stream(
         graph_input: Any, thread_id: str
     ) -> AsyncIterator[tuple[str, str]]:
@@ -1449,13 +1444,16 @@ async def test_a_chat_routed_turn_does_not_increment_the_quota(
     # Assert
     assert response.status_code == 200
     assert _events(response.text)[-1]["type"] == "result"
-    assert increments == []
+    assert quota.calls == []
 
 
 @pytest.mark.anyio
 @pytest.mark.parametrize("destination", ["geopolitical", "report"])
 async def test_a_research_routed_turn_increments_exactly_once(
-    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch, destination: str
+    client: httpx.AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+    quota: RecordingQuota,
+    destination: str,
 ) -> None:
     """Counting rides the `classify` updates frame, once, in _generate.
 
@@ -1466,21 +1464,6 @@ async def test_a_research_routed_turn_increments_exactly_once(
     # Arrange
     # Arrange
     from langchain_core.messages import AIMessage
-
-    calls: list[tuple[Any, ...]] = []
-
-    async def increment(
-        pool: Any, *, user_id: int, limit: int, cost: int = 1
-    ) -> int | None:
-        calls.append(("user", user_id, limit))
-        return 1
-
-    async def site(pool: Any, *, limit: int, cost: int = 1) -> int | None:
-        calls.append(("site", limit))
-        return 1
-
-    monkeypatch.setattr(api, "increment_quota", increment)
-    monkeypatch.setattr(api, "increment_site_quota", site)
 
     classify_update = {
         "classify": {"destination": destination, "standalone_query": "q"}
@@ -1512,30 +1495,19 @@ async def test_a_research_routed_turn_increments_exactly_once(
     events = _events(response.text)
     assert events[-1]["type"] == "result"
     # The site entry comes first: a turn the site refuses costs the user nothing.
-    assert calls == [
-        ("site", DAILY_RESEARCH_TURNS_ALL_USERS),
-        ("user", 1, DAILY_RESEARCH_TURNS),
+    assert quota.calls == [
+        ("site", DAILY_RESEARCH_TURNS_ALL_USERS, 1),
+        ("user", 1, CHARGE_DAY, DAILY_RESEARCH_TURNS, 1),
     ]
 
 
 @pytest.mark.anyio
 async def test_a_turn_that_fails_after_routing_still_increments_once(
-    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+    client: httpx.AsyncClient, quota: RecordingQuota
 ) -> None:
     """The model call the turn paid for already happened; the money is spent."""
 
     # Arrange
-    # Arrange
-    increments: list[int] = []
-
-    async def increment(
-        pool: Any, *, user_id: int, limit: int, cost: int = 1
-    ) -> int | None:
-        increments.append(user_id)
-        return 1
-
-    monkeypatch.setattr(api, "increment_quota", increment)
-
     async def stream(
         graph_input: Any, thread_id: str
     ) -> AsyncIterator[tuple[str, Any]]:
@@ -1552,23 +1524,17 @@ async def test_a_turn_that_fails_after_routing_still_increments_once(
     assert response.status_code == 200
     events = _events(response.text)
     assert events[-1]["type"] == "error"
-    assert [user_id for user_id in increments if user_id] == [1]
+    assert quota.charged() == [("user", 1, CHARGE_DAY, DAILY_RESEARCH_TURNS, 1)]
 
 
 @pytest.mark.anyio
 async def test_a_turn_at_the_cap_ends_with_a_429_error_frame(
-    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+    client: httpx.AsyncClient, quota: RecordingQuota
 ) -> None:
     """A concurrent turn took the last one before this turn's increment."""
 
     # Arrange
-    # Arrange
-    async def increment(
-        pool: Any, *, user_id: int, limit: int, cost: int = 1
-    ) -> int | None:
-        return None
-
-    monkeypatch.setattr(api, "increment_quota", increment)
+    quota.user_has_room = False
 
     async def stream(
         graph_input: Any, thread_id: str
@@ -1614,7 +1580,7 @@ async def test_get_threads_reports_the_quota_block(
 
 @pytest.mark.anyio
 async def test_a_client_that_disconnects_mid_stream_is_still_counted(
-    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+    client: httpx.AsyncClient, quota: RecordingQuota
 ) -> None:
     """The count lands at the classify frame, before any token is spent.
 
@@ -1623,18 +1589,8 @@ async def test_a_client_that_disconnects_mid_stream_is_still_counted(
     abort the fetch mid-answer and the turn was free. This test pins the
     counting to the earliest frame.
     """
+
     # Arrange
-    # Arrange
-    increments: list[int] = []
-
-    async def increment(
-        pool: Any, *, user_id: int, limit: int, cost: int = 1
-    ) -> int | None:
-        increments.append(user_id)
-        return 1
-
-    monkeypatch.setattr(api, "increment_quota", increment)
-
     async def stream(
         graph_input: Any, thread_id: str
     ) -> AsyncIterator[tuple[str, Any]]:
@@ -1653,27 +1609,18 @@ async def test_a_client_that_disconnects_mid_stream_is_still_counted(
                 if line.startswith("data: ") and '"token"' in line:
                     break
     # Assert
-    assert [user_id for user_id in increments if user_id] == [1]
+    assert quota.charged() == [("user", 1, CHARGE_DAY, DAILY_RESEARCH_TURNS, 1)]
 
 
 @pytest.mark.anyio
 async def test_a_resume_run_counts_nothing_new(
-    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch, quota: RecordingQuota
 ) -> None:
     """One report is one count, taken when it was requested: classify does not
     re-run on a resume, so approving a pending outline is free."""
+
     # Arrange
     # Arrange
-    increments: list[int] = []
-
-    async def increment(
-        pool: Any, *, user_id: int, limit: int, cost: int = 1
-    ) -> int | None:
-        increments.append(user_id)
-        return 1
-
-    monkeypatch.setattr(api, "increment_quota", increment)
-
     async def pending(thread_id: str) -> dict[str, Any] | None:
         return {
             "outline": ["Section one"],
@@ -1704,7 +1651,7 @@ async def test_a_resume_run_counts_nothing_new(
     # Assert
     assert response.status_code == 200
     assert _events(response.text)[-1]["type"] == "result"
-    assert increments == []
+    assert quota.calls == []
 
 
 class _FakeCursor:
@@ -1987,27 +1934,11 @@ async def test_thread_routes_422_on_a_malformed_thread_id(
 
 @pytest.mark.anyio
 async def test_a_deep_turn_spends_the_deep_cost_from_both_counters(
-    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+    client: httpx.AsyncClient, quota: RecordingQuota
 ) -> None:
     """A deep turn costs DEEP_RESEARCH_TURN_COST units from both counters."""
 
     # Arrange
-    # Arrange
-    calls: list[tuple[Any, ...]] = []
-
-    async def increment(
-        pool: Any, *, user_id: int, limit: int, cost: int = 1
-    ) -> int | None:
-        calls.append(("user", user_id, limit, cost))
-        return 1
-
-    async def site(pool: Any, *, limit: int, cost: int = 1) -> int | None:
-        calls.append(("site", limit, cost))
-        return 1
-
-    monkeypatch.setattr(api, "increment_quota", increment)
-    monkeypatch.setattr(api, "increment_site_quota", site)
-
     async def stream(
         graph_input: Any, thread_id: str
     ) -> AsyncIterator[tuple[str, Any]]:
@@ -2022,34 +1953,17 @@ async def test_a_deep_turn_spends_the_deep_cost_from_both_counters(
     # Assert
     assert response.status_code == 200
     assert _events(response.text)[-1]["type"] == "result"
-    assert calls == [
+    assert quota.calls == [
         ("site", DAILY_RESEARCH_TURNS_ALL_USERS, DEEP_RESEARCH_TURN_COST),
-        ("user", 1, DAILY_RESEARCH_TURNS, DEEP_RESEARCH_TURN_COST),
+        ("user", 1, CHARGE_DAY, DAILY_RESEARCH_TURNS, DEEP_RESEARCH_TURN_COST),
     ]
 
 
 @pytest.mark.anyio
 async def test_a_geopolitical_turn_still_spends_one(
-    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+    client: httpx.AsyncClient, quota: RecordingQuota
 ) -> None:
     # Arrange
-    # Arrange
-    increments: list[int] = []
-    site_costs: list[int] = []
-
-    async def increment(
-        pool: Any, *, user_id: int, limit: int, cost: int = 1
-    ) -> int | None:
-        increments.append(user_id)
-        return 1
-
-    async def site(pool: Any, *, limit: int, cost: int = 1) -> int | None:
-        site_costs.append(cost)
-        return 1
-
-    monkeypatch.setattr(api, "increment_quota", increment)
-    monkeypatch.setattr(api, "increment_site_quota", site)
-
     async def stream(
         graph_input: Any, thread_id: str
     ) -> AsyncIterator[tuple[str, Any]]:
@@ -2063,13 +1977,15 @@ async def test_a_geopolitical_turn_still_spends_one(
         )
     # Assert
     assert response.status_code == 200
-    assert increments == [1]
-    assert site_costs == [1]
+    assert quota.calls == [
+        ("site", DAILY_RESEARCH_TURNS_ALL_USERS, 1),
+        ("user", 1, CHARGE_DAY, DAILY_RESEARCH_TURNS, 1),
+    ]
 
 
 @pytest.mark.anyio
 async def test_a_deep_turn_short_of_quota_is_refused_before_the_site_is_charged(
-    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch, quota: RecordingQuota
 ) -> None:
     """The advisory headroom read refuses a deep turn that cannot fit."""
 
@@ -2078,22 +1994,7 @@ async def test_a_deep_turn_short_of_quota_is_refused_before_the_site_is_charged(
     async def exhausted(pool: Any, *, user_id: int) -> int:
         return DAILY_RESEARCH_TURNS - 3
 
-    increments: list[int] = []
-    site_calls: list[int] = []
-
-    async def increment(
-        pool: Any, *, user_id: int, limit: int, cost: int = 1
-    ) -> int | None:
-        increments.append(user_id)
-        return 1
-
-    async def site(pool: Any, *, limit: int, cost: int = 1) -> int | None:
-        site_calls.append(cost)
-        return 1
-
     monkeypatch.setattr(api, "quota_used", exhausted)
-    monkeypatch.setattr(api, "increment_quota", increment)
-    monkeypatch.setattr(api, "increment_site_quota", site)
 
     async def stream(
         graph_input: Any, thread_id: str
@@ -2114,13 +2015,12 @@ async def test_a_deep_turn_short_of_quota_is_refused_before_the_site_is_charged(
         "A deep analysis needs 10 research turns; you have 3 left today."
     )
     assert all(event["type"] != "result" for event in events)
-    assert increments == []
-    assert site_calls == []
+    assert quota.calls == []
 
 
 @pytest.mark.anyio
 async def test_a_deep_turn_exactly_at_the_headroom_is_counted(
-    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch, quota: RecordingQuota
 ) -> None:
     """The boundary `left == cost` is affordable, not refused (`left < cost`)."""
 
@@ -2129,21 +2029,7 @@ async def test_a_deep_turn_exactly_at_the_headroom_is_counted(
     async def exactly_affordable(pool: Any, *, user_id: int) -> int:
         return DAILY_RESEARCH_TURNS - DEEP_RESEARCH_TURN_COST
 
-    calls: list[tuple[str, int]] = []
-
-    async def increment(
-        pool: Any, *, user_id: int, limit: int, cost: int = 1
-    ) -> int | None:
-        calls.append(("user", cost))
-        return 1
-
-    async def site(pool: Any, *, limit: int, cost: int = 1) -> int | None:
-        calls.append(("site", cost))
-        return 1
-
     monkeypatch.setattr(api, "quota_used", exactly_affordable)
-    monkeypatch.setattr(api, "increment_quota", increment)
-    monkeypatch.setattr(api, "increment_site_quota", site)
 
     async def stream(
         graph_input: Any, thread_id: str
@@ -2159,15 +2045,15 @@ async def test_a_deep_turn_exactly_at_the_headroom_is_counted(
     # Assert
     assert response.status_code == 200
     assert _events(response.text)[-1]["type"] == "result"
-    assert calls == [
-        ("site", DEEP_RESEARCH_TURN_COST),
-        ("user", DEEP_RESEARCH_TURN_COST),
+    assert quota.calls == [
+        ("site", DAILY_RESEARCH_TURNS_ALL_USERS, DEEP_RESEARCH_TURN_COST),
+        ("user", 1, CHARGE_DAY, DAILY_RESEARCH_TURNS, DEEP_RESEARCH_TURN_COST),
     ]
 
 
 @pytest.mark.anyio
 async def test_a_deep_turn_losing_a_race_gets_the_generic_limit_message(
-    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch, quota: RecordingQuota
 ) -> None:
     """A deep turn that passes the headroom read but loses the upsert race
     gets the generic 429; the site slot it took belongs to this run's refusal."""
@@ -2177,17 +2063,8 @@ async def test_a_deep_turn_losing_a_race_gets_the_generic_limit_message(
     async def fresh(pool: Any, *, user_id: int) -> int:
         return 0
 
-    async def increment(
-        pool: Any, *, user_id: int, limit: int, cost: int = 1
-    ) -> int | None:
-        return None
-
-    async def site(pool: Any, *, limit: int, cost: int = 1) -> int | None:
-        return 1
-
     monkeypatch.setattr(api, "quota_used", fresh)
-    monkeypatch.setattr(api, "increment_quota", increment)
-    monkeypatch.setattr(api, "increment_site_quota", site)
+    quota.user_has_room = False
 
     async def stream(
         graph_input: Any, thread_id: str
@@ -2210,27 +2087,11 @@ async def test_a_deep_turn_losing_a_race_gets_the_generic_limit_message(
 
 @pytest.mark.anyio
 async def test_a_forecast_spends_the_forecast_cost_from_both_counters(
-    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+    client: httpx.AsyncClient, quota: RecordingQuota
 ) -> None:
     """A forecast costs FORECAST_TURN_COST units from both counters."""
 
     # Arrange
-    # Arrange
-    calls: list[tuple[Any, ...]] = []
-
-    async def increment(
-        pool: Any, *, user_id: int, limit: int, cost: int = 1
-    ) -> int | None:
-        calls.append(("user", user_id, limit, cost))
-        return 1
-
-    async def site(pool: Any, *, limit: int, cost: int = 1) -> int | None:
-        calls.append(("site", limit, cost))
-        return 1
-
-    monkeypatch.setattr(api, "increment_quota", increment)
-    monkeypatch.setattr(api, "increment_site_quota", site)
-
     async def stream(
         graph_input: Any, thread_id: str
     ) -> AsyncIterator[tuple[str, Any]]:
@@ -2245,15 +2106,15 @@ async def test_a_forecast_spends_the_forecast_cost_from_both_counters(
     # Assert
     assert response.status_code == 200
     assert _events(response.text)[-1]["type"] == "result"
-    assert calls == [
+    assert quota.calls == [
         ("site", DAILY_RESEARCH_TURNS_ALL_USERS, FORECAST_TURN_COST),
-        ("user", 1, DAILY_RESEARCH_TURNS, FORECAST_TURN_COST),
+        ("user", 1, CHARGE_DAY, DAILY_RESEARCH_TURNS, FORECAST_TURN_COST),
     ]
 
 
 @pytest.mark.anyio
 async def test_a_forecast_short_of_quota_is_refused_before_the_site_is_charged(
-    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch, quota: RecordingQuota
 ) -> None:
     """The advisory headroom read refuses a forecast that cannot fit."""
 
@@ -2262,22 +2123,7 @@ async def test_a_forecast_short_of_quota_is_refused_before_the_site_is_charged(
     async def exhausted(pool: Any, *, user_id: int) -> int:
         return DAILY_RESEARCH_TURNS - FORECAST_TURN_COST + 1
 
-    increments: list[int] = []
-    site_calls: list[int] = []
-
-    async def increment(
-        pool: Any, *, user_id: int, limit: int, cost: int = 1
-    ) -> int | None:
-        increments.append(user_id)
-        return 1
-
-    async def site(pool: Any, *, limit: int, cost: int = 1) -> int | None:
-        site_calls.append(cost)
-        return 1
-
     monkeypatch.setattr(api, "quota_used", exhausted)
-    monkeypatch.setattr(api, "increment_quota", increment)
-    monkeypatch.setattr(api, "increment_site_quota", site)
 
     async def stream(
         graph_input: Any, thread_id: str
@@ -2299,13 +2145,12 @@ async def test_a_forecast_short_of_quota_is_refused_before_the_site_is_charged(
         f"you have {FORECAST_TURN_COST - 1} left today."
     )
     assert all(event["type"] != "result" for event in events)
-    assert increments == []
-    assert site_calls == []
+    assert quota.calls == []
 
 
 @pytest.mark.anyio
 async def test_a_forecast_on_a_fresh_day_is_counted(
-    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch, quota: RecordingQuota
 ) -> None:
     """The boundary `left == cost` is affordable, not refused (`left < cost`)."""
 
@@ -2314,21 +2159,7 @@ async def test_a_forecast_on_a_fresh_day_is_counted(
     async def fresh(pool: Any, *, user_id: int) -> int:
         return 0
 
-    calls: list[tuple[str, int]] = []
-
-    async def increment(
-        pool: Any, *, user_id: int, limit: int, cost: int = 1
-    ) -> int | None:
-        calls.append(("user", cost))
-        return 1
-
-    async def site(pool: Any, *, limit: int, cost: int = 1) -> int | None:
-        calls.append(("site", cost))
-        return 1
-
     monkeypatch.setattr(api, "quota_used", fresh)
-    monkeypatch.setattr(api, "increment_quota", increment)
-    monkeypatch.setattr(api, "increment_site_quota", site)
 
     async def stream(
         graph_input: Any, thread_id: str
@@ -2344,9 +2175,9 @@ async def test_a_forecast_on_a_fresh_day_is_counted(
     # Assert
     assert response.status_code == 200
     assert _events(response.text)[-1]["type"] == "result"
-    assert calls == [
-        ("site", FORECAST_TURN_COST),
-        ("user", FORECAST_TURN_COST),
+    assert quota.calls == [
+        ("site", DAILY_RESEARCH_TURNS_ALL_USERS, FORECAST_TURN_COST),
+        ("user", 1, CHARGE_DAY, DAILY_RESEARCH_TURNS, FORECAST_TURN_COST),
     ]
 
 
@@ -2362,17 +2193,7 @@ async def test_a_geopolitical_turn_skips_the_headroom_read(
         reads.append(user_id)
         return 0
 
-    async def increment(
-        pool: Any, *, user_id: int, limit: int, cost: int = 1
-    ) -> int | None:
-        return 1
-
-    async def site(pool: Any, *, limit: int, cost: int = 1) -> int | None:
-        return 1
-
     monkeypatch.setattr(api, "quota_used", read)
-    monkeypatch.setattr(api, "increment_quota", increment)
-    monkeypatch.setattr(api, "increment_site_quota", site)
 
     async def stream(
         graph_input: Any, thread_id: str

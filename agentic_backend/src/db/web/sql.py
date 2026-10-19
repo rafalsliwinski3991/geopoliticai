@@ -67,6 +67,16 @@ WHERE site_quota.used + %(cost)s <= %(limit)s
 RETURNING used
 """
 
+# Gives a failed turn's units back to the day they were charged on
+# (brainstorm 2026Oct16 Q1, Q5). Floored at zero: an admin may have reset the
+# row since the charge, and Django's `used` is a PositiveIntegerField. A day
+# with no row (never charged) updates nothing. Site units are never refunded
+# (Q4), so there is no site statement.
+REFUND_QUOTA = """
+UPDATE quota SET used = GREATEST(used - %(cost)s, 0)
+WHERE user_id = %(user_id)s AND day = %(day)s
+"""
+
 
 def title_from(query: str) -> str:
     """Derive a thread title from the first query."""
@@ -151,7 +161,7 @@ async def quota_used(
     """Return the research turns this identity has spent today (0 when none)."""
     async with pool.connection() as conn:
         cursor = await conn.execute(
-            SELECT_QUOTA_USED, {"user_id": user_id, "day": _today()}
+            SELECT_QUOTA_USED, {"user_id": user_id, "day": quota_day()}
         )
         row = await cursor.fetchone()
     return int((row or {}).get("used") or 0)
@@ -161,10 +171,14 @@ async def increment_quota(
     pool: AsyncConnectionPool[AsyncConnection[DictRow]],
     *,
     user_id: int,
+    day: date,
     limit: int,
     cost: int = 1,
 ) -> int | None:
     """Spend `cost` research units atomically; None when they do not all fit.
+
+    `day` is the caller's `quota_day()`, taken once per turn, so a refund of
+    this charge targets the same day even after midnight UTC.
 
     A non-positive or over-cap `cost` is refused before any SQL runs: a fresh
     day's INSERT puts `cost` into `used` directly, so the database's conflict
@@ -181,7 +195,7 @@ async def increment_quota(
     async with pool.connection() as conn:
         cursor = await conn.execute(
             INCREMENT_QUOTA,
-            {"user_id": user_id, "day": _today(), "limit": limit, "cost": cost},
+            {"user_id": user_id, "day": day, "limit": limit, "cost": cost},
         )
         row = await cursor.fetchone()
     if row is None:
@@ -197,7 +211,7 @@ async def increment_site_quota(
         return None
     async with pool.connection() as conn:
         cursor = await conn.execute(
-            INCREMENT_SITE_QUOTA, {"day": _today(), "limit": limit, "cost": cost}
+            INCREMENT_SITE_QUOTA, {"day": quota_day(), "limit": limit, "cost": cost}
         )
         row = await cursor.fetchone()
     if row is None:
@@ -205,6 +219,20 @@ async def increment_site_quota(
     return int(row["used"])
 
 
-def _today() -> date:
+async def refund_quota(
+    pool: AsyncConnectionPool[AsyncConnection[DictRow]],
+    *,
+    user_id: int,
+    day: date,
+    cost: int,
+) -> None:
+    """Give `cost` units back to this user's count for `day`, never below zero."""
+    if cost <= 0:
+        return
+    async with pool.connection() as conn:
+        await conn.execute(REFUND_QUOTA, {"user_id": user_id, "day": day, "cost": cost})
+
+
+def quota_day() -> date:
     """Return the quota day, in UTC: the quota resets at midnight UTC."""
     return datetime.now(UTC).date()

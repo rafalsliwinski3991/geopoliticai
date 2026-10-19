@@ -55,6 +55,7 @@ from db.web.sql import (
     is_staff,
     list_threads,
     owns_thread,
+    quota_day,
     quota_used,
     title_from,
 )
@@ -735,6 +736,7 @@ async def run_pipeline_stream_endpoint(
                         if not await increment_quota(
                             pool,
                             user_id=identity.user_id,
+                            day=quota_day(),
                             limit=DAILY_RESEARCH_TURNS,
                             cost=cost,
                         ):
