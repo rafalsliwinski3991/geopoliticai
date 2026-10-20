@@ -14,6 +14,7 @@ import pytest
 from evals.helpers.judge import (
     JUDGE_BACKOFF_MAX_SECONDS,
     JUDGE_ERROR,
+    JUDGE_MODEL,
     JUDGE_RETRIES,
     NOT_APPLICABLE,
     Judge,
@@ -75,6 +76,20 @@ def test_judge_choices_by_kind() -> None:
         "4": 0.75,
         "5": 1.0,
     }
+
+
+def test_the_judge_model_is_a_paid_openrouter_model() -> None:
+    """A free endpoint can vanish overnight: on 2026-10-20 the pinned
+    `nvidia/nemotron-3-super-120b-a12b:free` judge answered 404 on every call
+    and every eval failed with judge errors."""
+    # Arrange
+    free_suffix = ":free"
+
+    # Act
+    model = JUDGE_MODEL
+
+    # Assert
+    assert not model.endswith(free_suffix)
 
 
 def test_score_returns_not_applicable_when_output_is_none() -> None:
