@@ -87,9 +87,8 @@ class ForecastState(TypedDict):
 class ForecastRun:
     """The graph's run context: the step the forecast is in, and its "today".
 
-    `today` is the forecast's as-of date. It is always the UTC date except in
-    the backtest eval, which sets the date its question was open on, so
-    that the claims' deadlines are still in the future.
+    `today` is the forecast's as-of date: always the UTC date in the app; tests
+    pin it (`PinnedRun`) so claim deadlines never age.
     """
 
     step: str = ""

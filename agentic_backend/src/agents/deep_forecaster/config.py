@@ -71,8 +71,8 @@ class Seat:
 # others run at their default, as the old OpenRouter seats did. Moonshot
 # replaced Mistral (user decision 2026-10-14): `mistral-small-2603` and
 # `mistral-large-2512` had only Mistral as a provider, and it returned 429 on
-# every attempt. Whether this roster judges as well as the last one
-# is for the `deep_forecaster` eval to say.
+# every attempt. How this roster judges shows in the live
+# `e2e_deep_forecaster` eval and on the `council_member` spans.
 # Member n is COUNCIL[n - 1],
 # so reordering renumbers members. Roster churn is an edit here (brainstorm
 # §5); which model holds which seat, and which one voted, is logged, never
