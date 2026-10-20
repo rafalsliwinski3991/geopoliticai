@@ -32,6 +32,8 @@ def test_an_unsure_vote_without_evidence_cites_no_source(
     """The Anthropic seat left `evidence` out of `unsure` votes in 3 of 4
     round-1s on the 2026-10-14 roster and pydantic refused the whole ballot: a
     missing or null `evidence` on an `unsure` vote is read as citing none."""
+    # Arrange: `payload` comes from the parametrization above — an `unsure`
+    # vote whose `evidence` is missing, or null.
     # Act
     vote = Vote.model_validate(payload)
     # Assert
@@ -51,5 +53,5 @@ def test_the_vote_schema_still_requires_evidence() -> None:
     """The leniency lives in the validator, never in the schema: `evidence`
     stays a required field, so a dropped `evidence` on a 'for' or 'against'
     vote is refused, not read as none."""
-    # Assert
+    # Act + Assert
     assert "evidence" in Vote.model_json_schema()["required"]

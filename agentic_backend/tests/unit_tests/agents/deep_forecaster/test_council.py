@@ -11,7 +11,7 @@ import httpx
 import openai
 import pytest
 from langchain_core.exceptions import OutputParserException
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import HumanMessage, SystemMessage
 from opentelemetry.sdk.trace import ReadableSpan
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 from pydantic import ValidationError
@@ -138,6 +138,11 @@ class TestValidateBallot:
                 id="for without evidence",
             ),
             pytest.param(
+                ballot(["against", "unsure"], evidence={1: []}),
+                "claim 1's 'against' vote cites no source",
+                id="against without evidence",
+            ),
+            pytest.param(
                 ballot(["for", "unsure"], evidence={1: [2]}),
                 "claim 1 cites source 2, which is not among claim 1's passages "
                 "(it may cite 1 and 3)",
@@ -208,6 +213,48 @@ class TestValidateBallot:
         assert (
             validate_ballot(ballot_, claims=2, quoted_by_claim=QUOTED_BY_CLAIM) is None
         )
+
+    def test_a_reason_exactly_at_the_limit_is_accepted(self) -> None:
+        """The limit is a limit, not one past it: a reason of exactly
+        `max_reason_chars` characters counts (review thread)."""
+        # Arrange
+        ballot_ = Ballot(
+            votes=[
+                Vote(
+                    claim=1,
+                    stance="for",
+                    reason="r" * LIMITS.max_reason_chars,
+                    evidence=[1],
+                ),
+                Vote(claim=2, stance="unsure", reason="ok", evidence=[]),
+            ]
+        )
+        # Act + Assert
+        assert (
+            validate_ballot(ballot_, claims=2, quoted_by_claim=QUOTED_BY_CLAIM) is None
+        )
+
+    def test_evidences_exactly_at_the_limit_are_accepted(self) -> None:
+        """The limit is a limit, not one past it: exactly `max_evidences`
+        distinct sources the claim quotes count (review thread)."""
+        # Arrange: claim 1 quotes five sources, so a vote may cite all five.
+        all_quoted = {
+            1: frozenset({1, 2, 3, 4, 5}),
+            2: frozenset({1, 3}),
+        }
+        ballot_ = Ballot(
+            votes=[
+                Vote(
+                    claim=1,
+                    stance="for",
+                    reason="ok",
+                    evidence=[1, 2, 3, 4, 5],
+                ),
+                Vote(claim=2, stance="unsure", reason="ok", evidence=[]),
+            ]
+        )
+        # Act + Assert
+        assert validate_ballot(ballot_, claims=2, quoted_by_claim=all_quoted) is None
 
 
 def _votes_on_one_claim(members: int, stances: list[str]) -> dict[int, Ballot]:
@@ -315,18 +362,23 @@ async def test_the_reask_names_the_problem_and_quotes_the_ballot(
 ) -> None:
     """The re-ask carries the rule the ballot broke and the refused ballot
     itself, so the member can fix its own answer; code never edits a ballot
-    (brainstorm 2026Oct19 Q1)."""
+    (brainstorm 2026Oct19 Q1). The first try's messages — the member's rules
+    and the passages — are carried into the re-ask, so the member answers
+    with the same evidence in front of it."""
     # Arrange
     council = ScriptedCouncil({3: [STRAY_BALLOT, _valid()]})
     council.install(monkeypatch)
+    messages = [SystemMessage("the member's rules"), HumanMessage("the passages")]
     # Act
-    await _cast(1, 3, [], claims=2, quoted_by_claim=QUOTED_BY_CLAIM)
+    await _cast(1, 3, messages, claims=2, quoted_by_claim=QUOTED_BY_CLAIM)
     # Assert
     reask = council.sent[3][1][-1]
     assert isinstance(reask, HumanMessage)
     text = str(reask.content)
     assert STRAY_WHY in text
     assert "Claim 1: for — Reason 1. (Sources 2)" in text
+    # The re-ask's message list keeps the first try's messages, then the re-ask.
+    assert council.sent[3][1][:-1] == messages
 
 
 @pytest.mark.anyio
@@ -375,6 +427,26 @@ async def test_an_answer_without_a_ballot_is_reasked(
 
 
 @pytest.mark.anyio
+async def test_a_reask_meeting_an_outage_carries_the_later_fault_not_outside(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A re-ask can meet an outage after an answer fault: the `fault` is the
+    second try's, but `outside` stays false — the member's first answer broke
+    a rule, so the drop is not purely the provider's (review thread)."""
+    # Arrange
+    council = ScriptedCouncil({3: [STRAY_BALLOT, provider_error()]})
+    council.install(monkeypatch)
+    # Act
+    result, attempts = await _cast(1, 3, [], claims=2, quoted_by_claim=QUOTED_BY_CLAIM)
+    # Assert
+    assert isinstance(result, council_module.NoBallot)
+    assert result.fault == "provider"
+    assert result.outside is False
+    assert attempts == 2
+    assert council.calls(3) == 2
+
+
+@pytest.mark.anyio
 async def test_a_malformed_ballot_is_described_without_urls_or_input(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -388,7 +460,7 @@ async def test_a_malformed_ballot_is_described_without_urls_or_input(
     await _cast(1, 3, [], claims=2, quoted_by_claim=QUOTED_BY_CLAIM)
     # Assert
     reask = str(council.sent[3][1][-1].content)
-    assert "votes.0.stance: Field required" in reask
+    assert "votes.1.stance: Field required" in reask
     assert "errors.pydantic.dev" not in reask
     assert "input_value" not in reask
 
@@ -399,6 +471,8 @@ async def test_a_malformed_ballot_is_described_without_urls_or_input(
     [
         pytest.param(provider_error(), None, id="server error"),
         pytest.param(_rate_limited(), None, id="rate limited"),
+        pytest.param(provider_error(408), None, id="408 request timeout"),
+        pytest.param(provider_error(409), None, id="409 conflict"),
         pytest.param(_connection_lost(), None, id="connection lost"),
         pytest.param(_http_200_error_body(), None, id="HTTP 200 with an error body"),
         pytest.param(HANG, SHORT_MEMBER_SECONDS, id="member time limit"),
@@ -608,6 +682,16 @@ async def test_three_ballots_are_below_quorum(monkeypatch: pytest.MonkeyPatch) -
             False,
             id="one drop broke a rule twice",
         ),
+        pytest.param(
+            {
+                4: [provider_error()],
+                5: [provider_error()],
+                6: [provider_error()],
+                7: [STRAY_BALLOT, provider_error()],
+            },
+            False,
+            id="a re-ask met an outage after an answer fault",
+        ),
     ],
 )
 async def test_a_quorum_error_is_outside_only_when_every_drop_was_an_outage(
@@ -665,22 +749,17 @@ async def test_a_reasked_member_span_records_both_tries(
 
 @pytest.mark.anyio
 @pytest.mark.parametrize(
-    ("round_number", "first_reply", "outcome", "fault", "outside"),
+    ("round_number", "first_reply", "outcome", "fault"),
     [
-        pytest.param(
-            1, provider_error(), "dropped", "provider", True, id="round 1 outage"
-        ),
+        pytest.param(1, provider_error(), "dropped", "provider", id="round 1 outage"),
         pytest.param(
             2,
             provider_error(),
             "kept_round_1",
             "provider",
-            True,
             id="round 2 keeps its vote",
         ),
-        pytest.param(
-            1, request_error(), "dropped", "request", False, id="refused request"
-        ),
+        pytest.param(1, request_error(), "dropped", "request", id="refused request"),
     ],
 )
 async def test_a_dropped_member_span_records_whose_fault_it_was(
@@ -688,13 +767,13 @@ async def test_a_dropped_member_span_records_whose_fault_it_was(
     first_reply: Any,
     outcome: str,
     fault: str,
-    outside: bool,
     monkeypatch: pytest.MonkeyPatch,
     captured_spans: InMemorySpanExporter,
 ) -> None:
     """A member left without a ballot has the drop recorded on its
     `council_member` span with the outcome and whose fault it was (Q2, span
-    rule)."""
+    rule); `council.outside` is dropped as a derived duplicate of
+    `council.fault` (review thread)."""
     # Arrange
     council = ScriptedCouncil({3: [first_reply]})
     council.install(monkeypatch)
@@ -706,7 +785,6 @@ async def test_a_dropped_member_span_records_whose_fault_it_was(
     assert attributes is not None
     assert attributes["council.outcome"] == outcome
     assert attributes["council.fault"] == fault
-    assert attributes["council.outside"] is outside
     assert attributes["council.attempts"] == 1
 
 

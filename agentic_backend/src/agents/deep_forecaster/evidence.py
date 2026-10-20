@@ -167,6 +167,11 @@ def render_passages(claims: Sequence[Claim], sources: Sequence[Source]) -> str:
     passages quote — the rule `council.validate_ballot` enforces, stated where
     the members read it.
     """
+    # One map for both the `Cite only:` line and the vote check, so the rule
+    # the members read cannot drift from the rule `council.validate_ballot`
+    # enforces (review thread; plan review: the prompt used to promise every
+    # quoted source).
+    quoted = quoted_sources_by_claim(claims)
     blocks = []
     for number, claim in enumerate(claims, start=1):
         lines = [
@@ -176,11 +181,9 @@ def render_passages(claims: Sequence[Claim], sources: Sequence[Source]) -> str:
         for ref in claim.evidence:
             text = paragraphs(sources[ref.source - 1].text)[ref.paragraph - 1]
             lines.append(f'- Source {ref.source}: "{text}"')
-        allowed = sorted({ref.source for ref in claim.evidence})
-        # The rule `council.validate_ballot` enforces, stated where members
-        # read the passages (plan review: the prompt used to promise every
-        # quoted source).
-        lines.append(f"Cite only: {', '.join(f'Source {n}' for n in allowed)}")
+        lines.append(
+            f"Cite only: {', '.join(f'Source {n}' for n in sorted(quoted[number]))}"
+        )
         blocks.append("\n".join(lines))
     index = "\n".join(
         f"Source {n}: {sources[n - 1].title} (byline: "
