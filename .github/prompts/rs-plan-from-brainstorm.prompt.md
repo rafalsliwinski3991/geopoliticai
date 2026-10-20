@@ -86,7 +86,8 @@ rewriting history:
 ## Step 2 — Agree the code structure
 
 Once you understand the problem and see a solution, agree its shape with the user before
-drafting. Start from any naming conventions the harness has saved to memory.
+drafting. Start from `CLAUDE.md`'s `## Naming` section for code names, and from any naming
+conventions the harness has saved to memory for harness files (commands, skills, agents).
 
 Show, in a plain message (a tree does not fit a question's options):
 
@@ -103,8 +104,11 @@ explicitly approves it. The step is done only on that approval; draft nothing be
 
 Then state the naming rules the user's feedback implies (for example: verb-first function
 names, no `_helper` suffix) and name every other function, class, variable, and file in the
-plan by them. When the harness has a memory system, save the rules as a `feedback` memory,
-updating an existing naming memory rather than adding a second one.
+plan by them. A code naming rule that `## Naming` does not already hold becomes a change in the
+plan's first unit: that unit adds it to the section, beside the rule it extends or narrows, so the
+edit lands in that unit's pull request. A rule for harness files stays out of `CLAUDE.md`: when
+the harness has a memory system, save it as a `feedback` memory, updating an existing naming
+memory rather than adding a second one.
 
 When the change creates no file and no new name, say so in one line and go on to Step 3.
 
