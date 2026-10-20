@@ -21,6 +21,7 @@ from agents.deep_forecaster.state import ResearchRun
 from agents.deep_forecaster.tools import (
     EMPTY_QUERY_MESSAGE,
     EMPTY_QUESTION_MESSAGE,
+    NO_RESULTS_MESSAGE,
     NO_SEARCHES_LEFT_MESSAGE,
     NO_SOURCES_LEFT_MESSAGE,
     NO_VIDEOS_LEFT_MESSAGE,
@@ -1184,3 +1185,252 @@ async def test_a_read_batch_span_records_each_outcome(
     assert attributes["read.unreadable"] == 1
     assert attributes["read.refused"] == 1
     assert attributes["read.room_left"] == LIMITS.max_sources - 2
+
+
+@pytest.mark.anyio
+async def test_a_mixed_batch_renders_each_querys_own_block(
+    tools: dict[str, BaseTool], run: ResearchRun, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A batch's blocks are rendered per query, in query order: a hit lists
+    `title | url` lines, an empty search the no-results message, a failed one
+    the failure message — pairing a query with another's results or rendering
+    a hit as a failure would go red (review thread)."""
+    # Arrange: scripted in query order — one hit, one empty, one failed.
+    script: list[Any] = [
+        [_candidate("https://carnegieendowment.org/a", title="A title")],
+        [],
+        SearchUnavailableError("Brave is down"),
+    ]
+
+    async def fake(query: str, policy: Any) -> list[Candidate]:
+        outcome = script.pop(0)
+        if isinstance(outcome, BaseException):
+            raise outcome
+        candidates: list[Candidate] = outcome
+        return candidates
+
+    monkeypatch.setattr(tools_module, "search_allowlisted", fake)
+    # Act
+    result = await tools["search"].ainvoke(
+        {"forecaster": "gabuev", "queries": ["hit", "empty", "down"]}
+    )
+    # Assert
+    assert result == (
+        "Query: hit\nA title | https://carnegieendowment.org/a\n\n"
+        f"Query: empty\n{NO_RESULTS_MESSAGE}\n\n"
+        f"Query: down\n{SEARCH_FAILED_MESSAGE}\n\n"
+        "Searches left: 45."
+    )
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    ("text_chars", "cut"),
+    [
+        pytest.param(None, False, id="at the shown limit"),
+        pytest.param(1, True, id="one past the shown limit"),
+    ],
+)
+async def test_a_page_at_or_one_past_the_shown_limit(
+    text_chars: int | None,
+    cut: bool,
+    tools: dict[str, BaseTool],
+    run: ResearchRun,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The cut boundary is exact: a page of exactly `max_shown_chars`
+    characters shows whole, one past it carries the cut note (review thread)."""
+    # Arrange
+    url = "https://carnegieendowment.org/x"
+    run.candidates[url] = _candidate(url)
+    length = (
+        LIMITS.max_shown_chars
+        if text_chars is None
+        else LIMITS.max_shown_chars + text_chars
+    )
+
+    async def fake(candidates: Any, policy: Any) -> list[Source]:
+        return [Source(title="t", url=candidates[0].url, text="a" * length)]
+
+    monkeypatch.setattr(tools_module, "fetch_sources", fake)
+    # Act
+    result = await tools["read"].ainvoke({"urls": [url]})
+    # Assert
+    assert ("characters shown" in result) is cut
+
+
+@pytest.mark.anyio
+async def test_rereading_a_long_page_shows_it_cut_again(
+    tools: dict[str, BaseTool], run: ResearchRun, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A re-read shows the recorded page cut again, and the record keeps every
+    character for the drafter and the writer (review thread)."""
+    # Arrange
+    url = "https://carnegieendowment.org/long"
+    run.candidates[url] = _candidate(url)
+    calls = 0
+
+    async def fake(candidates: Any, policy: Any) -> list[Source]:
+        nonlocal calls
+        calls += 1
+        return [Source(title="t", url=url, text="a" * 20_000)]
+
+    monkeypatch.setattr(tools_module, "fetch_sources", fake)
+    # Act
+    first = await tools["read"].ainvoke({"urls": [url]})
+    second = await tools["read"].ainvoke({"urls": [url]})
+    # Assert
+    assert calls == 1
+    assert first == second
+    assert "characters shown" in second
+    assert len(run.sources[url].text) == 20_000
+
+
+@pytest.mark.anyio
+async def test_the_batch_cap_and_the_budget_cap_cut_together(
+    run: ResearchRun, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """With two searches left, a seven-query batch runs two, and the remaining
+    five are named by the two cut rules: `max_batch` cut the last two, the
+    budget the two between (review thread)."""
+    # Arrange
+    tools = _tools(run)
+    calls: list[str] = []
+
+    async def fake(query: str, policy: Any) -> list[Candidate]:
+        calls.append(query)
+        return []
+
+    import agents.deep_forecaster.config as config
+
+    monkeypatch.setattr(
+        tools_module, "LIMITS", dataclasses.replace(config.LIMITS, max_searches=2)
+    )
+    monkeypatch.setattr(tools_module, "search_allowlisted", fake)
+    # Act
+    result = await tools["search"].ainvoke(
+        {"forecaster": "gabuev", "queries": [f"q{n}" for n in range(1, 8)]}
+    )
+    # Assert
+    assert len(calls) == 2
+    assert run.searches == 2
+    assert "Not run (no searches left): q3; q4; q5" in result
+    assert "Not run (at most 5 queries per call): q6; q7" in result
+
+
+@pytest.mark.anyio
+async def test_queries_that_clean_to_the_same_text_spend_one_search(
+    tools: dict[str, BaseTool], run: ResearchRun, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Dedup runs after cleaning: queries differing only by spacing or a
+    `site:` operator are one query, so a model cannot spend two searches on
+    results the scout already has (review thread)."""
+    # Arrange
+    calls: list[str] = []
+
+    async def fake(query: str, policy: Any) -> list[Candidate]:
+        calls.append(query)
+        return []
+
+    monkeypatch.setattr(tools_module, "search_allowlisted", fake)
+    # Act
+    result = await tools["search"].ainvoke(
+        {
+            "forecaster": "gabuev",
+            "queries": ["Russia China", " Russia  China ", "site:x.com Russia China"],
+        }
+    )
+    # Assert
+    assert calls == ["Gabuev Russia China"]
+    assert run.searches == 1
+    assert result.count("Query: ") == 1
+
+
+@pytest.mark.anyio
+async def test_a_recorded_page_is_reread_when_the_source_cap_is_full(
+    run: ResearchRun, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The cap check comes after the recorded-page lookup: with no room left,
+    a page already read is still re-shown, and only a new URL is refused
+    (review thread)."""
+    # Arrange
+    tools = _tools(run)
+    import agents.deep_forecaster.config as config
+    from agents.deep_forecaster import state as state_module
+
+    small = dataclasses.replace(config.LIMITS, max_sources=1)
+    monkeypatch.setattr(tools_module, "LIMITS", small)
+    monkeypatch.setattr(state_module, "LIMITS", small)
+    old = "https://carnegieendowment.org/old"
+    new = "https://carnegieendowment.org/new"
+    run.candidates[old] = _candidate(old)
+    run.candidates[new] = _candidate(new)
+    run.sources[old] = Source(title="t", url=old, text="old page text")
+
+    async def fake(candidates: Any, policy: Any) -> list[Source]:
+        raise AssertionError("No room: nothing must be fetched")
+
+    monkeypatch.setattr(tools_module, "fetch_sources", fake)
+    # Act
+    result = await tools["read"].ainvoke({"urls": [old, new]})
+    # Assert
+    assert "old page text" in result
+    assert NO_SOURCES_LEFT_MESSAGE in result
+    assert run.reserved == 0
+
+
+@pytest.mark.anyio
+async def test_a_failed_fetch_releases_its_reservation(
+    run: ResearchRun, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A fetch that raises a bug releases the reservation it took, so one
+    failing read cannot eat the source cap (review thread)."""
+    # Arrange
+    search, read, ask = build_tools(run)
+    url = "https://carnegieendowment.org/x"
+    run.candidates[url] = _candidate(url)
+
+    async def fake(candidates: Any, policy: Any) -> list[Source]:
+        raise RuntimeError("the fetcher exploded")
+
+    monkeypatch.setattr(tools_module, "fetch_sources", fake)
+    # Act + Assert
+    with pytest.raises(RuntimeError):
+        await read.ainvoke({"urls": [url]})
+    assert run.reserved == 0
+
+
+@pytest.mark.anyio
+async def test_parallel_batch_reads_run_at_most_the_fetch_gate_at_once(
+    run: ResearchRun, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """One gate bounds every scout's page fetches: `fetch_sources` bounds a
+    call's own candidates only, so without the run-level gate three parallel
+    five-URL batches would put 15 GETs on one site at once (review thread)."""
+    # Arrange
+    search, read, ask = build_tools(run)
+    urls = [f"https://carnegieendowment.org/{n}" for n in range(15)]
+    for url in urls:
+        run.candidates[url] = _candidate(url)
+    peak = 0
+    current = 0
+
+    async def fake(candidates: Any, policy: Any) -> list[Source]:
+        nonlocal peak, current
+        current += 1
+        peak = max(peak, current)
+        await asyncio.sleep(0.05)
+        current -= 1
+        return [Source(title="t", url=candidates[0].url, text="article text" * 50)]
+
+    monkeypatch.setattr(tools_module, "fetch_sources", fake)
+    # Act: three parallel five-URL batches (a batch stops at `max_batch`),
+    # fifteen distinct URLs in flight at once.
+    await asyncio.gather(
+        *[
+            read.ainvoke({"urls": urls[i : i + LIMITS.max_batch]})
+            for i in range(0, 15, LIMITS.max_batch)
+        ]
+    )
+    # Assert: 15 parallel reads, each batch one URL at a time, under the gate.
+    assert peak == 8

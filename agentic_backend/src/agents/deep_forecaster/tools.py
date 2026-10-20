@@ -196,30 +196,43 @@ def build_tools(run: ResearchRun) -> list[BaseTool]:
         # Spent before any request awaits: the tools are `async`, so scouts
         # share one event loop and a parallel scout's batch sees this one's
         # spend (the deep expert's reservation, plan review).
-        first = run.searches + 1
         run.searches += len(taken)
         run.forecasters_searched.add(profile.id)
         run.progress(
             SEARCH_PROGRESS_LABEL.format(used=run.searches, cap=LIMITS.max_searches)
         )
         with start_span("search_batch") as span:
-            found = await asyncio.gather(
-                *(
-                    _search_one(profile, query, number)
-                    for number, query in enumerate(taken, start=first)
-                )
-            )
+            # Known before the gather: a batch the wall cap cancels still
+            # records which forecaster was searched and what was cut (review
+            # thread; the searches are already spent).
             span.set_attributes(
                 {
                     "search.forecaster": profile.id,
                     "search.queries_asked": len(queries),
                     "search.queries_run": len(taken),
-                    "search.results": sum(len(c) for c in found if c is not None),
-                    "search.empty": sum(1 for c in found if c == []),
-                    "search.failed": sum(1 for c in found if c is None),
-                    "search.budget_left": LIMITS.max_searches - run.searches,
+                    "search.over_batch": len(over_batch),
+                    "search.over_budget": len(over_budget),
                 }
             )
+            found: list[list[Candidate] | None] = []
+            try:
+                found = list(
+                    await asyncio.gather(
+                        *(_search_one(profile, query) for query in taken)
+                    )
+                )
+            finally:
+                if found:
+                    span.set_attributes(
+                        {
+                            "search.results": sum(
+                                len(c) for c in found if c is not None
+                            ),
+                            "search.empty": sum(1 for c in found if c == []),
+                            "search.failed": sum(1 for c in found if c is None),
+                            "search.budget_left": LIMITS.max_searches - run.searches,
+                        }
+                    )
         blocks = [
             _render_results(query, candidates)
             for query, candidates in zip(taken, found, strict=True)
@@ -235,9 +248,7 @@ def build_tools(run: ResearchRun) -> list[BaseTool]:
         blocks.append(f"Searches left: {LIMITS.max_searches - run.searches}.")
         return "\n\n".join(blocks)
 
-    async def _search_one(
-        profile: Forecaster, query: str, number: int
-    ) -> list[Candidate] | None:
+    async def _search_one(profile: Forecaster, query: str) -> list[Candidate] | None:
         """Run one already-spent search; return its candidates, or None when Brave failed.
 
         One search is one Brave request (one batch), so a single 429 or
@@ -252,7 +263,7 @@ def build_tools(run: ResearchRun) -> list[BaseTool]:
                 )
         except SearchUnavailableError:
             run.failed_searches += 1
-            logger.warning("forecast search %d (%s) failed", number, profile.id)
+            logger.warning("forecast search (%s) failed: %s", profile.id, query)
             return None
         for candidate in candidates:
             run.candidates.setdefault(candidate.url, candidate)
@@ -262,9 +273,9 @@ def build_tools(run: ResearchRun) -> list[BaseTool]:
         if not candidates:
             run.empty_searches += 1
         logger.info(
-            "forecast search %d (%s): %d candidates",
-            number,
+            "forecast search (%s): %s: %d candidates",
             profile.id,
+            query,
             len(candidates),
         )
         return candidates
@@ -281,21 +292,35 @@ def build_tools(run: ResearchRun) -> list[BaseTool]:
             return EMPTY_URLS_MESSAGE
         batch, over_batch = asked[: LIMITS.max_batch], asked[LIMITS.max_batch :]
         with start_span("read_batch") as span:
-            outcomes = await asyncio.gather(*(_read_one(url) for url in batch))
-            counts = Counter(outcome for _, outcome in outcomes)
+            # Known before the gather: a batch the wall cap cancels still
+            # records what was asked and how many URLs the batch cap cut
+            # (review thread).
             span.set_attributes(
                 {
                     "read.urls_asked": len(urls),
-                    "read.pages_read": counts["read"],
-                    "read.already_read": counts["already_read"],
-                    "read.unreadable": counts["unreadable"],
-                    "read.refused": counts["refused"],
-                    "read.room_left": LIMITS.max_sources
-                    - len(run.sources)
-                    - run.reserved,
+                    "read.over_batch": len(over_batch),
                 }
             )
-        blocks = [text for text, _ in outcomes]
+            outcomes: list[tuple[str, str, bool]] = []
+            try:
+                outcomes = list(
+                    await asyncio.gather(*(_read_one(url) for url in batch))
+                )
+            finally:
+                if outcomes:
+                    counts = Counter(outcome for _, outcome, _ in outcomes)
+                    span.set_attributes(
+                        {
+                            "read.pages_read": counts["read"],
+                            "read.already_read": counts["already_read"],
+                            "read.unreadable": counts["unreadable"],
+                            "read.refused": counts["refused"],
+                            "read.no_room": counts["no_room"],
+                            "read.cut": sum(1 for _, _, cut in outcomes if cut),
+                            "read.room_left": run.room_left(),
+                        }
+                    )
+        blocks = [text for text, _, _ in outcomes]
         if over_batch:
             blocks.append(
                 NOT_READ_BATCH_MESSAGE.format(
@@ -304,37 +329,47 @@ def build_tools(run: ResearchRun) -> list[BaseTool]:
             )
         return "\n\n".join(blocks)
 
-    async def _read_one(url: str) -> tuple[str, str]:
-        """Read one URL into the run; return what the scout sees, and the outcome.
+    async def _read_one(url: str) -> tuple[str, str, bool]:
+        """Read one URL into the run; return what the scout sees, the outcome, and whether the shown text was cut.
 
-        The outcome is "read", "already_read", "unreadable" or "refused" (an
-        unknown URL, a video, or no room left), for the `read_batch` span.
+        The outcome is "read", "already_read", "unreadable", "refused" (an
+        unknown URL or a video), or "no_room" — split, because a cap reached
+        is a decision the span rule asks for (review thread).
         """
         candidate = run.candidates.get(url)
         if candidate is None:
-            return _annotate(url, UNKNOWN_URL_MESSAGE), "refused"
+            return _annotate(url, UNKNOWN_URL_MESSAGE), "refused", False
         if candidate.domain in VIDEO_DOMAINS:
-            return _annotate(url, VIDEO_URL_MESSAGE), "refused"
+            return _annotate(url, VIDEO_URL_MESSAGE), "refused", False
         async with run.lock_for(url):
             source = run.sources.get(url)
             if source is not None:
-                return _shown(source, LIMITS.max_shown_chars), "already_read"
+                return _shown(source, LIMITS.max_shown_chars), "already_read", True
             if not run.has_room():
-                return _annotate(url, NO_SOURCES_LEFT_MESSAGE), "refused"
+                return _annotate(url, NO_SOURCES_LEFT_MESSAGE), "no_room", False
             run.reserved += 1
             try:
-                fetched = await fetch_sources([candidate], FORECASTER_SOURCES)
+                # One gate for every scout's page fetches: `fetch_sources`
+                # bounds a call's own candidates only (search.py), so
+                # parallel batches would otherwise multiply the GETs one
+                # forecaster's site takes at once (review thread).
+                async with run.read_gate:
+                    fetched = await fetch_sources([candidate], FORECASTER_SOURCES)
             finally:
                 run.reserved -= 1
             if not fetched:
                 run.unreadable_pages += 1
-                return _annotate(url, UNREADABLE_MESSAGE), "unreadable"
+                return _annotate(url, UNREADABLE_MESSAGE), "unreadable", False
             # Recorded under the URL the model asked for, which is the one
             # it will cite, even when a redirect changed `url`.
             source = replace(fetched[0], url=url)
             run.sources[url] = source
             run.progress(READ_PROGRESS_LABEL.format(count=len(run.sources)))
-        return _shown(source, LIMITS.max_shown_chars), "read"
+        return (
+            _shown(source, LIMITS.max_shown_chars),
+            "read",
+            len(source.text) > LIMITS.max_shown_chars,
+        )
 
     @tool
     async def ask_video(url: str, question: str) -> str:

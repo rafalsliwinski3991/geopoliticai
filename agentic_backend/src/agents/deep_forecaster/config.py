@@ -136,8 +136,10 @@ class ForecastLimits:
     one try; Kimi's slowest measured answer was 96 s.
 
     `max_sources` bounds what the claims drafter and the writer read: 40
-    pages of at most 20,000 characters is ~200k tokens, under gpt-5-mini's
-    272,000-token input limit (OpenAI, "Introducing GPT-5 for developers").
+    pages of at most 20,000 characters is ~200k tokens at ~4 characters per
+    token; a denser language at ~3 characters per token reaches ~267k, still
+    under gpt-5-mini's 272,000-token input limit (OpenAI, "Introducing GPT-5
+    for developers").
     Both caps were doubled so the forecast shows its full potential (user
     decision 2026-10-19); production had used all 24 searches and 15-20 of 20
     pages in every run. Gemini's video notes count as sources. Council
@@ -151,7 +153,8 @@ class ForecastLimits:
     and only a fast failure (a quick 429) is retried inside the budget.
     `max_search_concurrency` caps parallel Brave requests across scouts: the
     dev key allows 50 per second (`x-ratelimit-limit`, measured 2026-10-19),
-    and the production key's limit was checked before this was raised.
+    and the production key allows at least 8 per second (checked 2026-10-20),
+    so 8 stays under it.
     `max_batch` caps the queries or URLs one tool call runs, so one scout
     cannot spend the shared budget in a single call. `max_shown_chars` cuts
     each page a batch read shows the scout, so five pages stay under
