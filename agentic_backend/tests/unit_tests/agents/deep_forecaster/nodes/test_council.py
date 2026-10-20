@@ -6,6 +6,7 @@ from typing import Any
 import pytest
 from langchain_core.messages import HumanMessage, SystemMessage
 
+from agents.deep_forecaster.config import LIMITS
 from agents.deep_forecaster.consts.progress import ROUND_LABEL
 from unit_tests.agents.deep_forecaster.conftest import ballot, state
 
@@ -71,7 +72,7 @@ async def test_round_1_convenes_every_member_with_a_quorum(
     # Assert
     assert call["round"] == 1
     assert call["members"] == list(range(1, 8))
-    assert call["quorum"] == 5
+    assert call["quorum"] == LIMITS.quorum
     assert call["quoted_by_claim"] == {
         1: frozenset({1, 2}),
         2: frozenset({1}),
@@ -80,6 +81,8 @@ async def test_round_1_convenes_every_member_with_a_quorum(
     assert isinstance(system, SystemMessage) and "30 September 2026" in str(
         system.content
     )
+    # The members read the limits code enforces (the re-ask names them).
+    assert "at most 600 characters" in str(system.content)
 
 
 @pytest.mark.anyio

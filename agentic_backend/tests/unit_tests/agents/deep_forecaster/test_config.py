@@ -4,11 +4,12 @@ from agents.deep_forecaster.config import LIMITS, RESEARCH_LLM_SETTINGS
 
 
 def test_the_step_budgets_leave_slack_under_the_wall() -> None:
-    # Assert
+    # Assert: research + claims + 2 * member (round 1 and its re-ask)
+    # + member (round 2) + write.
     assert (
         LIMITS.research_seconds
         + LIMITS.claims_seconds
-        + 2 * LIMITS.member_seconds
+        + 3 * LIMITS.member_seconds
         + LIMITS.write_seconds
         <= LIMITS.wall_seconds - 30
     )

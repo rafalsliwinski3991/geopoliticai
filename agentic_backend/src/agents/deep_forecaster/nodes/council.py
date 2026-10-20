@@ -72,6 +72,12 @@ def _messages(
     if addendum:
         evidence = f"{evidence}\n\n{addendum}"
     return [
-        SystemMessage(MEMBER_SYSTEM_PROMPT.format(today=render_deadline(run.today))),
+        SystemMessage(
+            MEMBER_SYSTEM_PROMPT.format(
+                today=render_deadline(run.today),
+                max_reason_chars=LIMITS.max_reason_chars,
+                max_evidences=LIMITS.max_evidences,
+            )
+        ),
         HumanMessage(evidence),
     ]

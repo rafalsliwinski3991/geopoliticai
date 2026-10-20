@@ -163,6 +163,9 @@ def render_passages(claims: Sequence[Claim], sources: Sequence[Source]) -> str:
 
     The text is code's copy of the paragraph each `EvidenceRef` names, never a
     model's: `draft_claims.checked_claims` has already checked every number.
+    Each claim's block ends with a `Cite only:` line naming the sources its
+    passages quote — the rule `council.validate_ballot` enforces, stated where
+    the members read it.
     """
     blocks = []
     for number, claim in enumerate(claims, start=1):
@@ -173,6 +176,11 @@ def render_passages(claims: Sequence[Claim], sources: Sequence[Source]) -> str:
         for ref in claim.evidence:
             text = paragraphs(sources[ref.source - 1].text)[ref.paragraph - 1]
             lines.append(f'- Source {ref.source}: "{text}"')
+        allowed = sorted({ref.source for ref in claim.evidence})
+        # The rule `council.validate_ballot` enforces, stated where members
+        # read the passages (plan review: the prompt used to promise every
+        # quoted source).
+        lines.append(f"Cite only: {', '.join(f'Source {n}' for n in allowed)}")
         blocks.append("\n".join(lines))
     index = "\n".join(
         f"Source {n}: {sources[n - 1].title} (byline: "

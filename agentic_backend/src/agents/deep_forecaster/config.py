@@ -121,31 +121,36 @@ class ForecastLimits:
     tools' records, never the lead's text, so only unfinished reads are lost).
 
     The step budgets add up to at least 30 s less than the wall: research
-    330 + claims 120 + two council rounds of 100 + writing 150 = 800 s, under
-    the 840 s wall, which is under the browser's 15-minute abort
-    (`frontend/chat/src/lib/sse.ts`). The slack covers the unbudgeted work
-    (building the agent, tally, verify, cancelling research), so a forecast
-    whose every step uses its whole budget still finishes instead of hitting
-    the wall (pinned by `test_config`). The sum describes the first pass
-    only: `verify` can send the analysis back to the writer once, and that
-    retry runs in whatever time is left before the wall. One stalled seat
-    already pins each round at `member_seconds`, so the rounds' 200 s is the
-    normal case. The budgets are estimates until the smoke runs (F3) measure
-    them.
+    240 + claims 120 + council round 1 of two 100 s tries + round 2 of one
+    100 s try + writing 150 = 810 s, under the 840 s wall, which is under the
+    browser's 15-minute abort (`frontend/chat/src/lib/sse.ts`). A member
+    whose first answer cannot be counted is asked once more in round 1
+    (brainstorm 2026Oct19 Q1); research's box shrank from 330 s to pay for
+    it, because scouts that start together finish in 60-162 s (Phoenix,
+    brainstorm 2026Oct19). The slack covers the unbudgeted work (building the
+    agent, tally, verify, cancelling research), so a forecast whose every
+    step uses its whole budget still finishes instead of hitting the wall
+    (pinned by `test_config`). The sum describes the first pass only:
+    `verify` can send the analysis back to the writer once, and that retry
+    runs in whatever time is left before the wall. `member_seconds` bounds
+    one try; Kimi's slowest measured answer was 96 s.
 
     `max_sources` bounds what the claims drafter and the writer read: 20
     pages of at most 20,000 characters is ~100k tokens. Gemini's video notes
     count as sources. Council members read only the paragraphs the drafter
     points at, at most `max_passages` per claim (user decision 2026-10-01,
     overriding Q20's "every member reads everything"): about 10k tokens.
-    `quorum` is the fewest members whose round-1 ballots make a council (Q9,
-    F7). `claims_seconds` and `write_seconds` are LangGraph node
+    `claims_seconds` and `write_seconds` are LangGraph node
     timeouts (`graph.STEPS`): `llm.ainvoke_structured` retries, so the
     per-attempt `timeout_seconds` alone would not bound a step. Each equals
     its call's per-attempt timeout, so a slow attempt ends as the node's 504
     and only a fast failure (a quick 429) is retried inside the budget.
     `max_search_concurrency` caps parallel Brave requests across scouts; Brave's
     rate limit is unverified.
+
+    `quorum` is the fewest valid round-1 ballots after the re-asks (4 of 7,
+    user decision 2026-10-19, brainstorm 2026Oct19 Q2b); 5 or more is the
+    normal council, and the eval reports a council of 4 separately.
 
     `max_passage_chars` cuts one quoted paragraph, so a member's prompt stays
     near 10k tokens (4 claims x 6 passages x 1,200 characters). Up to 7
@@ -159,11 +164,11 @@ class ForecastLimits:
     max_sources: int = 20
     max_videos: int = 2
     max_search_concurrency: int = 3
-    research_seconds: float = 330.0
+    research_seconds: float = 240.0
     claims_seconds: float = 120.0
     member_seconds: float = 100.0
     write_seconds: float = 150.0
-    quorum: int = 5
+    quorum: int = 4
     min_claims: int = 2
     max_claims: int = 4
     max_passages: int = 6
