@@ -16,7 +16,7 @@ from dataclasses import dataclass
 
 from models import SourcePolicy
 
-# Pages here are videos, read by `ask_video`, never by `read_source`.
+# Pages here are videos, read by `ask_video`, never by `read_sources`.
 VIDEO_DOMAINS: frozenset[str] = frozenset({"youtube.com"})
 
 

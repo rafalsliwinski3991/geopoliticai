@@ -318,7 +318,7 @@ async def test_build_research_agent_wires_the_recorded_shape(
     assert scout["name"] == "scout"
     assert sorted(t.name for t in scout["tools"]) == [
         "ask_video",
-        "read_source",
+        "read_sources",
         "search_forecaster",
     ]
     from agents.deep_forecaster.consts.progress import (
@@ -334,7 +334,7 @@ async def test_build_research_agent_wires_the_recorded_shape(
     # Act
     for forecaster_id in FORECASTER_IDS:
         assert forecaster_id in system_prompt
-    assert "24 searches" in system_prompt
+    assert "48 searches" in system_prompt
     assert "at least one" in system_prompt
     assert "Delegate with the `task` tool" in system_prompt
     # The prompt names the type the agent registers scouts under, not a
@@ -439,14 +439,14 @@ async def test_a_real_lead_and_scout_record_a_source_without_nested_checkpoints(
             tool_calls=[
                 {
                     "name": "search_forecaster",
-                    "args": {"forecaster": "gabuev", "query": "Russia China"},
+                    "args": {"forecaster": "gabuev", "queries": ["Russia China"]},
                     "id": "s1",
                 },
             ],
         ),
         AIMessage(
             "",
-            tool_calls=[{"name": "read_source", "args": {"url": URL}, "id": "r1"}],
+            tool_calls=[{"name": "read_sources", "args": {"urls": [URL]}, "id": "r1"}],
         ),
         AIMessage("Gabuev argues dependency."),
     ]
@@ -532,21 +532,21 @@ async def test_a_real_research_loop_stops_at_the_time_box_and_keeps_its_source(
             tool_calls=[
                 {
                     "name": "search_forecaster",
-                    "args": {"forecaster": "gabuev", "query": "one"},
+                    "args": {"forecaster": "gabuev", "queries": ["one"]},
                     "id": "s1",
                 },
             ],
         ),
         AIMessage(
             "",
-            tool_calls=[{"name": "read_source", "args": {"url": URL}, "id": "r1"}],
+            tool_calls=[{"name": "read_sources", "args": {"urls": [URL]}, "id": "r1"}],
         ),
         AIMessage(
             "",
             tool_calls=[
                 {
                     "name": "search_forecaster",
-                    "args": {"forecaster": "gabuev", "query": "two"},
+                    "args": {"forecaster": "gabuev", "queries": ["two"]},
                     "id": "s2",
                 },
             ],
@@ -858,6 +858,43 @@ async def test_research_span_records_the_search_budget_reached(
     assert attributes["research.failed_searches"] == 2
     assert attributes["research.videos_used"] == 1
     assert attributes["research.sources_read"] == 3
+
+
+@pytest.mark.anyio
+async def test_research_span_records_forecasters_and_empty_searches(
+    monkeypatch: pytest.MonkeyPatch,
+    events: list[dict[str, Any]],
+    captured_spans: InMemorySpanExporter,
+) -> None:
+    """The `forecast_research` span reports which forecasters were searched,
+    and the searches that found nothing and the pages with no usable text,
+    so a trace alone says how broad and how fruitful the research was."""
+    # Arrange
+    from agents.deep_forecaster.config import LIMITS
+
+    def mutate(run: ResearchRun) -> None:
+        run.searches = 3
+        run.failed_searches = 1
+        run.forecasters_searched = {"gabuev", "bew"}
+        run.empty_searches = 1
+        run.unreadable_pages = 2
+        run.sources["https://a.example/1"] = Source(
+            "t", "https://a.example/1", "a " * 600
+        )
+
+    _patch_agent(monkeypatch, lambda run: _FakeAgent(run, mutate=mutate))
+    # Act
+    await research_module.research({"question": "q"}, _runtime(events))
+    span = _span_by_name(captured_spans, "forecast_research")
+    # Assert
+    attributes = span.attributes
+    assert attributes is not None
+    assert attributes["research.forecasters_searched"] == 2
+    # OpenTelemetry stores a sequence attribute as a tuple.
+    assert attributes["research.forecasters"] == ("bew", "gabuev")
+    assert attributes["research.empty_searches"] == 1
+    assert attributes["research.unreadable_pages"] == 2
+    assert attributes["research.search_concurrency"] == LIMITS.max_search_concurrency
 
 
 @pytest.mark.anyio

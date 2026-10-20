@@ -123,6 +123,12 @@ class ResearchRun:
     # Reads in flight: counted against `max_sources` before the fetch awaits,
     # so parallel scouts cannot overshoot the cap (plan review).
     reserved: int = 0
+    # What the `forecast_research` span reports beyond the budgets (brainstorm
+    # 2026Oct19, span rule): which forecasters were searched, searches that
+    # found nothing, and pages with no usable text.
+    forecasters_searched: set[str] = field(default_factory=set)
+    empty_searches: int = 0
+    unreadable_pages: int = 0
     candidates: dict[str, Candidate] = field(default_factory=dict)
     # Which forecaster's search returned each candidate; a video's notes are
     # titled with it, so the record says whose page pointed at the video

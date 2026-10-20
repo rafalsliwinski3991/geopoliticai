@@ -41,7 +41,7 @@ saved to a file.
 
 SCOUT_DESCRIPTION = (
     "Collects one forecaster's own writing on the question with "
-    "`search_forecaster`, `read_source` and `ask_video`, and returns what that "
+    "`search_forecaster`, `read_sources` and `ask_video`, and returns what that "
     "forecaster argues, with links."
 )
 SCOUT_PROMPT = (
@@ -49,13 +49,14 @@ SCOUT_PROMPT = (
 that bears on a question, from that forecaster's own websites.
 
 1. Search with `search_forecaster`, always passing the forecaster id from your \
-brief. Write queries in the language the forecaster publishes in; the \
-forecaster's name is added to every query for you.
-2. Read promising articles with `read_source`. Prefer pages whose byline is the \
-forecaster. A page about the forecaster, or by someone else on the same site, \
-is weaker evidence: say so when you use it.
+brief and two to five different queries in one call; they run together. Write \
+queries in the language the forecaster publishes in; the forecaster's name is \
+added to every query for you.
+2. Read every promising article in one `read_sources` call, up to five URLs at \
+once. Prefer pages whose byline is the forecaster. A page about the forecaster, \
+or by someone else on the same site, is weaker evidence: say so when you use it.
 3. For a YouTube video result (a `watch?v=` URL), use `ask_video` with one short question about the topic.
-   If a search fails, try it once more or move on.
+   If a query's search fails, try it once more or move on.
 4. Return concise findings: what the forecaster argues or expects, and when \
 they published it if the page says so, each with the exact URL you read. Add \
 no views of your own. Use `read_file` only to read a result that was saved \

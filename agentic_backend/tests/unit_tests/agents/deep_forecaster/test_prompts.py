@@ -59,6 +59,19 @@ def test_lead_prompt_delegates_with_the_task_tool() -> None:
     assert not SCOUT_DESCRIPTION.startswith("Scout:")
 
 
+def test_scout_prompt_asks_for_batched_calls() -> None:
+    """The scout writes two to five queries per search call and reads up to
+    five URLs in one `read_sources` call, so one model turn does one batch of
+    work; the description names the tool the scout reads with."""
+    # Assert
+    assert "two to five different queries" in SCOUT_PROMPT
+    assert "`read_sources`" in SCOUT_PROMPT
+    assert "up to five URLs" in SCOUT_PROMPT
+    assert "`read_sources`" in SCOUT_DESCRIPTION
+    assert "`read_source`" not in SCOUT_PROMPT
+    assert "`read_source`" not in SCOUT_DESCRIPTION
+
+
 def test_the_write_prompt_fills_with_today_and_carries_the_untrusted_rule() -> None:
     filled = WRITE_SYSTEM_PROMPT.format(today="30 September 2026")
     assert "{" not in filled, filled

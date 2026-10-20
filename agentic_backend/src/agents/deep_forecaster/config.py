@@ -135,9 +135,13 @@ class ForecastLimits:
     runs in whatever time is left before the wall. `member_seconds` bounds
     one try; Kimi's slowest measured answer was 96 s.
 
-    `max_sources` bounds what the claims drafter and the writer read: 20
-    pages of at most 20,000 characters is ~100k tokens. Gemini's video notes
-    count as sources. Council members read only the paragraphs the drafter
+    `max_sources` bounds what the claims drafter and the writer read: 40
+    pages of at most 20,000 characters is ~200k tokens, under gpt-5-mini's
+    272,000-token input limit (OpenAI, "Introducing GPT-5 for developers").
+    Both caps were doubled so the forecast shows its full potential (user
+    decision 2026-10-19); production had used all 24 searches and 15-20 of 20
+    pages in every run. Gemini's video notes count as sources. Council
+    members read only the paragraphs the drafter
     points at, at most `max_passages` per claim (user decision 2026-10-01,
     overriding Q20's "every member reads everything"): about 10k tokens.
     `claims_seconds` and `write_seconds` are LangGraph node
@@ -145,8 +149,15 @@ class ForecastLimits:
     per-attempt `timeout_seconds` alone would not bound a step. Each equals
     its call's per-attempt timeout, so a slow attempt ends as the node's 504
     and only a fast failure (a quick 429) is retried inside the budget.
-    `max_search_concurrency` caps parallel Brave requests across scouts; Brave's
-    rate limit is unverified.
+    `max_search_concurrency` caps parallel Brave requests across scouts: the
+    dev key allows 50 per second (`x-ratelimit-limit`, measured 2026-10-19),
+    and the production key's limit was checked before this was raised.
+    `max_batch` caps the queries or URLs one tool call runs, so one scout
+    cannot spend the shared budget in a single call. `max_shown_chars` cuts
+    each page a batch read shows the scout, so five pages stay under
+    deepagents' 80,000-character tool-result eviction threshold
+    (`deepagents/middleware/filesystem.py`); the whole page is recorded for
+    the drafter and the writer.
 
     `quorum` is the fewest valid round-1 ballots after the re-asks (4 of 7,
     user decision 2026-10-19, brainstorm 2026Oct19 Q2b); 5 or more is the
@@ -160,10 +171,12 @@ class ForecastLimits:
     28 x (600 + 5 links of ~100) is ~31,000.
     """
 
-    max_searches: int = 24
-    max_sources: int = 20
+    max_searches: int = 48
+    max_sources: int = 40
     max_videos: int = 2
-    max_search_concurrency: int = 3
+    max_search_concurrency: int = 8
+    max_batch: int = 5
+    max_shown_chars: int = 14_000
     research_seconds: float = 240.0
     claims_seconds: float = 120.0
     member_seconds: float = 100.0
