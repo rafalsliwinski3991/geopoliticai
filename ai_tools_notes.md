@@ -43,29 +43,25 @@ by the `rs-code-review` and `rs-improve-plan` ports, not dropped.
 
 OpenCode command copies are the Claude originals with `argument-hint` and
 `allowed-tools` (neither of which OpenCode reads) replaced by `agent: build`
-and `model: opencode-go/glm-5.3-flash`; the bodies match byte for byte apart
-from a harness note some ports carry above the body. They still name Claude
-tools such as `AskUserQuestion` in prose, which OpenCode performs in its own
-way, exactly as the Copilot ports do.
+and `model: opencode-go/glm-5.3-flash`. Their bodies match apart from the
+steps that name a tool, path, or helper only Claude has, which each port
+writes for its own harness (the `question` tool, `.opencode/` paths).
 
-`rs-implement-plan` is the exception to the byte-identical rule: OpenCode's
+`rs-implement-plan` goes further: OpenCode's
 version has its own body, which dispatches the `.opencode/agents/` workers
 (`plan-implementer`, `plan-retry`, `plan-unit-auditor`, `plan-final-review`),
 so its behaviour is kept in step with Claude's by hand.
 
-A port carries a harness note only where a step dispatches something the
-harness cannot reach at all, and the note sits above the body so the body itself
-stays byte-identical. Two things qualify. Naming one of Claude's read-only
-subagents does: OpenCode has the mechanism but none of those agents (its
-`.opencode/agent/` and `.opencode/agents/` hold only the interactive
-`plan-auditor` and `rs-implement-plan`'s own workers) and errors on the unknown
-name, and Copilot has no mechanism at all — `rs-code-review`
-and `rs-improve-plan` are noted in both harnesses for this,
-and `rs-implement-plan` in Copilot only, because OpenCode's version dispatches
-its own workers. `rs-improve-plan` Step 5's `/opencode:rescue`
-does too, being a Claude Code plugin command; its note is the second paragraph.
-Naming an ordinary Claude tool such as `AskUserQuestion` in prose gets no note,
-because every harness has some way to ask the user.
+No port carries a harness note above its body. Where a Claude command
+dispatches one of its read-only subagents, the OpenCode and Copilot versions
+of `rs-code-review` and `rs-improve-plan`, and Copilot's `rs-implement-plan`,
+make that pass themselves, because neither harness has those agents.
+`rs-improve-codebase` is the exception: each harness has its own
+`architecture-scout` and `structure-scout` (`.claude/agents/`,
+`.opencode/agents/`, `.github/agents/`), and its ports dispatch them, OpenCode
+with the Task tool and Copilot with its `agent` tool. Its ports also write the
+page locally where Claude Code publishes an artifact, as `rs-explain-plan` and
+`rs-guidebook` do.
 
 `make inventory` checks only that a port exists under each harness, never
 whether its body still matches the Claude original. That match is verified by
@@ -86,14 +82,15 @@ excluded for the same reasons as in OpenCode.
 
 Claude commands are ported to `.github/prompts/<name>.prompt.md`, Copilot's
 slash-command format: `allowed-tools` becomes `tools` with Copilot tool names,
-and `agent: agent` replaces Claude's implicit write access. Harness notes follow
-the rule in Commands above.
+and `agent: agent` replaces Claude's implicit write access.
+Copilot runs helpers as custom agents in `.github/agents/` through its `agent` tool; only
+`rs-improve-codebase`'s port uses them so far.
 
 `make sync-copilot` rebuilds `.github/skills/` from scratch rather than copying
 over it, so a skill deleted from `.claude/skills/` disappears downstream too.
 Anything hand-written under `.github/skills/` is destroyed with it: edit
 `.claude/skills/` and re-run the target. `.github/prompts/` is not synced and is
-maintained by hand, which is where the Copilot harness notes live.
+maintained by hand.
 
 `make link-skills` prunes only symlinks, leaving OpenCode-only real directories
 in place, and refuses to link a canonical skill whose name is already taken by

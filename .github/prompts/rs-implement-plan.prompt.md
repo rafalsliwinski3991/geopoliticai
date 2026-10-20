@@ -12,7 +12,7 @@ from the base branch, final review, and pull requests. Steps 1 and 2 cover every
 3–6 then run for one plan at a time, and the next plan starts from a fresh checkout of the base
 branch. Step 7 reports on all of them.
 
-You are the implementer and the only writer. Copilot cannot dispatch subagents, so every review role
+You are the implementer and the only writer. This port dispatches no subagents, so every review role
 is a separate pass of yours over a diff file, and you apply the fixes yourself. You also write the ledger, the diff files, and the pull-request bodies.
 
 Workspace, one directory per plan: `docs/harness_logs/copilot/<plan-filename-stem>/` (gitignored; create it if missing). Files:

@@ -1,7 +1,7 @@
 # Harness guide
 
 This repository ships one set of AI workflows to three harnesses: Claude Code, OpenCode, and GitHub
-Copilot. The workflows are thirteen `rs-*` commands, 26 skills, and a handful of subagents. The commands
+Copilot. The workflows are fourteen `rs-*` commands, 26 skills, and a handful of subagents. The commands
 take an idea from a first conversation to merged pull requests. The skills hold know-how for one area of
 the code and load when the work touches that area.
 
@@ -28,6 +28,8 @@ flowchart TD
     idea([An idea or a problem]) --> brain["/rs-brainstorming"]
     asana([Asana tasks]) --> pa["/rs-plan-from-asana"]
     issues([GitHub issues]) --> pg["/rs-plan-from-gh-issues"]
+    code([Code that is hard to change]) --> scan["/rs-improve-codebase"]
+    scan -->|one pick| brain
 
     brain -->|approved design doc| pb["/rs-plan-from-brainstorm"]
     brain -.->|unsure if it works| proto["/rs-prototype-from-brainstorm-in-loop"]
@@ -77,11 +79,15 @@ The main path, in words:
 Two loop commands are the shortcut for work that does not need a written plan: they build straight from
 a brainstorm until a checklist you agreed on passes.
 
+`/rs-improve-codebase` is a side entrance to step 1: it scans an area you name for architecture
+and structure problems, shows them on one page, and hands the one you pick to `/rs-brainstorming`.
+
 ## Which command to use
 
 | You want to | Use |
 |---|---|
 | Think a decision through before any code | `/rs-brainstorming <idea>` |
+| Find architecture, naming, or file-layout problems in an area | `/rs-improve-codebase [kind] [path...]` |
 | Turn an approved brainstorm into a plan | `/rs-plan-from-brainstorm <brainstorm.md>` |
 | Plan from Asana tasks | `/rs-plan-from-asana <task-url>... \| @<assignee>` |
 | Plan from GitHub issues | `/rs-plan-from-gh-issues all \| <issue#>... \| @<assignee>` |
@@ -108,6 +114,7 @@ Choosing between the three ways to build:
 | Command | Purpose | Reads | Writes | Stops to ask you |
 |---|---|---|---|---|
 | `rs-brainstorming` | Stress-tests an idea. Classifies it as a spike, bounded change, or architectural change, then asks questions in rounds and pushes back once on every answer. | The idea, the code | `docs/brainstorming/<date>_brainstorm_v<N>_<slug>.md` (architectural only) | Every round; final approval of the design |
+| `rs-improve-codebase` | Scans an area you name with two read-only scouts (architecture, structure), checks every finding against the code, shows them on one page, and hands your pick to `rs-brainstorming`. Claude Code publishes the page as an artifact; OpenCode and Copilot write the local HTML file. | The area, `CLAUDE.md`, `codebase-design` | `report.html`, `improve_codebase.md`; commits only for picks you approve | The area, with hot spots offered, when none is given; your pick; each exception, naming rule, and in-session line before it is written |
 | `rs-plan-from-brainstorm` | Turns an approved brainstorm into a plan sized as lightweight, standard, or full. | Brainstorm doc, every file it names | `docs/plans/<date>_plan_<slug>_v<N>.md` | The file tree and names before drafting; approval of the plan |
 | `rs-plan-from-asana` | Same as above, from Asana tasks. Only explicit task text and confirmed comments count as decided. | Asana tasks and comments | Plan file(s), one per subsystem | Open questions; structure; approval |
 | `rs-plan-from-gh-issues` | Same as above, from GitHub issues. Each unit names the issues it closes. | Issues and comments | Plan file(s), one per subsystem | Open questions; structure; approval |
@@ -169,6 +176,8 @@ All run on Sonnet 5.5 at medium effort.
 | `correctness-lens` | No | `rs-implement-plan`, `rs-improve-plan`, `rs-code-review` | Broken callers, changed behaviour, error and state paths |
 | `framework-lens` | No | same three | Correct idiom for the installed framework versions |
 | `guidance-compliance-lens` | No | same three | Whether `CLAUDE.md`, `AGENTS.md`, and Copilot instructions still tell the truth |
+| `architecture-scout` | No | `rs-improve-codebase` | Reads one area and returns deepening candidates in the `codebase-design` vocabulary |
+| `structure-scout` | No | `rs-improve-codebase` | Checks one area against `CLAUDE.md`'s naming and layout rules |
 
 `/rs-code-review` also spins up general-purpose teammates named `testing`, `security`, `simplification`,
 and `red-team` when the diff calls for them.
@@ -182,6 +191,8 @@ and `red-team` when the diff calls for them.
 | `plan-retry` | `opencode-go/glm-5.3-flash` | Second attempt at a unit, with a different approach |
 | `plan-unit-auditor` | `opencode-go/glm-5.3-flash` | Read-only review of one unit diff |
 | `plan-final-review` | `opencode-go/deepseek-v4.1-flash` | Read-only review of the finished branch |
+| `architecture-scout` | `opencode-go/glm-5.3-flash` | Read-only architecture scan for OpenCode's `rs-improve-codebase` |
+| `structure-scout` | `opencode-go/glm-5.3-flash` | Read-only structure scan for OpenCode's `rs-improve-codebase` |
 
 ### Copilot (`.github/agents/`)
 
@@ -190,6 +201,8 @@ and `red-team` when the diff calls for them.
 | Code Explainer | Explains code, architecture, and data flows; read-only |
 | Plan Auditor | Audits and explains plans against live code; read-only |
 | Plan Explainer | Explains a plan's scope, tier, tasks, and stacked branches; read-only |
+| `architecture-scout` | Read-only architecture scan for Copilot's `rs-improve-codebase`; hidden from the agent picker |
+| `structure-scout` | Read-only structure scan for Copilot's `rs-improve-codebase`; hidden from the agent picker |
 
 ## Skills
 
@@ -239,8 +252,8 @@ quickstarts and `e2e` carry `disable-model-invocation: true`, so Claude Code loa
 |---|---|---|
 | Brainstorm | `docs/brainstorming/<YYYYMonDD>_brainstorm_v<N>_<slug>.md` | No (gitignored) |
 | Plan | `docs/plans/<YYYYMonDD>_plan_<slug>_v<N>.md` | No (gitignored) |
-| Run logs (`review.md`, `address_feedback.md`, `stack_merge.md`, `loop.md`) | `docs/harness_logs/<harness>/<YYYYMonDD>_<slug>/` | No |
-| Explainer and guidebook pages | Same run directory, as `explainer.html` and `guidebook.html` | No |
+| Run logs (`review.md`, `address_feedback.md`, `stack_merge.md`, `loop.md`, `improve_codebase.md`) | `docs/harness_logs/<harness>/<YYYYMonDD>_<slug>/` | No |
+| Explainer, guidebook, and codebase-review pages | Same run directory, as `explainer.html`, `guidebook.html`, and `report.html` | No |
 | Implementation ledger | `docs/harness_logs/<harness>/<plan-stem>/ledger.md` (undated, reused across days) | No |
 | Log format | `docs/harness_logs/TEMPLATE.md` | Yes |
 
@@ -253,16 +266,18 @@ themselves. `/rs-implement-plan` resumes from its ledger: a unit marked `complet
 | Piece | How it reaches OpenCode | How it reaches Copilot |
 |---|---|---|
 | Skills | `make link-skills` symlinks into `.claude/skills/` | `make sync-copilot` rebuilds `.github/skills/` from scratch |
-| Commands | Copied by hand; body matches Claude's byte for byte, frontmatter swapped for `agent: build` and `model: opencode-go/glm-5.3-flash` | Ported by hand to `.github/prompts/`; `allowed-tools` becomes `tools` |
+| Commands | Copied by hand; body matches Claude's apart from steps that name a tool, path, or helper only Claude has, frontmatter swapped for `agent: build` and `model: opencode-go/glm-5.3-flash` | Ported by hand to `.github/prompts/`; `allowed-tools` becomes `tools` |
 | Guidance | `AGENTS.md` points at `CLAUDE.md` | `.github/copilot-instructions.md` points at `CLAUDE.md` |
 
 Exceptions to know about:
 
 - OpenCode's `rs-implement-plan` has its own body, because it dispatches OpenCode's own workers. Keep it in
   step with Claude's by hand.
-- A port carries a short harness note above the body only where a step dispatches something that
-  harness cannot reach, such as Claude's read-only lenses. `rs-code-review` and `rs-improve-plan` have
-  notes in both ports, and `rs-implement-plan` in Copilot's.
+- No port carries a harness note; each step is written for its own harness. Where Claude dispatches a
+  read-only lens, the OpenCode and Copilot versions of `rs-code-review` and `rs-improve-plan`, and
+  Copilot's `rs-implement-plan`, make that pass themselves. `rs-improve-codebase` differs: each harness
+  has its own `architecture-scout` and `structure-scout`, its ports dispatch them, and its ports write
+  the page locally instead of publishing.
 - `swarm` and `e2e` are skipped in both ports (`SKIP_SKILLS` in the `Makefile`).
 - Anything hand-written under `.github/skills/` is deleted by the next `make sync-copilot`. Edit
   `.claude/skills/` and re-run the target.
