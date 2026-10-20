@@ -53,10 +53,11 @@ from models import (
 )
 from tracing import start_span
 
-# The word the lead's prompt uses. Registered as deepagents' reserved
-# `general-purpose`, the scout was refused in 58 of the lead's 142 `task`
-# requests ("Scout", "general-purpose: Scout", or no type at all), and after a
-# refusal the lead started scouts one at a time (Phoenix, brainstorm 2026Oct19).
+# The word the lead's prompt uses. The scout was registered as deepagents'
+# reserved `general-purpose` until this change (2026-10-19 traces) and was
+# then refused in 58 of the lead's 142 `task` requests ("Scout",
+# "general-purpose: Scout", or no type at all); after a refusal the lead
+# started scouts one at a time (Phoenix, brainstorm 2026Oct19).
 SCOUT_SUBAGENT_NAME = "scout"
 # deepagents adds a default `general-purpose` helper unless the model's
 # harness profile switches it off; without the switch the lead would be

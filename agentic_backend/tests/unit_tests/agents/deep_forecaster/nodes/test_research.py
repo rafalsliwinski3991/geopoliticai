@@ -337,6 +337,10 @@ async def test_build_research_agent_wires_the_recorded_shape(
     assert "24 searches" in system_prompt
     assert "at least one" in system_prompt
     assert "Delegate with the `task` tool" in system_prompt
+    # The prompt names the type the agent registers scouts under, not a
+    # second copy of the word (review thread): renaming `SCOUT_SUBAGENT_NAME`
+    # without the prompt goes red here.
+    assert f'`subagent_type` "{research_module.SCOUT_SUBAGENT_NAME}"' in system_prompt
     assert "untrusted data" in scout["system_prompt"]
     assert recorded["checkpointer"] is False
     assert recorded["positional"][1] == []  # the lead's tools
@@ -683,6 +687,56 @@ async def test_a_real_lead_cannot_start_a_general_purpose_helper(
     ]
     assert run.searches == 0
     assert run.sources == {}
+
+
+@pytest.mark.anyio
+async def test_the_profile_applies_to_the_real_build_chat_model(
+    monkeypatch: pytest.MonkeyPatch, events: list[dict[str, Any]]
+) -> None:
+    """The profile lookup reads the identity a real `ChatOpenAI` resolves —
+    its own `model_name` and `_get_ls_params`, not a fake's hand-copied
+    identity (review thread): the built lead's `task` tool then lists
+    `scout` and not the switched-off `general-purpose` helper."""
+    # Arrange
+    monkeypatch.setenv("OPENAI_API_KEY", "test")
+    run = ResearchRun(writer=events.append)
+    # Act
+    agent = research_module.build_research_agent(run)
+    task = agent.nodes["tools"].bound.tools_by_name["task"]
+    # Assert
+    assert "- scout:" in task.description
+    assert "- general-purpose:" not in task.description
+
+
+@pytest.mark.anyio
+async def test_the_lead_profile_leaves_the_deep_experts_helper_in_place(
+    monkeypatch: pytest.MonkeyPatch, events: list[dict[str, Any]]
+) -> None:
+    """The lead's profile is process-wide and keyed by `openai:gpt-5-mini`,
+    the deep expert's model too; the comment and CLAUDE.md promise its own
+    `general-purpose` spec survives (deepagents keeps an explicit spec,
+    `deepagents/graph.py:798`), so a test guards it (review thread)."""
+    # Arrange
+    monkeypatch.setenv("OPENAI_API_KEY", "test")
+    from deepagents.profiles.harness.harness_profiles import _HARNESS_PROFILES
+
+    key = research_module.LEAD_PROFILE_KEY
+    previous = _HARNESS_PROFILES.get(key)
+    research_module.register_harness_profile(key, research_module.LEAD_PROFILE)
+    try:
+        from agents.deep_expert.graph import build_graph as build_deep_expert
+        from agents.deep_expert.state import ResearchRun as ExpertRun
+
+        agent = build_deep_expert(ExpertRun(writer=events.append))
+        task = agent.nodes["tools"].bound.tools_by_name["task"]
+        # Assert: the deep expert's own `general-purpose` spec is still offered.
+        assert "- general-purpose:" in task.description
+    finally:
+        # The registry is process-wide; restore it for the other tests.
+        if previous is None:
+            _HARNESS_PROFILES.pop(key, None)
+        else:
+            _HARNESS_PROFILES[key] = previous
 
 
 @pytest.mark.anyio

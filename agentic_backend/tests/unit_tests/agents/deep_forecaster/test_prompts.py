@@ -50,8 +50,9 @@ def test_video_prompt_names_the_not_discussed_reply() -> None:
 
 
 def test_lead_prompt_delegates_with_the_task_tool() -> None:
-    """The lead names the type it starts scouts under: registered under
-    deepagents' reserved `general-purpose`, the scout was refused by name."""
+    """The lead names the type it starts scouts under. The scout registers as
+    `scout`; the traces' refusals came from the old registration under
+    deepagents' reserved `general-purpose` (2026-10-19, Phoenix)."""
     # Assert
     assert "Delegate with the `task` tool" in LEAD_SYSTEM_PROMPT
     assert '`subagent_type` "scout"' in LEAD_SYSTEM_PROMPT
