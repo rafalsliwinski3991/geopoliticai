@@ -55,11 +55,11 @@ PHOENIX_BAD_ANSWER_MARKERS = (
 # Pinned, not `openrouter/free`; see git history.
 JUDGE_MODEL = "nvidia/nemotron-3-super-120b-a12b:free"
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
-# Markdown link targets only: the match stops at the first ')', so a URL that
-# legitimately contains a parenthesis is truncated. Every dataset recorded so
-# far uses https://news.example/... URLs without parentheses; write balanced
-# parenthesis handling here before recording a source URL that has any.
-MARKDOWN_LINK_URL = re.compile(r"\]\((https?://[^)\s]+)\)")
+# Markdown link targets: one level of `(...)` inside the URL is part of it, so
+# https://en.wikipedia.org/wiki/Foo_(bar) is captured whole. The handling is
+# one level deep: an unmatched ')' still ends the URL, and a URL with nested or
+# unbalanced '(' is not matched at all.
+MARKDOWN_LINK_URL = re.compile(r"\]\((https?://[^()\s]+(?:\([^()\s]*\)[^()\s]*)*)\)")
 logger = logging.getLogger("agent")
 
 

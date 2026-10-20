@@ -393,6 +393,24 @@ def test_markdown_link_urls_ignores_bare_urls() -> None:
     assert markdown_link_urls("see https://z.org directly") == []
 
 
+def test_a_markdown_link_url_may_contain_balanced_parentheses() -> None:
+    """A source URL may contain one level of parentheses (Wikipedia-style), and
+    the live eval reads `cited` from these links: a truncated URL would drop the
+    page from `cited_sources` and fail judges `verify` did not fail."""
+    # Act
+    urls = markdown_link_urls(
+        "[a](https://en.wikipedia.org/wiki/Foo_(bar)) and [b](https://x.org/1)"
+        " and [c](https://x.org/Foo))"
+    )
+
+    # Assert
+    assert urls == [
+        "https://en.wikipedia.org/wiki/Foo_(bar)",
+        "https://x.org/1",
+        "https://x.org/Foo",
+    ]
+
+
 def test_numeric_not_a_choice_label() -> None:
     # Arrange
     judge = Judge("j", "numeric", _view, prompt="{x}")
