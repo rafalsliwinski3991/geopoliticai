@@ -112,6 +112,9 @@ deep_forecaster  START -> research -> draft_claims -> council_round_1 -> council
   with the defect named; a second defect, or an answer over the delivery cap, is a hard error. The wall
   cap runs the forecast in its own task (`time_limits.run_under_time_limits`) and cancels it
   repeatedly, because smoke gate F3 saw a hung run outlive an in-frame `asyncio.timeout`.
+  `nodes.research` registers a deepagents harness profile that switches the default
+  `general-purpose` helper off for gpt-5-mini, process-wide; another agent on that model that
+  wants the helper passes its own `general-purpose` spec, as the deep expert does.
 
 ## API and streaming
 

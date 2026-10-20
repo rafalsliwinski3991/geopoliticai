@@ -9,6 +9,7 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
+from langchain_core.language_models.base import LangSmithParams
 from langchain_core.language_models.fake_chat_models import FakeMessagesListChatModel
 from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.checkpoint.memory import InMemorySaver
@@ -314,7 +315,7 @@ async def test_build_research_agent_wires_the_recorded_shape(
     subagents = recorded["subagents"]
     assert len(subagents) == 1
     scout = subagents[0]
-    assert scout["name"] == "general-purpose"
+    assert scout["name"] == "scout"
     assert sorted(t.name for t in scout["tools"]) == [
         "ask_video",
         "read_source",
@@ -341,20 +342,32 @@ async def test_build_research_agent_wires_the_recorded_shape(
     assert recorded["positional"][1] == []  # the lead's tools
 
 
-FORECASTER_IDS = [
-    "wojczal",
-    "salonius_pasternak",
-    "aydin",
-    "inbar",
-    "bew",
-    "gomart",
-    "yan",
-    "gabuev",
-    "chun",
-    "suzuki",
-    "chellaney",
-    "sidiropoulos",
-]
+def test_the_leads_default_helper_is_switched_off(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """deepagents auto-adds a `general-purpose` helper with none of the
+    research tools; the lead's model gets a harness profile that switches it
+    off, so the lead is offered the scout alone."""
+    # Arrange
+    from deepagents import GeneralPurposeSubagentProfile, HarnessProfile
+
+    monkeypatch.setenv("OPENAI_API_KEY", "test")
+    registered: list[tuple[str, Any]] = []
+
+    def record_registration(key: str, profile: Any) -> None:
+        registered.append((key, profile))
+
+    monkeypatch.setattr(
+        research_module, "register_harness_profile", record_registration
+    )
+    # Act
+    research_module.build_research_agent(ResearchRun(writer=lambda event: None))
+    # Assert
+    expected_profile = HarnessProfile(
+        general_purpose_subagent=GeneralPurposeSubagentProfile(enabled=False)
+    )
+    assert registered == [("openai:gpt-5-mini", expected_profile)]
+    assert research_module.LEAD_PROFILE.general_purpose_subagent.enabled is False
 
 
 class _Model(FakeMessagesListChatModel):
@@ -408,7 +421,7 @@ async def test_a_real_lead_and_scout_record_a_source_without_nested_checkpoints(
                     "args": {
                         "description": "Scout Gabuev on Russia and China: find what he "
                         "argues, with the URLs you read.",
-                        "subagent_type": "general-purpose",
+                        "subagent_type": "scout",
                     },
                     "id": "t1",
                 },
@@ -549,7 +562,7 @@ async def test_a_real_research_loop_stops_at_the_time_box_and_keeps_its_source(
                         "name": "task",
                         "args": {
                             "description": "Scout Gabuev on the question.",
-                            "subagent_type": "general-purpose",
+                            "subagent_type": "scout",
                         },
                         "id": "t1",
                     }
@@ -607,6 +620,69 @@ async def test_a_real_research_loop_stops_at_the_time_box_and_keeps_its_source(
     # Assert
     assert result["sources"][0].url == URL
     assert result["research"].timed_out is True
+
+
+@pytest.mark.anyio
+async def test_a_real_lead_cannot_start_a_general_purpose_helper(
+    monkeypatch: pytest.MonkeyPatch, events: list[dict[str, Any]]
+) -> None:
+    """With the default helper switched off, a lead that calls for
+    `general-purpose` is refused by name and no scout runs."""
+    # Arrange
+    monkeypatch.setenv("OPENAI_API_KEY", "test")
+    monkeypatch.setenv("BRAVE_SEARCH_KEY", "test")
+
+    class _Gpt5MiniModel(_Model):
+        """A fake whose model identifies as openai:gpt-5-mini, so the lead's
+        registered harness profile applies to it."""
+
+        model_name: str = "gpt-5-mini"
+
+        def _get_ls_params(
+            self, stop: list[str] | None = None, **kwargs: Any
+        ) -> LangSmithParams:
+            return {"ls_provider": "openai"}
+
+    model = _Gpt5MiniModel(responses=[])
+    model.lead_script = [
+        AIMessage(
+            "",
+            tool_calls=[
+                {
+                    "name": "task",
+                    "args": {
+                        "description": "Scout Gabuev, asking for the helper.",
+                        "subagent_type": "general-purpose",
+                    },
+                    "id": "t1",
+                }
+            ],
+        ),
+        AIMessage("Done."),
+    ]
+    model.scout_script = [AIMessage("a scout must never answer")]
+
+    monkeypatch.setattr(research_module, "build_chat_model", lambda settings: model)
+
+    run = ResearchRun(writer=events.append)
+    agent = research_module.build_research_agent(run)
+
+    # Act
+    result = await agent.ainvoke(
+        {"messages": [HumanMessage("q")]},
+        config=research_module.NO_CHECKPOINTER_CONFIG,
+    )
+
+    # Assert
+    refusals = [
+        message.content for message in result["messages"] if message.type == "tool"
+    ]
+    assert refusals == [
+        "We cannot invoke subagent general-purpose because it does not exist, "
+        "the only allowed types are `scout`"
+    ]
+    assert run.searches == 0
+    assert run.sources == {}
 
 
 @pytest.mark.anyio
