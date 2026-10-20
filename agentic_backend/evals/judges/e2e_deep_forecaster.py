@@ -28,6 +28,7 @@ from typing import Any
 from evals.helpers.judge import Judge
 from evals.judges.expert import FAITHFUL_PROMPT, urls_from_sources
 
+# CLAIMS_PROMPT: lines 21-39 of evals/judges/deep_forecaster.py, moved unchanged.
 CLAIMS_PROMPT = """
 You check the claims a forecasting council voted on.
 
@@ -67,6 +68,7 @@ fail: the analysis contradicts at least one verdict.
 
 Give a concise explanation naming any claim it contradicts.
 """
+# TALLY_PROMPT: lines 40-59 of evals/judges/deep_forecaster.py, moved unchanged.
 VERDICTS_PROMPT = """
 You check a forecasting council's verdicts against the evidence it read.
 

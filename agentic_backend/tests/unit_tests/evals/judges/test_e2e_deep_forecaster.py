@@ -80,22 +80,32 @@ def test_finished_or_outside(variables: dict[str, Any], verdict: bool) -> None:
     assert result is verdict
 
 
-def test_every_answer_judge_skips_a_forecast_that_did_not_finish() -> None:
-    # Arrange
-    failed = _failed_output()
-    # Act + Assert: every view but the outcome view declines the failed row.
-    assert _urls_view({}, failed, {}) is None
-    assert _faithful_view({}, failed, {}) is None
-    assert _claims_view({}, failed, {}) is None
-    assert _tally_view({}, failed, {}) is None
-    assert _verdicts_view({}, failed, {}) is None
-    # Assert: the outcome view reads the failed row; the dataset's own empty
-    # output applies to no judge.
-    assert _outcome_view({}, failed, {}) == {
-        "finished": False,
-        "side": "ours",
-    }
-    assert _outcome_view({}, {}, {}) is None
+@pytest.mark.parametrize(
+    ("output", "outcome_variables"),
+    [
+        pytest.param(
+            _failed_output(),
+            {"finished": False, "side": "ours"},
+            id="failed",
+        ),
+        pytest.param({}, None, id="empty dataset output"),
+    ],
+)
+def test_every_answer_judge_skips_a_forecast_that_did_not_finish(
+    output: dict[str, Any], outcome_variables: dict[str, Any] | None
+) -> None:
+    """A view applies only to a forecast that finished: the answer judges skip
+    a failed row and the dataset's own empty output, and the outcome judge
+    reads a failed row but skips the empty output."""
+    # Act + Assert: every view but the outcome view declines the output.
+    assert _urls_view({}, output, {}) is None
+    assert _faithful_view({}, output, {}) is None
+    assert _claims_view({}, output, {}) is None
+    assert _tally_view({}, output, {}) is None
+    assert _verdicts_view({}, output, {}) is None
+    # Act + Assert: the outcome view reads a failed row, skips the empty output.
+    outcome = _outcome_view({}, output, {})
+    assert outcome == outcome_variables
 
 
 def test_the_url_and_faithful_views_read_the_runs_pages() -> None:
