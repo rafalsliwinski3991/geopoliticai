@@ -54,10 +54,10 @@ deep_forecaster  START -> research -> draft_claims -> council_round_1 -> council
 
 ## Naming
 
-- Python functions are verb-first (`start_span`), unless a pure getter's siblings are nouns
-  (`quota_day` beside `quota_used`); types and test fakes are nouns (`ExtractedPage`,
-  `RecordingQuota`); module constants are UPPER_SNAKE (`TRACER_NAME`); no name ends in `_helper`
-  or `_util`.
+- Python functions are verb-first (`start_span`), except tests, which the `unit-tests` skill names
+  as sentences, and a pure getter whose siblings are nouns (`quota_day` beside `quota_used`). Types
+  and test fakes are nouns (`ExtractedPage`, `RecordingQuota`), module constants are UPPER_SNAKE
+  (`TRACER_NAME`), and no name ends in `_helper` or `_util`.
 - Span names are snake_case (`fetch_source`); span attribute keys are dotted with a domain prefix
   (`source.outcome`).
 - TypeScript functions are camelCase and verb-first (`warnOnStaleTests`); an e2e spec and its
