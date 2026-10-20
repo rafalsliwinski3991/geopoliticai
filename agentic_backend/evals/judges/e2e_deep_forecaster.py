@@ -23,12 +23,13 @@ empty output applies to no judge.
 
 from __future__ import annotations
 
+from collections.abc import Callable
+from functools import wraps
 from typing import Any
 
 from evals.helpers.judge import Judge
 from evals.judges.expert import FAITHFUL_PROMPT, urls_from_sources
 
-# CLAIMS_PROMPT: lines 21-39 of evals/judges/deep_forecaster.py, moved unchanged.
 CLAIMS_PROMPT = """
 You check the claims a forecasting council voted on.
 
@@ -68,7 +69,6 @@ fail: the analysis contradicts at least one verdict.
 
 Give a concise explanation naming any claim it contradicts.
 """
-# TALLY_PROMPT: lines 40-59 of evals/judges/deep_forecaster.py, moved unchanged.
 VERDICTS_PROMPT = """
 You check a forecasting council's verdicts against the evidence it read.
 
@@ -108,6 +108,28 @@ def _finished(output: dict[str, Any]) -> bool:
     return bool(output.get("finished"))
 
 
+def _when_finished(
+    view: Callable[
+        [dict[str, Any], dict[str, Any], dict[str, Any]], dict[str, Any] | None
+    ],
+) -> Callable[[dict[str, Any], dict[str, Any], dict[str, Any]], dict[str, Any] | None]:
+    """Wrap a view so it applies only to a forecast that finished (Q8).
+
+    One wrapper for the five answer views, as `judges/deep_expert.py`'s
+    `_on_deep_answer` is one for its views (review thread).
+    """
+
+    @wraps(view)
+    def wrapped(
+        input: dict[str, Any], output: dict[str, Any], expected: dict[str, Any]
+    ) -> dict[str, Any] | None:
+        if not _finished(output):
+            return None
+        return view(input, output, expected)
+
+    return wrapped
+
+
 def _outcome_view(
     input: dict[str, Any], output: dict[str, Any], expected: dict[str, Any]
 ) -> dict[str, Any] | None:
@@ -119,16 +141,12 @@ def _outcome_view(
 def _urls_view(
     input: dict[str, Any], output: dict[str, Any], expected: dict[str, Any]
 ) -> dict[str, Any] | None:
-    if not _finished(output):
-        return None
     return {"answer": output["answer"], "source_urls": output["source_urls"]}
 
 
 def _faithful_view(
     input: dict[str, Any], output: dict[str, Any], expected: dict[str, Any]
 ) -> dict[str, Any] | None:
-    if not _finished(output):
-        return None
     sources = "\n\n".join(
         f"SOURCE {source['url']}\n{source['title']}\n{source['text']}"
         for source in output["cited_sources"]
@@ -142,24 +160,18 @@ def _faithful_view(
 def _claims_view(
     input: dict[str, Any], output: dict[str, Any], expected: dict[str, Any]
 ) -> dict[str, Any] | None:
-    if not _finished(output):
-        return None
     return {"question": input["query"], "claims": "\n".join(output["claims"])}
 
 
 def _tally_view(
     input: dict[str, Any], output: dict[str, Any], expected: dict[str, Any]
 ) -> dict[str, Any] | None:
-    if not _finished(output):
-        return None
     return {"verdicts": "\n".join(output["verdicts"]), "answer": output["answer"]}
 
 
 def _verdicts_view(
     input: dict[str, Any], output: dict[str, Any], expected: dict[str, Any]
 ) -> dict[str, Any] | None:
-    if not _finished(output):
-        return None
     return {
         "question": input["query"],
         "passages": output["passages"],
@@ -173,14 +185,34 @@ def judges() -> tuple[Judge, ...]:
         Judge(
             "finished_or_outside", "binary", _outcome_view, check=finished_or_outside
         ),
-        Judge("urls_from_sources", "binary", _urls_view, check=urls_from_sources),
-        Judge("faithful_to_sources", "numeric", _faithful_view, prompt=FAITHFUL_PROMPT),
-        Judge("claims_checkable", "binary", _claims_view, prompt=CLAIMS_PROMPT),
-        Judge("prose_matches_tally", "binary", _tally_view, prompt=TALLY_PROMPT),
+        Judge(
+            "urls_from_sources",
+            "binary",
+            _when_finished(_urls_view),
+            check=urls_from_sources,
+        ),
+        Judge(
+            "faithful_to_sources",
+            "numeric",
+            _when_finished(_faithful_view),
+            prompt=FAITHFUL_PROMPT,
+        ),
+        Judge(
+            "claims_checkable",
+            "binary",
+            _when_finished(_claims_view),
+            prompt=CLAIMS_PROMPT,
+        ),
+        Judge(
+            "prose_matches_tally",
+            "binary",
+            _when_finished(_tally_view),
+            prompt=TALLY_PROMPT,
+        ),
         Judge(
             "verdicts_follow_evidence",
             "numeric",
-            _verdicts_view,
+            _when_finished(_verdicts_view),
             prompt=VERDICTS_PROMPT,
         ),
     )

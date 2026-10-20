@@ -14,6 +14,7 @@ from evals.judges.e2e_deep_forecaster import (
     _tally_view,
     _urls_view,
     _verdicts_view,
+    _when_finished,
     finished_or_outside,
     judges,
 )
@@ -46,23 +47,47 @@ def _finished_output() -> dict[str, Any]:
             }
         ],
         "members_voting": 7,
-        "unanimous_share": 1.0,
         "step_seconds": {},
     }
 
 
-def test_judge_names_are_the_six_in_order() -> None:
-    # Act
-    names = [judge.name for judge in judges()]
-    # Assert
-    assert names == [
-        "finished_or_outside",
-        "urls_from_sources",
-        "faithful_to_sources",
-        "claims_checkable",
-        "prose_matches_tally",
-        "verdicts_follow_evidence",
+def test_the_six_judges_carry_their_names_kinds_and_views() -> None:
+    """The eval's six judges are exactly these, in this order, each with its
+    kind and its own view or check — a judge renamed, re-ordered, or wired to
+    another's view goes red (review thread)."""
+    # Arrange
+    from evals.judges.e2e_deep_forecaster import CLAIMS_PROMPT, TALLY_PROMPT
+    from evals.judges.expert import FAITHFUL_PROMPT, urls_from_sources
+
+    expected: list[tuple[str, str, Any, bool]] = [
+        ("finished_or_outside", "binary", _outcome_view, False),
+        ("urls_from_sources", "binary", _urls_view, True),
+        ("faithful_to_sources", "numeric", _faithful_view, True),
+        ("claims_checkable", "binary", _claims_view, True),
+        ("prose_matches_tally", "binary", _tally_view, True),
+        ("verdicts_follow_evidence", "numeric", _verdicts_view, True),
     ]
+    prompts = {
+        "faithful_to_sources": FAITHFUL_PROMPT,
+        "claims_checkable": CLAIMS_PROMPT,
+        "prose_matches_tally": TALLY_PROMPT,
+        "verdicts_follow_evidence": VERDICTS_PROMPT,
+    }
+    checks = {
+        "finished_or_outside": finished_or_outside,
+        "urls_from_sources": urls_from_sources,
+    }
+    # Act
+    built = judges()
+    # Assert
+    for judge, (name, kind, view, wrapped) in zip(built, expected, strict=True):
+        assert judge.name == name
+        assert judge.kind == kind
+        # A wrapped view keeps its own view under `__wrapped__` (functools.wraps).
+        actual = getattr(judge.view, "__wrapped__", judge.view)
+        assert actual is view
+        assert judge.prompt is prompts.get(judge.name)
+        assert judge.check is checks.get(judge.name)
 
 
 @pytest.mark.parametrize(
@@ -74,6 +99,8 @@ def test_judge_names_are_the_six_in_order() -> None:
     ],
 )
 def test_finished_or_outside(variables: dict[str, Any], verdict: bool) -> None:
+    # Arrange: `variables` comes from the parametrization above — a finished
+    # row, a provider outage, or a failure of ours.
     # Act
     result = finished_or_outside(variables)
     # Assert
@@ -97,14 +124,20 @@ def test_every_answer_judge_skips_a_forecast_that_did_not_finish(
     """A view applies only to a forecast that finished: the answer judges skip
     a failed row and the dataset's own empty output, and the outcome judge
     reads a failed row but skips the empty output."""
-    # Act + Assert: every view but the outcome view declines the output.
-    assert _urls_view({}, output, {}) is None
-    assert _faithful_view({}, output, {}) is None
-    assert _claims_view({}, output, {}) is None
-    assert _tally_view({}, output, {}) is None
-    assert _verdicts_view({}, output, {}) is None
-    # Act + Assert: the outcome view reads a failed row, skips the empty output.
+    # Arrange: `output` comes from the parametrization above.
+    answer_views = [
+        _when_finished(_urls_view),
+        _when_finished(_faithful_view),
+        _when_finished(_claims_view),
+        _when_finished(_tally_view),
+        _when_finished(_verdicts_view),
+    ]
+    # Act: every answer view declines the output...
+    declined = [view({}, output, {}) for view in answer_views]
+    # ...and the outcome view reads the failed row, skips the empty output.
     outcome = _outcome_view({}, output, {})
+    # Assert
+    assert all(variables is None for variables in declined)
     assert outcome == outcome_variables
 
 
@@ -138,6 +171,35 @@ def test_the_verdicts_view_reads_passages_and_verdicts() -> None:
         "question": "Forecast if Russia will attack Poland?",
         "passages": output["passages"],
         "verdicts": "Claim 1: ACCEPTED",
+    }
+
+
+def test_the_claims_view_reads_the_query_and_the_claims() -> None:
+    """Restored from the deleted recorded eval's test: the claims judge reads
+    the question it was asked and the claims as one block, by value."""
+    # Arrange
+    input: dict[str, Any] = {"query": "Forecast if Russia will attack Poland?"}
+    output = _finished_output()
+    # Act
+    variables = _claims_view(input, output, {})
+    # Assert
+    assert variables == {
+        "question": "Forecast if Russia will attack Poland?",
+        "claims": "Claim 1: It happens by 2027 (deadline: 2027-12-31)",
+    }
+
+
+def test_the_tally_view_reads_the_verdicts_and_the_answer() -> None:
+    """Restored from the deleted recorded eval's test: the tally judge reads
+    the counted verdicts and the whole answer, by value."""
+    # Arrange
+    output = _finished_output()
+    # Act
+    variables = _tally_view({}, output, {})
+    # Assert
+    assert variables == {
+        "verdicts": "Claim 1: ACCEPTED",
+        "answer": output["answer"],
     }
 
 

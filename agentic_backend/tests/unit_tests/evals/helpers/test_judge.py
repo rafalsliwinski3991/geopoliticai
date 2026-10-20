@@ -412,12 +412,13 @@ def test_a_markdown_link_url_may_contain_balanced_parentheses() -> None:
     """A source URL may contain one level of parentheses (Wikipedia-style), and
     the live eval reads `cited` from these links: a truncated URL would drop the
     page from `cited_sources` and fail judges `verify` did not fail."""
-    # Act
-    urls = markdown_link_urls(
+    # Arrange
+    markdown = (
         "[a](https://en.wikipedia.org/wiki/Foo_(bar)) and [b](https://x.org/1)"
         " and [c](https://x.org/Foo))"
     )
-
+    # Act
+    urls = markdown_link_urls(markdown)
     # Assert
     assert urls == [
         "https://en.wikipedia.org/wiki/Foo_(bar)",

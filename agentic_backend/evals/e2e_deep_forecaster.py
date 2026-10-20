@@ -17,25 +17,24 @@ voting, research and total seconds, the question, and the cause.
 from __future__ import annotations
 
 import asyncio
+import logging
 import time
 from pathlib import Path
 from typing import Any
 
 from evals.helpers.judge import markdown_link_urls
 from evals.helpers.run import run
-from evals.judges.e2e_deep_forecaster import judges
+from evals.judges.e2e_deep_forecaster import OUTSIDE, judges
+from models import ResearchLimitError
 
 DATASET_PATH = Path(__file__).parent / "datasets" / "e2e_deep_forecaster.json"
 # 2.5x the forecaster's wall cap (`ForecastLimits.wall_seconds`, 840 s). The
 # task runs under the wall itself; this bounds a task that outlives the cap's
 # cancel (`time_limits.run_under_time_limits` abandons such a task).
 TIMEOUT_SECONDS = 2_100
-OUTSIDE = "outside"
 OURS = "ours"
 WALL_MESSAGE = "The forecast ran past its {seconds:g}-second wall."
-# A status at or above this is an outage; below it (other than 429) the
-# provider refused our request.
-SERVER_ERROR_STATUS = 500
+logger = logging.getLogger("agent")
 
 
 def classify_failure(error: BaseException) -> str:
@@ -49,7 +48,9 @@ def classify_failure(error: BaseException) -> str:
     """
     import openai
 
-    from agents.deep_forecaster.council import QuorumError
+    # The outage threshold and the label are the council's and the judges',
+    # imported, not copies that drift (review thread).
+    from agents.deep_forecaster.council import SERVER_ERROR_STATUS, QuorumError
     from models import SearchUnavailableError
 
     if isinstance(error, SearchUnavailableError):
@@ -74,17 +75,9 @@ def forecast_output(
 ) -> dict[str, Any]:
     """Return what the judges read from a finished forecast, and its report numbers."""
     from agents.deep_forecaster.consts.editorial import VOTE_LIST_HEADING
-    from agents.deep_forecaster.council import final_ballots
     from agents.deep_forecaster.evidence import render_passages
 
     claims, sources = state["claims"], state["sources"]
-    # The ballots the verdicts counted, carried round-1 votes included.
-    ballots = final_ballots(state["ballots_round_1"], state["ballots_round_2"]).values()
-    unanimous = sum(
-        1
-        for number in range(1, len(claims) + 1)
-        if len({v.stance for b in ballots for v in b.votes if v.claim == number}) == 1
-    )
     # The writer's analysis, without the code-written vote list: its member
     # reasons are judgments, not facts a page states.
     analysis = state["answer"].split(VOTE_LIST_HEADING)[0].strip()
@@ -108,7 +101,6 @@ def forecast_output(
             if source.url in cited
         ],
         "members_voting": len(state["ballots_round_1"]),
-        "unanimous_share": unanimous / len(claims),
         "step_seconds": step_seconds,
     }
 
@@ -133,13 +125,15 @@ async def run_e2e_deep_forecaster(input: dict[str, Any]) -> dict[str, Any]:
     from agents.deep_forecaster.state import ForecastRun
     from agents.deep_forecaster.time_limits import run_under_time_limits
     from config import require_env
-    from models import ResearchLimitError
 
     # `ask_video` calls Gemini live, and Brave is not patched away.
     require_env(
         ("OPENAI_API_KEY", "OPENROUTER_API_KEY", "GEMINI_API_KEY", "BRAVE_SEARCH_KEY")
     )
     state: dict[str, Any] = {"question": input["query"]}
+    # Bound to a name: a wall-capped row names the step the forecast was in
+    # when the cap ended it, as `graph.forecast`'s 504 does (review thread).
+    run = ForecastRun()
     step_seconds: dict[str, float] = {}
     started = time.monotonic()
 
@@ -149,7 +143,7 @@ async def run_e2e_deep_forecaster(input: dict[str, Any]) -> dict[str, Any]:
         async for update in build_graph().astream(
             {"question": input["query"]},
             config=NO_CHECKPOINTER_CONFIG,
-            context=ForecastRun(),
+            context=run,
             stream_mode="updates",
         ):
             now = time.monotonic()
@@ -165,17 +159,29 @@ async def run_e2e_deep_forecaster(input: dict[str, Any]) -> dict[str, Any]:
         # end with a 504 is a failure here too, never a late "finished".
         _, capped = await run_under_time_limits(stream_steps(), LIMITS.wall_seconds)
         output = (
-            failure_output(
-                ResearchLimitError(WALL_MESSAGE.format(seconds=LIMITS.wall_seconds)),
-                step_seconds,
-            )
+            failure_output(_wall_error(LIMITS.wall_seconds, run.step), step_seconds)
             if capped
             else forecast_output(state, step_seconds)
         )
     except Exception as error:  # noqa: BLE001 - a failed forecast is a report row (Q8)
+        # The traceback, logged: a KeyError of ours must not hide behind the
+        # one-line cause the report row shows (review thread).
+        logger.exception("the forecast failed: %s", input["query"])
         output = failure_output(error, step_seconds)
     _print_row(input["query"], output, time.monotonic() - started)
     return output
+
+
+def _wall_error(wall_seconds: float, step: str) -> ResearchLimitError:
+    """Return the wall cap's error, naming the step the forecast was in.
+
+    The empty `step` of a cap that ended nothing names no step, so it is
+    left out (review thread).
+    """
+    message = WALL_MESSAGE.format(seconds=wall_seconds)
+    if step:
+        message += f" during this step: {step}"
+    return ResearchLimitError(message)
 
 
 def _print_row(query: str, output: dict[str, Any], total: float) -> None:

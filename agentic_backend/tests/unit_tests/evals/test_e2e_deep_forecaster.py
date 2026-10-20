@@ -110,6 +110,18 @@ def _model_error(kind: type[openai.APIStatusError], status: int) -> BaseExceptio
     return wrapped
 
 
+def _wrapped(error: BaseException, hops: int = 1) -> BaseException:
+    """Return `error` wrapped in `hops` RuntimeErrors, the first as `__cause__`."""
+    for _ in range(hops):
+        wrapper: BaseException = RuntimeError("the step failed")
+        wrapper.__cause__ = error
+        error = wrapper
+    return error
+
+
+_ROUTER_REQUEST = httpx.Request("POST", "https://router.example/v1")
+
+
 @pytest.mark.parametrize(
     ("error", "side"),
     [
@@ -134,14 +146,53 @@ def _model_error(kind: type[openai.APIStatusError], status: int) -> BaseExceptio
             id="5xx under a model call",
         ),
         pytest.param(
+            _model_error(openai.APIStatusError, 500),
+            "outside",
+            id="exactly the 5xx boundary",
+        ),
+        pytest.param(
+            _model_error(openai.APIStatusError, 499),
+            "ours",
+            id="one below the 5xx boundary",
+        ),
+        pytest.param(
             _model_error(openai.RateLimitError, 429),
             "outside",
             id="429 under a model call",
         ),
         pytest.param(
+            _model_error(openai.AuthenticationError, 401),
+            "ours",
+            id="refused auth under a model call",
+        ),
+        pytest.param(
             _model_error(openai.APIStatusError, 400),
             "ours",
             id="refused request under a model call",
+        ),
+        pytest.param(
+            _wrapped(openai.APIConnectionError(request=_ROUTER_REQUEST)),
+            "outside",
+            id="connection error under a model call",
+        ),
+        pytest.param(
+            _wrapped(openai.APITimeoutError(_ROUTER_REQUEST)),
+            "outside",
+            id="timeout under a model call",
+        ),
+        pytest.param(
+            _wrapped(
+                openai.RateLimitError(
+                    "rate limited",
+                    response=httpx.Response(
+                        429, request=httpx.Request("POST", "https://router.example/v1")
+                    ),
+                    body=None,
+                ),
+                hops=2,
+            ),
+            "outside",
+            id="two hops to the outage",
         ),
         pytest.param(
             TimeoutError("claim drafting timed out"),
@@ -161,6 +212,8 @@ def _model_error(kind: type[openai.APIStatusError], status: int) -> BaseExceptio
     ],
 )
 def test_classify_failure(error: BaseException, side: str) -> None:
+    # Arrange: `error` comes from the parametrization above — each case is one
+    # failure shape the run's boundary can meet.
     # Act
     verdict = classify_failure(error)
     # Assert
@@ -212,7 +265,6 @@ def test_forecast_output_reports_verdicts_passages_and_cited_pages() -> None:
     output = forecast_output(state, {})
     # Assert
     assert output["verdicts"] == ["Claim 1: ACCEPTED", "Claim 2: REJECTED"]
-    assert output["unanimous_share"] == pytest.approx(0.5)
     assert output["claims"][0] == (
         "Claim 1: Claim one happens by 2027. (deadline: 2027-12-31)"
     )
