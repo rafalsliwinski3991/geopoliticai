@@ -276,7 +276,9 @@ experiment's traces sit in that experiment's own project. Besides the OpenAI, Op
 Brave keys it needs two secrets in the `dev` environment: `PHOENIX_COLLECTOR_ENDPOINT`
 (`https://politicalagent.eu/phoenix/v1/traces`) and `PHOENIX_CLIENT_HEADERS`, the `/phoenix/` Basic
 Auth login written as `Authorization=Basic%20<base64 of AUTH_USER:AUTH_PASSWORD>` (the `%20` is
-required: the Phoenix client drops a header with a bare space, and its calls then get 401). Run it only
+required: the Phoenix client drops a header with a bare space, and its calls then get 401). That
+login is also the outer gate of `/admin/`, a risk we accept: a leaked secret opens `/phoenix/`, while
+`/admin/` still asks for a Django staff login. Run it only
 after a deploy that carries nginx's 50 MB limit on `/phoenix/`: before that, large trace uploads fail
 with 413. Locally, run `make evals` from `agentic_backend/`; it reads `PHOENIX_COLLECTOR_ENDPOINT` (and
 `PHOENIX_CLIENT_HEADERS`, for the VPS) from the root `.env`.

@@ -62,9 +62,6 @@ deep_forecaster  START -> research -> draft_claims -> council_round_1 -> council
   (`source.outcome`).
 - TypeScript functions are camelCase and verb-first (`warnOnStaleTests`); an e2e spec and its
   generated test share one kebab-case stem.
-- An eval's script, dataset, and judges file share one name: its agent, then `_fixed` when the
-  agent's inputs are written in advance or `_live` when it searches and reads today's pages
-  (`expert_fixed`, `expert_live`).
 
 ## agentic_backend
 

@@ -201,6 +201,7 @@ async def test_async_score_retries_then_records_judge_error(
     assert len(sleeps) == JUDGE_RETRIES - 1
     assert all(0 < s <= JUDGE_BACKOFF_MAX_SECONDS for s in sleeps)
     assert verdict.label == JUDGE_ERROR
+    assert f"after {JUDGE_RETRIES} attempts" in verdict.explanation
 
 
 @pytest.mark.anyio
@@ -230,6 +231,7 @@ async def test_async_score_does_not_retry_a_non_transient_error(
     assert sleeps == []
     assert verdict.label == JUDGE_ERROR
     assert "after 1 attempt:" in verdict.explanation
+    assert "KeyError" in verdict.explanation
 
 
 @pytest.mark.anyio

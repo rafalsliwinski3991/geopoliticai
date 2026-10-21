@@ -39,7 +39,8 @@ jobs:
         if: ${{ !cancelled() && steps.sync.outcome == 'success' }}
         working-directory: agentic_backend
         env:
-          # nginx Basic Auth in front of the VPS Phoenix, in W3C header format:
+          # nginx Basic Auth in front of the VPS Phoenix, in W3C header format
+          # (every eval step below sends the same header):
           # Authorization=Basic%20<base64 of AUTH_USER:AUTH_PASSWORD>
           PHOENIX_CLIENT_HEADERS: ${{ secrets.PHOENIX_CLIENT_HEADERS }}
         run: uv run python -m evals.orchestrator
@@ -48,8 +49,6 @@ jobs:
         if: ${{ !cancelled() && steps.sync.outcome == 'success' }}
         working-directory: agentic_backend
         env:
-          # nginx Basic Auth in front of the VPS Phoenix, in W3C header format:
-          # Authorization=Basic%20<base64 of AUTH_USER:AUTH_PASSWORD>
           PHOENIX_CLIENT_HEADERS: ${{ secrets.PHOENIX_CLIENT_HEADERS }}
         run: uv run python -m evals.expert
 
@@ -57,8 +56,6 @@ jobs:
         if: ${{ !cancelled() && steps.sync.outcome == 'success' }}
         working-directory: agentic_backend
         env:
-          # nginx Basic Auth in front of the VPS Phoenix, in W3C header format:
-          # Authorization=Basic%20<base64 of AUTH_USER:AUTH_PASSWORD>
           PHOENIX_CLIENT_HEADERS: ${{ secrets.PHOENIX_CLIENT_HEADERS }}
         run: uv run python -m evals.deep_expert
 
@@ -66,8 +63,6 @@ jobs:
         if: ${{ !cancelled() && steps.sync.outcome == 'success' }}
         working-directory: agentic_backend
         env:
-          # nginx Basic Auth in front of the VPS Phoenix, in W3C header format:
-          # Authorization=Basic%20<base64 of AUTH_USER:AUTH_PASSWORD>
           PHOENIX_CLIENT_HEADERS: ${{ secrets.PHOENIX_CLIENT_HEADERS }}
         run: uv run python -m evals.reporter
 
@@ -75,15 +70,11 @@ jobs:
         if: ${{ !cancelled() && steps.sync.outcome == 'success' }}
         working-directory: agentic_backend
         env:
-          # nginx Basic Auth in front of the VPS Phoenix, in W3C header format:
-          # Authorization=Basic%20<base64 of AUTH_USER:AUTH_PASSWORD>
           PHOENIX_CLIENT_HEADERS: ${{ secrets.PHOENIX_CLIENT_HEADERS }}
         run: uv run python -m evals.e2e_orchestrator
       - name: Run the deep-forecaster e2e eval
         if: ${{ !cancelled() && steps.sync.outcome == 'success' }}
         working-directory: agentic_backend
         env:
-          # nginx Basic Auth in front of the VPS Phoenix, in W3C header format:
-          # Authorization=Basic%20<base64 of AUTH_USER:AUTH_PASSWORD>
           PHOENIX_CLIENT_HEADERS: ${{ secrets.PHOENIX_CLIENT_HEADERS }}
         run: uv run python -m evals.e2e_deep_forecaster
