@@ -1,4 +1,4 @@
-"""Graph-running helpers shared by the expert, deep expert, forecaster, reporter, and e2e evals."""
+"""Graph-running helpers shared by the expert, deep expert, reporter, and e2e evals."""
 
 from __future__ import annotations
 
@@ -13,8 +13,6 @@ from models import Candidate, Source, SourcePolicy
 SEARCH_NODE_MODULE = "agents.expert.nodes.search_and_fetch"
 # The deep expert's tools import the same two names; patched the same way.
 DEEP_TOOLS_MODULE = "agents.deep_expert.tools"
-# The forecaster's tools import all three names; patched the same way.
-FORECASTER_TOOLS_MODULE = "agents.deep_forecaster.tools"
 
 
 def load_sources(raw: Sequence[dict[str, Any]]) -> list[Source]:
@@ -32,7 +30,7 @@ def load_sources(raw: Sequence[dict[str, Any]]) -> list[Source]:
 
 @contextmanager
 def recorded_sources(current: Callable[[], list[Source] | None]) -> Iterator[None]:
-    """Replace the expert's, the deep expert's, and the deep forecaster's live retrieval with recorded sources.
+    """Replace the expert's and the deep expert's live retrieval with recorded sources.
 
     `current` is read on every call, so e2e can change sources between turns.
     Every search returns the whole recorded set (brainstorm Q5b), so the deep
@@ -63,17 +61,11 @@ def recorded_sources(current: Callable[[], list[Source] | None]) -> Iterator[Non
         wanted = {candidate.url for candidate in candidates}
         return [source for source in sources() if source.url in wanted]
 
-    async def watch_video(*_: object) -> str:
-        raise RuntimeError("Evals never call Gemini's video reading.")
-
     with (
         patch(f"{SEARCH_NODE_MODULE}.search_allowlisted", search_allowlisted),
         patch(f"{SEARCH_NODE_MODULE}.fetch_sources", fetch_sources),
         patch(f"{DEEP_TOOLS_MODULE}.search_allowlisted", search_allowlisted),
         patch(f"{DEEP_TOOLS_MODULE}.fetch_sources", fetch_sources),
-        patch(f"{FORECASTER_TOOLS_MODULE}.search_allowlisted", search_allowlisted),
-        patch(f"{FORECASTER_TOOLS_MODULE}.fetch_sources", fetch_sources),
-        patch(f"{FORECASTER_TOOLS_MODULE}.watch_video", watch_video),
     ):
         yield
 

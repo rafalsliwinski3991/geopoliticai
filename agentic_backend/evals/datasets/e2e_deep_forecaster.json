@@ -1,13 +1,10 @@
 {
- "description": "Live end-to-end deep forecaster: the expensive, non-deterministic sibling of deep_forecaster.json. One case, nothing recorded \u2014 Brave search runs for real, every page is fetched and read with trafilatura, and the whole forecaster graph (research, draft_claims, council_round_1, council_round_2, tally, write_analysis, verify) spends live model money across all seven council seats. No reference answer exists for a live search, so judges score shape and self-consistency only (claims_checkable, prose_matches_tally); the reference-verdict scoring stays in deep_forecaster.json.",
+ "description": "Live end-to-end deep forecaster, the only forecaster eval (brainstorm 2026Oct19 Q5-Q8). Five questions users asked, from the Phoenix traces, typed as they typed them and covering different forecasters and regions. Each runs once under the production wall cap: Brave, page reading, Gemini's video reading and the seven council seats are all live, so no two runs read the same pages and no reference answer exists. A forecast that fails is a report row; finished_or_outside fails the run only on a failure of our own rules. The other judges check links, the analysis against the pages it cites, checkable claims, prose against the tally, and verdicts against the passages the council read.",
  "cases": [
-  {
-   "name": "e2e-strait-shipping-live",
-   "input": {
-    "query": "Will the European Commission adopt a binding regulation that ends the sale of new combustion-engine cars in the EU before 31 December 2029, after today's legal challenges?"
-   },
-   "output": {},
-   "description": "Will the European Commission adopt a binding regulation ending new combustion-engine car sales in the EU before 31 December 2029 \u2014 asked with live retrieval only. The research node must find and read its own current sources, so the judges only require that the drafted claims are checkable forecasts with cited sources and that the final analysis prose never contradicts the council's tally."
-  }
+  {"name": "e2e-russia-poland", "input": {"query": "Forecast if Russia will attack Poland?"}, "output": {}, "description": "The most asked question (5 runs); the run that failed on 2026-10-19 with 4 of 7 members voting."},
+  {"name": "e2e-taiwan-blockade", "input": {"query": "Give me a forecast: will China impose a naval blockade on Taiwan before 2028?"}, "output": {}, "description": "East Asia and the China-focused forecasters, with the question's own deadline."},
+  {"name": "e2e-usa-nato", "input": {"query": "forecast if USA will betray nato?"}, "output": {}, "description": "A vague, loaded wording a user typed; the drafter must turn it into checkable claims."},
+  {"name": "e2e-baltics", "input": {"query": "Forecast whether Russia will attack Lithuania or Estonia or Latvia"}, "output": {}, "description": "Three countries in one question; the Nordic-Baltic forecasters."},
+  {"name": "e2e-germany-poland", "input": {"query": "forecast if germany will attack poland"}, "output": {}, "description": "An unlikely event: the council must be able to reject a claim."}
  ]
 }

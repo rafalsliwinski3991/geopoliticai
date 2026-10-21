@@ -14,6 +14,7 @@ import pytest
 from evals.helpers.judge import (
     JUDGE_BACKOFF_MAX_SECONDS,
     JUDGE_ERROR,
+    JUDGE_MODEL,
     JUDGE_RETRIES,
     NOT_APPLICABLE,
     Judge,
@@ -75,6 +76,20 @@ def test_judge_choices_by_kind() -> None:
         "4": 0.75,
         "5": 1.0,
     }
+
+
+def test_the_judge_model_is_a_paid_openrouter_model() -> None:
+    """A free endpoint can vanish overnight: on 2026-10-20 the pinned
+    `nvidia/nemotron-3-super-120b-a12b:free` judge answered 404 on every call
+    and every eval failed with judge errors."""
+    # Arrange
+    free_suffix = ":free"
+
+    # Act
+    model = JUDGE_MODEL
+
+    # Assert
+    assert not model.endswith(free_suffix)
 
 
 def test_score_returns_not_applicable_when_output_is_none() -> None:
@@ -391,6 +406,25 @@ def test_markdown_link_urls_extracts_link_targets() -> None:
 def test_markdown_link_urls_ignores_bare_urls() -> None:
     # Assert
     assert markdown_link_urls("see https://z.org directly") == []
+
+
+def test_a_markdown_link_url_may_contain_balanced_parentheses() -> None:
+    """A source URL may contain one level of parentheses (Wikipedia-style), and
+    the live eval reads `cited` from these links: a truncated URL would drop the
+    page from `cited_sources` and fail judges `verify` did not fail."""
+    # Arrange
+    markdown = (
+        "[a](https://en.wikipedia.org/wiki/Foo_(bar)) and [b](https://x.org/1)"
+        " and [c](https://x.org/Foo))"
+    )
+    # Act
+    urls = markdown_link_urls(markdown)
+    # Assert
+    assert urls == [
+        "https://en.wikipedia.org/wiki/Foo_(bar)",
+        "https://x.org/1",
+        "https://x.org/Foo",
+    ]
 
 
 def test_numeric_not_a_choice_label() -> None:

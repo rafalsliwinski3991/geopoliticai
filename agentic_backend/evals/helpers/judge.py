@@ -52,14 +52,17 @@ PHOENIX_BAD_ANSWER_MARKERS = (
     "OpenAI returned None content",
     "'NoneType' object is not subscriptable",
 )
-# Pinned, not `openrouter/free`; see git history.
-JUDGE_MODEL = "nvidia/nemotron-3-super-120b-a12b:free"
+# Paid, cheap, and not from OpenAI, whose models answer every eval (user
+# decision 2026-10-20): the free `nvidia/nemotron-3-super-120b-a12b:free`
+# endpoint answered 404 on every call that day. $0.10/$0.50 per million tokens
+# in/out, checked 2026-10-20; the slug lists `tools` and `tool_choice`.
+JUDGE_MODEL = "anthropic/claude-haiku-5.5"
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
-# Markdown link targets only: the match stops at the first ')', so a URL that
-# legitimately contains a parenthesis is truncated. Every dataset recorded so
-# far uses https://news.example/... URLs without parentheses; write balanced
-# parenthesis handling here before recording a source URL that has any.
-MARKDOWN_LINK_URL = re.compile(r"\]\((https?://[^)\s]+)\)")
+# Markdown link targets: one level of `(...)` inside the URL is part of it, so
+# https://en.wikipedia.org/wiki/Foo_(bar) is captured whole. The handling is
+# one level deep: an unmatched ')' still ends the URL, and a URL with nested or
+# unbalanced '(' is not matched at all.
+MARKDOWN_LINK_URL = re.compile(r"\]\((https?://[^()\s]+(?:\([^()\s]*\)[^()\s]*)*)\)")
 logger = logging.getLogger("agent")
 
 
@@ -67,8 +70,11 @@ logger = logging.getLogger("agent")
 class Judge:
     """One named check: an LLM judge (`prompt`) or a code check (`check`).
 
-    `view` decides applicability from the expected output only, so a missing
-    actual output fails the judge instead of skipping it.
+    `view` decides applicability, normally from the expected output only, so
+    a missing actual output fails the judge instead of skipping it. A live
+    eval with no expected output (`e2e_deep_forecaster`) decides from the
+    actual output instead, and its own code judge fails the run when the
+    task itself failed.
     """
 
     name: str

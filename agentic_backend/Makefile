@@ -69,7 +69,7 @@ spell_fix:
 # `config.init_environment`); `ARIZE_PLATFORM` is taken from the environment,
 # so point a run at local Phoenix with `docker compose up -d phoenix` and
 # `make evals ARIZE_PLATFORM=PHOENIX`.
-EVAL_MODULES = orchestrator expert deep_expert deep_forecaster forecast_backtest reporter e2e_orchestrator e2e_deep_forecaster
+EVAL_MODULES = orchestrator expert deep_expert reporter e2e_orchestrator e2e_deep_forecaster
 
 evals:
 	uv sync --locked --dev

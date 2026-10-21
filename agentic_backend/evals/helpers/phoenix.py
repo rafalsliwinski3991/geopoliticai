@@ -114,7 +114,6 @@ async def run(
         timeout=timeout,
         retries=0,
     )
-    # concurrency=1 on both calls: the free judge model is rate limited.
     eval_result = await client.experiments.evaluate_experiment(
         experiment=task_result,
         evaluators={
