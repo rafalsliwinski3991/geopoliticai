@@ -27,6 +27,7 @@ from agents.deep_forecaster.config import LIMITS
 from agents.deep_forecaster.consts.progress import PROGRESS_NODE
 from agents.deep_forecaster.models import Analysis, Ballot, Claim, Verdict
 from models import Candidate, Source
+from search import FETCH_CONCURRENCY
 
 logger = logging.getLogger(__name__)
 
@@ -123,6 +124,12 @@ class ResearchRun:
     # Reads in flight: counted against `max_sources` before the fetch awaits,
     # so parallel scouts cannot overshoot the cap (plan review).
     reserved: int = 0
+    # What the `forecast_research` span reports beyond the budgets (brainstorm
+    # 2026Oct19, span rule): which forecasters were searched, searches that
+    # found nothing, and pages with no usable text.
+    forecasters_searched: set[str] = field(default_factory=set)
+    empty_searches: int = 0
+    unreadable_pages: int = 0
     candidates: dict[str, Candidate] = field(default_factory=dict)
     # Which forecaster's search returned each candidate; a video's notes are
     # titled with it, so the record says whose page pointed at the video
@@ -138,10 +145,21 @@ class ResearchRun:
     search_gate: asyncio.Semaphore = field(
         default_factory=lambda: asyncio.Semaphore(LIMITS.max_search_concurrency)
     )
+    # Page fetches bound the same way: `fetch_sources` builds its per-call
+    # semaphore (search.py) around a call's own candidates, so without this
+    # gate a batch read would put `max_batch` GETs on a forecaster's site at
+    # once and parallel scouts would multiply that (review thread).
+    read_gate: asyncio.Semaphore = field(
+        default_factory=lambda: asyncio.Semaphore(FETCH_CONCURRENCY)
+    )
+
+    def room_left(self) -> int:
+        """Return how many more sources may be read, counting reads in flight."""
+        return LIMITS.max_sources - len(self.sources) - self.reserved
 
     def has_room(self) -> bool:
         """Return whether one more source may be read, counting reads in flight."""
-        return len(self.sources) + self.reserved < LIMITS.max_sources
+        return self.room_left() > 0
 
     def lock_for(self, url: str) -> asyncio.Lock:
         """Return the read lock for `url`, creating it on first use."""

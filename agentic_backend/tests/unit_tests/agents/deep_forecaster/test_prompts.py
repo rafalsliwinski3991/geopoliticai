@@ -1,6 +1,7 @@
 """Unit tests for `agents.deep_forecaster.prompts`."""
 
 from agents.deep_forecaster import prompts
+from agents.deep_forecaster.config import LIMITS
 from agents.deep_forecaster.prompts import (
     _UNTRUSTED_RULE,
     DRAFT_CLAIMS_PROMPT,
@@ -57,6 +58,23 @@ def test_lead_prompt_delegates_with_the_task_tool() -> None:
     assert "Delegate with the `task` tool" in LEAD_SYSTEM_PROMPT
     assert '`subagent_type` "scout"' in LEAD_SYSTEM_PROMPT
     assert not SCOUT_DESCRIPTION.startswith("Scout:")
+
+
+def test_scout_prompt_asks_for_batched_calls() -> None:
+    """The scout writes two to five queries per search call and reads up to
+    five URLs in one `read_sources` call, so one model turn does one batch of
+    work; the description names the tool the scout reads with."""
+    # Act + Assert
+    assert "`read_sources`" in SCOUT_PROMPT
+    assert "`read_sources`" in SCOUT_DESCRIPTION
+    assert "`read_source`" not in SCOUT_PROMPT
+    assert "`read_source`" not in SCOUT_DESCRIPTION
+    # The numbers the prompt names are the cap code enforces (`max_batch`),
+    # not a second copy that a cap change would leave stale (review thread):
+    # with max_batch at 5 the prompt reads "two to five" / "up to five".
+    assert LIMITS.max_batch == 5
+    assert "two to 5 different queries" in SCOUT_PROMPT
+    assert "up to 5 URLs" in SCOUT_PROMPT
 
 
 def test_the_write_prompt_fills_with_today_and_carries_the_untrusted_rule() -> None:

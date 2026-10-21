@@ -155,6 +155,11 @@ async def research(
                     "research.source_budget_hit": len(run.sources)
                     >= LIMITS.max_sources,
                     "research.time_limit_hit": timed_out,
+                    "research.forecasters_searched": len(run.forecasters_searched),
+                    "research.forecasters": sorted(run.forecasters_searched),
+                    "research.empty_searches": run.empty_searches,
+                    "research.unreadable_pages": run.unreadable_pages,
+                    "research.search_concurrency": LIMITS.max_search_concurrency,
                 }
             )
     if not run.sources:
