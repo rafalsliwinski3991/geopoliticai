@@ -47,7 +47,7 @@ async def test_replay_sources_patches_expert_retrieval() -> None:
     original_fetch = search_node.fetch_sources
 
     # Act
-    with replay_sources(lambda: recorded):
+    with replay_sources(recorded):
         candidates = await search_node.search_allowlisted("q", POLICY)
         fetched = await search_node.fetch_sources(candidates, POLICY)
 
@@ -64,12 +64,12 @@ async def test_replay_sources_patches_expert_retrieval() -> None:
 async def test_replay_sources_raises_when_no_sources_recorded() -> None:
     # Act + Assert
     with (
-        replay_sources(lambda: None),
+        replay_sources(None),
         pytest.raises(RuntimeError, match="no recorded sources"),
     ):
         await search_node.search_allowlisted("q", POLICY)
     with (
-        replay_sources(lambda: None),
+        replay_sources(None),
         pytest.raises(RuntimeError, match="no recorded sources"),
     ):
         await search_node.fetch_sources([], POLICY)
@@ -147,7 +147,7 @@ async def test_replay_sources_patches_deep_tools() -> None:
     original_fetch = tools_module.fetch_sources
 
     # Act
-    with replay_sources(lambda: recorded):
+    with replay_sources(recorded):
         candidates = await tools_module.search_allowlisted("q", POLICY)
         requested = await tools_module.fetch_sources(
             [Candidate(title="s", url="https://news.example/b", domain="recorded")],

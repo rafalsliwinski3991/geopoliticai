@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterator, Mapping, Sequence
+from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from typing import Any
 from unittest.mock import patch
@@ -49,17 +49,15 @@ def load_messages(raw: Sequence[Mapping[str, str]]) -> list[AnyMessage]:
 
 
 @contextmanager
-def replay_sources(current: Callable[[], list[Source] | None]) -> Iterator[None]:
+def replay_sources(recorded: list[Source] | None) -> Iterator[None]:
     """Replace the expert's and the deep expert's live retrieval with a case's recorded pages.
 
-    `current` is read on every call, so a case's sources can change between calls.
     Every search returns the whole recorded set (brainstorm Q5b), so the deep
     eval measures synthesis and the grader loop, not search strategy.
     Reaching either agent with no recorded sources is an error: evals never call Brave.
     """
 
     def sources() -> list[Source]:
-        recorded = current()
         if recorded is None:
             raise RuntimeError(
                 "The expert was called, but this example has no recorded sources."

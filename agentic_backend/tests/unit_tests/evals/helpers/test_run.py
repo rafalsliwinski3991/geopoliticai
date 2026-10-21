@@ -197,6 +197,19 @@ def test_a_live_case_with_expected_is_refused(
         run_mod.load_examples(path)
 
 
+def test_a_live_case_without_a_query_is_refused(tmp_path: Path) -> None:
+    """The live wrapper names each report row by its query, so a case must carry one."""
+    # Arrange
+    case = _case(
+        input={"messages": [{"role": "user", "content": "q"}]}, expected=_MISSING
+    )
+    path = _write_dataset(tmp_path, LIVE_PATH_NAME, _wrap(case))
+
+    # Act + Assert
+    with pytest.raises(ValueError, match="needs a string query"):
+        run_mod.load_examples(path)
+
+
 def test_an_unknown_input_key_is_refused(tmp_path: Path) -> None:
     # Arrange
     path = _write_dataset(
@@ -222,11 +235,27 @@ def test_duplicate_case_names_are_refused(tmp_path: Path) -> None:
     [
         ({"description": "d", "cases": None}, "non-empty list"),
         ({"description": "d", "cases": []}, "non-empty list"),
+        ({"description": 1, "cases": [_case()]}, "the dataset needs a description"),
+        ({"description": "d", "cases": ["n"]}, "needs a string name"),
         (_wrap(_case(name=_MISSING)), "needs a string name"),
+        (_wrap(_case(name=1)), "needs a string name"),
+        (_wrap(_case(description=1)), "needs a description"),
+        (_wrap(_case(description="  ")), "needs a description"),
         (_wrap(_case(input=[])), "non-empty input object"),
         (_wrap(_case(input={})), "non-empty input object"),
     ],
-    ids=["cases null", "no cases", "no name", "input not an object", "empty input"],
+    ids=[
+        "cases null",
+        "no cases",
+        "dataset description not a string",
+        "case not an object",
+        "no name",
+        "name not a string",
+        "case description not a string",
+        "blank case description",
+        "input not an object",
+        "empty input",
+    ],
 )
 def test_load_examples_rejects_malformed_files(
     tmp_path: Path, document: dict[str, Any], message: str
@@ -644,6 +673,32 @@ async def test_a_live_run_that_finishes_is_marked_finished(
         "step_seconds": {},
         "answer": "a",
     }
+
+
+@pytest.mark.anyio
+async def test_a_live_run_prints_one_row_named_by_its_query(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    # Arrange
+    async def _finishing_task(input: dict[str, Any]) -> dict[str, Any]:
+        return {"answer": "a"}
+
+    # Act
+    await _run_wrapped_task(
+        monkeypatch,
+        tmp_path,
+        eval_name="x_live",
+        case=_case(input={"query": "What did the summit agree?"}, expected=_MISSING),
+        task=_finishing_task,
+    )
+
+    # Assert
+    rows = capsys.readouterr().out.splitlines()
+    assert len(rows) == 1
+    assert rows[0].startswith("finished ")
+    assert "| What did the summit agree? |" in rows[0]
 
 
 def test_task_alias_is_a_coroutine_factory() -> None:

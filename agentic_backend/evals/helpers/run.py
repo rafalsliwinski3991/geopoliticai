@@ -102,6 +102,9 @@ def _read_case(
         )
     if kind == "live" and "expected" in case:
         raise ValueError(f"{file_name}: live case {name!r} must not have expected")
+    # The live wrapper names each case's report row by its query.
+    if kind == "live" and not isinstance(input.get("query"), str):
+        raise ValueError(f"{file_name}: live case {name!r} needs a string query")
     return {
         "input": input,
         "output": expected or {},
@@ -220,7 +223,7 @@ def _wrap_fixed_task(task: Task) -> Task:
 
     async def run_case(input: dict[str, Any]) -> dict[str, Any]:
         sources = load_sources(input["sources"]) if "sources" in input else None
-        with replay_sources(lambda: sources):
+        with replay_sources(sources):
             return await task(input)
 
     return run_case

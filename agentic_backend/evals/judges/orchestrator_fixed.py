@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from evals.helpers.judge import Judge
+from evals.judges.shared import matches_expected
 
 EXPECTED_KEYS = frozenset({"destination", "standalone_query"})
 QUERY_PROMPT = """
@@ -63,14 +64,9 @@ def _query_view(
     }
 
 
-def routing_correct(variables: dict[str, Any]) -> bool:
-    """Pass when the turn went where the example expects."""
-    return bool(variables["actual"] == variables["expected"])
-
-
 def judges() -> tuple[Judge, ...]:
     """Return the orchestrator_fixed eval's judges."""
     return (
-        Judge("routing_correct", "binary", _routing_view, check=routing_correct),
+        Judge("routing_correct", "binary", _routing_view, check=matches_expected),
         Judge("query_matches_expected", "numeric", _query_view, prompt=QUERY_PROMPT),
     )

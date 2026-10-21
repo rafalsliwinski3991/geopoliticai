@@ -8,14 +8,20 @@ with no sign, because a key present in `expected` is what gets checked
 from __future__ import annotations
 
 import importlib
+import re
 from pathlib import Path
 
 import pytest
 
-from evals.helpers.graph import load_messages
-from evals.helpers.run import DATASETS_DIR, load_examples
+from evals.helpers.graph import load_messages, load_sources
+from evals.helpers.judge import markdown_link_urls
+from evals.helpers.run import DATASETS_DIR, eval_kind, load_examples
 
 DATASETS = sorted(DATASETS_DIR.glob("*.json"))
+MAKEFILE = DATASETS_DIR.parents[1] / "Makefile"
+WORKFLOW = DATASETS_DIR.parents[2] / ".github" / "workflows" / "evals.yml"
+# The `type` input each kind's workflow step skips on.
+SKIPPED_TYPE = {"fixed": "live", "live": "fixed"}
 
 
 def _judges_module(path: Path) -> object:
@@ -64,3 +70,57 @@ def test_every_conversation_uses_known_roles(path: Path) -> None:
     # Act + Assert (load_messages raises on an unknown role)
     for example in load_examples(path):
         load_messages(example["input"].get("messages", []))
+
+
+@pytest.mark.parametrize("path", DATASETS, ids=lambda path: path.stem)
+def test_every_recorded_page_loads(path: Path) -> None:
+    """A page missing its title, url, or text would crash the run after it was paid for."""
+    # Act + Assert (load_sources raises KeyError on a missing field)
+    for example in load_examples(path):
+        load_sources(example["input"].get("sources", []))
+
+
+@pytest.mark.parametrize("path", DATASETS, ids=lambda path: path.stem)
+def test_every_expected_answer_links_only_its_cases_pages(path: Path) -> None:
+    """A reference answer citing a page the case does not record could never be matched."""
+    # Act
+    stray = {
+        (example["metadata"]["name"], url)
+        for example in load_examples(path)
+        for url in markdown_link_urls(example["output"].get("answer", ""))
+        if url not in {page["url"] for page in example["input"].get("sources", [])}
+    }
+    # Assert
+    assert stray == set()
+
+
+def test_the_makefile_lists_every_eval_under_its_kind() -> None:
+    """`make evals-fixed` and `make evals-live` must run every eval of their kind, and only those."""
+    # Arrange
+    text = MAKEFILE.read_text(encoding="utf-8")
+    listed = {
+        kind: re.search(rf"^{kind.upper()}_EVALS = (.*)$", text, re.MULTILINE)
+        for kind in ("fixed", "live")
+    }
+    # Act
+    made = {
+        kind: set(match.group(1).split()) if match else set()
+        for kind, match in listed.items()
+    }
+    # Assert
+    for kind in ("fixed", "live"):
+        assert made[kind] == {
+            path.stem for path in DATASETS if eval_kind(path.stem) == kind
+        }
+
+
+@pytest.mark.parametrize("path", DATASETS, ids=lambda path: path.stem)
+def test_the_workflow_runs_every_eval_only_for_its_kind(path: Path) -> None:
+    """Each eval has one `evals.yml` step, skipped when the dispatch asks for the other kind."""
+    # Arrange
+    steps = WORKFLOW.read_text(encoding="utf-8").split("- name:")
+    # Act
+    own = [step for step in steps if f"python -m evals.{path.stem}\n" in step]
+    # Assert
+    assert len(own) == 1
+    assert f"inputs.type != '{SKIPPED_TYPE[eval_kind(path.stem)]}'" in own[0]

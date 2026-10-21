@@ -14,9 +14,9 @@ from evals.judges.reporter_fixed import (
     _report_rules_view,
     _report_view,
     follows_outline,
-    matches_expected,
     urls_from_transcript,
 )
+from evals.judges.shared import matches_expected
 
 
 def _report_variables(report: str, outline: list[str]) -> dict[str, Any]:

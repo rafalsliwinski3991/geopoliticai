@@ -2,13 +2,10 @@
 
 from __future__ import annotations
 
-from typing import Any
-
 from evals.judges.orchestrator_fixed import (
     QUERY_PROMPT,
     _query_view,
     _routing_view,
-    routing_correct,
 )
 
 CONVERSATION = {
@@ -17,20 +14,6 @@ CONVERSATION = {
         {"role": "assistant", "content": "hello there"},
     ]
 }
-
-
-def _variables(actual: object, expected: object) -> dict[str, Any]:
-    return {"actual": actual, "expected": expected}
-
-
-def test_routing_correct_passes_on_same_destination() -> None:
-    # Act + Assert
-    assert routing_correct(_variables("geopolitical", "geopolitical"))
-
-
-def test_routing_correct_fails_on_different_destination() -> None:
-    # Act + Assert
-    assert not routing_correct(_variables("other", "geopolitical"))
 
 
 def test_routing_is_checked_only_when_expected() -> None:

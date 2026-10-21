@@ -11,6 +11,7 @@ import re
 from typing import Any
 
 from evals.helpers.judge import Judge, markdown_link_urls
+from evals.judges.shared import matches_expected
 
 EXPECTED_KEYS = frozenset({"reply_actions", "outcome"})
 HEADING_NOISE = re.compile(r"^(?:\d+[.)]\s*)?[*_]*(.*?)[*_]*:?$")
@@ -167,11 +168,6 @@ def urls_from_transcript(variables: dict[str, Any]) -> bool:
     if not transcript_urls:
         return True
     return bool(report_urls) and set(report_urls) <= set(transcript_urls)
-
-
-def matches_expected(variables: dict[str, Any]) -> bool:
-    """Pass when the run's value equals the expected one exactly."""
-    return bool(variables["actual"] == variables["expected"])
 
 
 def judges() -> tuple[Judge, ...]:
