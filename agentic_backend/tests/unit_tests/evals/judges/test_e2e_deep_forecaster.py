@@ -146,6 +146,19 @@ def test_the_url_and_faithful_views_read_the_runs_pages() -> None:
     }
 
 
+def test_the_faithful_view_says_so_when_the_analysis_cites_no_page_it_read() -> None:
+    """An empty sources block would let the judge score an analysis against nothing."""
+    # Arrange
+    output = {**_finished_output(), "analysis": "No links here."}
+    # Act
+    faithful = _faithful_view({}, output, {})
+    # Assert
+    assert faithful == {
+        "answer": "No links here.",
+        "sources": "(the analysis cites no source it read)",
+    }
+
+
 def test_the_verdicts_view_reads_passages_and_verdicts() -> None:
     # Arrange
     input: dict[str, Any] = {"query": "Forecast if Russia will attack Poland?"}

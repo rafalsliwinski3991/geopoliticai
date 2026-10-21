@@ -169,3 +169,24 @@ def test_a_report_row_shows_finished_side_voters_research_total_and_cause(
         capsys.readouterr().out
         == "failed   outside voters - research 4.0 s total 9 s | Q | SearchUnavailableError: x\n"
     )
+
+
+def test_a_finished_row_shows_dashes_for_the_side_and_cause_it_lacks(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A finished run has no side, no cause, and maybe no research step; each prints as `-`."""
+    # Arrange
+    output: dict[str, Any] = {
+        "finished": True,
+        "side": "",
+        "cause": "",
+        "members_voting": 7,
+        "step_seconds": {},
+    }
+    # Act
+    print_row("Q", output, 12.4)
+    # Assert
+    assert (
+        capsys.readouterr().out
+        == "finished -       voters 7 research - s total 12 s | Q | -\n"
+    )

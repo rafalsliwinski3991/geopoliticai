@@ -19,33 +19,57 @@ def _view_data(answer: str, source_urls: list[str]) -> dict[str, Any]:
     return {"answer": answer, "source_urls": source_urls}
 
 
-def test_urls_from_sources_passes_on_subset() -> None:
+def test_an_answer_linking_only_pages_the_run_read_passes() -> None:
     # Arrange
     variables = _view_data(
         "See [a](https://news.example/1) and [b](https://news.example/2).",
         ["https://news.example/1", "https://news.example/2", "https://news.example/3"],
     )
 
-    # Act + Assert
-    assert urls_from_sources(variables)
+    # Act
+    passed = urls_from_sources(variables)
+
+    # Assert
+    assert passed
 
 
-def test_urls_from_sources_fails_on_unknown_url() -> None:
+def test_an_answer_linking_a_page_the_run_never_read_fails() -> None:
     # Arrange
     variables = _view_data(
         "See [x](https://not-recorded.example/1).", ["https://news.example/1"]
     )
 
-    # Act + Assert
-    assert not urls_from_sources(variables)
+    # Act
+    passed = urls_from_sources(variables)
+
+    # Assert
+    assert not passed
 
 
-def test_urls_from_sources_fails_with_no_links() -> None:
+def test_one_unread_link_fails_an_answer_whose_other_links_were_read() -> None:
+    """Every link must be one the run read; one good link does not carry a bad one."""
+    # Arrange
+    variables = _view_data(
+        "See [a](https://news.example/1) and [x](https://not-recorded.example/1).",
+        ["https://news.example/1"],
+    )
+
+    # Act
+    passed = urls_from_sources(variables)
+
+    # Assert
+    assert not passed
+
+
+def test_an_answer_with_no_links_fails() -> None:
     # Arrange
     variables = _view_data("No links here.", ["https://news.example/1"])
 
-    # Act + Assert
-    assert not urls_from_sources(variables)
+    # Act
+    passed = urls_from_sources(variables)
+
+    # Assert
+    assert not passed
 
 
 @pytest.mark.parametrize(
@@ -77,6 +101,23 @@ def test_cited_sources_keep_only_the_pages_the_answer_links() -> None:
     rendered = render_cited_sources(sources, answer)
     # Assert
     assert rendered == "SOURCE https://news.example/1\nOne\nfirst text"
+
+
+def test_cited_sources_follow_the_run_order_and_are_joined_by_a_blank_line() -> None:
+    """The judge reads pages in the order the run read them, whatever order the answer links them."""
+    # Arrange
+    sources = [
+        {"url": "https://news.example/1", "title": "One", "text": "first text"},
+        {"url": "https://news.example/2", "title": "Two", "text": "second text"},
+    ]
+    answer = "See [two](https://news.example/2) and [one](https://news.example/1)."
+    # Act
+    rendered = render_cited_sources(sources, answer)
+    # Assert
+    assert rendered == (
+        "SOURCE https://news.example/1\nOne\nfirst text\n\n"
+        "SOURCE https://news.example/2\nTwo\nsecond text"
+    )
 
 
 def test_cited_sources_are_empty_when_the_answer_links_none() -> None:
@@ -115,13 +156,19 @@ def test_a_gated_view_reads_a_finished_run() -> None:
     def view(
         input: dict[str, Any], output: dict[str, Any], expected: dict[str, Any]
     ) -> dict[str, Any] | None:
-        return {"answer": output["answer"]}
+        return {
+            "query": input["query"],
+            "answer": output["answer"],
+            "expected": expected["answer"],
+        }
 
     gated = skip_unless_finished(view)
     # Act
-    variables = gated({}, {"finished": True, "answer": "A"}, {})
-    # Assert
-    assert variables == {"answer": "A"}
+    variables = gated(
+        {"query": "Q"}, {"finished": True, "answer": "A"}, {"answer": "E"}
+    )
+    # Assert: the wrapped view received all three arguments unchanged.
+    assert variables == {"query": "Q", "answer": "A", "expected": "E"}
 
 
 def test_the_outcome_judge_skips_an_output_without_a_finish_flag() -> None:

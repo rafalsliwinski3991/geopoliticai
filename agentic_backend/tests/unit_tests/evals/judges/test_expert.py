@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from evals.judges.expert import _urls_view, judges
+from evals.judges.expert import _faithful_view, _urls_view, judges
 
 
 def test_urls_view_builds_variables_from_sources() -> None:
@@ -17,6 +17,22 @@ def test_urls_view_builds_variables_from_sources() -> None:
     assert variables == {
         "answer": "Answer [a](https://news.example/1).",
         "source_urls": ["https://news.example/1"],
+    }
+
+
+def test_the_faithful_view_says_so_when_the_answer_cites_no_recorded_page() -> None:
+    """An empty sources block would let the judge score an answer against nothing."""
+    # Arrange
+    input = {"sources": [{"url": "https://news.example/1", "title": "t", "text": "x"}]}
+    output = {"answer": "No links here."}
+
+    # Act
+    variables = _faithful_view(input, output, {})
+
+    # Assert
+    assert variables == {
+        "answer": "No links here.",
+        "sources": "(the answer cites no recorded source)",
     }
 
 

@@ -19,7 +19,7 @@ def classify_failure(error: BaseException) -> str:
     """
     import openai
 
-    # The outage threshold and the label are the council's, imported, not copies that drift (review thread).
+    # The 5xx threshold and `QuorumError` are the council's, imported, not copies that drift (review thread).
     from agents.deep_forecaster.council import SERVER_ERROR_STATUS, QuorumError
     from models import SearchUnavailableError
 
