@@ -2,6 +2,12 @@ name: Evals
 
 on:
   workflow_dispatch:
+    inputs:
+      type:
+        description: "fixed: inputs written in advance; live: Brave and today's pages; all: both"
+        type: choice
+        options: [fixed, live, all]
+        default: fixed
 
 jobs:
   evals:
@@ -35,46 +41,40 @@ jobs:
         working-directory: agentic_backend
         run: uv sync --locked --dev
 
-      - name: Run orchestrator evals
-        if: ${{ !cancelled() && steps.sync.outcome == 'success' }}
+      - name: Run orchestrator_fixed
+        if: ${{ !cancelled() && steps.sync.outcome == 'success' && inputs.type != 'live' }}
         working-directory: agentic_backend
         env:
           # nginx Basic Auth in front of the VPS Phoenix, in W3C header format
           # (every eval step below sends the same header):
           # Authorization=Basic%20<base64 of AUTH_USER:AUTH_PASSWORD>
           PHOENIX_CLIENT_HEADERS: ${{ secrets.PHOENIX_CLIENT_HEADERS }}
-        run: uv run python -m evals.orchestrator
+        run: uv run python -m evals.orchestrator_fixed
 
-      - name: Run expert evals
-        if: ${{ !cancelled() && steps.sync.outcome == 'success' }}
+      - name: Run reporter_fixed
+        if: ${{ !cancelled() && steps.sync.outcome == 'success' && inputs.type != 'live' }}
         working-directory: agentic_backend
         env:
           PHOENIX_CLIENT_HEADERS: ${{ secrets.PHOENIX_CLIENT_HEADERS }}
-        run: uv run python -m evals.expert
+        run: uv run python -m evals.reporter_fixed
 
-      - name: Run deep expert evals
-        if: ${{ !cancelled() && steps.sync.outcome == 'success' }}
+      - name: Run expert_fixed
+        if: ${{ !cancelled() && steps.sync.outcome == 'success' && inputs.type != 'live' }}
         working-directory: agentic_backend
         env:
           PHOENIX_CLIENT_HEADERS: ${{ secrets.PHOENIX_CLIENT_HEADERS }}
-        run: uv run python -m evals.deep_expert
+        run: uv run python -m evals.expert_fixed
 
-      - name: Run reporter evals
-        if: ${{ !cancelled() && steps.sync.outcome == 'success' }}
+      - name: Run deep_expert_fixed
+        if: ${{ !cancelled() && steps.sync.outcome == 'success' && inputs.type != 'live' }}
         working-directory: agentic_backend
         env:
           PHOENIX_CLIENT_HEADERS: ${{ secrets.PHOENIX_CLIENT_HEADERS }}
-        run: uv run python -m evals.reporter
+        run: uv run python -m evals.deep_expert_fixed
 
-      - name: Run e2e evals
-        if: ${{ !cancelled() && steps.sync.outcome == 'success' }}
+      - name: Run deep_forecaster_live
+        if: ${{ !cancelled() && steps.sync.outcome == 'success' && inputs.type != 'fixed' }}
         working-directory: agentic_backend
         env:
           PHOENIX_CLIENT_HEADERS: ${{ secrets.PHOENIX_CLIENT_HEADERS }}
-        run: uv run python -m evals.e2e_orchestrator
-      - name: Run the deep-forecaster e2e eval
-        if: ${{ !cancelled() && steps.sync.outcome == 'success' }}
-        working-directory: agentic_backend
-        env:
-          PHOENIX_CLIENT_HEADERS: ${{ secrets.PHOENIX_CLIENT_HEADERS }}
-        run: uv run python -m evals.e2e_deep_forecaster
+        run: uv run python -m evals.deep_forecaster_live

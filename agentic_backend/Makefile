@@ -1,4 +1,4 @@
-.PHONY: all format lint test tests test-integration test_watch docker_tests help extended_tests evals
+.PHONY: all format lint test tests test-integration test_watch docker_tests help extended_tests evals evals-fixed evals-live
 
 # Default target executed when no arguments are given to make.
 all: help
@@ -63,18 +63,19 @@ spell_fix:
 # EVALS
 ######################
 
-# Mirrors .github/workflows/evals.yml: sync dependencies, then run every eval
-# in order, keep going after a failure, and exit non-zero when any failed.
-# Keys and the Phoenix collector endpoint come from the root .env (loaded by
-# `config.init_environment`); point a run at local Phoenix with
+# Mirrors .github/workflows/evals.yml: sync dependencies, then run each eval of
+# the chosen kind in order, keep going after a failure, and exit non-zero when
+# any failed. Keys and the Phoenix collector endpoint come from the root .env
+# (loaded by `config.init_environment`); point a run at local Phoenix with
 # `docker compose up -d phoenix`.
-EVAL_MODULES = orchestrator expert deep_expert reporter e2e_orchestrator e2e_deep_forecaster
+FIXED_EVALS = orchestrator_fixed reporter_fixed expert_fixed deep_expert_fixed
+LIVE_EVALS = deep_forecaster_live
 
-evals:
+define run_evals
 	uv sync --locked --dev
 	@failed=0; \
-	for module in $(EVAL_MODULES); do \
-		echo "===> $$module evals"; \
+	for module in $(1); do \
+		echo "===> $$module"; \
 		uv run python -m evals.$$module || failed=1; \
 	done; \
 	if [ "$$failed" = 1 ]; then \
@@ -83,6 +84,16 @@ evals:
 		echo "evals: all passed"; \
 	fi; \
 	exit $$failed
+endef
+
+evals-fixed:
+	$(call run_evals,$(FIXED_EVALS))
+
+evals-live:
+	$(call run_evals,$(LIVE_EVALS))
+
+evals:
+	$(call run_evals,$(FIXED_EVALS) $(LIVE_EVALS))
 
 ######################
 # HELP
@@ -97,5 +108,7 @@ help:
 	@echo 'test-integration             - run the db-web-schema suite against a real Postgres'
 	@echo 'test TEST_FILE=<test_file>   - run all tests in file'
 	@echo 'test_watch                   - run unit tests in watch mode'
-	@echo 'evals                        - run the offline evals like evals.yml'
+	@echo 'evals-fixed                  - run the fixed evals (inputs written in advance)'
+	@echo 'evals-live                   - run the live evals (Brave and live pages)'
+	@echo 'evals                        - run both, like evals.yml with type all'
 

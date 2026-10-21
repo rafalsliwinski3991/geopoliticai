@@ -16,9 +16,7 @@ Every judge reads the run's own output, never a recording:
   no known outcome (Q7 challenge, B).
 
 A view applies only to a forecast that finished, and decides that from the
-actual output: a live dataset has no expected output, and a forecast that
-failed outside must not also fail every prose judge (Q8). The dataset's own
-empty output applies to no judge.
+actual output: a live dataset has no expected output.
 """
 
 from __future__ import annotations
@@ -34,6 +32,8 @@ from evals.judges.shared import (
     urls_from_sources,
 )
 
+# A live dataset has no expected output, so no expected key is checked.
+EXPECTED_KEYS: frozenset[str] = frozenset()
 CLAIMS_PROMPT = """
 You check the claims a forecasting council voted on.
 

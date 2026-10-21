@@ -6,11 +6,17 @@ import importlib
 from typing import Any, TypedDict
 
 import pytest
+from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.graph import END, START, StateGraph
 from langgraph.types import Command, interrupt
 
-from evals.helpers.graph import load_sources, pending_pause, replay_sources
+from evals.helpers.graph import (
+    load_messages,
+    load_sources,
+    pending_pause,
+    replay_sources,
+)
 from models import Candidate, Source, SourcePolicy
 
 search_node: Any = importlib.import_module("agents.expert.nodes.search_and_fetch")
@@ -180,3 +186,27 @@ def test_load_sources_reads_an_optional_author() -> None:
     )
     # Assert
     assert [s.author for s in sources] == ["A. Writer", ""]
+
+
+def test_load_messages_maps_user_and_assistant() -> None:
+    # Arrange
+    raw = [
+        {"role": "user", "content": "Hello"},
+        {"role": "assistant", "content": "Hi there"},
+    ]
+
+    # Act
+    messages = load_messages(raw)
+
+    # Assert
+    assert [type(message) for message in messages] == [HumanMessage, AIMessage]
+    assert [message.content for message in messages] == ["Hello", "Hi there"]
+
+
+def test_an_unknown_message_role_is_refused() -> None:
+    # Arrange: "human" is the old LangChain spelling; datasets say "user".
+    raw = [{"role": "human", "content": "Hello"}]
+
+    # Act + Assert
+    with pytest.raises(ValueError, match="unknown message role 'human'"):
+        load_messages(raw)

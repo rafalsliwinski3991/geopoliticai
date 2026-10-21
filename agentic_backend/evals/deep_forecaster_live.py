@@ -1,4 +1,4 @@
-"""e2e_deep_forecaster eval: the whole deep forecaster, live, on questions users asked.
+"""deep_forecaster_live eval: the whole deep forecaster, live, on questions users asked.
 
 Brainstorm 2026Oct19 (Q5-Q8): the only forecaster eval. Five questions from
 the Phoenix traces, typed as users typed them, each run once with live Brave
@@ -10,7 +10,7 @@ answer.
 A forecast that fails, or runs past the wall, is a report row, not a crash:
 `evals.helpers.live.classify_failure` says whose failure it was ("outside" only for a provider
 outage), and the `finished_or_outside` judge fails the run on any failure of
-ours (Q8). Each run prints one row per question: finished, side, members
+ours (Q8). The runner prints one row per question: finished, side, members
 voting, research and total seconds, the question, and the cause.
 """
 
@@ -19,16 +19,14 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from pathlib import Path
 from typing import Any
 
 from evals.helpers.judge import markdown_link_urls
-from evals.helpers.live import build_failure_row, print_row
+from evals.helpers.live import build_failure_row
 from evals.helpers.run import run
-from evals.judges.e2e_deep_forecaster import judges
+from evals.judges.deep_forecaster_live import judges
 from models import ResearchLimitError
 
-DATASET_PATH = Path(__file__).parent / "datasets" / "e2e_deep_forecaster.json"
 # 2.5x the forecaster's wall cap (`ForecastLimits.wall_seconds`, 840 s). The
 # task runs under the wall itself; this bounds a task that outlives the cap's
 # cancel (`time_limits.run_under_time_limits` abandons such a task).
@@ -72,19 +70,14 @@ def forecast_output(
     }
 
 
-async def run_e2e_deep_forecaster(input: dict[str, Any]) -> dict[str, Any]:
+async def run_deep_forecaster_live(input: dict[str, Any]) -> dict[str, Any]:
     """Run the forecaster's graph live on one question, under the wall; a failure becomes the row."""
     from agents.deep_expert.graph import NO_CHECKPOINTER_CONFIG
     from agents.deep_forecaster.config import LIMITS
     from agents.deep_forecaster.graph import build_graph
     from agents.deep_forecaster.state import ForecastRun
     from agents.deep_forecaster.time_limits import run_under_time_limits
-    from config import require_env
 
-    # `ask_video` calls Gemini live, and Brave is not patched away.
-    require_env(
-        ("OPENAI_API_KEY", "OPENROUTER_API_KEY", "GEMINI_API_KEY", "BRAVE_SEARCH_KEY")
-    )
     state: dict[str, Any] = {"question": input["query"]}
     # Bound to a name: a wall-capped row names the step the forecast was in
     # when the cap ended it, as `graph.forecast`'s 504 does (review thread).
@@ -123,7 +116,6 @@ async def run_e2e_deep_forecaster(input: dict[str, Any]) -> dict[str, Any]:
         # one-line cause the report row shows (review thread).
         logger.exception("the forecast failed: %s", input["query"])
         output = build_failure_row(error, step_seconds)
-    print_row(input["query"], output, time.monotonic() - started)
     return output
 
 
@@ -142,10 +134,11 @@ def _wall_error(wall_seconds: float, step: str) -> ResearchLimitError:
 if __name__ == "__main__":
     asyncio.run(
         run(
-            eval_name="e2e_deep_forecaster",
-            dataset_path=DATASET_PATH,
-            task=run_e2e_deep_forecaster,
+            eval_name="deep_forecaster_live",
+            task=run_deep_forecaster_live,
             judges=judges(),
             timeout=TIMEOUT_SECONDS,
+            # `ask_video` calls Gemini live.
+            extra_env_vars=("GEMINI_API_KEY",),
         )
     )

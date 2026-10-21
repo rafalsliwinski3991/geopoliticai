@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib
 import json
 import re
 import subprocess
@@ -14,118 +15,227 @@ import pytest
 from evals.helpers import phoenix as phoenix_mod
 from evals.helpers import run as run_mod
 from evals.helpers.judge import JUDGE_ERROR, NOT_APPLICABLE, Judge, Results, Verdict
+from models import SearchUnavailableError
 
 
 async def _task(input: dict[str, Any]) -> dict[str, Any]:
     return {"done": True}
 
 
-def test_load_examples_returns_pairs_without_names(tmp_path: Path) -> None:
-    # Arrange
-    path = tmp_path / "x.json"
-    path.write_text(
-        json.dumps([{"name": "a", "input": {"q": 1}, "output": {"a": 2}}]),
-        encoding="utf-8",
-    )
-
-    # Act
-    examples = run_mod.load_examples(path)
-
-    # Assert
-    assert examples == [{"input": {"q": 1}, "output": {"a": 2}}]
+FIXED_PATH_NAME = "x_fixed.json"
+LIVE_PATH_NAME = "x_live.json"
+RECORDED_TITLE = "Recorded summit page"
+RECORDED_URL = "https://news.example/summit"
 
 
-def test_load_examples_reads_the_documented_wrapper(tmp_path: Path) -> None:
-    # Arrange
-    path = tmp_path / "x.json"
-    path.write_text(
-        json.dumps(
-            {
-                "description": "what this dataset is for",
-                "cases": [
-                    {
-                        "name": "a",
-                        "description": "what this case is about",
-                        "input": {"q": 1},
-                        "output": {"a": 2},
-                    }
-                ],
-            }
-        ),
-        encoding="utf-8",
-    )
+def _write_dataset(tmp_path: Path, name: str, document: object) -> Path:
+    path = tmp_path / name
+    path.write_text(json.dumps(document), encoding="utf-8")
+    return path
 
-    # Act
-    examples = run_mod.load_examples(path)
 
-    # Assert
-    assert examples == [{"input": {"q": 1}, "output": {"a": 2}}]
+def _case(**overrides: Any) -> dict[str, Any]:
+    case: dict[str, Any] = {
+        "name": "n",
+        "description": "d",
+        "input": {"query": "q"},
+        "expected": {"answer": "a"},
+    }
+    case.update(overrides)
+    return {key: value for key, value in case.items() if value is not _MISSING}
+
+
+_MISSING = object()
+
+
+def _wrap(*cases: dict[str, Any]) -> dict[str, Any]:
+    return {"description": "what the dataset is for", "cases": list(cases)}
+
+
+def _set_up_run(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, fake_run: Any) -> None:
+    """Fake everything outside `run`: env, tracing, Phoenix, and a datasets directory."""
+    monkeypatch.setattr(run_mod, "DATASETS_DIR", tmp_path)
+    for name in ("orchestrator_fixed", "deep_forecaster_live", "x_fixed", "x_live"):
+        case = _case() if name.endswith("_fixed") else _case(expected=_MISSING)
+        _write_dataset(tmp_path, f"{name}.json", _wrap(case))
+    monkeypatch.setenv("OPENAI_API_KEY", "k")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "k")
+    monkeypatch.setattr(run_mod, "init_environment", lambda *a, **kw: None)
+    monkeypatch.setattr(run_mod, "init_tracing", lambda: True)
+    monkeypatch.setattr(run_mod, "build_classifiers", lambda judges: {})
+    monkeypatch.setattr(phoenix_mod, "run", fake_run)
+
+
+def _passing_results() -> Results:
+    return Results(task_errors=[], verdicts={"b": [Verdict("pass", 1.0)]})
+
+
+def _always_pass_judge() -> Judge:
+    return Judge("b", "binary", lambda i, o, e: {}, check=lambda variables: True)
 
 
 @pytest.mark.parametrize(
-    "wrapper",
-    [
-        {"description": "", "cases": [{"name": "a", "input": {}, "output": {}}]},
-        {"cases": [{"name": "a", "input": {}, "output": {}}]},
-    ],
+    ("eval_name", "kind"),
+    [("expert_fixed", "fixed"), ("deep_forecaster_live", "live")],
+    ids=["fixed", "live"],
 )
-def test_load_examples_rejects_a_wrapper_without_a_description(
-    tmp_path: Path, wrapper: dict[str, Any]
+def test_an_eval_name_states_its_kind(eval_name: str, kind: str) -> None:
+    # Act
+    result = run_mod.eval_kind(eval_name)
+
+    # Assert
+    assert result == kind
+
+
+@pytest.mark.parametrize(
+    "eval_name",
+    ["expert", "deep_forecaster", "fixed", "expert_fixed_v2"],
+    ids=["no kind", "an agent name only", "only the kind", "kind not last"],
+)
+def test_a_name_without_a_kind_is_refused(eval_name: str) -> None:
+    # Act + Assert
+    with pytest.raises(ValueError, match="ends in _fixed or _live"):
+        run_mod.eval_kind(eval_name)
+
+
+def test_load_examples_returns_input_expected_and_metadata(tmp_path: Path) -> None:
+    # Arrange
+    path = _write_dataset(
+        tmp_path,
+        FIXED_PATH_NAME,
+        _wrap(_case(input={"query": "q"}, expected={"answer": "a"})),
+    )
+
+    # Act
+    examples = run_mod.load_examples(path)
+
+    # Assert
+    assert examples == [
+        {
+            "input": {"query": "q"},
+            "output": {"answer": "a"},
+            "metadata": {"name": "n", "description": "d"},
+        }
+    ]
+
+
+def test_a_live_case_reaches_phoenix_with_an_empty_output(tmp_path: Path) -> None:
+    # Arrange
+    path = _write_dataset(tmp_path, LIVE_PATH_NAME, _wrap(_case(expected=_MISSING)))
+
+    # Act
+    examples = run_mod.load_examples(path)
+
+    # Assert
+    assert examples[0]["output"] == {}
+
+
+def test_a_bare_list_dataset_is_refused(tmp_path: Path) -> None:
+    # Arrange
+    path = _write_dataset(tmp_path, FIXED_PATH_NAME, [_case()])
+
+    # Act + Assert
+    with pytest.raises(ValueError, match="description"):
+        run_mod.load_examples(path)
+
+
+@pytest.mark.parametrize(
+    "document",
+    [
+        {"description": "", "cases": [_case()]},
+        {"cases": [_case()]},
+    ],
+    ids=["empty description", "missing description"],
+)
+def test_a_dataset_without_a_description_is_refused(
+    tmp_path: Path, document: dict[str, Any]
 ) -> None:
     # Arrange
-    path = tmp_path / "x.json"
-    path.write_text(json.dumps(wrapper), encoding="utf-8")
+    path = _write_dataset(tmp_path, FIXED_PATH_NAME, document)
 
     # Act + Assert
-    with pytest.raises(ValueError, match="wrapper dataset needs a description"):
+    with pytest.raises(ValueError, match="the dataset needs a description"):
         run_mod.load_examples(path)
 
 
-def test_load_examples_rejects_a_non_string_case_description(tmp_path: Path) -> None:
+def test_a_case_without_a_description_is_refused(tmp_path: Path) -> None:
     # Arrange
-    path = tmp_path / "x.json"
-    path.write_text(
-        json.dumps([{"name": "a", "description": 5, "input": {}, "output": {}}]),
-        encoding="utf-8",
-    )
+    path = _write_dataset(tmp_path, FIXED_PATH_NAME, _wrap(_case(description=_MISSING)))
 
     # Act + Assert
-    with pytest.raises(ValueError, match="description must be a string"):
+    with pytest.raises(ValueError, match="needs a description"):
         run_mod.load_examples(path)
 
 
 @pytest.mark.parametrize(
-    ("content", "message"),
+    "expected",
+    [_MISSING, {}, []],
+    ids=["missing", "empty object", "a list"],
+)
+def test_a_fixed_case_without_expected_is_refused(
+    tmp_path: Path, expected: object
+) -> None:
+    # Arrange
+    path = _write_dataset(tmp_path, FIXED_PATH_NAME, _wrap(_case(expected=expected)))
+
+    # Act + Assert
+    with pytest.raises(ValueError, match="needs a non-empty expected object"):
+        run_mod.load_examples(path)
+
+
+@pytest.mark.parametrize(
+    "expected", [{"answer": "a"}, {}], ids=["with keys", "empty object"]
+)
+def test_a_live_case_with_expected_is_refused(
+    tmp_path: Path, expected: dict[str, Any]
+) -> None:
+    # Arrange
+    path = _write_dataset(tmp_path, LIVE_PATH_NAME, _wrap(_case(expected=expected)))
+
+    # Act + Assert
+    with pytest.raises(ValueError, match="must not have expected"):
+        run_mod.load_examples(path)
+
+
+def test_an_unknown_input_key_is_refused(tmp_path: Path) -> None:
+    # Arrange
+    path = _write_dataset(
+        tmp_path, FIXED_PATH_NAME, _wrap(_case(input={"question": "q"}))
+    )
+
+    # Act + Assert
+    with pytest.raises(ValueError, match="unknown input keys"):
+        run_mod.load_examples(path)
+
+
+def test_duplicate_case_names_are_refused(tmp_path: Path) -> None:
+    # Arrange
+    path = _write_dataset(tmp_path, FIXED_PATH_NAME, _wrap(_case(), _case()))
+
+    # Act + Assert
+    with pytest.raises(ValueError, match="duplicate case name"):
+        run_mod.load_examples(path)
+
+
+@pytest.mark.parametrize(
+    ("document", "message"),
     [
-        ('{"name": "a"}', "wrapper dataset needs a description"),
-        ('{"description": "doc", "cases": null}', "non-empty list"),
-        ("[]", "non-empty list"),
-        ('[{"input": {}, "output": {}}]', "needs a string name"),
-        ('[{"name": "a", "output": {}}]', "needs a string name"),
-        ('[{"name": "a", "input": [], "output": {}}]', "needs a string name"),
-        ('[{"name": "a", "input": {}}]', "needs a string name"),
+        ({"description": "d", "cases": None}, "non-empty list"),
+        ({"description": "d", "cases": []}, "non-empty list"),
+        (_wrap(_case(name=_MISSING)), "needs a string name"),
+        (_wrap(_case(input=[])), "non-empty input object"),
+        (_wrap(_case(input={})), "non-empty input object"),
     ],
+    ids=["cases null", "no cases", "no name", "input not an object", "empty input"],
 )
 def test_load_examples_rejects_malformed_files(
-    tmp_path: Path, content: str, message: str
+    tmp_path: Path, document: dict[str, Any], message: str
 ) -> None:
     # Arrange
-    path = tmp_path / "x.json"
-    path.write_text(content, encoding="utf-8")
+    path = _write_dataset(tmp_path, FIXED_PATH_NAME, document)
 
     # Act + Assert
     with pytest.raises(ValueError, match=message):
-        run_mod.load_examples(path)
-
-
-def test_load_examples_rejects_duplicate_names(tmp_path: Path) -> None:
-    # Arrange
-    path = tmp_path / "x.json"
-    example = {"name": "a", "input": {}, "output": {}}
-    path.write_text(json.dumps([example, example]), encoding="utf-8")
-
-    # Act + Assert
-    with pytest.raises(ValueError, match="duplicate example name"):
         run_mod.load_examples(path)
 
 
@@ -291,40 +401,87 @@ def test_failures_reports_task_errors() -> None:
 
 
 @pytest.mark.anyio
-async def test_run_passes_and_needs_no_brave_key(
+async def test_run_refuses_a_name_without_a_kind_before_loading_anything(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Arrange
+    def _fail(*args: Any, **kwargs: Any) -> None:
+        raise AssertionError("the environment was loaded before the name was checked")
+
+    monkeypatch.setattr(run_mod, "init_environment", _fail)
+
+    # Act + Assert
+    with pytest.raises(ValueError, match="ends in _fixed or _live"):
+        await run_mod.run(eval_name="expert", task=_task, judges=[])
+
+
+@pytest.mark.anyio
+async def test_run_passes_a_fixed_eval_without_a_brave_key(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     # Arrange
     monkeypatch.delenv("BRAVE_SEARCH_KEY", raising=False)
-    monkeypatch.setenv("OPENAI_API_KEY", "k")
-    monkeypatch.setenv("OPENROUTER_API_KEY", "k")
-    monkeypatch.setattr(run_mod, "init_environment", lambda *a, **kw: None)
-    monkeypatch.setattr(run_mod, "init_tracing", lambda: True)
-    monkeypatch.setattr(run_mod, "build_classifiers", lambda judges: {})
     received: dict[str, Any] = {}
 
     async def _fake_run(**kwargs: Any) -> Results:
         received.update(kwargs)
-        return Results(task_errors=[], verdicts={"b": [Verdict("pass", 1.0)]})
+        return _passing_results()
 
-    monkeypatch.setattr(phoenix_mod, "run", _fake_run)
-    path = tmp_path / "d.json"
-    path.write_text(
-        json.dumps([{"name": "a", "input": {}, "output": {}}]), encoding="utf-8"
-    )
-    judge = Judge("b", "binary", lambda i, o, e: {}, check=lambda variables: True)
+    _set_up_run(monkeypatch, tmp_path, _fake_run)
+    judge = _always_pass_judge()
 
     # Act
-    await run_mod.run(
-        eval_name="test-eval",
-        dataset_path=path,
-        task=_task,
-        judges=[judge],
-    )
+    await run_mod.run(eval_name="orchestrator_fixed", task=_task, judges=[judge])
 
     # Assert
-    assert received["dataset_name"] == run_mod.dataset_name("test-eval", path)
+    assert received["dataset_name"].startswith("geopoliticai-orchestrator_fixed-")
     assert received["judges"] == [judge]
+
+
+@pytest.mark.anyio
+async def test_a_live_run_needs_the_brave_key(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # Arrange
+    monkeypatch.delenv("BRAVE_SEARCH_KEY", raising=False)
+    calls: list[dict[str, Any]] = []
+
+    async def _fake_run(**kwargs: Any) -> Results:
+        calls.append(kwargs)
+        return _passing_results()
+
+    _set_up_run(monkeypatch, tmp_path, _fake_run)
+
+    # Act + Assert
+    with pytest.raises(ValueError, match="BRAVE_SEARCH_KEY"):
+        await run_mod.run(eval_name="deep_forecaster_live", task=_task, judges=[])
+    assert calls == []
+
+
+@pytest.mark.anyio
+async def test_an_eval_checks_its_extra_keys_before_any_case(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # Arrange
+    monkeypatch.setenv("BRAVE_SEARCH_KEY", "k")
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    calls: list[dict[str, Any]] = []
+
+    async def _fake_run(**kwargs: Any) -> Results:
+        calls.append(kwargs)
+        return _passing_results()
+
+    _set_up_run(monkeypatch, tmp_path, _fake_run)
+
+    # Act + Assert
+    with pytest.raises(ValueError, match="GEMINI_API_KEY"):
+        await run_mod.run(
+            eval_name="deep_forecaster_live",
+            task=_task,
+            judges=[],
+            extra_env_vars=("GEMINI_API_KEY",),
+        )
+    assert calls == []
 
 
 @pytest.mark.anyio
@@ -332,28 +489,15 @@ async def test_run_exits_nonzero_on_failing_judge(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     # Arrange
-    monkeypatch.delenv("BRAVE_SEARCH_KEY", raising=False)
-    monkeypatch.setenv("OPENAI_API_KEY", "k")
-    monkeypatch.setenv("OPENROUTER_API_KEY", "k")
-    monkeypatch.setattr(run_mod, "init_environment", lambda *a, **kw: None)
-    monkeypatch.setattr(run_mod, "init_tracing", lambda: True)
-    monkeypatch.setattr(run_mod, "build_classifiers", lambda judges: {})
-
     async def _fake_run(**kwargs: Any) -> Results:
         return Results(task_errors=[], verdicts={"b": [Verdict("fail", 0.0)]})
 
-    monkeypatch.setattr(phoenix_mod, "run", _fake_run)
-    path = tmp_path / "d.json"
-    path.write_text(
-        json.dumps([{"name": "a", "input": {}, "output": {}}]), encoding="utf-8"
-    )
+    _set_up_run(monkeypatch, tmp_path, _fake_run)
     judge = Judge("b", "binary", lambda i, o, e: {}, check=lambda variables: False)
 
     # Act + Assert
     with pytest.raises(SystemExit) as exc:
-        await run_mod.run(
-            eval_name="test-eval", dataset_path=path, task=_task, judges=[judge]
-        )
+        await run_mod.run(eval_name="orchestrator_fixed", task=_task, judges=[judge])
     assert exc.value.code == 1
 
 
@@ -363,29 +507,143 @@ async def test_run_stops_before_phoenix_when_tracing_cannot_start(
 ) -> None:
     """An eval whose traces would go nowhere must fail, not run untraced."""
     # Arrange
-    monkeypatch.setenv("OPENAI_API_KEY", "k")
-    monkeypatch.setenv("OPENROUTER_API_KEY", "k")
-    monkeypatch.setattr(run_mod, "init_environment", lambda *a, **kw: None)
-    monkeypatch.setattr(run_mod, "init_tracing", lambda: False)
     calls: list[dict[str, Any]] = []
 
     async def _fake_run(**kwargs: Any) -> Results:
         calls.append(kwargs)
-        return Results(task_errors=[], verdicts={})
+        return _passing_results()
 
-    monkeypatch.setattr(phoenix_mod, "run", _fake_run)
-    path = tmp_path / "d.json"
-    path.write_text(
-        json.dumps([{"name": "a", "input": {}, "output": {}}]), encoding="utf-8"
-    )
-    judge = Judge("b", "binary", lambda i, o, e: {}, check=lambda variables: True)
+    _set_up_run(monkeypatch, tmp_path, _fake_run)
+    monkeypatch.setattr(run_mod, "init_tracing", lambda: False)
 
     # Act + Assert
     with pytest.raises(RuntimeError, match="Phoenix tracing"):
         await run_mod.run(
-            eval_name="test-eval", dataset_path=path, task=_task, judges=[judge]
+            eval_name="orchestrator_fixed", task=_task, judges=[_always_pass_judge()]
         )
     assert calls == []
+
+
+async def _run_wrapped_task(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    *,
+    eval_name: str,
+    case: dict[str, Any],
+    task: run_mod.Task,
+) -> dict[str, Any]:
+    """Run `run_mod.run` with a fake Phoenix that awaits the wrapped task on the case's input."""
+    monkeypatch.setenv("BRAVE_SEARCH_KEY", "k")
+    outputs: list[dict[str, Any]] = []
+
+    async def _fake_run(**kwargs: Any) -> Results:
+        example = kwargs["examples"][0]
+        outputs.append(await kwargs["task"](example["input"]))
+        return _passing_results()
+
+    _set_up_run(monkeypatch, tmp_path, _fake_run)
+    _write_dataset(tmp_path, f"{eval_name}.json", _wrap(case))
+    await run_mod.run(eval_name=eval_name, task=task, judges=[_always_pass_judge()])
+    return outputs[0]
+
+
+@pytest.mark.anyio
+async def test_a_fixed_case_replays_its_recorded_pages(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # Arrange
+    search_node: Any = importlib.import_module("agents.expert.nodes.search_and_fetch")
+    case = _case(
+        input={
+            "query": "q",
+            "sources": [{"title": RECORDED_TITLE, "url": RECORDED_URL, "text": "t"}],
+        }
+    )
+
+    async def _search_task(input: dict[str, Any]) -> dict[str, Any]:
+        candidates = await search_node.search_allowlisted("q", None)
+        fetched = await search_node.fetch_sources(candidates, None)
+        return {"titles": [source.title for source in fetched]}
+
+    # Act
+    output = await _run_wrapped_task(
+        monkeypatch, tmp_path, eval_name="x_fixed", case=case, task=_search_task
+    )
+
+    # Assert
+    assert output == {"titles": [RECORDED_TITLE]}
+
+
+@pytest.mark.anyio
+async def test_a_fixed_case_without_pages_cannot_search(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # Arrange
+    search_node: Any = importlib.import_module("agents.expert.nodes.search_and_fetch")
+
+    async def _search_task(input: dict[str, Any]) -> dict[str, Any]:
+        await search_node.search_allowlisted("q", None)
+        return {}
+
+    # Act + Assert
+    with pytest.raises(RuntimeError, match="no recorded sources"):
+        await _run_wrapped_task(
+            monkeypatch,
+            tmp_path,
+            eval_name="x_fixed",
+            case=_case(),
+            task=_search_task,
+        )
+
+
+@pytest.mark.anyio
+async def test_a_live_run_that_fails_becomes_a_report_row(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # Arrange
+    async def _failing_task(input: dict[str, Any]) -> dict[str, Any]:
+        raise SearchUnavailableError("every search failed")
+
+    # Act
+    output = await _run_wrapped_task(
+        monkeypatch,
+        tmp_path,
+        eval_name="x_live",
+        case=_case(expected=_MISSING),
+        task=_failing_task,
+    )
+
+    # Assert
+    assert output["finished"] is False
+    assert output["side"] == "outside"
+    assert output["cause"].startswith("SearchUnavailableError:")
+
+
+@pytest.mark.anyio
+async def test_a_live_run_that_finishes_is_marked_finished(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # Arrange
+    async def _finishing_task(input: dict[str, Any]) -> dict[str, Any]:
+        return {"answer": "a"}
+
+    # Act
+    output = await _run_wrapped_task(
+        monkeypatch,
+        tmp_path,
+        eval_name="x_live",
+        case=_case(expected=_MISSING),
+        task=_finishing_task,
+    )
+
+    # Assert
+    assert output == {
+        "finished": True,
+        "side": "",
+        "cause": "",
+        "step_seconds": {},
+        "answer": "a",
+    }
 
 
 def test_task_alias_is_a_coroutine_factory() -> None:

@@ -1,0 +1,338 @@
+{
+ "description": "The orchestrator's classifier alone, on recorded conversations: 'destination' is where the last turn must go (other, geopolitical, report, deep, or forecast), and on the research routes 'standalone_query' is the rewrite the expert, deep expert, or forecaster would receive. Judges: routing_correct on every case, query_matches_expected where a rewrite is expected.",
+ "cases": [
+  {
+   "name": "orchestrator-greeting",
+   "description": "A bare 'Hello'. Must go to 'other' (plain chat), not to a research route.",
+   "input": {
+    "messages": [
+     {
+      "role": "user",
+      "content": "Hello"
+     }
+    ]
+   },
+   "expected": {
+    "destination": "other"
+   }
+  },
+  {
+   "name": "orchestrator-follow-up-resolves-elision",
+   "description": "'and Poland?' after a Germany defence-budget answer. The rewriter must elide-resolve into 'What has Poland decided about its defence budget this year?' and route it to 'geopolitical'.",
+   "input": {
+    "messages": [
+     {
+      "role": "user",
+      "content": "What has Germany decided about its defence budget this year?"
+     },
+     {
+      "role": "assistant",
+      "content": "Germany approved a higher defence budget, exempting spending above 1% of GDP from its debt brake."
+     },
+     {
+      "role": "user",
+      "content": "and Poland?"
+     }
+    ]
+   },
+   "expected": {
+    "destination": "geopolitical",
+    "standalone_query": "What has Poland decided about its defence budget this year?"
+   }
+  },
+  {
+   "name": "orchestrator-follow-up-inherits-topic-and-time",
+   "description": "'and the EU?' after a US-on-Iran sanctions answer (2024 onwards). Must inherit both topic and time window: 'What sanctions has the European Union imposed on Iran since 2024?', routed 'geopolitical'.",
+   "input": {
+    "messages": [
+     {
+      "role": "user",
+      "content": "What sanctions has the United States imposed on Iran since 2024?"
+     },
+     {
+      "role": "assistant",
+      "content": "Washington widened oil and shipping sanctions on Iran, targeting tankers and Chinese refiners."
+     },
+     {
+      "role": "user",
+      "content": "and the EU?"
+     }
+    ]
+   },
+   "expected": {
+    "destination": "geopolitical",
+    "standalone_query": "What sanctions has the European Union imposed on Iran since 2024?"
+   }
+  },
+  {
+   "name": "orchestrator-briefing-request-routes-to-report",
+   "description": "'Turn that into a briefing' after a NATO spending answer. The follow-up must route to 'report', showing a downstream artifact request is not treated as a fresh geopolitical question.",
+   "input": {
+    "messages": [
+     {
+      "role": "user",
+      "content": "What did NATO allies agree on defence spending at the Hague summit?"
+     },
+     {
+      "role": "assistant",
+      "content": "Allies agreed to a 5% of GDP target by 2035 [NATO](https://www.nato.int/cps/en/natohq/official_texts_236329.htm)."
+     },
+     {
+      "role": "user",
+      "content": "Turn that into a briefing"
+     }
+    ]
+   },
+   "expected": {
+    "destination": "report"
+   }
+  },
+  {
+   "name": "orchestrator-deep-explicit",
+   "description": "'Give me a deep dive...' in so many words. Must route to 'deep', the most explicit phrase pattern the router must already know.",
+   "input": {
+    "messages": [
+     {
+      "role": "user",
+      "content": "Give me a deep dive into the causes of the coups in the Sahel since 2020."
+     }
+    ]
+   },
+   "expected": {
+    "destination": "deep",
+    "standalone_query": "Give me a deep dive into the causes of the coups in the Sahel since 2020."
+   }
+  },
+  {
+   "name": "orchestrator-deep-paraphrase",
+   "description": "'Break down ... thoroughly, I want the full picture' on Taiwan chip controls. Depth asked for without the word 'deep': must still land on 'deep' with a stable standalone_query.",
+   "input": {
+    "messages": [
+     {
+      "role": "user",
+      "content": "Break down Taiwan's chip export controls thoroughly, I want the full picture."
+     }
+    ]
+   },
+   "expected": {
+    "destination": "deep",
+    "standalone_query": "Give a thorough, full-picture breakdown of Taiwan's chip export controls."
+   }
+  },
+  {
+   "name": "orchestrator-deep-state-is-not-depth",
+   "description": "'What is the deep state theory in US politics?'. The word 'deep' in a noun phrase must NOT trigger the deep-expert node: route 'geopolitical'.",
+   "input": {
+    "messages": [
+     {
+      "role": "user",
+      "content": "What is the deep state theory in US politics?"
+     }
+    ]
+   },
+   "expected": {
+    "destination": "geopolitical",
+    "standalone_query": "What is the deep state theory in US politics?"
+   }
+  },
+  {
+   "name": "orchestrator-complex-without-ask-is-not-deep",
+   "description": "A five-country sanctions comparison. Complexity alone is not depth: without an ask for depth, route 'geopolitical'.",
+   "input": {
+    "messages": [
+     {
+      "role": "user",
+      "content": "Compare the sanctions regimes of the EU, the US, the UK, Japan and Canada against Russia since 2014."
+     }
+    ]
+   },
+   "expected": {
+    "destination": "geopolitical",
+    "standalone_query": "Compare the sanctions regimes of the EU, the US, the UK, Japan and Canada against Russia since 2014."
+   }
+  },
+  {
+   "name": "orchestrator-deep-follow-up-stays-deep",
+   "description": "'and Poland?' after a deep-dive answer. An established deep session carries the follow-up back to the deep-expert node.",
+   "input": {
+    "messages": [
+     {
+      "role": "user",
+      "content": "Give me an in-depth analysis of Germany's defence budget decisions this year."
+     },
+     {
+      "role": "assistant",
+      "content": "Germany approved a higher defence budget and exempted defence spending above 1% of GDP from its debt brake."
+     },
+     {
+      "role": "user",
+      "content": "and Poland?"
+     }
+    ]
+   },
+   "expected": {
+    "destination": "deep",
+    "standalone_query": "Give an in-depth analysis of Poland's defence budget decisions this year."
+   }
+  },
+  {
+   "name": "orchestrator-deep-new-topic-resets",
+   "description": "A new geopolitical question right after a deep-dive answer. A topic change resets the session to a plain 'geopolitical' route.",
+   "input": {
+    "messages": [
+     {
+      "role": "user",
+      "content": "Give me an in-depth analysis of Germany's defence budget decisions this year."
+     },
+     {
+      "role": "assistant",
+      "content": "Germany approved a higher defence budget and exempted defence spending above 1% of GDP from its debt brake."
+     },
+     {
+      "role": "user",
+      "content": "What sanctions has the European Union imposed on Iran since 2024?"
+     }
+    ]
+   },
+   "expected": {
+    "destination": "geopolitical",
+    "standalone_query": "What sanctions has the European Union imposed on Iran since 2024?"
+   }
+  },
+  {
+   "name": "orchestrator-deep-quick-request-resets",
+   "description": "'Just give me a quick summary' right after a deep-dive answer. Asking for a quick reply resets out of 'deep' to 'geopolitical'.",
+   "input": {
+    "messages": [
+     {
+      "role": "user",
+      "content": "Give me an in-depth analysis of Germany's defence budget decisions this year."
+     },
+     {
+      "role": "assistant",
+      "content": "Germany approved a higher defence budget and exempted defence spending above 1% of GDP from its debt brake."
+     },
+     {
+      "role": "user",
+      "content": "Just give me a quick summary of Poland's defence budget this year."
+     }
+    ]
+   },
+   "expected": {
+    "destination": "geopolitical",
+    "standalone_query": "Give a quick summary of Poland's defence budget decisions this year."
+   }
+  },
+  {
+   "name": "orchestrator-forecast-explicit",
+   "description": "A forecast asked for with the word 'forecast'. Must route 'forecast', the deep-forecaster sub-agent.",
+   "input": {
+    "messages": [
+     {
+      "role": "user",
+      "content": "Give me a forecast: will China impose a naval blockade on Taiwan before 2028?"
+     }
+    ]
+   },
+   "expected": {
+    "destination": "forecast",
+    "standalone_query": "Give me a forecast: will China impose a naval blockade on Taiwan before 2028?"
+   }
+  },
+  {
+   "name": "orchestrator-forecast-paraphrase",
+   "description": "'Can you predict whether...'. A prediction request without the word 'forecast' must still reach the forecaster.",
+   "input": {
+    "messages": [
+     {
+      "role": "user",
+      "content": "Can you predict whether Serbia will join the EU by 2030?"
+     }
+    ]
+   },
+   "expected": {
+    "destination": "forecast",
+    "standalone_query": "Will Serbia join the EU by 2030?"
+   }
+  },
+  {
+   "name": "orchestrator-future-question-is-not-a-forecast",
+   "description": "'Will Turkey leave NATO?'. A bare yes/no future question is a question to answer ('geopolitical'), not an order to spend a full forecast.",
+   "input": {
+    "messages": [
+     {
+      "role": "user",
+      "content": "Will Turkey leave NATO?"
+     }
+    ]
+   },
+   "expected": {
+    "destination": "geopolitical",
+    "standalone_query": "Will Turkey leave NATO?"
+   }
+  },
+  {
+   "name": "orchestrator-deep-dive-on-the-future-stays-deep",
+   "description": "'A deep dive please: will Turkey leave NATO?'. Depth requested outranks the future-tense topic: route 'deep'.",
+   "input": {
+    "messages": [
+     {
+      "role": "user",
+      "content": "A deep dive please: will Turkey leave NATO?"
+     }
+    ]
+   },
+   "expected": {
+    "destination": "deep",
+    "standalone_query": "Will Turkey leave NATO?"
+   }
+  },
+  {
+   "name": "orchestrator-forecast-follow-up-is-not-a-forecast",
+   "description": "'and Montenegro?' after a full forecast answer. The follow-up is asked against the recorded forecast, not a new run: route 'geopolitical' with a standalone query.",
+   "input": {
+    "messages": [
+     {
+      "role": "user",
+      "content": "Give me a forecast: will Serbia join the EU by 2030?"
+     },
+     {
+      "role": "assistant",
+      "content": "Claim 1: Serbia signs an EU accession treaty by 31 December 2030. Council verdict: REJECTED (5 of 6 voted against)."
+     },
+     {
+      "role": "user",
+      "content": "and Montenegro?"
+     }
+    ]
+   },
+   "expected": {
+    "destination": "geopolitical",
+    "standalone_query": "Will Montenegro join the EU by 2030?"
+   }
+  },
+  {
+   "name": "orchestrator-question-about-the-forecast-is-chat",
+   "description": "'Why did Member 3 vote against Claim 1?' after a forecast answer. Questions about the forecast's own wording are plain chat ('other'), not a new forecast.",
+   "input": {
+    "messages": [
+     {
+      "role": "user",
+      "content": "Give me a forecast: will Serbia join the EU by 2030?"
+     },
+     {
+      "role": "assistant",
+      "content": "Claim 1: Serbia signs an EU accession treaty by 31 December 2030. Council verdict: REJECTED.\n\n## How the council voted\n\n- Member 3: against — Serbia has not closed the rule-of-law chapters, and the sources expect no deal before the next EU budget."
+     },
+     {
+      "role": "user",
+      "content": "Why did Member 3 vote against Claim 1?"
+     }
+    ]
+   },
+   "expected": {
+    "destination": "other"
+   }
+  }
+ ]
+}
