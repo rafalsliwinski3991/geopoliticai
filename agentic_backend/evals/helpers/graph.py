@@ -29,8 +29,8 @@ def load_sources(raw: Sequence[dict[str, Any]]) -> list[Source]:
 
 
 @contextmanager
-def recorded_sources(current: Callable[[], list[Source] | None]) -> Iterator[None]:
-    """Replace the expert's and the deep expert's live retrieval with recorded sources.
+def replay_sources(current: Callable[[], list[Source] | None]) -> Iterator[None]:
+    """Replace the expert's and the deep expert's live retrieval with a case's recorded pages.
 
     `current` is read on every call, so e2e can change sources between turns.
     Every search returns the whole recorded set (brainstorm Q5b), so the deep

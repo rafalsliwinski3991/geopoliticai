@@ -6,7 +6,7 @@ import asyncio
 from pathlib import Path
 from typing import Any
 
-from evals.helpers.graph import load_sources, recorded_sources
+from evals.helpers.graph import load_sources, replay_sources
 from evals.helpers.run import run
 from evals.judges.expert import judges
 
@@ -18,7 +18,7 @@ async def run_expert(input: dict[str, Any]) -> dict[str, Any]:
     from agents.expert import build_initial_pipeline_state, graph
 
     sources = load_sources(input["sources"])
-    with recorded_sources(lambda: sources):
+    with replay_sources(lambda: sources):
         result = await graph.ainvoke(build_initial_pipeline_state(input["query"]))
     return {"answer": result["answer"]}
 

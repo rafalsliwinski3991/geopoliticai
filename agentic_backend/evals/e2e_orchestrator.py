@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
-from evals.helpers.graph import load_sources, pending_pause, recorded_sources
+from evals.helpers.graph import load_sources, pending_pause, replay_sources
 from evals.helpers.run import run
 from evals.judges.e2e_orchestrator import judges
 from models import Source
@@ -37,12 +37,12 @@ async def run_e2e(input: dict[str, Any]) -> dict[str, Any]:
 
     graph = build_graph(checkpointer=InMemorySaver())
     config = build_runtime_config(thread_id=f"eval-{uuid4()}")
-    # A plain local read at call time: `recorded_sources` re-invokes its
+    # A plain local read at call time: `replay_sources` re-invokes its
     # callable on every retrieval, and the closure below closes over the
     # variable, not a value.
     current: list[Source] | None = None
     turns: list[dict[str, Any]] = []
-    with recorded_sources(lambda: current):
+    with replay_sources(lambda: current):
         for turn in input["turns"]:
             current = load_sources(turn["sources"]) if "sources" in turn else None
             text: str = turn["text"]

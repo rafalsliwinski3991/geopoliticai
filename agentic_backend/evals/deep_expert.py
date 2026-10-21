@@ -6,7 +6,7 @@ import asyncio
 from pathlib import Path
 from typing import Any
 
-from evals.helpers.graph import load_sources, recorded_sources
+from evals.helpers.graph import load_sources, replay_sources
 from evals.helpers.run import run
 from evals.judges.deep_expert import judges
 
@@ -34,7 +34,7 @@ async def run_deep_expert(input: dict[str, Any]) -> dict[str, Any]:
         if isinstance(event, dict) and event.get("type") == "progress":
             progress.append(str(event.get("label")))
 
-    with recorded_sources(lambda: sources):
+    with replay_sources(lambda: sources):
         deep_answer = await research(input["query"], writer)
         answer = (
             await expert_graph.ainvoke(build_initial_pipeline_state(input["query"]))
