@@ -16,7 +16,12 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from deepagents import create_deep_agent
+from deepagents import (
+    GeneralPurposeSubagentProfile,
+    HarnessProfile,
+    create_deep_agent,
+    register_harness_profile,
+)
 from deepagents.middleware.filesystem import FilesystemMiddleware, FsToolName
 from langchain.agents.middleware import AgentMiddleware
 from langchain_core.messages import HumanMessage
@@ -48,9 +53,24 @@ from models import (
 )
 from tracing import start_span
 
-# deepagents' reserved name: a spec under it replaces the auto-added default
-# subagent (`deepagents/graph.py:798`), so the scout is the lead's only one.
-SCOUT_SUBAGENT_NAME = "general-purpose"
+# The word the lead's prompt uses. The scout was registered as deepagents'
+# reserved `general-purpose` until this change (2026-10-19 traces) and was
+# then refused in 58 of the lead's 142 `task` requests ("Scout",
+# "general-purpose: Scout", or no type at all); after a refusal the lead
+# started scouts one at a time (Phoenix, brainstorm 2026Oct19).
+SCOUT_SUBAGENT_NAME = "scout"
+# deepagents adds a default `general-purpose` helper unless the model's
+# harness profile switches it off; without the switch the lead would be
+# offered a helper with none of the research tools. Harness profiles are
+# process-wide and keyed by provider:model, so this one also covers the deep
+# expert's agent (same model); the deep expert passes its own
+# `general-purpose` spec, which deepagents keeps either way
+# (`deepagents/graph.py:798`). `deepagents.profiles` is a beta API (0.7.19;
+# `uv.lock` pins it and an upgrade re-runs `nodes/test_research.py`).
+LEAD_PROFILE_KEY = f"openai:{RESEARCH_LLM_SETTINGS.model}"
+LEAD_PROFILE = HarnessProfile(
+    general_purpose_subagent=GeneralPurposeSubagentProfile(enabled=False)
+)
 # The only built-in file tool kept; deepagents refuses a filesystem without it.
 # Typed, because `FilesystemMiddleware(tools=...)` takes `list[FsToolName]`
 # and mypy --strict refuses a `list[str]` (correctness review).
@@ -70,9 +90,12 @@ def build_research_agent(run: ResearchRun) -> Any:
     """Construct the lead and its scout for one forecast; built per call.
 
     Per call because the tools close over this forecast's `ResearchRun`, and
-    `ChatOpenAI` cannot be built without a key. `checkpointer=False` covers the
-    lead's own loop; the whole tree runs under `NO_CHECKPOINTER_CONFIG`.
+    `ChatOpenAI` cannot be built without a key. The lead's harness profile is
+    registered here, not at import: re-registering merges, so a call per
+    build is harmless. `checkpointer=False` covers the lead's own loop; the
+    whole tree runs under `NO_CHECKPOINTER_CONFIG`.
     """
+    register_harness_profile(LEAD_PROFILE_KEY, LEAD_PROFILE)
     model = build_chat_model(RESEARCH_LLM_SETTINGS)
     # Annotated: the subagent spec's `middleware` is a list of
     # `AgentMiddleware`, which mypy --strict will not infer from a

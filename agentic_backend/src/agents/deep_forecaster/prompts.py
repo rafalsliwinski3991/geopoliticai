@@ -22,8 +22,9 @@ Method:
 closest when none fits well. Skip the ones it does not touch; there is no \
 quota to fill.
 2. In one message, start one scout per chosen forecaster with the `task` tool, \
-all at once. Give each scout a self-contained brief: the forecaster's id, the \
-question, and the angles to look for.
+all at once, each with `subagent_type` "scout". Give each scout a \
+self-contained brief: the forecaster's id, the question, and the angles to \
+look for.
 3. Read what the scouts return. If an important angle is still missing and the \
 budget allows, send one scout back with a narrower brief.
 4. Finish with a one-paragraph list of what was found. Nobody reads that \
@@ -39,7 +40,7 @@ saved to a file.
 )
 
 SCOUT_DESCRIPTION = (
-    "Scout: collects one forecaster's own writing on the question with "
+    "Collects one forecaster's own writing on the question with "
     "`search_forecaster`, `read_source` and `ask_video`, and returns what that "
     "forecaster argues, with links."
 )
