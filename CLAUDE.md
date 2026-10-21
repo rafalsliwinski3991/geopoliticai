@@ -84,10 +84,12 @@ deep_forecaster  START -> research -> draft_claims -> council_round_1 -> council
   forecaster reaches it through the orchestrator node's `runtime.store`.
 - `build_graph()` works without a checkpointer (tests, Studio), and `auth.py` reads
   `JWT_SIGNING_KEY` at call time. API startup requires `config.REQUIRED_ENV_VARS` and `DATABASE_URL`.
-- Open every custom span with `tracing.start_span`, which parents it on the current LangChain run's
-  span (that tracer never makes its spans current) and adds `user.id`. Keep the attributes on the
-  `fetch_source`, `brave_search`, `deep_research`, `forecast_research`, `evidence_positions`, and
-  `watch_video` spans: they will decide whether to build a source corpus.
+- Record every decision agent code makes (a retry, a drop, a cap reached, a verdict) as attributes
+  on a custom span: counts, outcomes, reasons, timings, and the model that answered, so a Phoenix
+  trace alone explains a run. Open each span with `tracing.start_span`, which parents it on the
+  current LangChain run's span (that tracer never makes its spans current) and adds `user.id`. Keep
+  the attributes on the `fetch_source`, `brave_search`, `deep_research`, `forecast_research`,
+  `evidence_positions`, and `watch_video` spans: they will decide whether to build a source corpus.
 
 ## Agents
 
@@ -112,7 +114,10 @@ deep_forecaster  START -> research -> draft_claims -> council_round_1 -> council
 - Deep forecaster: a fixed workflow with one backward edge. Only `research` is autonomous (a
   deepagents lead and scouts over the forecasters' sites, plus `ask_video`), and it returns what
   the scouts' tools recorded, never the lead's text. The council, one paid model per vendor through
-  OpenRouter, reads only the passages the drafter points at and votes in two Delphi rounds; code
+  OpenRouter, reads only the passages the drafter points at and votes in two Delphi rounds; in
+  round 1 a member whose answer cannot be counted is asked once more with the problem named, and
+  round 1 then needs `LIMITS.quorum` ballots (a `QuorumError` whose `outside` says whether every
+  drop was a provider outage; a refused 4xx request is ours); code
   counts every verdict; the writer sees no URL and cites sources by number (`[anchor](source:N)`),
   and `verify` puts in the URLs. `verify` sends an analysis with a defect back to the writer once,
   with the defect named; a second defect, or an answer over the delivery cap, is a hard error. The wall

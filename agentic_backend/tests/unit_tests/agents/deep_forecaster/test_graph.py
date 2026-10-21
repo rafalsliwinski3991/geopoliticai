@@ -16,6 +16,7 @@ from langgraph.graph import END, START, StateGraph
 from typing_extensions import TypedDict
 
 from agents.deep_forecaster.config import COUNCIL
+from agents.deep_forecaster.council import QuorumError
 from agents.deep_forecaster.models import (
     Analysis,
     Ballot,
@@ -698,34 +699,40 @@ async def test_a_hung_drafter_is_a_research_limit_error(
 
 @pytest.mark.anyio
 @pytest.mark.parametrize(
-    ("round_1_replies", "member_seconds"),
+    ("round_1_replies", "member_seconds", "outside"),
     [
         pytest.param(
-            {5: SEAT_DOWN, 6: SEAT_DOWN, 7: SEAT_DOWN},
+            {4: SEAT_DOWN, 5: SEAT_DOWN, 6: SEAT_DOWN, 7: SEAT_DOWN},
             None,
+            True,
             id="seats are down",
         ),
         pytest.param(
             {
+                4: BALLOT_MISSING_A_CLAIM,
                 5: BALLOT_MISSING_A_CLAIM,
                 6: BALLOT_MISSING_A_CLAIM,
                 7: BALLOT_MISSING_A_CLAIM,
             },
             None,
+            False,
             id="a ballot misses a claim",
         ),
         pytest.param(
             {
+                4: BALLOT_CITING_AN_UNQUOTED_SOURCE,
                 5: BALLOT_CITING_AN_UNQUOTED_SOURCE,
                 6: BALLOT_CITING_AN_UNQUOTED_SOURCE,
                 7: BALLOT_CITING_AN_UNQUOTED_SOURCE,
             },
             None,
+            False,
             id="a vote cites an unquoted source",
         ),
         pytest.param(
-            {5: HANG, 6: HANG, 7: HANG},
+            {4: HANG, 5: HANG, 6: HANG, 7: HANG},
             SHORT_MEMBER_SECONDS,
+            True,
             id="seats time out",
         ),
     ],
@@ -735,32 +742,51 @@ async def test_a_council_below_quorum_stops_before_writing(
     monkeypatch: pytest.MonkeyPatch,
     round_1_replies: dict[int, Any],
     member_seconds: float | None,
+    outside: bool,
 ) -> None:
-    """Round 1 below a quorum of 5 is a 502: no analysis is written."""
+    """Round 1 below a quorum of 4 is a 502: no analysis is written. A
+    `QuorumError` whose `outside` says whether every drop was a provider
+    outage (a `RuntimeError` seat is an outage; a broken ballot is ours)."""
     # Arrange
     rig.round_1 = round_1_replies
     if member_seconds is not None:
         shorten_limit(monkeypatch, "council", member_seconds=member_seconds)
     # Act
-    with pytest.raises(LLMInvocationError) as raised:
+    with pytest.raises(QuorumError) as raised:
         await rig.run()
     # Assert
     assert raised.value.status == 502
     assert str(raised.value) == (
-        "Only 4 of 7 council members could vote in round 1; the council needs 5."
+        "Only 3 of 7 council members could vote in round 1; the council needs 4."
     )
+    assert raised.value.outside is outside
     assert rig.writer.calls == 0
 
 
 @pytest.mark.anyio
 async def test_exactly_a_quorum_is_enough(rig: ForecastRig) -> None:
-    """Five voting seats are the quorum: the forecast stands and reports the count."""
+    """Four voting seats are the quorum: the forecast stands and reports the count."""
     # Arrange
-    rig.round_1 = {6: SEAT_DOWN, 7: SEAT_DOWN}
+    rig.round_1 = {5: SEAT_DOWN, 6: SEAT_DOWN, 7: SEAT_DOWN}
     # Act
     answer = await rig.run()
     # Assert
-    assert "Members voting: 5 of 7 (2 unavailable)." in answer
+    assert "Members voting: 4 of 7 (3 unavailable)." in answer
+
+
+@pytest.mark.anyio
+async def test_a_member_fixed_by_its_reask_votes_in_the_forecast(
+    rig: ForecastRig,
+) -> None:
+    """A member whose first round-1 ballot broke a rule is asked once more and
+    its fixed ballot counts: the whole council of seven votes (Q1)."""
+    # Arrange
+    rig.round_1 = {3: [BALLOT_CITING_AN_UNQUOTED_SOURCE, ballot(["for", "unsure"])]}
+    # Act
+    answer = await rig.run()
+    # Assert
+    assert "Members voting: 7 of 7." in answer
+    assert rig.member_calls.count((1, 3)) == 2
 
 
 @pytest.mark.anyio

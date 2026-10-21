@@ -175,6 +175,21 @@ def test_render_passages_shows_only_the_quoted_paragraphs() -> None:
     assert "Beta three." not in rendered
 
 
+def test_render_passages_names_each_claims_citable_sources() -> None:
+    """Each claim's block ends with a "Cite only:" line naming the sources its
+    passages quote: the rule `council.validate_ballot` enforces, stated where
+    members read the passages, so a refusal names a rule the member read."""
+    # Arrange
+    # Act
+    rendered = render_passages(claims(), sources())
+    blocks = rendered.split("\n\n")
+    claim_1 = next(block for block in blocks if block.startswith("Claim 1:"))
+    claim_2 = next(block for block in blocks if block.startswith("Claim 2:"))
+    # Assert: claim 1 quotes sources 1 and 2; claim 2 only source 1.
+    assert claim_1.endswith("Cite only: Source 1, Source 2")
+    assert claim_2.endswith("Cite only: Source 1")
+
+
 def test_quoted_sources_is_the_union() -> None:
     # Assert
     assert quoted_sources(claims()) == frozenset({1, 2})

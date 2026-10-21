@@ -10,6 +10,8 @@ from datetime import date
 from types import SimpleNamespace
 from typing import Any
 
+import httpx
+import openai
 import pytest
 
 from agents.deep_forecaster.config import COUNCIL
@@ -23,6 +25,7 @@ from agents.deep_forecaster.models import (
     Stance,
     Vote,
 )
+from agents.deep_forecaster.prompts import ROUND_TWO_INSTRUCTIONS
 from agents.deep_forecaster.state import (
     ForecastRun,
     ForecastState,
@@ -46,6 +49,9 @@ TODAY = date(2026, 9, 30)
 # A scripted reply that never returns: the step's own timeout, or the wall
 # cap, is what ends it.
 HANG = object()
+
+# The chat-completions URL a provider error names; never called.
+OPENROUTER_CHAT_URL = "https://openrouter.ai/api/v1/chat/completions"
 
 
 @pytest.fixture
@@ -113,6 +119,78 @@ def ballot(
         for number, stance in enumerate(stances, start=1)
     ]
     return Ballot(votes=votes)
+
+
+def provider_error(status: int = 500) -> openai.APIStatusError:
+    """An OpenRouter 5xx that outlived the client's retries: an outage, the provider's."""
+    response = httpx.Response(
+        status, request=httpx.Request("POST", OPENROUTER_CHAT_URL)
+    )
+    return openai.InternalServerError("provider error", response=response, body=None)
+
+
+def request_error(status: int = 400) -> openai.APIStatusError:
+    """An OpenRouter 4xx refusing our request (a rejected parameter, a retired model): ours."""
+    response = httpx.Response(
+        status, request=httpx.Request("POST", OPENROUTER_CHAT_URL)
+    )
+    return openai.BadRequestError("request refused", response=response, body=None)
+
+
+@dataclass(frozen=True)
+class Delayed:
+    """A scripted reply that arrives after `seconds`."""
+
+    seconds: float
+    reply: Any
+
+
+class ScriptedCouncil:
+    """Stands in for `council.member_model`: each member answers its script in order.
+
+    A reply is a `Ballot`, None (no ballot), an exception to raise, `HANG`, or
+    a `Delayed` reply. Every message list a member is sent is recorded, and a
+    call past the end of a member's script fails the test, so "re-asked
+    exactly once" is provable. A member with no script votes
+    `ballot(["for", "unsure"])` every time.
+    """
+
+    def __init__(self, scripts: dict[int, list[Any]]) -> None:
+        self.scripts = {member: list(replies) for member, replies in scripts.items()}
+        self.sent: dict[int, list[list[Any]]] = {}
+
+    def install(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        council = importlib.import_module("agents.deep_forecaster.council")
+        monkeypatch.setattr(council, "member_model", self._member)
+
+    def calls(self, member: int) -> int:
+        return len(self.sent.get(member, []))
+
+    def _member(self, seat: Any, model: str, *, max_retries: int) -> Any:
+        scripted = self
+        number = [s.model for s in COUNCIL].index(model) + 1
+
+        class Member:
+            async def ainvoke(self, messages: Any) -> Any:
+                scripted.sent.setdefault(number, []).append(list(messages))
+                if number not in scripted.scripts:
+                    return ballot(["for", "unsure"])
+                script = scripted.scripts[number]
+                if not script:
+                    raise AssertionError(
+                        f"member {number} was asked more often than scripted"
+                    )
+                reply = script.pop(0)
+                if isinstance(reply, Delayed):
+                    await asyncio.sleep(reply.seconds)
+                    reply = reply.reply
+                if reply is HANG:
+                    await asyncio.sleep(3600)
+                if isinstance(reply, BaseException):
+                    raise reply
+                return reply
+
+        return Member()
 
 
 def state(
@@ -291,6 +369,9 @@ class ForecastRig:
     research_error: BaseException | None = None
     drafted: Any = field(default_factory=claims)  # list[Claim], an exception, or HANG
     # Member number -> reply, per round; a member missing here votes the default.
+    # A list is that member's answers in order within the round: its first
+    # answer, then its re-ask (brainstorm 2026Oct19 Q1). Asking past the end of
+    # a list fails the test.
     round_1: dict[int, Any] = field(default_factory=dict)
     round_2: dict[int, Any] = field(default_factory=dict)
     writer: ScriptedWriter = field(
@@ -341,10 +422,23 @@ class ForecastRig:
 
         class Member:
             async def ainvoke(self, messages: Any) -> Any:
-                round_number = 1 + sum(1 for _, m in rig.member_calls if m == member)
+                # Round 2's prompt carries its instructions; a call count no
+                # longer tells the rounds apart once a member can be re-asked.
+                round_number = (
+                    2
+                    if any(ROUND_TWO_INSTRUCTIONS in str(m.content) for m in messages)
+                    else 1
+                )
                 rig.member_calls.append((round_number, member))
                 script = rig.round_1 if round_number == 1 else rig.round_2
                 reply = script.get(member, ballot(["for", "unsure"]))
+                if isinstance(reply, list):
+                    attempt = rig.member_calls.count((round_number, member))
+                    if attempt > len(reply):
+                        raise AssertionError(
+                            f"member {member} was asked more often than scripted"
+                        )
+                    reply = reply[attempt - 1]
                 if reply is HANG:
                     await asyncio.sleep(3600)
                 if isinstance(reply, BaseException):

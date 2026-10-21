@@ -10,9 +10,9 @@ and `ClaimTally` there.
 from __future__ import annotations
 
 from datetime import date
-from typing import Literal
+from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 Stance = Literal["for", "against", "unsure"]
 Verdict = Literal["ACCEPTED", "REJECTED", "UNRESOLVED"]
@@ -75,6 +75,25 @@ class Vote(BaseModel):
             "most 5. Required for 'for' and 'against'; may be empty for 'unsure'."
         )
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _read_unsure_without_evidence_as_none(cls, data: Any) -> Any:
+        """Read an `unsure` vote whose `evidence` is missing or null as citing none.
+
+        The Anthropic seat left the empty list out in 3 of 4 round-1s on the
+        2026-10-14 roster, and pydantic refused the whole ballot. Only that
+        case is read as the empty list it means: the schema still requires
+        `evidence` for every vote, so no seat is invited to drop it on 'for'
+        or 'against' (plan review, brainstorm 2026Oct19 Q1).
+        """
+        if (
+            isinstance(data, dict)
+            and data.get("stance") == "unsure"
+            and data.get("evidence") is None
+        ):
+            return {**data, "evidence": []}
+        return data
 
 
 class ClaimDiscussion(BaseModel):

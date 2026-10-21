@@ -1,5 +1,6 @@
 """Unit tests for `agents.deep_forecaster.prompts`."""
 
+from agents.deep_forecaster import prompts
 from agents.deep_forecaster.prompts import (
     _UNTRUSTED_RULE,
     DRAFT_CLAIMS_PROMPT,
@@ -25,7 +26,10 @@ def test_every_template_fills_with_its_documented_fields() -> None:
     video = VIDEO_PROMPT.format(
         question="Russia and NATO", not_discussed=VIDEO_NOT_DISCUSSED
     )
-    for text in (lead, SCOUT_PROMPT, video):
+    reask = prompts.REASK_PROMPT.format(
+        why="its reason was empty", rejected="Claim 1: for — Reason 1. (Sources 1)"
+    )
+    for text in (lead, SCOUT_PROMPT, video, reask):
         assert "{" not in text, text
 
 
@@ -56,6 +60,22 @@ def test_the_write_prompt_fills_with_today_and_carries_the_untrusted_rule() -> N
     assert DRAFT_CLAIMS_PROMPT.format(today="30 September 2026")
     assert _UNTRUSTED_RULE in MEMBER_SYSTEM_PROMPT
     assert "Round 2" in ROUND_TWO_INSTRUCTIONS
+
+
+def test_the_member_prompt_states_its_limits_and_the_cite_rule() -> None:
+    """The member prompt carries the two limits code enforces and points at the
+    passages' "Cite only:" line, so a refusal in a re-ask names a rule the
+    member read when it answered."""
+    # Arrange
+    # Act
+    filled = MEMBER_SYSTEM_PROMPT.format(
+        today="30 September 2026", max_reason_chars=600, max_evidences=5
+    )
+    # Assert
+    assert "at most 600 characters" in filled
+    assert "at most 5" in filled
+    assert "Cite only:" in filled
+    assert "{" not in filled, filled
 
 
 def test_the_write_prompt_asks_for_source_numbers() -> None:

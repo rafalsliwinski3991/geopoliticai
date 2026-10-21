@@ -5,15 +5,20 @@ same instructions and the same evidence. Members are "Member 1" … "Member 7"
 wherever a reader or another member sees them; which model holds which seat
 is logged for the operator and never shown (Q21).
 
-Every seat is a paid model on OpenRouter; a seat that fails — an error, its timeout, no
-ballot, or a ballot `validate_ballot` refuses — has no ballot for that round,
-and the client's own retries (429, 5xx, connection errors) are the recovery
-(user decision 2026-10-08, ending the free-roster fallback of 2026-10-01).
-Round 1 must keep a quorum (Q9, F7); below it the forecast is a hard error. A
-member dropped in round 1 does not sit round 2, and a round-1 voter that fails
-round 2 keeps its round-1 vote (`final_ballots`): Delphi's second round
-revises a first vote, so a non-response there is "no change", not a lost seat
-(plan review).
+Every seat is a paid model on OpenRouter. In round 1, a member whose first
+answer cannot be counted — no ballot, a malformed one, or one
+`validate_ballot` refuses — is asked once more with the problem named
+(brainstorm 2026Oct19 Q1); code never edits a ballot. A provider outage
+(a connection error, a spent 408, 409 or 429, a 5xx, OpenRouter's HTTP 200
+carrying an error, or the member's time limit) is "outside" (Q2) and is not
+re-asked; a request
+the provider refuses (another 4xx) is ours and is not re-asked either. Round 1
+must keep a quorum after the re-asks (`LIMITS.quorum`, Q2b); below it is a
+`QuorumError`. A member dropped in round 1 does not sit round 2, and a
+round-1 voter that fails round 2 keeps its round-1 vote (`final_ballots`):
+Delphi's second round revises a first vote, so a non-response there is "no
+change", not a lost seat (plan review). Every member's outcome and every
+round's counts are recorded on spans (`council_member`, `council_round`).
 """
 
 from __future__ import annotations
@@ -23,12 +28,15 @@ import logging
 import os
 import time
 from collections.abc import Callable, Mapping, Sequence
-from typing import Any
+from dataclasses import dataclass, replace
+from typing import Any, Literal
 
-from langchain_core.messages import BaseMessage
+import openai
+from langchain_core.exceptions import OutputParserException
+from langchain_core.messages import BaseMessage, HumanMessage
 from langchain_openai import ChatOpenAI
 from langgraph.constants import TAG_NOSTREAM
-from pydantic import SecretStr
+from pydantic import SecretStr, ValidationError
 
 from agents.deep_forecaster.config import (
     COUNCIL,
@@ -38,13 +46,74 @@ from agents.deep_forecaster.config import (
 )
 from agents.deep_forecaster.evidence import render_ballot
 from agents.deep_forecaster.models import Ballot, Verdict
-from agents.deep_forecaster.prompts import ROUND_TWO_INSTRUCTIONS
+from agents.deep_forecaster.prompts import (
+    REASK_NO_BALLOT,
+    REASK_PROMPT,
+    ROUND_TWO_INSTRUCTIONS,
+)
 from agents.deep_forecaster.state import ClaimTally
 from llm import DEFAULT_MAX_RETRIES
 from models import LLMInvocationError
+from tracing import start_span
 
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
+MEMBER_TIME_LIMIT = "the member's time limit"
+NO_BALLOT = "it returned no ballot"
+UNREADABLE_BALLOT = "its ballot tool call could not be read"
+# How much of a provider's error body is logged (F3), and of a malformed
+# ballot's field errors the member reads back in its re-ask.
+PROVIDER_ERROR_CHARS = 400
+INVALID_ANSWER_CHARS = 300
+# A 4xx at or above this is still an outage (429 rate limit); below it, the
+# provider refused our request.
+SERVER_ERROR_STATUS = 500
+# The openai SDK retries these statuses as transient (`_should_retry`, openai
+# 1.109.1): a spent 408 or 409 is an outage like a spent 429.
+TRANSIENT_REQUEST_STATUS = (408, 409, 429)
 logger = logging.getLogger(__name__)
+
+# Whose fault an attempt without a ballot was (brainstorm 2026Oct19 Q2, plan
+# review): the model's answer, the provider's outage, or our request.
+Fault = Literal["answer", "provider", "request"]
+
+
+@dataclass(frozen=True)
+class NoBallot:
+    """Why one member has no countable ballot (brainstorm 2026Oct19 Q1, Q2).
+
+    `fault` is "answer" when the answer broke a rule (re-asked once in round
+    1), "provider" for an outage (never re-asked; "outside" by the
+    brainstorm's rule), and "request" when the provider refused our request
+    (never re-asked; ours). `rejected` is the refused ballot, quoted back in
+    the re-ask, when the answer had one. `first_fault` is the fault of the
+    re-asked first attempt when this is the re-ask's own outcome, so
+    `outside` covers both tries: a member whose first answer broke a rule
+    did not fail on the provider's side.
+    """
+
+    why: str
+    fault: Fault
+    rejected: Ballot | None = None
+    first_fault: Fault | None = None
+
+    @property
+    def outside(self) -> bool:
+        """Return whether the provider, not our code or request, failed."""
+        return self.fault == "provider" and self.first_fault in (None, "provider")
+
+
+class QuorumError(LLMInvocationError):
+    """Round 1 ended below quorum after the re-asks (a 502, as before).
+
+    `outside` is True only when every member without a ballot failed on the
+    provider's side (brainstorm 2026Oct19 Q2), so the live eval can tell a
+    provider outage from a failure of our own rules.
+    """
+
+    def __init__(self, message: str, *, outside: bool) -> None:
+        """Keep the message the API shows and whether the outage was the provider's."""
+        super().__init__(message)
+        self.outside = outside
 
 
 def member_client(
@@ -56,7 +125,7 @@ def member_client(
     be constructed without a key. The openai SDK retries connection errors,
     timeouts, 408, 409, 429 and 5xx, never a 400; with every seat paid, those
     retries are the recovery for a transient failure (`_cast`).
-    `_cast`'s `asyncio.timeout` bounds the attempt, so a round
+    `_attempt`'s `asyncio.timeout` bounds each try, so a round
     still ends within one member timeout. No seat receives
     `parallel_tool_calls`, which `with_structured_output` sends and
     OpenRouter's non-OpenAI upstreams have been reported to reject (framework
@@ -99,25 +168,56 @@ def validate_ballot(
     claim 1 may cite only what claim 1 quotes, evidence from another claim's
     sources is evidence the vote was not given, and a repeated number counts
     once (review thread, #142).
+
+    The reason names the claim and the numbers: the member reads it in its
+    re-ask, and the operator in the log and on the `council_member` span
+    (brainstorm 2026Oct19 Q1).
     """
-    if sorted(vote.claim for vote in ballot.votes) != list(range(1, claims + 1)):
-        return "not exactly one vote per claim"
+    voted = sorted(vote.claim for vote in ballot.votes)
+    if voted != list(range(1, claims + 1)):
+        return (
+            f"it must vote exactly once on each of claims 1 to {claims}; "
+            f"it voted on {_list_numbers(voted) or 'none'}"
+        )
     for vote in ballot.votes:
+        claim = vote.claim
         reason = vote.reason.strip()
         if not reason:
-            return "an empty reason"
+            return f"claim {claim}'s reason is empty"
         if len(reason) > LIMITS.max_reason_chars:
-            return "a reason over the length limit"
+            return (
+                f"claim {claim}'s reason is {len(reason)} characters; "
+                f"the limit is {LIMITS.max_reason_chars}"
+            )
         if len(vote.evidence) > LIMITS.max_evidences:
-            return "more evidence than the limit"
-        if len(set(vote.evidence)) != len(vote.evidence):
-            return "a repeated evidence number"
-        own = quoted_by_claim[vote.claim]
-        if any(number not in own for number in vote.evidence):
-            return "evidence it was not given"
+            return (
+                f"claim {claim} cites {len(vote.evidence)} sources; "
+                f"the limit is {LIMITS.max_evidences}"
+            )
+        repeated = sorted({n for n in vote.evidence if vote.evidence.count(n) > 1})
+        if repeated:
+            return (
+                f"claim {claim} cites source {_list_numbers(repeated)} more than once"
+            )
+        own = quoted_by_claim[claim]
+        stray = sorted(set(vote.evidence) - own)
+        if stray:
+            return (
+                f"claim {claim} cites source {_list_numbers(stray)}, which is not "
+                f"among claim {claim}'s passages (it may cite "
+                f"{_list_numbers(sorted(own))})"
+            )
         if vote.stance != "unsure" and not vote.evidence:
-            return f"a '{vote.stance}' vote without evidence"
+            return f"claim {claim}'s '{vote.stance}' vote cites no source"
     return None
+
+
+def _list_numbers(numbers: Sequence[int]) -> str:
+    """Return numbers as a member reads them: "3", "3 and 5", "3, 5 and 9"."""
+    words = [str(number) for number in numbers]
+    if len(words) < 2:
+        return "".join(words)
+    return f"{', '.join(words[:-1])} and {words[-1]}"
 
 
 def count_votes(claims: int, ballots: Mapping[int, Ballot]) -> list[ClaimTally]:
@@ -183,28 +283,62 @@ async def convene(
     quoted_by_claim: Mapping[int, frozenset[int]],
     quorum: int,
 ) -> dict[int, Ballot]:
-    """Ask every member in `members` at once; return the counted ballots, or fail below `quorum`."""
-    results = await asyncio.gather(
-        *(
-            _cast(
-                round_number,
-                member,
-                messages_for(member),
-                claims=claims,
-                quoted_by_claim=quoted_by_claim,
-            )
-            for member in members
+    """Ask every member in `members` at once; return the counted ballots, or fail below `quorum`.
+
+    A member may be re-asked once in round 1 (`_cast`). The round's counts go
+    on a `council_round` span (brainstorm 2026Oct19, span rule).
+    """
+    started = time.monotonic()
+    with start_span("council_round") as span:
+        # Set before the gather: a round the wall cap cancels still records
+        # who was asked and the quorum it needed (review thread).
+        span.set_attributes(
+            {
+                "council.round": round_number,
+                "council.members_asked": len(members),
+                "council.quorum": quorum,
+            }
         )
-    )
-    ballots = {
-        member: ballot
-        for member, ballot in zip(members, results, strict=True)
-        if ballot is not None
-    }
+        casts = await asyncio.gather(
+            *(
+                _cast(
+                    round_number,
+                    member,
+                    messages_for(member),
+                    claims=claims,
+                    quoted_by_claim=quoted_by_claim,
+                )
+                for member in members
+            )
+        )
+        ballots = {
+            member: result
+            for member, (result, _) in zip(members, casts, strict=True)
+            if isinstance(result, Ballot)
+        }
+        dropped = [result for result, _ in casts if isinstance(result, NoBallot)]
+        reasked = [result for result, attempts in casts if attempts > 1]
+        span.set_attributes(
+            {
+                "council.ballots_counted": len(ballots),
+                "council.reasked_members": len(reasked),
+                "council.reask_fixed": sum(
+                    1 for result in reasked if isinstance(result, Ballot)
+                ),
+                "council.dropped": len(dropped),
+                "council.dropped_outside": sum(1 for d in dropped if d.outside),
+                "council.dropped_request": sum(
+                    1 for d in dropped if d.fault == "request"
+                ),
+                "council.quorum_met": len(ballots) >= quorum,
+                "council.seconds": round(time.monotonic() - started, 1),
+            }
+        )
     if len(ballots) < quorum:
-        raise LLMInvocationError(
+        raise QuorumError(
             f"Only {len(ballots)} of {len(COUNCIL)} council members could vote in "
-            f"round {round_number}; the council needs {quorum}."
+            f"round {round_number}; the council needs {quorum}.",
+            outside=all(no_ballot.outside for no_ballot in dropped),
         )
     return ballots
 
@@ -216,40 +350,89 @@ async def _cast(
     *,
     claims: int,
     quoted_by_claim: Mapping[int, frozenset[int]],
-) -> Ballot | None:
-    """Return one member's counted ballot, or None when it has none this round.
+) -> tuple[Ballot | NoBallot, int]:
+    """Return one member's ballot, or why it has none, and how many tries it took.
 
-    One attempt on the seat's own model, with the client's retries (user
-    decision 2026-10-08). Every outcome is logged with the model that
-    answered and the elapsed seconds, the smoke runs' measure of
-    per-seat latency (F3).
+    In round 1 a first answer that broke a rule is asked once more, with the
+    problem and the refused ballot (brainstorm 2026Oct19 Q1). Round 2 is not
+    re-asked: a member without a round-2 ballot keeps its round-1 vote, so a
+    re-ask there buys no quorum (plan review). An outage or a refused request
+    is never re-asked. Each try has its own member limit. Every outcome is
+    logged with the model that answered and the elapsed seconds (the smoke
+    runs' measure of per-seat latency, F3) and recorded on a `council_member`
+    span.
     """
     seat = COUNCIL[member - 1]
     started = time.monotonic()
-    try:
-        async with asyncio.timeout(LIMITS.member_seconds):
-            ballot, why = await _attempt(
-                seat,
-                messages,
-                claims=claims,
-                quoted_by_claim=quoted_by_claim,
+    with start_span("council_member") as span:
+        # Set before the first try: a member the wall cap cancels mid-try
+        # still records who was asked and which model holds the seat (review
+        # thread; the same gap `forecast_research` closes with its `finally`).
+        span.set_attributes(
+            {
+                "council.round": round_number,
+                "council.member": member,
+                "council.model": seat.model,
+            }
+        )
+        try:
+            first = await _attempt(
+                seat, messages, claims=claims, quoted_by_claim=quoted_by_claim
             )
-            if ballot is not None:
-                # One line per member, naming the model that voted (the smoke
-                # runs measure per-seat latency and drop rates from these).
-                logger.info(
-                    "council round %d: Member %d voted via %s after %.0f s",
+            first_seconds = time.monotonic() - started
+            result, attempts = first, 1
+            if (
+                isinstance(first, NoBallot)
+                and first.fault == "answer"
+                and round_number == 1
+            ):
+                logger.warning(
+                    "council round %d: Member %d re-asked after %.0f s: %s: %s",
                     round_number,
                     member,
+                    first_seconds,
                     seat.model,
-                    time.monotonic() - started,
+                    first.why,
                 )
-                return ballot
-            failure = f"{seat.model}: {why}"
-    except TimeoutError:
-        failure = f"{seat.model}: the member's time limit"
-    _dropped(round_number, member, failure, started)
-    return None
+                result = await _attempt(
+                    seat,
+                    [*messages, HumanMessage(_write_reask(first))],
+                    claims=claims,
+                    quoted_by_claim=quoted_by_claim,
+                )
+                attempts = 2
+                if isinstance(result, NoBallot):
+                    # The re-ask failed too: `outside` must also cover the
+                    # first try, whose fault may have been ours (review thread).
+                    result = replace(result, first_fault=first.fault)
+        except asyncio.CancelledError:
+            span.set_attribute("council.outcome", "cancelled")
+            raise
+        span.set_attributes(
+            _describe_member(
+                round_number,
+                member,
+                seat,
+                first=first,
+                result=result,
+                attempts=attempts,
+                first_seconds=first_seconds,
+                seconds=time.monotonic() - started,
+            )
+        )
+    if isinstance(result, Ballot):
+        # One line per member, naming the model that voted (the smoke runs
+        # measure per-seat latency and drop rates from these).
+        logger.info(
+            "council round %d: Member %d voted via %s after %.0f s",
+            round_number,
+            member,
+            seat.model,
+            time.monotonic() - started,
+        )
+    else:
+        _dropped(round_number, member, f"{seat.model}: {result.why}", started)
+    return result, attempts
 
 
 async def _attempt(
@@ -258,35 +441,134 @@ async def _attempt(
     *,
     claims: int,
     quoted_by_claim: Mapping[int, frozenset[int]],
-) -> tuple[Ballot | None, str]:
-    """Ask the seat's model once (with the client's retries); return its counted ballot, or None and why not.
+) -> Ballot | NoBallot:
+    """Ask the seat's model once, inside one member limit; return its counted ballot, or why not.
 
-    Cancellation by the member's own timeout or by
-    the wall cap is a `BaseException`, so it passes through.
+    The answer's fault is a ballot the parser cannot validate (pydantic
+    `ValidationError`, `OutputParserException`), no ballot, or one
+    `validate_ballot` refuses. A 4xx other than 408, 409 and 429 is our
+    request refused; the openai SDK already retried those three as transient
+    (1.109.1), so one that outlives them is an outage. Everything else is the provider's: the member limit, a 429 or 5xx the
+    client's retries did not clear, a connection error, and OpenRouter's
+    HTTP 200 carrying an error body, which langchain-openai raises as
+    `ValueError`, `KeyError` or `TypeError` (`chat_models/base.py:1493-1506`).
+    Cancellation by the wall cap is a `BaseException`, so it passes through.
     """
+    member = COUNCIL.index(seat) + 1
     try:
-        ballot = await member_model(
-            seat, seat.model, max_retries=DEFAULT_MAX_RETRIES
-        ).ainvoke(messages)
-    except Exception as exc:  # noqa: BLE001 - a failed attempt has no ballot (Q9)
+        async with asyncio.timeout(LIMITS.member_seconds):
+            answer = await member_model(
+                seat, seat.model, max_retries=DEFAULT_MAX_RETRIES
+            ).ainvoke(messages)
+    except TimeoutError:
+        return NoBallot(MEMBER_TIME_LIMIT, fault="provider")
+    except (ValidationError, OutputParserException) as exc:
+        return NoBallot(_describe_invalid(exc), fault="answer")
+    except Exception as exc:  # noqa: BLE001 - every other failure is the provider's or our request's
         # The body, logged only: the smoke runs need to tell a rejected
         # parameter from a transient provider error (F3).
         logger.error(
             "council: Member %d's attempt on %s failed: %s: %s",
-            COUNCIL.index(seat) + 1,
+            member,
             seat.model,
             type(exc).__name__,
-            str(exc)[:400],
+            str(exc)[:PROVIDER_ERROR_CHARS],
         )
-        return None, type(exc).__name__
+        refused = (
+            isinstance(exc, openai.APIStatusError)
+            and exc.status_code < SERVER_ERROR_STATUS
+            and exc.status_code not in TRANSIENT_REQUEST_STATUS
+        )
+        return NoBallot(type(exc).__name__, fault="request" if refused else "provider")
     # `ainvoke` returns `Any`: narrow it before returning it as a `Ballot`
-    # (mypy --strict refuses a returned `Any`).
-    if not isinstance(ballot, Ballot):
-        return None, "no ballot"
-    problem = validate_ballot(ballot, claims=claims, quoted_by_claim=quoted_by_claim)
+    # (mypy --strict refuses a returned `Any`). Invalid JSON arguments land
+    # here too: the parser sees no tool call.
+    if not isinstance(answer, Ballot):
+        return NoBallot(NO_BALLOT, fault="answer")
+    problem = validate_ballot(answer, claims=claims, quoted_by_claim=quoted_by_claim)
     if problem is not None:
-        return None, problem
-    return ballot, ""
+        return NoBallot(problem, fault="answer", rejected=answer)
+    return answer
+
+
+def _describe_invalid(exc: ValidationError | OutputParserException) -> str:
+    """Return a malformed ballot's problem as the member reads it, without URLs or its own input.
+
+    `str(ValidationError)` carries the input and an errors.pydantic.dev link,
+    which the member prompt forbids in its own text (plan review); the field
+    path and message are enough, e.g. "votes.2.claim: Field required" —
+    pydantic's `loc` counts list items from 0, the member's claims count from
+    1, so the path is rendered 1-based.
+    """
+    if isinstance(exc, ValidationError):
+        details = "; ".join(
+            f"{'.'.join(_loc_part(part) for part in error['loc'])}: {error['msg']}"
+            for error in exc.errors(include_url=False, include_input=False)
+        )
+        return f"its ballot is malformed: {details}"[:INVALID_ANSWER_CHARS]
+    return UNREADABLE_BALLOT
+
+
+def _loc_part(part: str | int) -> str:
+    """Render one pydantic `loc` part: a list index 1-based, a field name as is.
+
+    The re-ask names the vote the member reads: `loc`'s 0-based list index
+    would read `votes.1.evidence` as claim 1's missing field (review thread).
+    """
+    return str(part) if isinstance(part, str) else str(part + 1)
+
+
+def _write_reask(first: NoBallot) -> str:
+    """Return the one re-ask: what was wrong, and the refused ballot when there was one."""
+    rejected = (
+        render_ballot(first.rejected) if first.rejected is not None else REASK_NO_BALLOT
+    )
+    return REASK_PROMPT.format(why=first.why, rejected=rejected)
+
+
+def _describe_member(
+    round_number: int,
+    member: int,
+    seat: Seat,
+    *,
+    first: Ballot | NoBallot,
+    result: Ballot | NoBallot,
+    attempts: int,
+    first_seconds: float,
+    seconds: float,
+) -> dict[str, Any]:
+    """Return the `council_member` span's attributes: who, how many tries, and the outcome.
+
+    Which model holds which seat is operator-only (Q21): spans, like logs, sit
+    behind Phoenix's login and never reach the reader.
+    """
+    attributes: dict[str, Any] = {
+        "council.round": round_number,
+        "council.member": member,
+        "council.model": seat.model,
+        "council.attempts": attempts,
+        "council.reasked": attempts > 1,
+        "council.first_problem": first.why if isinstance(first, NoBallot) else "",
+        "council.seconds": round(seconds, 1),
+        "council.first_attempt_seconds": round(first_seconds, 1),
+    }
+    if isinstance(result, Ballot):
+        stances = [vote.stance for vote in result.votes]
+        return attributes | {
+            "council.outcome": "voted",
+            "council.votes_for": stances.count("for"),
+            "council.votes_against": stances.count("against"),
+            "council.votes_unsure": stances.count("unsure"),
+            "council.evidence_cited": sum(len(vote.evidence) for vote in result.votes),
+            "council.reason_chars_max": max(
+                (len(vote.reason.strip()) for vote in result.votes), default=0
+            ),
+        }
+    return attributes | {
+        "council.outcome": "kept_round_1" if round_number == 2 else "dropped",
+        "council.drop_reason": result.why,
+        "council.fault": result.fault,
+    }
 
 
 def _dropped(round_number: int, member: int, why: str, started: float) -> None:
