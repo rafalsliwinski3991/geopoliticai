@@ -88,7 +88,9 @@ async def run(
     """Get or create the dataset, run the task, then evaluate in a second call."""
     from phoenix.client import AsyncClient
 
-    # Only the auth-less local Phoenix is supported, so no API key is sent.
+    # No API key: the local Phoenix has no auth, and the VPS Phoenix's nginx
+    # Basic Auth header comes from PHOENIX_CLIENT_HEADERS, which the client
+    # reads itself (arize-phoenix-client 3.3.0, `utils/config.py:412`).
     client = AsyncClient(base_url=base_url())
     try:
         # Get before create: `create_dataset` upserts by name and appends
