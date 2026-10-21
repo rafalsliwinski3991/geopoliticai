@@ -1,0 +1,20 @@
+{
+ "description": "The expert live: hand-written questions about settled past events, answered from today's Brave results and pages on the allowed domains. No expected answer: judges read the run's own output and the pages it read.",
+ "cases": [
+  {
+   "name": "expert-live-hague-summit-spending",
+   "description": "NATO's June 2025 Hague summit: the 5% target and its split are settled and covered by apnews.com, bbc.com, and dw.com.",
+   "input": {"query": "What did NATO leaders agree on defence spending at the June 2025 summit in The Hague?"}
+  },
+  {
+   "name": "expert-live-g7-frozen-russian-assets",
+   "description": "The June 2024 G7 deal on a loan backed by profits from frozen Russian assets; covered by apnews.com, bbc.com, and dw.com.",
+   "input": {"query": "What did G7 leaders agree in June 2024 about using frozen Russian assets to support Ukraine?"}
+  },
+  {
+   "name": "expert-live-vilnius-summit-ukraine",
+   "description": "NATO's July 2023 Vilnius summit on Ukraine's path to membership: one named summit, no later event with the same name, covered by apnews.com, bbc.com, and aljazeera.com.",
+   "input": {"query": "What did NATO leaders agree about Ukraine's path to membership at the July 2023 Vilnius summit?"}
+  }
+ ]
+}

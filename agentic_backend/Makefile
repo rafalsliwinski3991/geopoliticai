@@ -69,7 +69,7 @@ spell_fix:
 # (loaded by `config.init_environment`); point a run at local Phoenix with
 # `docker compose up -d phoenix`.
 FIXED_EVALS = orchestrator_fixed reporter_fixed expert_fixed deep_expert_fixed
-LIVE_EVALS = deep_forecaster_live
+LIVE_EVALS = expert_live deep_expert_live deep_forecaster_live
 
 define run_evals
 	uv sync --locked --dev
