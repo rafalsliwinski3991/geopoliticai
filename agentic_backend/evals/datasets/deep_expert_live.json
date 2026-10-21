@@ -1,5 +1,5 @@
 {
- "description": "The deep expert live: hand-written, settled past events asked for in depth. The expert's baseline answers from exactly the pages the deep run read, so depth compares writing, not search luck.",
+ "description": "The deep expert live: hand-written, settled past events asked for in depth. The expert's baseline answers from the pages the deep run read (up to the expert's RETRIEVAL.keep_sources, in the order read), so depth compares writing, not search luck.",
  "cases": [
   {
    "name": "deep-live-hague-summit-spending",

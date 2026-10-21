@@ -68,3 +68,29 @@ async def test_the_baseline_expert_reads_exactly_the_pages_the_deep_run_read() -
     assert [source["url"] for source in output["sources"]] == [PAGE_A.url, PAGE_B.url]
     assert output["answer"] == "The deep answer."
     assert output["baseline_answer"] == "The baseline."
+
+
+class FailingExpertGraph:
+    """A stand-in for the expert's graph whose run fails the way a refused model call does."""
+
+    async def ainvoke(self, state: dict[str, Any]) -> dict[str, Any]:
+        raise ValueError("the model refused")
+
+
+@pytest.mark.anyio
+async def test_a_failed_baseline_names_its_step_and_keeps_the_cause() -> None:
+    """The row's cause must say the deep run finished and the baseline failed, not just what broke."""
+    # Arrange
+    expert_graph = FailingExpertGraph()
+
+    # Act + Assert
+    with (
+        patch("search.fetch_sources", live_fetch),
+        patch("agents.deep_expert.research", deep_research),
+        patch("agents.expert.graph", expert_graph),
+        pytest.raises(
+            RuntimeError, match="^baseline: ValueError: the model refused$"
+        ) as raised,
+    ):
+        await run_deep_expert_live({"query": "q"})
+    assert isinstance(raised.value.__cause__, ValueError)

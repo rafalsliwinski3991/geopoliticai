@@ -17,11 +17,12 @@ TIMEOUT_SECONDS = 960
 
 
 async def run_deep_expert_live(input: dict[str, Any]) -> dict[str, Any]:
-    """Research one query live, then let the expert answer from exactly the pages it read.
+    """Research one query live, then let the expert answer from the pages it read.
 
     The baseline reads the deep run's pages through `replay_sources` (brainstorm
     2026Oct21 R7.2): an expert searching on its own would read other pages, and
-    depth would measure search luck. One more model call, no second search.
+    depth would measure search luck. One more model call, no second search. The
+    expert keeps at most `RETRIEVAL.keep_sources` of them, in the order read.
     """
     from agents.deep_expert import research
     from agents.expert import build_initial_pipeline_state
@@ -30,10 +31,15 @@ async def run_deep_expert_live(input: dict[str, Any]) -> dict[str, Any]:
     pages: list[Source] = []
     with record_sources(pages):
         answer = await research(input["query"], _drop_progress)
-    with replay_sources(lambda: pages):
-        baseline = await expert_graph.ainvoke(
-            build_initial_pipeline_state(input["query"])
-        )
+    try:
+        with replay_sources(pages):
+            baseline = await expert_graph.ainvoke(
+                build_initial_pipeline_state(input["query"])
+            )
+    except Exception as error:
+        # The row's cause must say the deep run finished and its baseline did
+        # not; the cause chain keeps an outage reading as outside.
+        raise RuntimeError(f"baseline: {type(error).__name__}: {error}") from error
     return {
         "answer": answer,
         "baseline_answer": baseline["answer"],

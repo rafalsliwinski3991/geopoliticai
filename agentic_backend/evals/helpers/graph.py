@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager
-from dataclasses import replace
+from dataclasses import asdict, replace
 from typing import Any
 from unittest.mock import patch
 
@@ -119,15 +119,7 @@ def record_sources(pages: list[Source]) -> Iterator[None]:
 
 def dump_sources(sources: Sequence[Source]) -> list[dict[str, str]]:
     """Write sources as dataset JSON, the shape `load_sources` reads."""
-    return [
-        {
-            "title": source.title,
-            "url": source.url,
-            "text": source.text,
-            "author": source.author,
-        }
-        for source in sources
-    ]
+    return [asdict(source) for source in sources]
 
 
 async def pending_pause(graph: Any, config: dict[str, Any]) -> dict[str, Any] | None:

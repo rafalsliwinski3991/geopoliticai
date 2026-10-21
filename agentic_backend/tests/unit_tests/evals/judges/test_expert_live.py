@@ -85,6 +85,17 @@ def test_the_faithful_view_says_so_when_the_answer_cites_no_page_it_read() -> No
     assert faithful["sources"] == "(the answer cites no page it read)"
 
 
+def test_the_question_view_reads_the_query_and_the_answer() -> None:
+    # Arrange
+    output = _finished_output()
+
+    # Act
+    answers = _judge("answers_the_question").view({"query": "q"}, output, {})
+
+    # Assert
+    assert answers == {"question": "q", "answer": ANSWER}
+
+
 def test_every_prompt_field_is_supplied() -> None:
     # Arrange
     output = _finished_output()
