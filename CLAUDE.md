@@ -198,8 +198,7 @@ deep_forecaster  START -> research -> draft_claims -> council_round_1 -> council
   `expert_live` and `deep_expert_live` on hand-written questions about settled past events (the deep
   eval's expert baseline answers from the pages the deep run read, kept by `record_sources` under the
   URLs the deep expert cites and replayed by `replay_sources`), `deep_forecaster_live` on questions
-  users asked, under the forecast's wall cap. The models are
-  called live in both.
+  users asked, under the forecast's wall cap. The models are called live in both.
 - A dataset is `{description, cases}`; a case has `name`, `description`, `input` (keys `query`,
   `messages`, `sources`, `replies`), and, in a fixed eval only, `expected`, whose present keys are
   the checks; `test_datasets.py` fails on a key the eval's judges do not list in `EXPECTED_KEYS`. A

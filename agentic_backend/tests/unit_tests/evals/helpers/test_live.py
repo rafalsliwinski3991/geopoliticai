@@ -12,6 +12,8 @@ from agents.deep_forecaster.council import QuorumError
 from evals.helpers.live import build_failure_row, classify_failure, print_row
 from models import LLMInvocationError, ResearchLimitError, SearchUnavailableError
 
+_ROUTER_REQUEST = httpx.Request("POST", "https://router.example/v1")
+
 
 def _model_error(kind: type[openai.APIStatusError], status: int) -> BaseException:
     """Return a model-call failure whose cause chain carries `kind` with `status`."""
@@ -31,9 +33,6 @@ def _wrapped(error: BaseException, hops: int = 1) -> BaseException:
         wrapper.__cause__ = error
         error = wrapper
     return error
-
-
-_ROUTER_REQUEST = httpx.Request("POST", "https://router.example/v1")
 
 
 @pytest.mark.parametrize(
