@@ -62,6 +62,9 @@ deep_forecaster  START -> research -> draft_claims -> council_round_1 -> council
   (`source.outcome`).
 - TypeScript functions are camelCase and verb-first (`warnOnStaleTests`); an e2e spec and its
   generated test share one kebab-case stem.
+- An eval's script, dataset, and judges file share one name: its agent, then `_fixed` when the
+  agent's inputs are written in advance or `_live` when it searches and reads today's pages
+  (`expert_fixed`, `expert_live`).
 
 ## agentic_backend
 
@@ -192,6 +195,9 @@ deep_forecaster  START -> research -> draft_claims -> council_round_1 -> council
   `e2e_deep_forecaster` also uses Brave and reads pages, on questions users asked, under the
   forecast's wall cap, and a forecast that fails there is a report row judged by
   `finished_or_outside`, not a crash.
+- Evals report to Phoenix only; each experiment's traces land in that experiment's own project
+  (Phoenix's experiment runner sets it), never in the app's. The CI run reaches the VPS Phoenix
+  through nginx Basic Auth, with the header in `PHOENIX_CLIENT_HEADERS` on the eval steps only.
 - Evals are advisory: outside pytest (their helpers are unit-tested), run in CI only by the
   dispatch-only `evals.yml`, and exit non-zero on a crash, a judge error, or a low judge average.
 

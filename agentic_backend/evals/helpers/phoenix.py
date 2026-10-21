@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable, Coroutine, Sequence
 from typing import Any
 
-from config import get_arize_platform, get_trace_endpoint
+from config import get_trace_endpoint
 from evals.helpers.judge import (
     JUDGE_ERROR,
     JUDGE_MODEL,
@@ -21,9 +21,7 @@ def base_url() -> str:
     """Derive the REST base URL from the repository's OTLP trace endpoint."""
     endpoint = get_trace_endpoint()
     if not endpoint:
-        raise ValueError(
-            f"Missing collector endpoint for ARIZE_PLATFORM={get_arize_platform()!r}"
-        )
+        raise ValueError("Missing collector endpoint: set PHOENIX_COLLECTOR_ENDPOINT")
     endpoint = endpoint.rstrip("/")
     suffix = "/v1/traces"
     if not endpoint.endswith(suffix):

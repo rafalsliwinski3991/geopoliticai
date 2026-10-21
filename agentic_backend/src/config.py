@@ -54,7 +54,6 @@ FORECAST_TURN_COST = 20
 # writer cite URLs, a topic with no sources) spends site units for free at the
 # rate limit, and the site ceiling falls in hours. Site units are never refunded.
 MAX_DAILY_REFUND_UNITS = FORECAST_TURN_COST
-SUPPORTED_ARIZE_PLATFORMS = frozenset({"AX", "PHOENIX"})
 LOG_FORMAT = (
     "%(asctime)s %(levelname)s %(name)s "
     "[thread=%(thread_id)s user=%(user_id)s] %(message)s"
@@ -101,21 +100,8 @@ _REPO_ROOT_ENV = Path(__file__).resolve().parents[2] / ".env"
 
 
 def get_trace_endpoint() -> str | None:
-    """Select the configured collector endpoint for the active platform."""
-    platform = get_arize_platform()
-    endpoint_variable = (
-        "ARIZE_COLLECTOR_ENDPOINT" if platform == "AX" else "PHOENIX_COLLECTOR_ENDPOINT"
-    )
-    return os.getenv(endpoint_variable)
-
-
-def get_arize_platform() -> str:
-    """Return the configured tracing platform, defaulting to Phoenix."""
-    platform = (os.getenv("ARIZE_PLATFORM") or "PHOENIX").strip().upper()
-    if platform not in SUPPORTED_ARIZE_PLATFORMS:
-        supported = ", ".join(sorted(SUPPORTED_ARIZE_PLATFORMS))
-        raise ValueError(f"ARIZE_PLATFORM must be one of {supported}; got {platform!r}")
-    return platform
+    """Return the Phoenix collector endpoint; unset means tracing is off."""
+    return os.getenv("PHOENIX_COLLECTOR_ENDPOINT")
 
 
 def bind_log_context(

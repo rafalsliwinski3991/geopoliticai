@@ -1,4 +1,4 @@
-"""OpenTelemetry boundary: optional Phoenix or Arize AX span export.
+"""OpenTelemetry boundary: optional Phoenix span export.
 
 Tracing is a deliberate exception to this repo's hard-fail rule: an
 unreachable collector, a missing dependency, or an exporter error must never
@@ -21,63 +21,46 @@ from openinference.semconv.trace import SpanAttributes
 from opentelemetry import context as otel_context
 from opentelemetry import trace
 
-from config import get_arize_platform, get_trace_endpoint
+from config import get_trace_endpoint
 
 logger = logging.getLogger(__name__)
 # The name every span this repo opens is created under (not the project name).
 TRACER_NAME = "geopoliticai"
+# The app's own traces; an eval experiment moves its spans into its own project.
+DEFAULT_PROJECT_NAME = "geopoliticai-expert"
 
 _initialized = False
 
 
 def init_tracing() -> bool:
-    """Register Phoenix or Arize AX tracing when configured; never raise.
+    """Register Phoenix tracing when configured; never raise.
 
     Returns True when tracing is active after this call: it was already
-    active, or this call activated it.
+    active, or this call activated it. A Phoenix behind nginx Basic Auth gets
+    its header from `PHOENIX_CLIENT_HEADERS`, which `phoenix.otel` reads itself.
+    Spans export in batches from a background thread: the CI evals send them
+    over the internet to the VPS, where one blocking request per span would
+    stall the event loop and eat into the agents' wall caps.
     """
     global _initialized
     if _initialized:
         return True
-    try:
-        endpoint = get_trace_endpoint()
-    except ValueError as exc:
-        logger.warning("Tracing disabled: %s", exc)
-        return False
+    endpoint = get_trace_endpoint()
     if not endpoint or not endpoint.strip():
-        platform = get_arize_platform()
-        logger.debug(
-            "%s collector endpoint unset; tracing disabled.",
-            platform,
-        )
+        logger.debug("PHOENIX_COLLECTOR_ENDPOINT unset; tracing disabled.")
         return False
     try:
-        project_name = os.getenv("ARIZE_PROJECT_NAME", "geopoliticai-expert")
-        if get_arize_platform() == "AX":
-            from arize.otel import register as register_ax
+        from phoenix.otel import register
 
-            api_key = os.getenv("ARIZE_API_KEY")
-            space_id = os.getenv("ARIZE_SPACE_ID")
-            if not space_id or not api_key:
-                raise ValueError(
-                    "ARIZE_SPACE_ID and ARIZE_API_KEY are required for AX tracing"
-                )
-            register_ax(
-                endpoint=endpoint,
-                space_id=space_id,
-                api_key=api_key,
-                project_name=project_name,
-                auto_instrument=True,
-            )
-        else:
-            from phoenix.otel import register
-
-            # Local Phoenix runs without auth; the AX key must never reach it.
-            register(
-                endpoint=endpoint,
-                project_name=project_name,
-                auto_instrument=True,
-            )
+        register(
+            endpoint=endpoint,
+            project_name=os.getenv("PHOENIX_PROJECT_NAME", DEFAULT_PROJECT_NAME),
+            batch=True,
+            # Stated, not inferred: phoenix.otel infers HTTP only from a path of
+            # exactly `/v1/traces`, and the VPS endpoint is `/phoenix/v1/traces`.
+            protocol="http/protobuf",
+            auto_instrument=True,
+        )
     except Exception as exc:
         logger.warning("Tracing disabled: %s", exc)
         return False

@@ -65,10 +65,9 @@ spell_fix:
 
 # Mirrors .github/workflows/evals.yml: sync dependencies, then run every eval
 # in order, keep going after a failure, and exit non-zero when any failed.
-# Keys and collector endpoints come from the root .env (loaded by
-# `config.init_environment`); `ARIZE_PLATFORM` is taken from the environment,
-# so point a run at local Phoenix with `docker compose up -d phoenix` and
-# `make evals ARIZE_PLATFORM=PHOENIX`.
+# Keys and the Phoenix collector endpoint come from the root .env (loaded by
+# `config.init_environment`); point a run at local Phoenix with
+# `docker compose up -d phoenix`.
 EVAL_MODULES = orchestrator expert deep_expert reporter e2e_orchestrator e2e_deep_forecaster
 
 evals:
