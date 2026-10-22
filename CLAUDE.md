@@ -195,8 +195,11 @@ deep_forecaster  START -> research -> draft_claims -> council_round_1 -> council
   written in advance: conversations, typed replies, and recorded, synthetic pages that
   `replay_sources` puts in place of the expert's and the deep expert's retrieval, never fetched
   article text. A live eval (`*_live`) needs the Brave key and reads today's pages:
-  `deep_forecaster_live` on questions users asked, under the forecast's wall cap. The models are
-  called live in both.
+  `expert_live` and `deep_expert_live` on hand-written questions about settled past events (the deep
+  eval's expert baseline answers from up to `RETRIEVAL.keep_sources` of the pages the deep run
+  read, in the order read, kept by `record_sources` under the URLs the deep expert cites and
+  replayed by `replay_sources`), `deep_forecaster_live` on questions
+  users asked, under the forecast's wall cap. The models are called live in both.
 - A dataset is `{description, cases}`; a case has `name`, `description`, `input` (keys `query`,
   `messages`, `sources`, `replies`), and, in a fixed eval only, `expected`, whose present keys are
   the checks; `test_datasets.py` fails on a key the eval's judges do not list in `EXPECTED_KEYS`. A

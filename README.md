@@ -282,8 +282,8 @@ required: the Phoenix client drops a header with a bare space, and its calls the
 login is also the outer gate of `/admin/`, a risk we accept: a leaked secret opens `/phoenix/`, while
 `/admin/` still asks for a Django staff login. Run it only
 after a deploy that carries nginx's 50 MB limit on `/phoenix/`: before that, large trace uploads fail
-with 413. Locally, run `make evals-fixed`, `make evals-live`, or `make evals` from `agentic_backend/`; it reads `PHOENIX_COLLECTOR_ENDPOINT` (and
-`PHOENIX_CLIENT_HEADERS`, for the VPS) from the root `.env`.
+with 413. Locally, run `make evals-fixed`, `make evals-live`, or `make evals` from `agentic_backend/`;
+it reads `PHOENIX_COLLECTOR_ENDPOINT` (and `PHOENIX_CLIENT_HEADERS`, for the VPS) from the root `.env`.
 
 ### After the SEO launch (one-time, then upkeep)
 

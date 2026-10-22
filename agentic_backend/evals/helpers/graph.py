@@ -4,11 +4,13 @@ from __future__ import annotations
 
 from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager
+from dataclasses import asdict, replace
 from typing import Any
 from unittest.mock import patch
 
 from langchain_core.messages import AIMessage, AnyMessage, HumanMessage
 
+import search
 from models import Candidate, Source, SourcePolicy
 
 # The node imports both functions by name, so they are patched where it looks them up.
@@ -86,6 +88,38 @@ def replay_sources(recorded: list[Source] | None) -> Iterator[None]:
         patch(f"{DEEP_TOOLS_MODULE}.fetch_sources", fetch_sources),
     ):
         yield
+
+
+@contextmanager
+def record_sources(pages: list[Source]) -> Iterator[None]:
+    """Let the deep expert's live page reads run, keeping each page under the URL it cites.
+
+    The live twin of `replay_sources` for the deep expert's tools: search is
+    left alone, and every page its `fetch_sources` returns is appended to
+    `pages` once, in the order read. The page is kept under the URL the model
+    asked for, which is the one it cites, even when a redirect changed
+    `source.url` (as `agents/deep_expert/tools.py` keys `run.sources`); kept
+    under the redirect target, a correct citation would fail the link check.
+    """
+
+    async def fetch_and_keep(
+        candidates: Sequence[Candidate], policy: SourcePolicy
+    ) -> list[Source]:
+        fetched = await search.fetch_sources(candidates, policy)
+        # The deep tool reads one URL at a time and takes the first page back.
+        if len(candidates) == 1 and fetched:
+            page = replace(fetched[0], url=candidates[0].url)
+            if page.url not in {kept.url for kept in pages}:
+                pages.append(page)
+        return fetched
+
+    with patch(f"{DEEP_TOOLS_MODULE}.fetch_sources", fetch_and_keep):
+        yield
+
+
+def dump_sources(sources: Sequence[Source]) -> list[dict[str, str]]:
+    """Write sources as dataset JSON, the shape `load_sources` reads."""
+    return [asdict(source) for source in sources]
 
 
 async def pending_pause(graph: Any, config: dict[str, Any]) -> dict[str, Any] | None:

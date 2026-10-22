@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import importlib
+from collections.abc import Sequence
 from typing import Any, TypedDict
+from unittest.mock import patch
 
 import pytest
 from langchain_core.messages import AIMessage, HumanMessage
@@ -12,14 +14,17 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.types import Command, interrupt
 
 from evals.helpers.graph import (
+    dump_sources,
     load_messages,
     load_sources,
     pending_pause,
+    record_sources,
     replay_sources,
 )
 from models import Candidate, Source, SourcePolicy
 
 search_node: Any = importlib.import_module("agents.expert.nodes.search_and_fetch")
+tools_module: Any = importlib.import_module("agents.deep_expert.tools")
 
 POLICY = SourcePolicy(
     allowed_domains=(),
@@ -210,3 +215,131 @@ def test_an_unknown_message_role_is_refused() -> None:
     # Act + Assert
     with pytest.raises(ValueError, match="unknown message role 'human'"):
         load_messages(raw)
+
+
+class ScriptedFetch:
+    """A stand-in for `search.fetch_sources`: returns the page scripted for a URL, raises for any other."""
+
+    def __init__(self, pages: dict[str, Source]) -> None:
+        self.pages = pages
+
+    async def __call__(
+        self, candidates: Sequence[Candidate], policy: SourcePolicy
+    ) -> list[Source]:
+        return [self.pages[candidate.url] for candidate in candidates]
+
+
+def _candidate(url: str) -> Candidate:
+    return Candidate(title="t", url=url, domain="x.example")
+
+
+@pytest.mark.anyio
+async def test_record_sources_keeps_each_page_the_deep_tools_read_once() -> None:
+    """The baseline must read the pages the deep run read; a page read twice would be handed over twice."""
+    # Arrange
+    page_a = Source(title="A", url="https://x.example/a", text="a text")
+    page_b = Source(title="B", url="https://x.example/b", text="b text")
+    fake = ScriptedFetch({page_a.url: page_a, page_b.url: page_b})
+    kept: list[Source] = []
+
+    # Act
+    with patch("search.fetch_sources", fake), record_sources(kept):
+        returned = [
+            await tools_module.fetch_sources([_candidate(url)], POLICY)
+            for url in (page_a.url, page_b.url, page_a.url)
+        ]
+
+    # Assert
+    assert kept == [page_a, page_b]
+    assert returned == [[page_a], [page_b], [page_a]]
+
+
+@pytest.mark.anyio
+async def test_record_sources_keeps_a_redirected_page_under_the_url_asked_for() -> None:
+    """The model cites the URL it asked for; a page kept under the redirect target would fail the link check."""
+    # Arrange
+    asked = "http://x.example/a"
+    redirected = Source(title="A", url="https://x.example/a/", text="a text")
+    fake = ScriptedFetch({asked: redirected})
+    kept: list[Source] = []
+
+    # Act
+    with patch("search.fetch_sources", fake), record_sources(kept):
+        await tools_module.fetch_sources([_candidate(asked)], POLICY)
+
+    # Assert
+    assert kept == [Source(title="A", url=asked, text="a text")]
+
+
+@pytest.mark.anyio
+async def test_record_sources_keeps_nothing_from_a_read_that_returned_no_page() -> None:
+    """A page that failed to fetch was never read, so the baseline must not get it."""
+
+    # Arrange
+    async def fetch_nothing(
+        candidates: Sequence[Candidate], policy: SourcePolicy
+    ) -> list[Source]:
+        return []
+
+    kept: list[Source] = []
+
+    # Act
+    with patch("search.fetch_sources", fetch_nothing), record_sources(kept):
+        returned = await tools_module.fetch_sources(
+            [_candidate("https://x.example/a")], POLICY
+        )
+
+    # Assert
+    assert returned == []
+    assert kept == []
+
+
+@pytest.mark.anyio
+async def test_record_sources_keeps_nothing_from_a_fetch_of_several_urls() -> None:
+    """Only a one-URL read tells which URL the model cites; a batch fetch is not one of its reads."""
+    # Arrange
+    page_a = Source(title="A", url="https://x.example/a", text="a text")
+    page_b = Source(title="B", url="https://x.example/b", text="b text")
+    fake = ScriptedFetch({page_a.url: page_a, page_b.url: page_b})
+    kept: list[Source] = []
+
+    # Act
+    with patch("search.fetch_sources", fake), record_sources(kept):
+        returned = await tools_module.fetch_sources(
+            [_candidate(page_a.url), _candidate(page_b.url)], POLICY
+        )
+
+    # Assert
+    assert returned == [page_a, page_b]
+    assert kept == []
+
+
+def test_record_sources_leaves_search_and_the_experts_fetch_alone() -> None:
+    """Recording is for the deep expert's page reads; the live search and the expert's own fetch must run untouched."""
+    # Arrange
+    original_search = tools_module.search_allowlisted
+    original_tools_fetch = tools_module.fetch_sources
+    original_expert_fetch = search_node.fetch_sources
+
+    # Act
+    with record_sources([]):
+        inside = (tools_module.search_allowlisted, search_node.fetch_sources)
+
+    # Assert
+    assert inside == (original_search, original_expert_fetch)
+    assert tools_module.fetch_sources is original_tools_fetch
+
+
+def test_dump_sources_writes_what_load_sources_reads() -> None:
+    """A dataset written from a run must load back as the same pages, author included."""
+    # Arrange
+    pages = [
+        Source(title="A", url="https://x.example/a", text="a text", author="Ann"),
+        Source(title="B", url="https://x.example/b", text="b text"),
+    ]
+
+    # Act
+    loaded = load_sources(dump_sources(pages))
+
+    # Assert
+    assert loaded == pages

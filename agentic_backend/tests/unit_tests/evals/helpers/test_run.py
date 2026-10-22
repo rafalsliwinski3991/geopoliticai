@@ -17,15 +17,15 @@ from evals.helpers import run as run_mod
 from evals.helpers.judge import JUDGE_ERROR, NOT_APPLICABLE, Judge, Results, Verdict
 from models import SearchUnavailableError
 
-
-async def _task(input: dict[str, Any]) -> dict[str, Any]:
-    return {"done": True}
-
-
 FIXED_PATH_NAME = "x_fixed.json"
 LIVE_PATH_NAME = "x_live.json"
 RECORDED_TITLE = "Recorded summit page"
 RECORDED_URL = "https://news.example/summit"
+_MISSING = object()
+
+
+async def _task(input: dict[str, Any]) -> dict[str, Any]:
+    return {"done": True}
 
 
 def _write_dataset(tmp_path: Path, name: str, document: object) -> Path:
@@ -43,9 +43,6 @@ def _case(**overrides: Any) -> dict[str, Any]:
     }
     case.update(overrides)
     return {key: value for key, value in case.items() if value is not _MISSING}
-
-
-_MISSING = object()
 
 
 def _wrap(*cases: dict[str, Any]) -> dict[str, Any]:

@@ -72,6 +72,20 @@ jobs:
           PHOENIX_CLIENT_HEADERS: ${{ secrets.PHOENIX_CLIENT_HEADERS }}
         run: uv run python -m evals.deep_expert_fixed
 
+      - name: Run expert_live
+        if: ${{ !cancelled() && steps.sync.outcome == 'success' && inputs.type != 'fixed' }}
+        working-directory: agentic_backend
+        env:
+          PHOENIX_CLIENT_HEADERS: ${{ secrets.PHOENIX_CLIENT_HEADERS }}
+        run: uv run python -m evals.expert_live
+
+      - name: Run deep_expert_live
+        if: ${{ !cancelled() && steps.sync.outcome == 'success' && inputs.type != 'fixed' }}
+        working-directory: agentic_backend
+        env:
+          PHOENIX_CLIENT_HEADERS: ${{ secrets.PHOENIX_CLIENT_HEADERS }}
+        run: uv run python -m evals.deep_expert_live
+
       - name: Run deep_forecaster_live
         if: ${{ !cancelled() && steps.sync.outcome == 'success' && inputs.type != 'fixed' }}
         working-directory: agentic_backend

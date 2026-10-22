@@ -1,0 +1,15 @@
+{
+ "description": "The deep expert live: hand-written, settled past events asked for in depth. The expert's baseline answers from the pages the deep run read (up to the expert's RETRIEVAL.keep_sources, in the order read), so depth compares writing, not search luck.",
+ "cases": [
+  {
+   "name": "deep-live-hague-summit-spending",
+   "description": "Enough reporting on positions and objections to show depth beyond the expert's answer.",
+   "input": {"query": "Give me an in-depth analysis of what NATO leaders agreed on defence spending at the 2025 Hague summit and which members objected."}
+  },
+  {
+   "name": "deep-live-g7-frozen-russian-assets",
+   "description": "A deal with legal, financial, and political angles for the deep answer to cover.",
+   "input": {"query": "Give me an in-depth analysis of the June 2024 G7 agreement on using frozen Russian assets for Ukraine."}
+  }
+ ]
+}
