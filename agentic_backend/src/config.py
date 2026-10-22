@@ -66,6 +66,12 @@ LOG_THREAD_ID: contextvars.ContextVar[str | None] = contextvars.ContextVar(
 LOG_USER_ID: contextvars.ContextVar[int | None] = contextvars.ContextVar(
     "log_user_id", default=None
 )
+# agentic_backend/src/config.py -> agentic_backend/src -> agentic_backend ->
+# repo root. Resolved explicitly so
+# every entrypoint (API, tests, langgraph dev) reads the same
+# repo-root .env that Docker Compose's `env_file: .env` also uses,
+# regardless of the caller's current working directory.
+_REPO_ROOT_ENV = Path(__file__).resolve().parents[2] / ".env"
 
 
 @dataclass(frozen=True)
@@ -90,13 +96,6 @@ class LLMSettings:
 
 
 DEFAULT_LLM_SETTINGS = LLMSettings()
-
-# agentic_backend/src/config.py -> agentic_backend/src -> agentic_backend ->
-# repo root. Resolved explicitly so
-# every entrypoint (API, tests, langgraph dev) reads the same
-# repo-root .env that Docker Compose's `env_file: .env` also uses,
-# regardless of the caller's current working directory.
-_REPO_ROOT_ENV = Path(__file__).resolve().parents[2] / ".env"
 
 
 def get_trace_endpoint() -> str | None:
