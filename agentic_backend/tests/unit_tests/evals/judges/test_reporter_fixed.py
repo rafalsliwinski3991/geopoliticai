@@ -1,18 +1,22 @@
-"""Unit tests for `evals.judges.reporter` code checks and views."""
+"""Unit tests for `evals.judges.reporter_fixed` code checks and views."""
 
 from __future__ import annotations
 
 from typing import Any
 
-from evals.judges.reporter import (
+from evals.judges.reporter_fixed import (
+    OUTLINE_PROMPT,
+    REPORT_PROMPT,
     _normalize_heading,
+    _outcome_view,
     _outline_view,
+    _reply_actions_view,
     _report_rules_view,
     _report_view,
     follows_outline,
-    judges,
     urls_from_transcript,
 )
+from evals.judges.shared import matches_expected
 
 
 def _report_variables(report: str, outline: list[str]) -> dict[str, Any]:
@@ -142,26 +146,71 @@ def test_urls_from_transcript_fails_on_truncated_url() -> None:
     assert not urls_from_transcript(variables)
 
 
-def test_report_view_returns_none_when_expected_report_empty() -> None:
-    # Act + Assert
-    assert _report_view({}, {}, {"report": ""}) is None
-    assert _report_rules_view({}, {}, {"report": ""}) is None
+def test_reply_actions_must_match_in_order() -> None:
+    # Arrange
+    expected = {"reply_actions": ["revise", "cancel"]}
+    in_order = {"reply_actions": ["revise", "cancel"]}
+    swapped = {"reply_actions": ["cancel", "revise"]}
+
+    # Act
+    same = _reply_actions_view({}, in_order, expected)
+    different = _reply_actions_view({}, swapped, expected)
+
+    # Assert
+    assert same is not None and matches_expected(same)
+    assert different is not None and not matches_expected(different)
 
 
-def test_outline_view_returns_none_when_expected_outline_empty() -> None:
-    # Arrange: a refusal or revision-cap outcome ends with an empty outline
-    # and a notice; the grounded-outline judge does not apply to it.
+def test_the_outcome_must_match() -> None:
+    # Arrange
+    expected = {"outcome": "cancelled"}
+
+    # Act
+    same = _outcome_view({}, {"outcome": "cancelled"}, expected)
+    different = _outcome_view({}, {"outcome": "report"}, expected)
+
+    # Assert
+    assert same is not None and matches_expected(same)
+    assert different is not None and not matches_expected(different)
+
+
+def test_report_judges_apply_only_when_a_report_is_expected() -> None:
+    # Arrange: a cancelled run ends with no report; its outline and report
+    # are not graded.
+    expected = {"outcome": "cancelled"}
+
     # Act + Assert
-    assert _outline_view({}, {}, {"outline": []}) is None
-    assert _outline_view({}, {}, {"outline": [], "notice": "no material"}) is None
+    assert _report_view({}, {}, expected) is None
+    assert _outline_view({}, {}, expected) is None
+    assert _report_rules_view({}, {}, expected) is None
+
+
+def test_every_prompt_field_is_supplied() -> None:
+    # Arrange
+    input = {"replies": ["Looks good, write it."]}
+    output = {
+        "transcript": "User: q",
+        "outline": ["Target"],
+        "notice": "",
+        "report": "# Report",
+    }
+    expected = {"outcome": "report"}
+    outline_variables = _outline_view(input, output, expected)
+    rules_variables = _report_rules_view(input, output, expected)
+    assert outline_variables is not None
+    assert rules_variables is not None
+
+    # Act + Assert: str.format raises KeyError on a field the view leaves out.
+    OUTLINE_PROMPT.format(**outline_variables)
+    REPORT_PROMPT.format(**rules_variables)
 
 
 def test_report_rules_view_builds_variables() -> None:
     # Act
     variables = _report_rules_view(
-        input={"transcript": "User: hi"},
-        output={"outline": ["Target"], "report": "# Report"},
-        expected={"report": "yes"},
+        input={},
+        output={"transcript": "User: hi", "outline": ["Target"], "report": "# Report"},
+        expected={"outcome": "report"},
     )
 
     # Assert
@@ -176,11 +225,3 @@ def test_normalize_heading_strips_noise() -> None:
     # Assert
     assert _normalize_heading("1. **Spending target**: ") == "spending target"
     assert _normalize_heading("Spending Target") == "spending target"
-
-
-def test_judges_have_unique_names() -> None:
-    # Act
-    names = [judge.name for judge in judges()]
-
-    # Assert
-    assert len(names) == len(set(names))

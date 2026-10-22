@@ -1,11 +1,13 @@
-"""Graph-running helpers shared by the expert, deep expert, reporter, and e2e evals."""
+"""Graph-running helpers shared by the evals: recorded pages, recorded messages, and paused threads."""
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterator, Sequence
+from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from typing import Any
 from unittest.mock import patch
+
+from langchain_core.messages import AIMessage, AnyMessage, HumanMessage
 
 from models import Candidate, Source, SourcePolicy
 
@@ -13,6 +15,11 @@ from models import Candidate, Source, SourcePolicy
 SEARCH_NODE_MODULE = "agents.expert.nodes.search_and_fetch"
 # The deep expert's tools import the same two names; patched the same way.
 DEEP_TOOLS_MODULE = "agents.deep_expert.tools"
+# The two roles a dataset conversation may hold, and the message each becomes.
+MESSAGE_TYPES: dict[str, type[HumanMessage] | type[AIMessage]] = {
+    "user": HumanMessage,
+    "assistant": AIMessage,
+}
 
 
 def load_sources(raw: Sequence[dict[str, Any]]) -> list[Source]:
@@ -28,18 +35,29 @@ def load_sources(raw: Sequence[dict[str, Any]]) -> list[Source]:
     ]
 
 
+def load_messages(raw: Sequence[Mapping[str, str]]) -> list[AnyMessage]:
+    """Build chat messages from dataset JSON: `{"role": "user" | "assistant", "content": str}`."""
+    messages: list[AnyMessage] = []
+    for item in raw:
+        message_type = MESSAGE_TYPES.get(item["role"])
+        if message_type is None:
+            raise ValueError(
+                f"unknown message role {item['role']!r}: use user or assistant"
+            )
+        messages.append(message_type(item["content"]))
+    return messages
+
+
 @contextmanager
-def replay_sources(current: Callable[[], list[Source] | None]) -> Iterator[None]:
+def replay_sources(recorded: list[Source] | None) -> Iterator[None]:
     """Replace the expert's and the deep expert's live retrieval with a case's recorded pages.
 
-    `current` is read on every call, so e2e can change sources between turns.
     Every search returns the whole recorded set (brainstorm Q5b), so the deep
     eval measures synthesis and the grader loop, not search strategy.
     Reaching either agent with no recorded sources is an error: evals never call Brave.
     """
 
     def sources() -> list[Source]:
-        recorded = current()
         if recorded is None:
             raise RuntimeError(
                 "The expert was called, but this example has no recorded sources."

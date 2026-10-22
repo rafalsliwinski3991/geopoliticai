@@ -1,0 +1,90 @@
+{
+ "description": "The reporter on recorded conversations: how each reply typed at the outline is read, how the run ends ('outcome': report, cancelled, refused, capped, or open), and, when a report is written, its outline and text against the transcript.",
+ "cases": [
+  {
+   "name": "reporter-approve-first-outline",
+   "description": "One researched answer, then 'Looks good, write it.' at the outline: read as approve, and the report is written.",
+   "input": {
+    "messages": [
+     {
+      "role": "user",
+      "content": "What did Northern Alliance leaders agree on defence spending, and who objected?"
+     },
+     {
+      "role": "assistant",
+      "content": "Northern Alliance leaders agreed to a joint defence spending goal of 5 percent of national output by 2035, which is divided into 3.5 percent for core defence and 1.5 percent for related spending such as resilience and cyber defence [Northern Alliance leaders adopt 5% spending goal](https://news.example/2026/06/alliance-summit-spending-target). However, Norland's prime minister objected to this target, calling it unrealistic for her country's economy and stating that it would lead to cuts in pensions rather than military spending. She mentioned that Norland's current spending level of 2.1 percent is sufficient and claimed that an exemption for members facing budget constraints was informally agreed upon, although this was not reflected in the official communiqué [Norland says 5% target is unrealistic](https://news.example/2026/06/norland-rejects-spending-target).\n\nIn contrast, Vestria supported the 5 percent target but disputed Norland's claim of an exemption, emphasizing that the communiqué is the complete agreement without any opt-out clause. Vestria's delegation also sought a broader definition of related spending to include infrastructure that supports defence readiness [Vestria backs target, asks for flexibility](https://news.example/2026/06/vestria-backs-target-with-caveats)."
+     },
+     {
+      "role": "user",
+      "content": "Write me a report on that"
+     }
+    ],
+    "replies": [
+     "Looks good, write it."
+    ]
+   },
+   "expected": {
+    "reply_actions": [
+     "approve"
+    ],
+    "outcome": "report"
+   }
+  },
+  {
+   "name": "reporter-bare-no-revises-then-cancel",
+   "description": "A bare 'no' at the outline is a revision, and 'never mind' at the redrawn outline cancels the report.",
+   "input": {
+    "messages": [
+     {
+      "role": "user",
+      "content": "What did Northern Alliance leaders agree on defence spending, and who objected?"
+     },
+     {
+      "role": "assistant",
+      "content": "The leaders of the Northern Alliance agreed to a joint defense pledge that each member will aim to spend 5 percent of national output on defense and defense-related activities by 2035. This figure is divided into 3.5 percent for core defense and 1.5 percent for related spending, which includes areas like resilience and cyber defense. Members are required to publish annual national plans to track progress, although the goal is described as a political target without enforcement mechanisms, meaning there are no sanctions for members that do not meet the target [source](https://news.example/2026/06/alliance-summit-spending-target).\n\nHowever, objections were raised by Norland's prime minister, who stated that her country would not treat the 5 percent pledge as a binding timeline, calling it unrealistic given Norland's current defense spending of 2.1 percent. She argued that pursuing the 2035 target could lead to cuts in pensions rather than increased military spending. Norland's prime minister also claimed that negotiators had privately agreed on a phased schedule for members facing budget constraints, although this exemption was not included in the published communiqué [source](https://news.example/2026/06/norland-rejects-spending-target).\n\nIn contrast, Vestria's delegation supported the 5 percent target but disputed Norland's claim of an agreed exemption, emphasizing that the communiqué is the complete agreement and lacks any opt-out clause. Vestria's defense minister also expressed a desire for a broad definition of related spending to include infrastructure that supports defense readiness [source](https://news.example/2026/06/vestria-backs-target-with-caveats)."
+     },
+     {
+      "role": "user",
+      "content": "Write me a report on that"
+     }
+    ],
+    "replies": [
+     "no",
+     "never mind"
+    ]
+   },
+   "expected": {
+    "reply_actions": [
+     "revise",
+     "cancel"
+    ],
+    "outcome": "cancelled"
+   }
+  },
+  {
+   "name": "reporter-refuses-without-research",
+   "description": "Only a greeting before the request: no researched answer, so the reporter refuses before any model call.",
+   "input": {
+    "messages": [
+     {
+      "role": "user",
+      "content": "Hello"
+     },
+     {
+      "role": "assistant",
+      "content": "Hello! How can I assist you today?"
+     },
+     {
+      "role": "user",
+      "content": "Write me a report on that"
+     }
+    ],
+    "replies": []
+   },
+   "expected": {
+    "reply_actions": [],
+    "outcome": "refused"
+   }
+  }
+ ]
+}

@@ -62,6 +62,9 @@ deep_forecaster  START -> research -> draft_claims -> council_round_1 -> council
   (`source.outcome`).
 - TypeScript functions are camelCase and verb-first (`warnOnStaleTests`); an e2e spec and its
   generated test share one kebab-case stem.
+- An eval's script, dataset, and judges file share one name: its agent, then `_fixed` when the
+  agent's inputs are written in advance or `_live` when it searches and reads today's pages
+  (`expert_fixed`, `expert_live`).
 
 ## agentic_backend
 
@@ -185,18 +188,26 @@ deep_forecaster  START -> research -> draft_claims -> council_round_1 -> council
 ## Evals
 
 - `agentic_backend/evals/` holds one script per eval, run from `agentic_backend/` as
-  `uv run python -m evals.<name>` (`make evals` runs all). A new eval also joins `EVAL_MODULES` in
-  `agentic_backend/Makefile` and gets a step in `evals.yml`.
-- Examples carry recorded, synthetic sources (`replay_sources` patches the expert's and the deep
-  expert's retrieval), never fetched article text. The models are called live; only
-  `e2e_deep_forecaster` also uses Brave and reads pages, on questions users asked, under the
-  forecast's wall cap, and a forecast that fails there is a report row judged by
-  `finished_or_outside`, not a crash.
+  `uv run python -m evals.<name>`; `make evals-fixed`, `make evals-live`, and `make evals` (both) run
+  them by kind. A new eval joins `FIXED_EVALS` or `LIVE_EVALS` in `agentic_backend/Makefile` and gets
+  a step in `evals.yml` under its kind.
+- The runner reads an eval's kind from its name. A fixed eval (`*_fixed`) feeds the agent inputs
+  written in advance: conversations, typed replies, and recorded, synthetic pages that
+  `replay_sources` puts in place of the expert's and the deep expert's retrieval, never fetched
+  article text. A live eval (`*_live`) needs the Brave key and reads today's pages:
+  `deep_forecaster_live` on questions users asked, under the forecast's wall cap. The models are
+  called live in both.
+- A dataset is `{description, cases}`; a case has `name`, `description`, `input` (keys `query`,
+  `messages`, `sources`, `replies`), and, in a fixed eval only, `expected`, whose present keys are
+  the checks; `test_datasets.py` fails on a key the eval's judges do not list in `EXPECTED_KEYS`. A
+  failed live run is a report row judged by `finished_or_outside` (`outside` only for a provider
+  outage), not a crash.
 - Evals report to Phoenix only; each experiment's traces land in that experiment's own project
   (Phoenix's experiment runner sets it), never in the app's. The CI run reaches the VPS Phoenix
   through nginx Basic Auth, with the header in `PHOENIX_CLIENT_HEADERS` on the eval steps only.
 - Evals are advisory: outside pytest (their helpers are unit-tested), run in CI only by the
-  dispatch-only `evals.yml`, and exit non-zero on a crash, a judge error, or a low judge average.
+  dispatch-only `evals.yml` (`type`: fixed, live, or all), and exit non-zero on a crash, a judge
+  error, or a low judge average.
 
 ## Deploy
 

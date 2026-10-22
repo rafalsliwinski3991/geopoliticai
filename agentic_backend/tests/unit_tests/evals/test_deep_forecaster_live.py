@@ -1,8 +1,7 @@
-"""Unit tests for `evals.e2e_deep_forecaster`.
+"""Unit tests for `evals.deep_forecaster_live`.
 
 The live eval never runs here: every test feeds `build_graph` a fake whose
-`astream` is a scripted generator, and `require_env` is patched away where
-`run_e2e_deep_forecaster` imports it, so no Brave search, page read, or model
+`astream` is a scripted generator, so no Brave search, page read, or model
 call happens.
 """
 
@@ -22,9 +21,9 @@ from agents.deep_forecaster.consts.editorial import VOTE_LIST_HEADING
 from agents.deep_forecaster.council import QuorumError
 from agents.deep_forecaster.models import Ballot, Claim, EvidenceRef, Stance, Vote
 from agents.deep_forecaster.state import ClaimTally
-from evals.e2e_deep_forecaster import (
+from evals.deep_forecaster_live import (
     forecast_output,
-    run_e2e_deep_forecaster,
+    run_deep_forecaster_live,
 )
 from models import (
     Source,
@@ -33,8 +32,8 @@ from models import (
 QUERY = "Forecast if Russia will attack Poland?"
 WALL_SECONDS = 0.05
 # Expanding on the gap script: the run starts its clock at 8; the steps' ends
-# fall at 10 (write_analysis), 12 (verify), 17 (the rewrite) and 18 (the call).
-MONOTONICS = [8.0, 10.0, 12.0, 17.0, 18.0]
+# fall at 10 (write_analysis), 12 (verify) and 17 (the rewrite).
+MONOTONICS = [8.0, 10.0, 12.0, 17.0]
 
 
 def _ballot(stances: list[Stance]) -> Ballot:
@@ -102,10 +101,9 @@ async def test_a_failed_forecast_becomes_a_report_row() -> None:
     )
     with (
         patch("agents.deep_forecaster.graph.build_graph", return_value=fake_graph),
-        patch("config.require_env", return_value=None),
     ):
         # Act
-        output = await run_e2e_deep_forecaster({"query": QUERY})
+        output = await run_deep_forecaster_live({"query": QUERY})
     # Assert
     assert output["finished"] is False
     assert output["side"] == "ours"
@@ -121,10 +119,9 @@ async def test_a_forecast_past_the_wall_is_our_failure() -> None:
     with (
         patch("agents.deep_forecaster.graph.build_graph", return_value=fake_graph),
         patch.object(config_module, "LIMITS", short_limits),
-        patch("config.require_env", return_value=None),
     ):
         # Act
-        output = await run_e2e_deep_forecaster({"query": QUERY})
+        output = await run_deep_forecaster_live({"query": QUERY})
     # Assert
     assert output["finished"] is False
     assert output["side"] == "ours"
@@ -220,17 +217,16 @@ async def test_step_times_add_the_writers_rewrite() -> None:
     clock = list(MONOTONICS)
     with (
         patch("agents.deep_forecaster.graph.build_graph", return_value=fake_graph),
-        patch("config.require_env", return_value=None),
         # Extra ticks (asyncio housekeeping) hold the last value, so an
-        # unexpected call cannot shift the gaps; the 5 scripted ticks give
-        # started=8 s and step ends at 10, 12 and 17 s, total at 18 s.
+        # unexpected call cannot shift the gaps; the 4 scripted ticks give
+        # started=8 s and step ends at 10, 12 and 17 s.
         patch("agents.deep_forecaster.time_limits.run_under_time_limits", immediate),
         patch(
-            "evals.e2e_deep_forecaster.time.monotonic",
+            "evals.deep_forecaster_live.time.monotonic",
             side_effect=lambda: clock.pop(0) if len(clock) > 1 else clock[0],
         ),
     ):
         # Act
-        output = await run_e2e_deep_forecaster({"query": QUERY})
+        output = await run_deep_forecaster_live({"query": QUERY})
     # Assert: one `write_analysis` entry holding both gaps (2 s + 5 s, by hand).
     assert output["step_seconds"] == {"write_analysis": 7.0, "verify": 2.0}

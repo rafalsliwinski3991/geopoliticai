@@ -1,4 +1,4 @@
-"""Unit tests for `evals.judges.e2e_deep_forecaster`."""
+"""Unit tests for `evals.judges.deep_forecaster_live`."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ from typing import Any
 
 import pytest
 
-from evals.judges.e2e_deep_forecaster import (
+from evals.judges.deep_forecaster_live import (
     VERDICTS_PROMPT,
     _claims_view,
     _faithful_view,
@@ -60,7 +60,7 @@ def test_the_six_judges_carry_their_names_kinds_and_views() -> None:
     kind and its own view or check — a judge renamed, re-ordered, or wired to
     another's view goes red (review thread)."""
     # Arrange
-    from evals.judges.e2e_deep_forecaster import CLAIMS_PROMPT, TALLY_PROMPT
+    from evals.judges.deep_forecaster_live import CLAIMS_PROMPT, TALLY_PROMPT
 
     expected: list[tuple[str, str, Any, bool]] = [
         ("finished_or_outside", "binary", build_outcome_judge().view, False),
@@ -204,7 +204,7 @@ def test_the_tally_view_reads_the_verdicts_and_the_answer() -> None:
 
 def test_every_prompt_field_is_supplied() -> None:
     # Arrange
-    from evals.judges.e2e_deep_forecaster import CLAIMS_PROMPT, TALLY_PROMPT
+    from evals.judges.deep_forecaster_live import CLAIMS_PROMPT, TALLY_PROMPT
 
     claims_vars = _claims_view({"query": "q"}, _finished_output(), {})
     tally_vars = _tally_view({}, _finished_output(), {})

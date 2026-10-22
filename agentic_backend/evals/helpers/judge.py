@@ -71,9 +71,9 @@ class Judge:
 
     `view` decides applicability, normally from the expected output only, so
     a missing actual output fails the judge instead of skipping it. A live
-    eval with no expected output (`e2e_deep_forecaster`) decides from the
-    actual output instead, and its own code judge fails the run when the
-    task itself failed.
+    eval (`*_live`) has no expected output: its views decide from the actual
+    output, and its `finished_or_outside` judge fails the run when the run
+    failed for a reason of ours.
     """
 
     name: str

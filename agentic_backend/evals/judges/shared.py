@@ -1,4 +1,4 @@
-"""Judge pieces more than one eval uses: faithfulness, links, and the finished-run gate."""
+"""Judge pieces more than one eval uses: faithfulness, links, exact matches, and the finished-run gate."""
 
 from __future__ import annotations
 
@@ -36,6 +36,11 @@ def urls_from_sources(variables: dict[str, Any]) -> bool:
     """Pass when the answer links, and only to the run's sources (expert rule 1)."""
     urls = markdown_link_urls(variables["answer"])
     return bool(urls) and set(urls) <= set(variables["source_urls"])
+
+
+def matches_expected(variables: dict[str, Any]) -> bool:
+    """Pass when the run's value equals the expected one exactly."""
+    return bool(variables["actual"] == variables["expected"])
 
 
 def render_cited_sources(sources: Sequence[Mapping[str, Any]], answer: str) -> str:

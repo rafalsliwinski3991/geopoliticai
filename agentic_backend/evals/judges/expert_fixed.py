@@ -1,4 +1,4 @@
-"""Expert judges: URL provenance, agreement with the expected answer, faithfulness."""
+"""expert_fixed judges: links only to recorded pages, the expected answer, faithfulness."""
 
 from __future__ import annotations
 
@@ -7,6 +7,7 @@ from typing import Any
 from evals.helpers.judge import Judge
 from evals.judges.shared import FAITHFUL_PROMPT, render_cited_sources, urls_from_sources
 
+EXPECTED_KEYS = frozenset({"answer"})
 ANSWER_PROMPT = """
 You grade a research answer written from a fixed set of sources.
 
@@ -44,7 +45,9 @@ def _urls_view(
 
 def _answer_view(
     input: dict[str, Any], output: dict[str, Any], expected: dict[str, Any]
-) -> dict[str, Any]:
+) -> dict[str, Any] | None:
+    if "answer" not in expected:
+        return None
     return {
         "question": input["query"],
         "actual": output.get("answer") or "",
@@ -64,7 +67,7 @@ def _faithful_view(
 
 
 def judges() -> tuple[Judge, ...]:
-    """Return the expert eval's judges."""
+    """Return the expert_fixed eval's judges."""
     return (
         Judge("urls_from_sources", "binary", _urls_view, check=urls_from_sources),
         Judge("answer_matches_expected", "numeric", _answer_view, prompt=ANSWER_PROMPT),

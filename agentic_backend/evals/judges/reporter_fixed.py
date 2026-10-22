@@ -1,4 +1,4 @@
-"""Reporter judges: structure, citation provenance, and output against the transcript.
+"""reporter_fixed judges: how replies are read, how the run ends, and the report against the transcript.
 
 The reporter samples at temperature 1.0, so nothing here compares with a
 recorded outline or report: two correct runs differ.
@@ -11,7 +11,9 @@ import re
 from typing import Any
 
 from evals.helpers.judge import Judge, markdown_link_urls
+from evals.judges.shared import matches_expected
 
+EXPECTED_KEYS = frozenset({"reply_actions", "outcome"})
 HEADING_NOISE = re.compile(r"^(?:\d+[.)]\s*)?[*_]*(.*?)[*_]*:?$")
 OUTLINE_PROMPT = """
 You grade a report outline proposed from a conversation transcript.
@@ -19,7 +21,7 @@ You grade a report outline proposed from a conversation transcript.
 Transcript:
 {transcript}
 
-User decisions at the outline, in order:
+What the user typed at the outline, in order:
 {decisions}
 
 Final outline:
@@ -77,28 +79,50 @@ def _normalize_heading(heading: str) -> str:
     return (match.group(1) if match else heading).strip().rstrip(":").strip().casefold()
 
 
+def _writes_report(expected: dict[str, Any]) -> bool:
+    """Whether this case expects a written report, so its outline and report are graded."""
+    return expected.get("outcome") == "report"
+
+
+def _reply_actions_view(
+    input: dict[str, Any], output: dict[str, Any], expected: dict[str, Any]
+) -> dict[str, Any] | None:
+    if "reply_actions" not in expected:
+        return None
+    return {
+        "actual": list(output.get("reply_actions") or []),
+        "expected": expected["reply_actions"],
+    }
+
+
+def _outcome_view(
+    input: dict[str, Any], output: dict[str, Any], expected: dict[str, Any]
+) -> dict[str, Any] | None:
+    if "outcome" not in expected:
+        return None
+    return {"actual": output.get("outcome"), "expected": expected["outcome"]}
+
+
 def _report_view(
     input: dict[str, Any], output: dict[str, Any], expected: dict[str, Any]
 ) -> dict[str, Any] | None:
-    if not expected["report"]:
+    if not _writes_report(expected):
         return None
     return {
         "report": output.get("report") or "",
         "outline": list(output.get("outline") or []),
-        "transcript": input["transcript"],
+        "transcript": output.get("transcript") or "",
     }
 
 
 def _outline_view(
     input: dict[str, Any], output: dict[str, Any], expected: dict[str, Any]
 ) -> dict[str, Any] | None:
-    # A refusal or revision-cap outcome ends with an empty outline plus a
-    # notice; that is the prompt's rule 3, not an ungrounded outline.
-    if not expected["outline"]:
+    if not _writes_report(expected):
         return None
     return {
-        "transcript": input["transcript"],
-        "decisions": json.dumps(input["resumes"]),
+        "transcript": output.get("transcript") or "",
+        "decisions": json.dumps(input.get("replies", [])),
         "outline": "\n".join(output.get("outline") or []) or "(none)",
         "notice": output.get("notice") or "(none)",
     }
@@ -107,10 +131,10 @@ def _outline_view(
 def _report_rules_view(
     input: dict[str, Any], output: dict[str, Any], expected: dict[str, Any]
 ) -> dict[str, Any] | None:
-    if not expected["report"]:
+    if not _writes_report(expected):
         return None
     return {
-        "transcript": input["transcript"],
+        "transcript": output.get("transcript") or "",
         "outline": "\n".join(output.get("outline") or []),
         "report": output.get("report") or "",
     }
@@ -147,8 +171,12 @@ def urls_from_transcript(variables: dict[str, Any]) -> bool:
 
 
 def judges() -> tuple[Judge, ...]:
-    """Return the reporter eval's judges."""
+    """Return the reporter_fixed eval's judges."""
     return (
+        Judge(
+            "reply_actions_match", "binary", _reply_actions_view, check=matches_expected
+        ),
+        Judge("outcome_matches", "binary", _outcome_view, check=matches_expected),
         Judge("follows_outline", "binary", _report_view, check=follows_outline),
         Judge(
             "urls_from_transcript", "binary", _report_view, check=urls_from_transcript

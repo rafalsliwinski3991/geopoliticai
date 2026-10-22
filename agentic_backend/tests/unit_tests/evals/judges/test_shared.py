@@ -9,6 +9,7 @@ import pytest
 from evals.judges.shared import (
     build_outcome_judge,
     finished_or_outside,
+    matches_expected,
     render_cited_sources,
     skip_unless_finished,
     urls_from_sources,
@@ -70,6 +71,20 @@ def test_an_answer_with_no_links_fails() -> None:
 
     # Assert
     assert not passed
+
+
+@pytest.mark.parametrize(
+    ("actual", "passed"),
+    [("geopolitical", True), ("other", False)],
+    ids=["same value", "different value"],
+)
+def test_matches_expected_passes_only_an_exact_match(actual: str, passed: bool) -> None:
+    # Arrange
+    variables = {"actual": actual, "expected": "geopolitical"}
+    # Act
+    result = matches_expected(variables)
+    # Assert
+    assert result is passed
 
 
 @pytest.mark.parametrize(

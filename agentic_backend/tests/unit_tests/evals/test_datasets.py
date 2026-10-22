@@ -1,68 +1,126 @@
-"""Every eval dataset is validated against its own judges.
+"""Every eval dataset loads, has its script and judges, and checks only keys its judges read.
 
-For each dataset file, its judges package must exist with unique judge names,
-and using each example's expected output as the actual output must leave every
-view unraised, match every LLM prompt's template fields, and pass every code
-check. This catches prompt/view drift and a bad recording with no new test code.
+A typo in an expected key (`destinaton`) would otherwise switch a check off
+with no sign, because a key present in `expected` is what gets checked
+(brainstorm 2026Oct21 Q2). Prompt fields are checked in each judges test.
 """
 
 from __future__ import annotations
 
 import importlib
-import string
+import re
 from pathlib import Path
 
 import pytest
 
-from evals.helpers.judge import Judge
-from evals.helpers.run import load_examples
+from evals.helpers.graph import load_messages, load_sources
+from evals.helpers.judge import markdown_link_urls
+from evals.helpers.run import DATASETS_DIR, eval_kind, load_examples
 
-DATASETS = sorted((Path(__file__).parents[3] / "evals" / "datasets").glob("*.json"))
+DATASETS = sorted(DATASETS_DIR.glob("*.json"))
+MAKEFILE = DATASETS_DIR.parents[1] / "Makefile"
+WORKFLOW = DATASETS_DIR.parents[2] / ".github" / "workflows" / "evals.yml"
+# The `type` input each kind's workflow step skips on.
+SKIPPED_TYPE = {"fixed": "live", "live": "fixed"}
 
 
-def _judges_for(path: Path) -> tuple[Judge, ...]:
-    module = importlib.import_module(f"evals.judges.{path.stem}")
-    judges: tuple[Judge, ...] = module.judges()
-    return judges
+def _judges_module(path: Path) -> object:
+    return importlib.import_module(f"evals.judges.{path.stem}")
 
 
-@pytest.mark.parametrize("path", DATASETS)
-def test_load_examples_accepts_every_dataset(path: Path) -> None:
+@pytest.mark.parametrize("path", DATASETS, ids=lambda path: path.stem)
+def test_every_dataset_loads(path: Path) -> None:
+    """A dataset the runner would refuse must fail here, before any model call is paid for."""
     # Act + Assert (a ValueError would fail the test)
     load_examples(path)
 
 
-@pytest.mark.parametrize("path", DATASETS)
-def test_judges_have_unique_names(path: Path) -> None:
+@pytest.mark.parametrize("path", DATASETS, ids=lambda path: path.stem)
+def test_every_dataset_has_its_eval_script_and_uniquely_named_judges(
+    path: Path,
+) -> None:
+    """The script, dataset, and judges share one name; a rename that misses one breaks the run."""
     # Act
-    names = [judge.name for judge in _judges_for(path)]
-
+    importlib.import_module(f"evals.{path.stem}")
+    names = [judge.name for judge in getattr(_judges_module(path), "judges")()]
     # Assert
     assert names
     assert len(names) == len(set(names))
 
 
-@pytest.mark.parametrize("path", DATASETS)
-def test_expected_output_passes_its_own_judges(path: Path) -> None:
-    # Arrange + Act + Assert: the expected output must satisfy every judge,
-    # so the dataset round-trips through the views and checks unchanged.
-    judges = _judges_for(path)
+@pytest.mark.parametrize("path", DATASETS, ids=lambda path: path.stem)
+def test_every_expected_key_is_one_its_judges_read(path: Path) -> None:
+    """A misspelled expected key would silently switch its check off."""
+    # Arrange
+    known = getattr(_judges_module(path), "EXPECTED_KEYS")
+    # Act
+    unknown = {
+        (example["metadata"]["name"], key)
+        for example in load_examples(path)
+        for key in example["output"]
+        if key not in known
+    }
+    # Assert
+    assert unknown == set()
+
+
+@pytest.mark.parametrize("path", DATASETS, ids=lambda path: path.stem)
+def test_every_conversation_uses_known_roles(path: Path) -> None:
+    """A role other than user or assistant would crash the run after it was paid for."""
+    # Act + Assert (load_messages raises on an unknown role)
     for example in load_examples(path):
-        for judge in judges:
-            variables = judge.view(
-                dict(example["input"]),
-                dict(example["output"]),
-                dict(example["output"]),
-            )
-            if variables is None:
-                continue  # not applicable to this example
-            if judge.prompt is not None:
-                fields = {
-                    name
-                    for _, name, _, _ in string.Formatter().parse(judge.prompt)
-                    if name
-                }
-                assert set(variables) == fields, judge.name
-            else:
-                assert judge.check is not None
-                assert judge.check(variables), judge.name
+        load_messages(example["input"].get("messages", []))
+
+
+@pytest.mark.parametrize("path", DATASETS, ids=lambda path: path.stem)
+def test_every_recorded_page_loads(path: Path) -> None:
+    """A page missing its title, url, or text would crash the run after it was paid for."""
+    # Act + Assert (load_sources raises KeyError on a missing field)
+    for example in load_examples(path):
+        load_sources(example["input"].get("sources", []))
+
+
+@pytest.mark.parametrize("path", DATASETS, ids=lambda path: path.stem)
+def test_every_expected_answer_links_only_its_cases_pages(path: Path) -> None:
+    """A reference answer citing a page the case does not record could never be matched."""
+    # Act
+    stray = {
+        (example["metadata"]["name"], url)
+        for example in load_examples(path)
+        for url in markdown_link_urls(example["output"].get("answer", ""))
+        if url not in {page["url"] for page in example["input"].get("sources", [])}
+    }
+    # Assert
+    assert stray == set()
+
+
+def test_the_makefile_lists_every_eval_under_its_kind() -> None:
+    """`make evals-fixed` and `make evals-live` must run every eval of their kind, and only those."""
+    # Arrange
+    text = MAKEFILE.read_text(encoding="utf-8")
+    listed = {
+        kind: re.search(rf"^{kind.upper()}_EVALS = (.*)$", text, re.MULTILINE)
+        for kind in ("fixed", "live")
+    }
+    # Act
+    made = {
+        kind: set(match.group(1).split()) if match else set()
+        for kind, match in listed.items()
+    }
+    # Assert
+    for kind in ("fixed", "live"):
+        assert made[kind] == {
+            path.stem for path in DATASETS if eval_kind(path.stem) == kind
+        }
+
+
+@pytest.mark.parametrize("path", DATASETS, ids=lambda path: path.stem)
+def test_the_workflow_runs_every_eval_only_for_its_kind(path: Path) -> None:
+    """Each eval has one `evals.yml` step, skipped when the dispatch asks for the other kind."""
+    # Arrange
+    steps = WORKFLOW.read_text(encoding="utf-8").split("- name:")
+    # Act
+    own = [step for step in steps if f"python -m evals.{path.stem}\n" in step]
+    # Assert
+    assert len(own) == 1
+    assert f"inputs.type != '{SKIPPED_TYPE[eval_kind(path.stem)]}'" in own[0]
