@@ -16,7 +16,17 @@ import time
 from collections.abc import Callable, Coroutine, Sequence
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
+
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    ValidationError,
+    ValidationInfo,
+    field_validator,
+    model_validator,
+)
 
 from config import init_environment, require_env
 from evals.helpers import phoenix
@@ -41,8 +51,69 @@ TIMEOUT_SECONDS = 180
 FIXED_ENV_VARS = ("OPENAI_API_KEY", "OPENROUTER_API_KEY")
 LIVE_ENV_VARS = (*FIXED_ENV_VARS, "BRAVE_SEARCH_KEY")
 # One name per idea across every dataset (brainstorm 2026Oct21 Q1).
-INPUT_KEYS = frozenset({"query", "messages", "sources", "replies"})
+InputKey = Literal["query", "messages", "sources", "replies"]
 logger = logging.getLogger("agent")
+
+
+class DatasetCase(BaseModel):
+    """One case: a unique `name`, a `description`, an `input`, and, in a fixed eval only, `expected`.
+
+    The kind rules read the eval's kind from the validation context. Keys a
+    case carries beyond these four are ignored.
+    """
+
+    model_config = ConfigDict(strict=True)
+
+    name: str
+    description: str
+    input: Annotated[dict[InputKey, Any], Field(min_length=1)]
+    expected: dict[str, Any] | None = None
+
+    @field_validator("description")
+    @classmethod
+    def _require_text(cls, description: str) -> str:
+        if not description.strip():
+            raise ValueError("a case needs a description")
+        return description
+
+    @model_validator(mode="after")
+    def _follow_the_kind(self, info: ValidationInfo) -> DatasetCase:
+        # Only `read_dataset` validates a case, and it always passes the kind.
+        kind: EvalKind = (info.context or {})["kind"]
+        if kind == "fixed" and not self.expected:
+            raise ValueError(
+                f"fixed case {self.name!r} needs a non-empty expected object"
+            )
+        if kind == "live" and "expected" in self.model_fields_set:
+            raise ValueError(f"live case {self.name!r} must not have expected")
+        # The live wrapper names each case's report row by its query.
+        if kind == "live" and not isinstance(self.input.get("query"), str):
+            raise ValueError(f"live case {self.name!r} needs a string query")
+        return self
+
+
+class Dataset(BaseModel):
+    """A dataset file: `{"description": str, "cases": [...]}`, case names unique."""
+
+    model_config = ConfigDict(strict=True)
+
+    description: str
+    cases: Annotated[list[DatasetCase], Field(min_length=1)]
+
+    @field_validator("description")
+    @classmethod
+    def _require_text(cls, description: str) -> str:
+        if not description.strip():
+            raise ValueError("the dataset needs a description")
+        return description
+
+    @model_validator(mode="after")
+    def _refuse_duplicate_names(self) -> Dataset:
+        names = [case.name for case in self.cases]
+        duplicates = sorted({name for name in names if names.count(name) > 1})
+        if duplicates:
+            raise ValueError(f"duplicate case names {duplicates}")
+        return self
 
 
 def eval_kind(eval_name: str) -> EvalKind:
@@ -54,62 +125,30 @@ def eval_kind(eval_name: str) -> EvalKind:
     raise ValueError(f"{eval_name}: an eval's name ends in _fixed or _live")
 
 
-def load_examples(path: Path) -> list[dict[str, Any]]:
-    """Load a dataset and return Phoenix's `{input, output, metadata}` examples.
+def read_dataset(path: Path) -> Dataset:
+    """Validate a dataset file against `Dataset` for its eval's kind.
 
-    The file is `{"description": str, "cases": [...]}`. A case has a unique
-    `name`, a `description`, an `input` built from `INPUT_KEYS`, and, in a
-    fixed eval only, `expected`: the keys its judges check. A live case has no
-    `expected`; its judges read the run's own output.
+    A fixed case's `expected` holds the keys its judges check; a live case has
+    none, and its judges read the run's own output. An invalid file raises a
+    ValueError that names it.
     """
-    kind = eval_kind(path.stem)
     raw: object = json.loads(path.read_text(encoding="utf-8"))
-    if not isinstance(raw, dict):
-        raise ValueError(f'{path.name} must be {{"description": str, "cases": [...]}}')
-    description = raw.get("description")
-    if not isinstance(description, str) or not description.strip():
-        raise ValueError(f"{path.name}: the dataset needs a description")
-    cases = raw.get("cases")
-    if not isinstance(cases, list) or not cases:
-        raise ValueError(f"{path.name}: cases must be a non-empty list")
-    names: set[str] = set()
-    return [_read_case(path.name, kind, case, names) for case in cases]
+    try:
+        return Dataset.model_validate(raw, context={"kind": eval_kind(path.stem)})
+    except ValidationError as error:
+        raise ValueError(f"{path.name}: {error}") from error
 
 
-def _read_case(
-    file_name: str, kind: EvalKind, case: object, names: set[str]
-) -> dict[str, Any]:
-    """Check one case against the contract and return it as a Phoenix example."""
-    if not (isinstance(case, dict) and isinstance(case.get("name"), str)):
-        raise ValueError(f"{file_name}: every case needs a string name")
-    name: str = case["name"]
-    if name in names:
-        raise ValueError(f"{file_name}: duplicate case name {name!r}")
-    names.add(name)
-    description = case.get("description")
-    if not isinstance(description, str) or not description.strip():
-        raise ValueError(f"{file_name}: case {name!r} needs a description")
-    input = case.get("input")
-    if not isinstance(input, dict) or not input:
-        raise ValueError(f"{file_name}: case {name!r} needs a non-empty input object")
-    unknown = sorted(set(input) - INPUT_KEYS)
-    if unknown:
-        raise ValueError(f"{file_name}: case {name!r} has unknown input keys {unknown}")
-    expected = case.get("expected")
-    if kind == "fixed" and not (isinstance(expected, dict) and expected):
-        raise ValueError(
-            f"{file_name}: fixed case {name!r} needs a non-empty expected object"
-        )
-    if kind == "live" and "expected" in case:
-        raise ValueError(f"{file_name}: live case {name!r} must not have expected")
-    # The live wrapper names each case's report row by its query.
-    if kind == "live" and not isinstance(input.get("query"), str):
-        raise ValueError(f"{file_name}: live case {name!r} needs a string query")
-    return {
-        "input": input,
-        "output": expected or {},
-        "metadata": {"name": name, "description": description},
-    }
+def load_examples(path: Path) -> list[dict[str, Any]]:
+    """Return a valid dataset's cases as Phoenix's `{input, output, metadata}` examples."""
+    return [
+        {
+            "input": case.input,
+            "output": case.expected or {},
+            "metadata": {"name": case.name, "description": case.description},
+        }
+        for case in read_dataset(path).cases
+    ]
 
 
 def dataset_name(eval_name: str, path: Path) -> str:

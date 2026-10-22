@@ -135,26 +135,26 @@ def test_a_bare_list_dataset_is_refused(tmp_path: Path) -> None:
     path = _write_dataset(tmp_path, FIXED_PATH_NAME, [_case()])
 
     # Act + Assert
-    with pytest.raises(ValueError, match="description"):
+    with pytest.raises(ValueError, match="valid dictionary or instance of Dataset"):
         run_mod.load_examples(path)
 
 
 @pytest.mark.parametrize(
-    "document",
+    ("document", "message"),
     [
-        {"description": "", "cases": [_case()]},
-        {"cases": [_case()]},
+        ({"description": "", "cases": [_case()]}, "the dataset needs a description"),
+        ({"cases": [_case()]}, r"description\n\s+Field required"),
     ],
     ids=["empty description", "missing description"],
 )
 def test_a_dataset_without_a_description_is_refused(
-    tmp_path: Path, document: dict[str, Any]
+    tmp_path: Path, document: dict[str, Any], message: str
 ) -> None:
     # Arrange
     path = _write_dataset(tmp_path, FIXED_PATH_NAME, document)
 
     # Act + Assert
-    with pytest.raises(ValueError, match="the dataset needs a description"):
+    with pytest.raises(ValueError, match=message):
         run_mod.load_examples(path)
 
 
@@ -163,23 +163,27 @@ def test_a_case_without_a_description_is_refused(tmp_path: Path) -> None:
     path = _write_dataset(tmp_path, FIXED_PATH_NAME, _wrap(_case(description=_MISSING)))
 
     # Act + Assert
-    with pytest.raises(ValueError, match="needs a description"):
+    with pytest.raises(ValueError, match=r"cases\.0\.description\n\s+Field required"):
         run_mod.load_examples(path)
 
 
 @pytest.mark.parametrize(
-    "expected",
-    [_MISSING, {}, []],
+    ("expected", "message"),
+    [
+        (_MISSING, "needs a non-empty expected object"),
+        ({}, "needs a non-empty expected object"),
+        ([], r"cases\.0\.expected\n\s+Input should be a valid dictionary"),
+    ],
     ids=["missing", "empty object", "a list"],
 )
 def test_a_fixed_case_without_expected_is_refused(
-    tmp_path: Path, expected: object
+    tmp_path: Path, expected: object, message: str
 ) -> None:
     # Arrange
     path = _write_dataset(tmp_path, FIXED_PATH_NAME, _wrap(_case(expected=expected)))
 
     # Act + Assert
-    with pytest.raises(ValueError, match="needs a non-empty expected object"):
+    with pytest.raises(ValueError, match=message):
         run_mod.load_examples(path)
 
 
@@ -217,7 +221,10 @@ def test_an_unknown_input_key_is_refused(tmp_path: Path) -> None:
     )
 
     # Act + Assert
-    with pytest.raises(ValueError, match="unknown input keys"):
+    with pytest.raises(
+        ValueError,
+        match=r"cases\.0\.input\.question\.\[key\]\n\s+Input should be 'query'",
+    ):
         run_mod.load_examples(path)
 
 
@@ -233,16 +240,34 @@ def test_duplicate_case_names_are_refused(tmp_path: Path) -> None:
 @pytest.mark.parametrize(
     ("document", "message"),
     [
-        ({"description": "d", "cases": None}, "non-empty list"),
-        ({"description": "d", "cases": []}, "non-empty list"),
-        ({"description": 1, "cases": [_case()]}, "the dataset needs a description"),
-        ({"description": "d", "cases": ["n"]}, "needs a string name"),
-        (_wrap(_case(name=_MISSING)), "needs a string name"),
-        (_wrap(_case(name=1)), "needs a string name"),
-        (_wrap(_case(description=1)), "needs a description"),
-        (_wrap(_case(description="  ")), "needs a description"),
-        (_wrap(_case(input=[])), "non-empty input object"),
-        (_wrap(_case(input={})), "non-empty input object"),
+        (
+            {"description": "d", "cases": None},
+            r"cases\n\s+Input should be a valid list",
+        ),
+        (
+            {"description": "d", "cases": []},
+            r"cases\n\s+List should have at least 1 item",
+        ),
+        (
+            {"description": 1, "cases": [_case()]},
+            r"description\n\s+Input should be a valid string",
+        ),
+        (
+            {"description": "d", "cases": ["n"]},
+            r"cases\.0\n\s+Input should be a valid dictionary",
+        ),
+        (_wrap(_case(name=_MISSING)), r"cases\.0\.name\n\s+Field required"),
+        (_wrap(_case(name=1)), r"cases\.0\.name\n\s+Input should be a valid string"),
+        (
+            _wrap(_case(description=1)),
+            r"cases\.0\.description\n\s+Input should be a valid string",
+        ),
+        (_wrap(_case(description="  ")), "a case needs a description"),
+        (_wrap(_case(input=[])), r"cases\.0\.input\n\s+Input should be a valid dict"),
+        (
+            _wrap(_case(input={})),
+            r"cases\.0\.input\n\s+Dictionary should have at least 1 item",
+        ),
     ],
     ids=[
         "cases null",
