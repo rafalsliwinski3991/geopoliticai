@@ -31,13 +31,12 @@ logger = logging.getLogger(__name__)
 # its own client timeouts).
 GRACE_SECONDS = 0.25
 REPEATS = 3
-# The deep expert, the forecast, and the forecast's research step run their
-# graphs with no checkpointer. Invoked inside the orchestrator's node, every
-# nested run would inherit its Postgres saver: `checkpointer=False` covers only
-# the agent's own loop, while its tasks still pass the parent saver down
-# (langgraph 1.2.12 `pregel/_algo.py:737-740`) to the `task` subagent and the
-# rubric grader. A None under this key reaches the whole tree and disables all
-# of it. `langgraph.constants` keeps the name public through 1.x; the pin is <1.3.
+# Invoked inside the orchestrator's node, every nested run would inherit its
+# Postgres saver: `checkpointer=False` covers only the agent's own loop, while
+# its tasks still pass the parent saver down (langgraph 1.2.12
+# `pregel/_algo.py:737-740`) to the `task` subagent and the rubric grader. A
+# None under this key reaches the whole tree and disables all of it.
+# `langgraph.constants` keeps the name public through 1.x; the pin is <1.3.
 NO_CHECKPOINTER_CONFIG: RunnableConfig = {
     "configurable": {CONFIG_KEY_CHECKPOINTER: None}
 }

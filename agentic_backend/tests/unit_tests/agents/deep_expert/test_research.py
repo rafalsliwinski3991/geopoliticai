@@ -367,11 +367,9 @@ async def test_a_deep_run_that_absorbs_a_cancel_still_ends_at_the_cap(
     spy = _CancelAbsorbingSpy([AIMessage(DEEP_ANSWER)], cited_run())
     monkeypatch.setattr(research_module, "build_graph", lambda run: spy.bind_run(run))
 
-    # Act
-    call = research_module.research("q", lambda e: None)
-    # Assert
+    # Act + Assert
     with pytest.raises(ResearchLimitError, match="0.01-second"):
-        await call
+        await research_module.research("q", lambda e: None)
 
 
 @pytest.mark.anyio

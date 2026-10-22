@@ -85,8 +85,8 @@ def build_graph(run: ResearchRun) -> Any:
     orchestrator's Postgres saver. It does not reach the `task` subagent or the
     rubric grader, which compile with no checkpointer and would still inherit
     it; `agents.capped_run` switches the saver off for the whole tree at
-    invocation (`NO_CHECKPOINTER_CONFIG`). The run has no interrupt and is never resumed,
-    so checkpoint writes would buy nothing.
+    invocation (`capped_run.NO_CHECKPOINTER_CONFIG`). The run has no interrupt
+    and is never resumed, so checkpoint writes would buy nothing.
     """
     # The installed middleware classes are invariant on their state parameter
     # (`RubricState` vs `PlanningState[ResponseT]`), so the heterogeneous list

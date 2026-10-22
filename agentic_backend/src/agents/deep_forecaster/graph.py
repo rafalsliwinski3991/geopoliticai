@@ -13,8 +13,8 @@ as a `notice` (guarded in `tests/unit_tests/test_api.py`).
 Built per call by `forecast()`, as the deep expert builds its agent. Nothing
 here needs a key; one construction path keeps tests and runtime alike. There
 is no checkpointer: `forecast()` also switches the parent's saver off for the
-whole tree (`NO_CHECKPOINTER_CONFIG`), runs the graph under the wall cap, and
-maps its failures to pipeline errors.
+whole tree (`capped_run.NO_CHECKPOINTER_CONFIG`), runs the graph under the
+wall cap, and maps its failures to pipeline errors.
 """
 
 from __future__ import annotations

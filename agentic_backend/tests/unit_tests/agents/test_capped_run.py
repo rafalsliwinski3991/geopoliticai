@@ -17,20 +17,29 @@ limits_module: Any = importlib.import_module("agents.capped_run")
 
 @pytest.mark.anyio
 async def test_a_run_inside_the_limit_returns_its_result() -> None:
-    result, capped = await limits_module.run_under_time_limits(_returns("x"), 1.0)
+    # Arrange
+    coro = _returns("x")
+    # Act
+    result, capped = await limits_module.run_under_time_limits(coro, 1.0)
+    # Assert
     assert result == "x"
     assert capped is False
 
 
 @pytest.mark.anyio
 async def test_a_run_outliving_the_cap_is_capped_and_dead() -> None:
-    result, capped = await limits_module.run_under_time_limits(_sleeps(10), 0.05)
+    # Arrange
+    coro = _sleeps(10)
+    # Act
+    result, capped = await limits_module.run_under_time_limits(coro, 0.05)
+    # Assert
     assert result is None
     assert capped is True
 
 
 @pytest.mark.anyio
 async def test_a_run_that_ignores_the_first_cancel_is_still_bounded() -> None:
+    # Arrange
     class _Absorber:
         """A coroutine that swallows cancels twice and keeps sleeping."""
 
@@ -51,7 +60,9 @@ async def test_a_run_that_ignores_the_first_cancel_is_still_bounded() -> None:
             return self._sleep()
 
     absorber = _Absorber()
+    # Act
     result, capped = await limits_module.run_under_time_limits(absorber(), 0.05)
+    # Assert
     assert result is None
     assert capped is True
     assert absorber.cancelled == 2
@@ -59,6 +70,7 @@ async def test_a_run_that_ignores_the_first_cancel_is_still_bounded() -> None:
 
 @pytest.mark.anyio
 async def test_the_callers_own_cancellation_cancels_the_inner_run() -> None:
+    # Arrange
     inner: asyncio.Task[Any] | None = None
 
     def coro() -> Any:
@@ -73,7 +85,9 @@ async def test_the_callers_own_cancellation_cancels_the_inner_run() -> None:
 
     task = asyncio.ensure_future(limits_module.run_under_time_limits(coro(), 10.0))
     await asyncio.sleep(0.05)
+    # Act
     task.cancel()
+    # Assert
     with pytest.raises(asyncio.CancelledError):
         await task
     assert inner is not None
@@ -82,9 +96,11 @@ async def test_the_callers_own_cancellation_cancels_the_inner_run() -> None:
 
 @pytest.mark.anyio
 async def test_an_inner_timeout_error_propagates_uncapped() -> None:
+    # Arrange
     async def fails() -> None:
         raise TimeoutError("inner")
 
+    # Act + Assert
     with pytest.raises(TimeoutError, match="inner"):
         await limits_module.run_under_time_limits(fails(), 10.0)
 
