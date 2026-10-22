@@ -14,7 +14,7 @@ import unicodedata
 from collections import Counter
 from collections.abc import Sequence
 from html.parser import HTMLParser
-from typing import NamedTuple
+from typing import Literal, NamedTuple
 from urllib.parse import urljoin, urlparse
 
 import httpx
@@ -52,6 +52,15 @@ FETCH_HEADERS = {
     "Accept": "text/html,application/xhtml+xml",
     "Accept-Language": "en-US,en;q=0.9",
 }
+FetchOutcome = Literal[
+    "ok",
+    "off_list",
+    "fetch_failed",
+    "redirect_limit",
+    "not_html",
+    "too_short",
+    "extract_failed",
+]
 
 
 # Search: Brave, behind the allow-list.
@@ -242,12 +251,10 @@ async def _fetch_and_extract(
         outcome, source, page = await _fetch_page(client, candidate, policy)
         span.set_attribute("source.outcome", outcome)
         if source is not None and page is not None and page.text:
-            # Outside `_fetch_page`'s extraction `try`: a telemetry failure
+            # Outside `_read_page`'s extraction `try`: a telemetry failure
             # must never turn an accepted page into `extract_failed`.
             try:
-                span.set_attributes(
-                    _page_attributes(source.url, page.text, page, policy)
-                )
+                span.set_attributes(_page_attributes(source.url, page, policy))
             except Exception as exc:  # noqa: BLE001 - tracing never fails a request
                 logger.debug("fetch_source attributes failed: %s", exc)
         return source
@@ -255,7 +262,7 @@ async def _fetch_and_extract(
 
 async def _fetch_page(
     client: httpx.AsyncClient, candidate: Candidate, policy: SourcePolicy
-) -> tuple[str, Source | None, ExtractedPage | None]:
+) -> tuple[FetchOutcome, Source | None, ExtractedPage | None]:
     """Return why the page was dropped, or ``"ok"``, its source and its extraction."""
     url = candidate.url
     for redirect in range(MAX_REDIRECTS + 1):
@@ -285,29 +292,37 @@ async def _fetch_page(
         except httpx.HTTPError as exc:
             logger.info("Fetch failed url=%s: %s", url, exc)
             return "fetch_failed", None, None
-        try:
-            if "html" not in response.headers.get("content-type", "").lower():
-                return "not_html", None, None
-            page = await _extract_page(response.text)
-            if not page.text or len(page.text) < policy.min_source_chars:
-                return "too_short", None, None
-            source = Source(
-                title=candidate.title,
-                url=url,
-                text=page.text[: policy.max_source_chars],
-                author=page.author,
-            )
-            return "ok", source, page
-        except Exception as exc:  # noqa: BLE001 - one bad source must not abort the batch
-            logger.info("Extraction failed url=%s: %s", url, exc)
-            return "extract_failed", None, None
+        return await _read_page(response, url, candidate.title, policy)
     return "redirect_limit", None, None
 
 
+async def _read_page(
+    response: httpx.Response, url: str, title: str, policy: SourcePolicy
+) -> tuple[FetchOutcome, Source | None, ExtractedPage | None]:
+    """Extract one fetched HTML page; drop it when it is not HTML, too short, or unreadable."""
+    try:
+        if "html" not in response.headers.get("content-type", "").lower():
+            return "not_html", None, None
+        page = await _extract_page(response.text)
+        if not page.text or len(page.text) < policy.min_source_chars:
+            return "too_short", None, None
+        source = Source(
+            title=title,
+            url=url,
+            text=page.text[: policy.max_source_chars],
+            author=page.author,
+        )
+        return "ok", source, page
+    except Exception as exc:  # noqa: BLE001 - one bad source must not abort the batch
+        logger.info("Extraction failed url=%s: %s", url, exc)
+        return "extract_failed", None, None
+
+
 def _page_attributes(
-    url: str, text: str, page: ExtractedPage, policy: SourcePolicy
+    url: str, page: ExtractedPage, policy: SourcePolicy
 ) -> dict[str, str | int | bool]:
     """Return a kept page's span attributes: what the cut lost, and its facts."""
+    text = page.text or ""
     return {
         "source.url": url,
         "source.chars_full": len(text),
