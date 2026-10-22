@@ -364,8 +364,8 @@ async def _extract_page(body: str) -> ExtractedPage:
     return await asyncio.to_thread(_extract_page_sync, body)
 
 
-class _BylineParser(HTMLParser):
-    """Collect a page's `<meta name="author">` values and JSON-LD blocks."""
+class _HeadParser(HTMLParser):
+    """Collect a page's `<html lang>`, `<meta name="author">` values and JSON-LD blocks."""
 
     def __init__(self) -> None:
         super().__init__()
@@ -416,10 +416,10 @@ def _json_ld_authors(node: object) -> list[str]:
     return names
 
 
-def _parse_head(body: str) -> _BylineParser | None:
+def _parse_head(body: str) -> _HeadParser | None:
     """Parse a page's byline sources and `<html lang>` once, or None (worker thread)."""
     try:
-        parser = _BylineParser()
+        parser = _HeadParser()
         parser.feed(body)
         parser.close()
     except Exception:  # noqa: BLE001 - optional facts never cost a source
@@ -427,7 +427,7 @@ def _parse_head(body: str) -> _BylineParser | None:
     return parser
 
 
-def _byline_from(parser: _BylineParser | None) -> str:
+def _byline_from(parser: _HeadParser | None) -> str:
     """Return the page's own byline, or "" (worker thread).
 
     A byline is optional: a malformed page or JSON-LD block must never drop a
@@ -450,17 +450,12 @@ def _byline_from(parser: _BylineParser | None) -> str:
     return byline[:MAX_AUTHOR_CHARS]
 
 
-def _lang_from(parser: _BylineParser | None) -> str:
+def _lang_from(parser: _HeadParser | None) -> str:
     """Return the page's declared primary language subtag ("pl"), or ""."""
     if parser is None:
         return ""
     tag = parser.html_lang.strip().lower().replace("_", "-")
     return tag.split("-")[0][:MAX_LANG_CHARS]
-
-
-def _byline_sync(body: str) -> str:
-    """Return the page's own byline, or "" (worker thread)."""
-    return _byline_from(_parse_head(body))
 
 
 async def fetch_sources(

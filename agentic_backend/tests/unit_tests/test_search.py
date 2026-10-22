@@ -642,9 +642,9 @@ async def test_a_page_without_a_byline_has_an_empty_author(
         ),
     ],
 )
-def test_byline_sync(page: str, expected: str) -> None:
+def test_byline_from_parsed_head(page: str, expected: str) -> None:
     # Act + Assert
-    assert search._byline_sync(page) == expected
+    assert search._byline_from(search._parse_head(page)) == expected
 
 
 def test_a_250_character_name_is_cut_to_200() -> None:
@@ -654,7 +654,7 @@ def test_a_250_character_name_is_cut_to_200() -> None:
         f'<html><head><meta name="author" content="{name}"></head><body></body></html>'
     )
     # Act + Assert
-    assert search._byline_sync(page) == name[:200]
+    assert search._byline_from(search._parse_head(page)) == name[:200]
 
 
 @pytest.mark.anyio
@@ -674,11 +674,11 @@ async def test_a_byline_failure_keeps_the_page(monkeypatch: pytest.MonkeyPatch) 
             request=httpx.Request("GET", "https://reuters.com/x"),
         )
 
-    def broken_feed(self: search._BylineParser, data: str) -> None:
+    def broken_feed(self: search._HeadParser, data: str) -> None:
         raise RuntimeError("broken jsonld")
 
     monkeypatch.setattr(httpx.AsyncClient, "get", fake_get)
-    monkeypatch.setattr(search._BylineParser, "feed", broken_feed)
+    monkeypatch.setattr(search._HeadParser, "feed", broken_feed)
     # Act
     source = await search._fetch_and_extract(
         httpx.AsyncClient(),
