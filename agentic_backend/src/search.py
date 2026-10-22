@@ -54,6 +54,7 @@ FETCH_HEADERS = {
 }
 
 
+# Search: Brave, behind the allow-list.
 def _normalize_domain(url: str) -> str:
     """Return the lowercase host of a URL-like string without ``www.``."""
     raw = (url or "").strip()
@@ -100,15 +101,6 @@ def build_batch_query(query: str, domains: Sequence[str]) -> str:
         logger.warning("Brave query over budget; dropping domain=%s", kept[-1])
         kept.pop()
     raise ValueError("Query too long to combine with any site filter.")
-
-
-class ExtractedPage(NamedTuple):
-    """What one worker hop reads from a page body."""
-
-    text: str | None
-    author: str
-    published: str
-    lang: str
 
 
 async def _brave_batch(
@@ -173,6 +165,65 @@ def merge_candidates(
             merged.append(candidate)
     merged.sort(key=lambda item: item.domain in policy.deferred_domains)
     return merged
+
+
+async def search_allowlisted(query: str, policy: SourcePolicy) -> list[Candidate]:
+    """Run exactly one Brave request per policy batch and merge results.
+
+    One `brave_search` span per call: what each batch returned after the
+    allow-list gate, how many failed, and the domains searched, which for a
+    forecaster search name the forecaster (brainstorm 2026Oct13 Q9).
+    """
+    brave_key = os.getenv("BRAVE_SEARCH_KEY")
+    if not brave_key:
+        raise SearchUnavailableError("Missing BRAVE_SEARCH_KEY for live search.")
+    headers = {
+        "Accept": "application/json",
+        "Accept-Encoding": "gzip",
+        "X-Subscription-Token": brave_key,
+    }
+    with start_span("brave_search") as span:
+        async with httpx.AsyncClient(headers=headers) as client:
+            results = await asyncio.gather(
+                *(
+                    _brave_batch(client, query, batch, policy)
+                    for batch in policy.batches
+                ),
+                return_exceptions=True,
+            )
+        batches: list[list[Candidate]] = []
+        for result in results:
+            if isinstance(result, asyncio.CancelledError):
+                # Preserve cancellation: the request was aborted mid-search, and a
+                # cancelled batch must not be swallowed as a mere "batch failed".
+                raise result
+            if isinstance(result, BaseException):
+                logger.warning("Brave batch failed: %s", result)
+            else:
+                batches.append(result)
+        span.set_attributes(
+            {
+                "search.domains": sorted(policy.allowed_domains),
+                "search.batches": len(policy.batches),
+                "search.failed_batches": len(policy.batches) - len(batches),
+                "search.results_per_batch": [len(batch) for batch in batches],
+            }
+        )
+        if not batches:
+            raise SearchUnavailableError("Every Brave request failed for this run.")
+        merged = merge_candidates(batches, policy)
+        span.set_attribute("search.candidates", len(merged))
+        return merged
+
+
+# Page reading: fetch, extract, and the page's own facts.
+class ExtractedPage(NamedTuple):
+    """What one worker hop reads from a page body."""
+
+    text: str | None
+    author: str
+    published: str
+    lang: str
 
 
 async def _fetch_and_extract(
@@ -410,55 +461,6 @@ def _lang_from(parser: _BylineParser | None) -> str:
 def _byline_sync(body: str) -> str:
     """Return the page's own byline, or "" (worker thread)."""
     return _byline_from(_parse_head(body))
-
-
-async def search_allowlisted(query: str, policy: SourcePolicy) -> list[Candidate]:
-    """Run exactly one Brave request per policy batch and merge results.
-
-    One `brave_search` span per call: what each batch returned after the
-    allow-list gate, how many failed, and the domains searched, which for a
-    forecaster search name the forecaster (brainstorm 2026Oct13 Q9).
-    """
-    brave_key = os.getenv("BRAVE_SEARCH_KEY")
-    if not brave_key:
-        raise SearchUnavailableError("Missing BRAVE_SEARCH_KEY for live search.")
-    headers = {
-        "Accept": "application/json",
-        "Accept-Encoding": "gzip",
-        "X-Subscription-Token": brave_key,
-    }
-    with start_span("brave_search") as span:
-        async with httpx.AsyncClient(headers=headers) as client:
-            results = await asyncio.gather(
-                *(
-                    _brave_batch(client, query, batch, policy)
-                    for batch in policy.batches
-                ),
-                return_exceptions=True,
-            )
-        batches: list[list[Candidate]] = []
-        for result in results:
-            if isinstance(result, asyncio.CancelledError):
-                # Preserve cancellation: the request was aborted mid-search, and a
-                # cancelled batch must not be swallowed as a mere "batch failed".
-                raise result
-            if isinstance(result, BaseException):
-                logger.warning("Brave batch failed: %s", result)
-            else:
-                batches.append(result)
-        span.set_attributes(
-            {
-                "search.domains": sorted(policy.allowed_domains),
-                "search.batches": len(policy.batches),
-                "search.failed_batches": len(policy.batches) - len(batches),
-                "search.results_per_batch": [len(batch) for batch in batches],
-            }
-        )
-        if not batches:
-            raise SearchUnavailableError("Every Brave request failed for this run.")
-        merged = merge_candidates(batches, policy)
-        span.set_attribute("search.candidates", len(merged))
-        return merged
 
 
 async def fetch_sources(
