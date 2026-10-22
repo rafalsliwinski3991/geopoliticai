@@ -35,6 +35,7 @@ from agents.deep_forecaster.evidence import (
     links_in,
     quoted_sources,
     render_deadline,
+    render_numbers,
     render_reason,
 )
 from agents.deep_forecaster.models import Analysis, Ballot, Claim
@@ -90,12 +91,6 @@ def _counted(number: int, noun: str) -> str:
     return f"{number} {noun}" if number == 1 else f"{number} {noun}s"
 
 
-def _listed(numbers: Sequence[int]) -> str:
-    """Return e.g. "1, 2 and 3"."""
-    words = [str(n) for n in numbers]
-    return " and ".join([", ".join(words[:-1]), words[-1]] if len(words) > 1 else words)
-
-
 def find_defect(
     analysis: Analysis, tally: Sequence[ClaimTally], sources: Sequence[Source]
 ) -> str | None:
@@ -113,15 +108,15 @@ def find_defect(
     if written != expected:
         return (
             "The analysis did not discuss every claim exactly once: it needs one "
-            f"section for each of claims {_listed(expected)} and wrote sections "
-            f"for {_listed(written) or 'none'}."
+            f"section for each of claims {render_numbers(expected)} and wrote sections "
+            f"for {render_numbers(written) or 'none'}."
         )
     sections = sorted(analysis.claims, key=lambda section: section.claim)
     if not analysis.overview.strip():
         return "The analysis left a section empty: the overview."
     empty = [s.claim for s in sections if not s.discussion.strip()]
     if empty:
-        return f"The analysis left a section empty: claim {_listed(empty)}."
+        return f"The analysis left a section empty: claim {render_numbers(empty)}."
     text = "\n".join([analysis.overview, *(s.discussion for s in sections)])
     written_urls = links_in(text)
     if written_urls:

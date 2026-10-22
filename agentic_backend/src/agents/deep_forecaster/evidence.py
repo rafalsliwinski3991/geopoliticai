@@ -75,6 +75,14 @@ def render_deadline(deadline: date) -> str:
     return f"{deadline.day} {deadline:%B %Y}"
 
 
+def render_numbers(numbers: Sequence[int]) -> str:
+    """Return numbers as a reader reads them: "3", "3 and 5", "3, 5 and 9"."""
+    words = [str(number) for number in numbers]
+    if len(words) < 2:
+        return "".join(words)
+    return f"{', '.join(words[:-1])} and {words[-1]}"
+
+
 def render_claims(claims: Sequence[Claim]) -> str:
     """Return one `Claim n: statement (deadline: ...)` line per claim."""
     return "\n".join(

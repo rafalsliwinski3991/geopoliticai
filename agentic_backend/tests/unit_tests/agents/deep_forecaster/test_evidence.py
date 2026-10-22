@@ -13,6 +13,7 @@ from agents.deep_forecaster.evidence import (
     quoted_sources,
     render_ballot,
     render_deadline,
+    render_numbers,
     render_passages,
     render_reason,
     render_sources,
@@ -30,6 +31,42 @@ URL_IN_BYLINE = "https://x.example/author"
 def test_render_deadline_is_in_full_words() -> None:
     # Assert
     assert render_deadline(date(2027, 12, 31)) == "31 December 2027"
+
+
+def test_one_number_is_written_alone() -> None:
+    # Arrange
+    numbers = [3]
+    # Act
+    text = render_numbers(numbers)
+    # Assert
+    assert text == "3"
+
+
+def test_two_numbers_are_joined_by_and() -> None:
+    # Arrange
+    numbers = [3, 5]
+    # Act
+    text = render_numbers(numbers)
+    # Assert
+    assert text == "3 and 5"
+
+
+def test_three_numbers_use_commas_then_and() -> None:
+    # Arrange
+    numbers = [3, 5, 9]
+    # Act
+    text = render_numbers(numbers)
+    # Assert
+    assert text == "3, 5 and 9"
+
+
+def test_no_numbers_render_as_an_empty_string() -> None:
+    # Arrange
+    numbers: list[int] = []
+    # Act
+    text = render_numbers(numbers)
+    # Assert
+    assert text == ""
 
 
 def test_render_reason_removes_links_and_flattens() -> None:
