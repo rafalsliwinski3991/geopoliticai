@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 from typing_extensions import NotRequired
 
 from agents.reporter.config import MAX_TRANSCRIPT_CHARS
+from models import CleanText
 
 GateAction = Literal["approve", "revise", "cancel"]
 ResumeAction = Literal["approve", "revise", "cancel", "new_question"]
@@ -24,13 +25,13 @@ class OutlineDraft(BaseModel):
     otherwise, never omitted.
     """
 
-    sections: list[str] = Field(
+    sections: list[CleanText] = Field(
         description=(
             "Proposed report section headings, in order. Empty only when the "
             "conversation contains no researched material to report on."
         )
     )
-    notice: str = Field(
+    notice: CleanText = Field(
         description=(
             "A short explanation for the user when a request was declined or "
             "narrowed. Empty string when there is nothing to say."
@@ -48,7 +49,7 @@ class ResumeIntent(BaseModel):
             "new question about the subject rather than a comment on the outline."
         )
     )
-    instruction: str = Field(
+    instruction: CleanText = Field(
         description=(
             "For 'revise', the change to apply, in the user's own terms. "
             "Empty string for every other action."

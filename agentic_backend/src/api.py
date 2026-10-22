@@ -62,7 +62,7 @@ from db.web.sql import (
     refund_quota,
     title_from,
 )
-from models import PipelineError, ReportNotPendingError
+from models import PipelineError, ReportNotPendingError, squash_whitespace
 from tracing import bind_trace_user, init_tracing
 
 logger = logging.getLogger(__name__)
@@ -399,7 +399,7 @@ class RunPipelineRequest(BaseModel):
     def _normalize(cls, value: str | None) -> str | None:
         if value is None:
             return None
-        cleaned = " ".join(value.split())
+        cleaned = squash_whitespace(value)
         if not cleaned:
             raise ValueError("Must not be empty.")
         return cleaned

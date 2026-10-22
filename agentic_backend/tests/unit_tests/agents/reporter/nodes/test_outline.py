@@ -109,14 +109,20 @@ async def test_model_path_emits_progress_once_before_the_model_call(
 
 
 @pytest.mark.anyio
-async def test_sections_are_whitespace_normalized_and_blank_sections_dropped(
+async def test_outline_sections_arrive_squashed(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     # Arrange
+    # The schema squashes each section as the model's answer is parsed, so the
+    # node receives clean text. A blank section arrives as "" and the node drops it.
+    drafts: list[OutlineDraft] = []
+
     async def decide(*args: Any, **kwargs: Any) -> OutlineDraft:
-        return OutlineDraft(
-            sections=["  Spread   out  ", " \t ", "Also fine"], notice=""
+        draft = OutlineDraft.model_validate(
+            {"sections": ["  Spread   out  ", " \t ", "Also fine"], "notice": ""}
         )
+        drafts.append(draft)
+        return draft
 
     monkeypatch.setattr(node_module, "ainvoke_structured", decide)
     events: list[Any] = []
@@ -125,6 +131,7 @@ async def test_sections_are_whitespace_normalized_and_blank_sections_dropped(
     result = await node_module.outline(_state(), writer=events.append)
 
     # Assert
+    assert drafts[0].sections == ["Spread out", "", "Also fine"]
     assert result["outline"] == ["Spread out", "Also fine"]
 
 

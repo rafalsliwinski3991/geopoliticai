@@ -1,15 +1,18 @@
 import ormsgpack
 import pytest
 from langgraph.checkpoint.serde.jsonplus import EXT_CONSTRUCTOR_KW_ARGS
+from pydantic import BaseModel
 
 import api
 from models import (
+    CleanText,
     LLMInvocationError,
     NoSourcesError,
     PipelineError,
     ResearchLimitError,
     SearchUnavailableError,
     Source,
+    squash_whitespace,
 )
 
 
@@ -65,3 +68,26 @@ def test_a_checkpointed_source_without_author_still_loads() -> None:
     # Assert
     assert isinstance(loaded, Source)
     assert loaded == Source(title="t", url="u", text="x", author="")
+
+
+def test_whitespace_runs_become_one_space() -> None:
+    # Arrange
+    text = "  Spread\t\tout \n\n across   the flank  "
+
+    # Act
+    result = squash_whitespace(text)
+
+    # Assert
+    assert result == "Spread out across the flank"
+
+
+def test_a_clean_text_field_arrives_squashed() -> None:
+    # Arrange
+    class Note(BaseModel):
+        text: CleanText
+
+    # Act
+    note = Note.model_validate({"text": "  one \n two  "})
+
+    # Assert
+    assert note.text == "one two"
