@@ -13,8 +13,7 @@ from agents.reporter.consts.progress import REPORT_PROGRESS
 from agents.reporter.prompts import REPORT_SYSTEM_PROMPT
 from agents.reporter.state import ReporterState
 from config import MAX_ANSWER_CHARS
-from llm import astream_text
-from models import LLMInvocationError
+from llm import astream_text, collect_text
 
 logger = logging.getLogger(__name__)
 
@@ -46,14 +45,15 @@ async def write(
     logger.info(
         "write: %d sections, prompt %d chars", len(state["outline"]), len(human_prompt)
     )
-    chunks: list[str] = []
-    async for chunk in astream_text(
-        REPORT_SYSTEM_PROMPT, human_prompt, config=config, settings=REPORT_LLM_SETTINGS
-    ):
-        chunks.append(chunk)
-    text = "".join(chunks).strip()
-    if not text:
-        raise LLMInvocationError("Model returned an empty report.")
+    text = await collect_text(
+        astream_text(
+            REPORT_SYSTEM_PROMPT,
+            human_prompt,
+            config=config,
+            settings=REPORT_LLM_SETTINGS,
+        ),
+        empty_message="Model returned an empty report.",
+    )
     if len(text) > MAX_ANSWER_CHARS:
         # The stored report is capped at the delivery cap because nobody can read
         # past it: the browser receives at most `MAX_ANSWER_CHARS`. The stream is

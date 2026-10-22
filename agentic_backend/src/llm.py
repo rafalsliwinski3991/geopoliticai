@@ -15,6 +15,7 @@ from config import DEFAULT_LLM_SETTINGS, LLMSettings
 from models import LLMInvocationError
 
 DEFAULT_MAX_RETRIES = 2
+EMPTY_ANSWER_MESSAGE = "Model returned an empty answer."
 
 SchemaT = TypeVar("SchemaT", bound=BaseModel)
 
@@ -94,6 +95,16 @@ async def astream_text(
         settings=settings,
     ):
         yield chunk
+
+
+async def collect_text(
+    chunks: AsyncIterator[str], *, empty_message: str = EMPTY_ANSWER_MESSAGE
+) -> str:
+    """Return a streamed answer joined and stripped; raise when nothing is left."""
+    text = "".join([chunk async for chunk in chunks]).strip()
+    if not text:
+        raise LLMInvocationError(empty_message)
+    return text
 
 
 async def ainvoke_structured(
