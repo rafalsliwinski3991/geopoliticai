@@ -15,6 +15,7 @@ from langgraph.errors import NodeTimeoutError
 from langgraph.graph import END, START, StateGraph
 from typing_extensions import TypedDict
 
+from agents import capped_run
 from agents.deep_forecaster.config import COUNCIL
 from agents.deep_forecaster.council import QuorumError
 from agents.deep_forecaster.models import (
@@ -180,7 +181,7 @@ async def test_forecast_returns_the_answer(monkeypatch: pytest.MonkeyPatch) -> N
     answer = await graph_module.forecast("Will it happen?")
     # Assert
     assert answer == "The answer."
-    assert recorded["config"] is graph_module.NO_CHECKPOINTER_CONFIG
+    assert recorded["config"] is capped_run.NO_CHECKPOINTER_CONFIG
     assert isinstance(recorded["context"], ForecastRun)
 
 

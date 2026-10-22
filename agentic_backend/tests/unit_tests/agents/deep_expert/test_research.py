@@ -8,6 +8,8 @@ from typing import Any
 
 import pytest
 from langchain_core.messages import AIMessage, HumanMessage
+from langgraph.constants import CONFIG_KEY_CHECKPOINTER
+from langgraph.errors import NodeTimeoutError
 from opentelemetry.sdk.trace import ReadableSpan
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
     InMemorySpanExporter,
@@ -317,6 +319,62 @@ async def test_the_wall_time_cap_is_a_research_limit_error(
 
 
 @pytest.mark.anyio
+async def test_a_node_timeout_inside_the_run_is_llm_invocation_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A node's own timeout is a 502 for this turn, not the wall cap's 504.
+
+    The wall cap is a `ResearchLimitError`; a node timeout is a step's failure,
+    which the deep expert has always reported as `LLMInvocationError`.
+    """
+    # Arrange
+    spy = _GraphSpy([])
+    spy.fail_with = NodeTimeoutError("deep_expert", 90.5, kind="run", run_timeout=90.0)
+    monkeypatch.setattr(research_module, "build_graph", lambda run: spy.bind_run(run))
+
+    # Act + Assert
+    with pytest.raises(LLMInvocationError, match="Deep research failed.") as raised:
+        await research_module.research("q", lambda e: None)
+    assert isinstance(raised.value.__cause__, NodeTimeoutError)
+
+
+@pytest.mark.anyio
+async def test_a_deep_run_that_absorbs_a_cancel_still_ends_at_the_cap(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A run that swallows the cap's cancel must still end at the cap (Q4).
+
+    Smoke gate F3, run 1 (2026-10-01): an in-frame `asyncio.timeout` let a hung
+    run limp on. The cap now cancels the run's own task, so a run that absorbs
+    the cancel is abandoned at the cap instead of returning its late answer.
+    """
+
+    # Arrange
+    class _CancelAbsorbingSpy(_GraphSpy):
+        async def ainvoke(
+            self, state: dict[str, Any], config: Any = None
+        ) -> dict[str, Any]:
+            self.invocations.append((state, config))
+            try:
+                await asyncio.sleep(10)
+            except asyncio.CancelledError:
+                await asyncio.sleep(0.5)
+            assert self._mutate is not None and self._run is not None
+            self._mutate(self._run)
+            return {"messages": self._messages}
+
+    monkeypatch.setattr(research_module, "LIMITS", ResearchLimits(wall_seconds=0.01))
+    spy = _CancelAbsorbingSpy([AIMessage(DEEP_ANSWER)], cited_run())
+    monkeypatch.setattr(research_module, "build_graph", lambda run: spy.bind_run(run))
+
+    # Act
+    call = research_module.research("q", lambda e: None)
+    # Assert
+    with pytest.raises(ResearchLimitError, match="0.01-second"):
+        await call
+
+
+@pytest.mark.anyio
 async def test_an_inner_timeout_becomes_llm_invocation_error(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -353,5 +411,4 @@ async def test_the_agent_receives_the_rubric_and_the_no_checkpoint_config(
     assert [type(m).__name__ for m in state["messages"]] == ["HumanMessage"]
     assert state["messages"][0].content == "the question"
     assert state["rubric"] == DEEP_ANSWER_RUBRIC
-    graph_module: Any = importlib.import_module("agents.deep_expert.graph")
-    assert config == {"configurable": {graph_module.CONFIG_KEY_CHECKPOINTER: None}}
+    assert config == {"configurable": {CONFIG_KEY_CHECKPOINTER: None}}

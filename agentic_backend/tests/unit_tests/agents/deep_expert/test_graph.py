@@ -643,9 +643,10 @@ async def test_the_wall_cap_ends_a_run_whose_model_call_hangs(
     """A hung model call must not hold the turn past `LIMITS.wall_seconds`.
 
     The forecaster's smoke gate F3 saw a hung deepagents run outlive an
-    in-frame `asyncio.timeout`; the deep expert caps its run with exactly that,
-    so this runs the real agent (and its `task` subagent) inside a
-    checkpointed parent, as the orchestrator does, and hangs one model call.
+    in-frame `asyncio.timeout`; the deep expert caps its run with
+    `capped_run.run_under_time_limits`, so this runs the real agent (and its
+    `task` subagent) inside a checkpointed parent, as the orchestrator does, and
+    hangs one model call.
     """
     # Arrange
     monkeypatch.setenv("OPENAI_API_KEY", "test")

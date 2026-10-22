@@ -13,6 +13,7 @@ from langchain_core.language_models.base import LangSmithParams
 from langchain_core.language_models.fake_chat_models import FakeMessagesListChatModel
 from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.checkpoint.memory import InMemorySaver
+from langgraph.errors import NodeTimeoutError
 from langgraph.graph import END, START, StateGraph
 from opentelemetry.sdk.trace import ReadableSpan
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
@@ -20,6 +21,7 @@ from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
 )
 from typing_extensions import TypedDict
 
+from agents import capped_run
 from agents.deep_forecaster.consts.progress import RESEARCH_LABEL
 from agents.deep_forecaster.state import ForecastRun, ResearchOutcome, ResearchRun
 from models import (
@@ -47,10 +49,6 @@ FORECASTER_IDS = [
     "chellaney",
     "sidiropoulos",
 ]
-
-NO_CHECKPOINTER_CONFIG = {
-    "configurable": {"thread_id": "", "checkpoint_ns": "", "checkpoint_id": None}
-}
 
 
 def _runtime(events: list[dict[str, Any]]) -> SimpleNamespace:
@@ -232,6 +230,27 @@ async def test_an_inner_timeout_is_llm_invocation_error(
 
 
 @pytest.mark.anyio
+async def test_a_node_timeout_in_the_lead_is_llm_invocation_error(
+    monkeypatch: pytest.MonkeyPatch, events: list[dict[str, Any]]
+) -> None:
+    """A node's own timeout in the lead is a 502 for this step, not a time box.
+
+    The time box ending is not an error (user decision 2026-09-30); a node
+    timeout is a failed step, as every other failure of the lead is.
+    """
+    timeout = NodeTimeoutError("research", 90.5, kind="run", run_timeout=90.0)
+    fake = _FakeAgent(ResearchRun(writer=events.append), fail=timeout)
+    # Arrange
+    _patch_agent(
+        monkeypatch, lambda run: _FakeAgent(run, fail=fake.fail, mutate=fake.mutate)
+    )
+    # Act + Assert
+    with pytest.raises(LLMInvocationError, match="research failed") as raised:
+        await research_module.research({"question": "q"}, _runtime(events))
+    assert isinstance(raised.value.__cause__, NodeTimeoutError)
+
+
+@pytest.mark.anyio
 async def test_a_search_outage_propagates(
     monkeypatch: pytest.MonkeyPatch, events: list[dict[str, Any]]
 ) -> None:
@@ -288,7 +307,7 @@ async def test_the_lead_gets_the_question_and_no_checkpointer(
     # Assert
     assert isinstance(agent_input["messages"][0], HumanMessage)
     assert agent_input["messages"][0].content == "Will Russia attack?"
-    assert config == research_module.NO_CHECKPOINTER_CONFIG
+    assert config == capped_run.NO_CHECKPOINTER_CONFIG
 
 
 @pytest.mark.anyio
@@ -674,7 +693,7 @@ async def test_a_real_lead_cannot_start_a_general_purpose_helper(
     # Act
     result = await agent.ainvoke(
         {"messages": [HumanMessage("q")]},
-        config=research_module.NO_CHECKPOINTER_CONFIG,
+        config=capped_run.NO_CHECKPOINTER_CONFIG,
     )
 
     # Assert

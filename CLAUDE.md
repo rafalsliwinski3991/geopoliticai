@@ -111,9 +111,10 @@ deep_forecaster  START -> research -> draft_claims -> council_round_1 -> council
 - Deep expert: a `deepagents` agent built per turn, never at import. It searches through
   `search.py` with `EXPERT_SOURCES` and revises under deepagents' `RubricMiddleware`, whose grader
   sees only the question and the final draft (`graph.grader_view`). A spent search budget is a
-  message to the model; the wall cap is a 504; an unsatisfied grader ships the last draft; a grader
-  crash, no source read, or no cited source is an error. `NO_CHECKPOINTER_CONFIG` sets LangGraph's
-  private `__pregel_checkpointer` key: re-check it on every langgraph upgrade.
+  message to the model; the wall cap is a 504 (`capped_run.run_under_time_limits`, the same
+  dedicated-task cancel as the forecaster's); an unsatisfied grader ships the last draft; a grader
+  crash, no source read, or no cited source is an error. `capped_run.NO_CHECKPOINTER_CONFIG` sets
+  LangGraph's private `__pregel_checkpointer` key: re-check it on every langgraph upgrade.
 - Deep forecaster: a fixed workflow with one backward edge. Only `research` is autonomous (a
   deepagents lead and scouts over the forecasters' sites, plus `ask_video`), and it returns what
   the scouts' tools recorded, never the lead's text. The council, one paid model per vendor through
@@ -124,7 +125,7 @@ deep_forecaster  START -> research -> draft_claims -> council_round_1 -> council
   counts every verdict; the writer sees no URL and cites sources by number (`[anchor](source:N)`),
   and `verify` puts in the URLs. `verify` sends an analysis with a defect back to the writer once,
   with the defect named; a second defect, or an answer over the delivery cap, is a hard error. The wall
-  cap runs the forecast in its own task (`time_limits.run_under_time_limits`) and cancels it
+  cap runs the forecast in its own task (`capped_run.run_under_time_limits`) and cancels it
   repeatedly, because smoke gate F3 saw a hung run outlive an in-frame `asyncio.timeout`.
   `nodes.research` registers a deepagents harness profile that switches the default
   `general-purpose` helper off for gpt-5-mini, process-wide; another agent on that model that

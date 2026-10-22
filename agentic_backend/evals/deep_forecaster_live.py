@@ -29,7 +29,7 @@ from models import ResearchLimitError
 
 # 2.5x the forecaster's wall cap (`ForecastLimits.wall_seconds`, 840 s). The
 # task runs under the wall itself; this bounds a task that outlives the cap's
-# cancel (`time_limits.run_under_time_limits` abandons such a task).
+# cancel (`capped_run.run_under_time_limits` abandons such a task).
 TIMEOUT_SECONDS = 2_100
 WALL_MESSAGE = "The forecast ran past its {seconds:g}-second wall."
 logger = logging.getLogger("agent")
@@ -72,11 +72,10 @@ def forecast_output(
 
 async def run_deep_forecaster_live(input: dict[str, Any]) -> dict[str, Any]:
     """Run the forecaster's graph live on one question, under the wall; a failure becomes the row."""
-    from agents.deep_expert.graph import NO_CHECKPOINTER_CONFIG
+    from agents.capped_run import NO_CHECKPOINTER_CONFIG, run_under_time_limits
     from agents.deep_forecaster.config import LIMITS
     from agents.deep_forecaster.graph import build_graph
     from agents.deep_forecaster.state import ForecastRun
-    from agents.deep_forecaster.time_limits import run_under_time_limits
 
     state: dict[str, Any] = {"question": input["query"]}
     # Bound to a name: a wall-capped row names the step the forecast was in

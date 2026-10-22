@@ -2,27 +2,23 @@
 
 from __future__ import annotations
 
-import asyncio
 import logging
 import re
 from typing import Any
 
 from langchain_core.messages import AIMessage, HumanMessage
+from langgraph.errors import NodeTimeoutError
 from langgraph.types import StreamWriter
 
+from agents.capped_run import invoke_capped
 from agents.deep_expert.config import LIMITS
 from agents.deep_expert.consts.progress import PLANNING_PROGRESS
-from agents.deep_expert.graph import (
-    NO_CHECKPOINTER_CONFIG,
-    SHIPPABLE_VERDICTS,
-    build_graph,
-)
+from agents.deep_expert.graph import SHIPPABLE_VERDICTS, build_graph
 from agents.deep_expert.prompts import DEEP_ANSWER_RUBRIC
 from agents.deep_expert.state import ResearchRun
 from models import (
     LLMInvocationError,
     NoSourcesError,
-    PipelineError,
     ResearchLimitError,
 )
 from tracing import start_span
@@ -62,25 +58,21 @@ async def research(query: str, writer: StreamWriter) -> str:
 
 async def _invoke(graph: Any, query: str) -> dict[str, Any]:
     """Run the agent under the wall-time cap, mapping failures to pipeline errors."""
-    deadline = asyncio.timeout(LIMITS.wall_seconds)
     try:
-        async with deadline:
-            result: dict[str, Any] = await graph.ainvoke(
-                {"messages": [HumanMessage(query)], "rubric": DEEP_ANSWER_RUBRIC},
-                config=NO_CHECKPOINTER_CONFIG,
-            )
-            return result
-    except TimeoutError as exc:
-        if deadline.expired():
-            raise ResearchLimitError(
-                f"The deep analysis ran past its {LIMITS.wall_seconds:g}-second limit."
-            ) from exc
+        result, capped = await invoke_capped(
+            graph,
+            {"messages": [HumanMessage(query)], "rubric": DEEP_ANSWER_RUBRIC},
+            limit_seconds=LIMITS.wall_seconds,
+            failure="Deep research failed.",
+        )
+    except NodeTimeoutError as exc:
         raise LLMInvocationError("Deep research failed.") from exc
-    except PipelineError:
-        # A search outage: already the right status.
-        raise
-    except Exception as exc:  # noqa: BLE001 - one boundary for the whole agent
-        raise LLMInvocationError("Deep research failed.") from exc
+    if capped:
+        raise ResearchLimitError(
+            f"The deep analysis ran past its {LIMITS.wall_seconds:g}-second limit."
+        )
+    answer: dict[str, Any] = result
+    return answer
 
 
 def _final_deep_answer(result: dict[str, Any]) -> str:

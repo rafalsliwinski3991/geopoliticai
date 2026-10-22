@@ -25,9 +25,10 @@ from deepagents import (
 from deepagents.middleware.filesystem import FilesystemMiddleware, FsToolName
 from langchain.agents.middleware import AgentMiddleware
 from langchain_core.messages import HumanMessage
+from langgraph.errors import NodeTimeoutError
 from langgraph.runtime import Runtime
 
-from agents.deep_expert.graph import NO_CHECKPOINTER_CONFIG
+from agents.capped_run import invoke_capped
 from agents.deep_forecaster.config import LIMITS, RESEARCH_LLM_SETTINGS
 from agents.deep_forecaster.consts.forecasters import FORECASTERS
 from agents.deep_forecaster.consts.progress import RESEARCH_LABEL
@@ -42,13 +43,11 @@ from agents.deep_forecaster.state import (
     ResearchOutcome,
     ResearchRun,
 )
-from agents.deep_forecaster.time_limits import run_under_time_limits
 from agents.deep_forecaster.tools import build_tools
 from llm import build_chat_model
 from models import (
     LLMInvocationError,
     NoSourcesError,
-    PipelineError,
     SearchUnavailableError,
 )
 from tracing import start_span
@@ -93,7 +92,7 @@ def build_research_agent(run: ResearchRun) -> Any:
     `ChatOpenAI` cannot be built without a key. The lead's harness profile is
     registered here, not at import: re-registering merges, so a call per
     build is harmless. `checkpointer=False` covers the lead's own loop; the
-    whole tree runs under `NO_CHECKPOINTER_CONFIG`.
+    whole tree runs under `capped_run.NO_CHECKPOINTER_CONFIG`.
     """
     register_harness_profile(LEAD_PROFILE_KEY, LEAD_PROFILE)
     model = build_chat_model(RESEARCH_LLM_SETTINGS)
@@ -192,24 +191,18 @@ async def _run_agent(agent: Any, question: str) -> bool:
 
     The box ending is not an error (user decision 2026-09-30): the forecast
     continues on what was read, and the answer's evidence line says so. The
-    box is a dedicated-task cancel (`time_limits.run_under_time_limits`): in
+    box is a dedicated-task cancel (`capped_run.run_under_time_limits`): in
     smoke gate F3, run 1, the frame's `asyncio.timeout` alone did not end a hung
     agent, and the task is cancelled repeatedly, then abandoned, whatever
     swallows a cancel.
     """
     try:
-        _, timed_out = await run_under_time_limits(
-            agent.ainvoke(
-                {"messages": [HumanMessage(question)]}, config=NO_CHECKPOINTER_CONFIG
-            ),
-            LIMITS.research_seconds,
+        _, timed_out = await invoke_capped(
+            agent,
+            {"messages": [HumanMessage(question)]},
+            limit_seconds=LIMITS.research_seconds,
+            failure="The forecast's research failed.",
         )
-    except TimeoutError as exc:
-        raise LLMInvocationError("The forecast's research failed.") from exc
-    except PipelineError:
-        # Already the right status (no tool raises one today; kept as the deep
-        # expert's boundary does).
-        raise
-    except Exception as exc:  # noqa: BLE001 - one boundary for the whole agent
+    except NodeTimeoutError as exc:
         raise LLMInvocationError("The forecast's research failed.") from exc
     return timed_out
