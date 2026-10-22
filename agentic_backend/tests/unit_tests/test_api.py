@@ -20,7 +20,6 @@ import auth
 from agents.orchestrator import build_graph, build_initial_orchestrator_state
 from agents.orchestrator.consts.progress import SEARCH_PROGRESS
 from agents.reporter import ResumeIntent
-from agents.reporter.config import MAX_REPORT_CHARS
 from agents.reporter.consts.messages import (
     CANCELLED_NOTICE,
     NO_MATERIAL_NOTICE,
@@ -977,15 +976,6 @@ def test_search_progress_no_longer_lives_in_api() -> None:
 
     # Assert
     assert not hasattr(api, "SEARCH_PROGRESS")
-
-
-def test_report_char_cap_fits_inside_the_transport_cap() -> None:
-    """The two constants are deliberately not linked by an import; if they
-    diverge, the checkpointed report silently exceeds what any browser ever
-    received."""
-
-    # Assert
-    assert MAX_REPORT_CHARS <= api.MAX_ANSWER_CHARS
 
 
 @pytest.mark.parametrize(

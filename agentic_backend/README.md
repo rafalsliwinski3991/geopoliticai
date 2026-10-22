@@ -40,8 +40,9 @@ through LangGraph's store, the deep forecaster's cached video notes.
 The streaming endpoint caps emitted answers at 50,000 characters, stamped with
 a `truncated` flag on the `result`, while `_generate` drains the upstream
 stream after reaching the cap, before emitting the result, so checkpoint
-writes can complete; the reporter's separate `MAX_REPORT_CHARS = 50_000`
-bounds what is stored in the thread, not what is delivered. Every `/api/*`
+writes can complete; the reporter clips its stored report to the same
+`MAX_ANSWER_CHARS = 50_000`, bounding what is stored in the thread, not what is
+delivered. Every `/api/*`
 route except `GET /api/health` requires a bearer JWT minted by Django at
 `GET /accounts/token/` and verified by `auth.py`, in development too. Production
 nginx applies Basic Auth to `/admin/` and `/phoenix/`; `AUTH_REQUIRED=true` fails
