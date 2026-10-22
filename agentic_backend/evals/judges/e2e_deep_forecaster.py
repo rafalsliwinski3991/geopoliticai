@@ -23,12 +23,16 @@ empty output applies to no judge.
 
 from __future__ import annotations
 
-from collections.abc import Callable
-from functools import wraps
 from typing import Any
 
 from evals.helpers.judge import Judge
-from evals.judges.expert import FAITHFUL_PROMPT, urls_from_sources
+from evals.judges.shared import (
+    FAITHFUL_PROMPT,
+    build_outcome_judge,
+    render_cited_sources,
+    skip_unless_finished,
+    urls_from_sources,
+)
 
 CLAIMS_PROMPT = """
 You check the claims a forecasting council voted on.
@@ -95,47 +99,6 @@ Choose exactly one label:
 
 Give a concise explanation naming any verdict that does not follow.
 """
-OUTSIDE = "outside"
-
-
-def finished_or_outside(variables: dict[str, Any]) -> bool:
-    """Pass a finished forecast, or one a provider outage failed; fail one our rules failed (Q8)."""
-    return bool(variables["finished"]) or variables["side"] == OUTSIDE
-
-
-def _finished(output: dict[str, Any]) -> bool:
-    """Return whether the run's forecast finished; an empty output did not."""
-    return bool(output.get("finished"))
-
-
-def _when_finished(
-    view: Callable[
-        [dict[str, Any], dict[str, Any], dict[str, Any]], dict[str, Any] | None
-    ],
-) -> Callable[[dict[str, Any], dict[str, Any], dict[str, Any]], dict[str, Any] | None]:
-    """Wrap a view so it applies only to a forecast that finished (Q8).
-
-    One wrapper for the five answer views, as `judges/deep_expert.py`'s
-    `_on_deep_answer` is one for its views (review thread).
-    """
-
-    @wraps(view)
-    def wrapped(
-        input: dict[str, Any], output: dict[str, Any], expected: dict[str, Any]
-    ) -> dict[str, Any] | None:
-        if not _finished(output):
-            return None
-        return view(input, output, expected)
-
-    return wrapped
-
-
-def _outcome_view(
-    input: dict[str, Any], output: dict[str, Any], expected: dict[str, Any]
-) -> dict[str, Any] | None:
-    if "finished" not in output:
-        return None
-    return {"finished": output["finished"], "side": output["side"]}
 
 
 def _urls_view(
@@ -147,13 +110,10 @@ def _urls_view(
 def _faithful_view(
     input: dict[str, Any], output: dict[str, Any], expected: dict[str, Any]
 ) -> dict[str, Any] | None:
-    sources = "\n\n".join(
-        f"SOURCE {source['url']}\n{source['title']}\n{source['text']}"
-        for source in output["cited_sources"]
-    )
     return {
         "answer": output["analysis"],
-        "sources": sources or "(the analysis cites no source it read)",
+        "sources": render_cited_sources(output["cited_sources"], output["analysis"])
+        or "(the analysis cites no source it read)",
     }
 
 
@@ -182,37 +142,35 @@ def _verdicts_view(
 def judges() -> tuple[Judge, ...]:
     """Return the live forecaster eval's judges."""
     return (
-        Judge(
-            "finished_or_outside", "binary", _outcome_view, check=finished_or_outside
-        ),
+        build_outcome_judge(),
         Judge(
             "urls_from_sources",
             "binary",
-            _when_finished(_urls_view),
+            skip_unless_finished(_urls_view),
             check=urls_from_sources,
         ),
         Judge(
             "faithful_to_sources",
             "numeric",
-            _when_finished(_faithful_view),
+            skip_unless_finished(_faithful_view),
             prompt=FAITHFUL_PROMPT,
         ),
         Judge(
             "claims_checkable",
             "binary",
-            _when_finished(_claims_view),
+            skip_unless_finished(_claims_view),
             prompt=CLAIMS_PROMPT,
         ),
         Judge(
             "prose_matches_tally",
             "binary",
-            _when_finished(_tally_view),
+            skip_unless_finished(_tally_view),
             prompt=TALLY_PROMPT,
         ),
         Judge(
             "verdicts_follow_evidence",
             "numeric",
-            _when_finished(_verdicts_view),
+            skip_unless_finished(_verdicts_view),
             prompt=VERDICTS_PROMPT,
         ),
     )

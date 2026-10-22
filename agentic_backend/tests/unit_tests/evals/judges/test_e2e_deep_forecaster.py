@@ -10,13 +10,17 @@ from evals.judges.e2e_deep_forecaster import (
     VERDICTS_PROMPT,
     _claims_view,
     _faithful_view,
-    _outcome_view,
     _tally_view,
     _urls_view,
     _verdicts_view,
-    _when_finished,
-    finished_or_outside,
     judges,
+)
+from evals.judges.shared import (
+    FAITHFUL_PROMPT,
+    build_outcome_judge,
+    finished_or_outside,
+    skip_unless_finished,
+    urls_from_sources,
 )
 
 
@@ -57,10 +61,9 @@ def test_the_six_judges_carry_their_names_kinds_and_views() -> None:
     another's view goes red (review thread)."""
     # Arrange
     from evals.judges.e2e_deep_forecaster import CLAIMS_PROMPT, TALLY_PROMPT
-    from evals.judges.expert import FAITHFUL_PROMPT, urls_from_sources
 
     expected: list[tuple[str, str, Any, bool]] = [
-        ("finished_or_outside", "binary", _outcome_view, False),
+        ("finished_or_outside", "binary", build_outcome_judge().view, False),
         ("urls_from_sources", "binary", _urls_view, True),
         ("faithful_to_sources", "numeric", _faithful_view, True),
         ("claims_checkable", "binary", _claims_view, True),
@@ -91,23 +94,6 @@ def test_the_six_judges_carry_their_names_kinds_and_views() -> None:
 
 
 @pytest.mark.parametrize(
-    ("variables", "verdict"),
-    [
-        pytest.param({"finished": True, "side": ""}, True, id="finished"),
-        pytest.param({"finished": False, "side": "outside"}, True, id="failed outside"),
-        pytest.param({"finished": False, "side": "ours"}, False, id="failed ours"),
-    ],
-)
-def test_finished_or_outside(variables: dict[str, Any], verdict: bool) -> None:
-    # Arrange: `variables` comes from the parametrization above — a finished
-    # row, a provider outage, or a failure of ours.
-    # Act
-    result = finished_or_outside(variables)
-    # Assert
-    assert result is verdict
-
-
-@pytest.mark.parametrize(
     ("output", "outcome_variables"),
     [
         pytest.param(
@@ -126,16 +112,16 @@ def test_every_answer_judge_skips_a_forecast_that_did_not_finish(
     reads a failed row but skips the empty output."""
     # Arrange: `output` comes from the parametrization above.
     answer_views = [
-        _when_finished(_urls_view),
-        _when_finished(_faithful_view),
-        _when_finished(_claims_view),
-        _when_finished(_tally_view),
-        _when_finished(_verdicts_view),
+        skip_unless_finished(_urls_view),
+        skip_unless_finished(_faithful_view),
+        skip_unless_finished(_claims_view),
+        skip_unless_finished(_tally_view),
+        skip_unless_finished(_verdicts_view),
     ]
     # Act: every answer view declines the output...
     declined = [view({}, output, {}) for view in answer_views]
     # ...and the outcome view reads the failed row, skips the empty output.
-    outcome = _outcome_view({}, output, {})
+    outcome = build_outcome_judge().view({}, output, {})
     # Assert
     assert all(variables is None for variables in declined)
     assert outcome == outcome_variables
@@ -157,6 +143,19 @@ def test_the_url_and_faithful_views_read_the_runs_pages() -> None:
     assert faithful == {
         "answer": "See [one](https://news.example/one).",
         "sources": ("SOURCE https://news.example/one\nFirst\nfirst page text"),
+    }
+
+
+def test_the_faithful_view_says_so_when_the_analysis_cites_no_page_it_read() -> None:
+    """An empty sources block would let the judge score an analysis against nothing."""
+    # Arrange
+    output = {**_finished_output(), "analysis": "No links here."}
+    # Act
+    faithful = _faithful_view({}, output, {})
+    # Assert
+    assert faithful == {
+        "answer": "No links here.",
+        "sources": "(the analysis cites no source it read)",
     }
 
 
@@ -206,7 +205,6 @@ def test_the_tally_view_reads_the_verdicts_and_the_answer() -> None:
 def test_every_prompt_field_is_supplied() -> None:
     # Arrange
     from evals.judges.e2e_deep_forecaster import CLAIMS_PROMPT, TALLY_PROMPT
-    from evals.judges.expert import FAITHFUL_PROMPT
 
     claims_vars = _claims_view({"query": "q"}, _finished_output(), {})
     tally_vars = _tally_view({}, _finished_output(), {})

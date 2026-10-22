@@ -8,7 +8,7 @@ different pages, and judges score shape and consistency, never a reference
 answer.
 
 A forecast that fails, or runs past the wall, is a report row, not a crash:
-`classify_failure` says whose failure it was ("outside" only for a provider
+`evals.helpers.live.classify_failure` says whose failure it was ("outside" only for a provider
 outage), and the `finished_or_outside` judge fails the run on any failure of
 ours (Q8). Each run prints one row per question: finished, side, members
 voting, research and total seconds, the question, and the cause.
@@ -23,8 +23,9 @@ from pathlib import Path
 from typing import Any
 
 from evals.helpers.judge import markdown_link_urls
+from evals.helpers.live import build_failure_row, print_row
 from evals.helpers.run import run
-from evals.judges.e2e_deep_forecaster import OUTSIDE, judges
+from evals.judges.e2e_deep_forecaster import judges
 from models import ResearchLimitError
 
 DATASET_PATH = Path(__file__).parent / "datasets" / "e2e_deep_forecaster.json"
@@ -32,42 +33,8 @@ DATASET_PATH = Path(__file__).parent / "datasets" / "e2e_deep_forecaster.json"
 # task runs under the wall itself; this bounds a task that outlives the cap's
 # cancel (`time_limits.run_under_time_limits` abandons such a task).
 TIMEOUT_SECONDS = 2_100
-OURS = "ours"
 WALL_MESSAGE = "The forecast ran past its {seconds:g}-second wall."
 logger = logging.getLogger("agent")
-
-
-def classify_failure(error: BaseException) -> str:
-    """Return whose failure a failed forecast was: "outside" or "ours" (brainstorm 2026Oct19 Q2).
-
-    Outside only for a provider outage: every Brave search failed
-    (`SearchUnavailableError`), every council member without a ballot failed
-    on the provider's side (`QuorumError.outside`), or a model call's cause
-    chain holds a connection error, a 429 or a 5xx. A refused request (another
-    4xx), our time limits and the wall, and every check of ours are ours.
-    """
-    import openai
-
-    # The outage threshold and the label are the council's and the judges',
-    # imported, not copies that drift (review thread).
-    from agents.deep_forecaster.council import SERVER_ERROR_STATUS, QuorumError
-    from models import SearchUnavailableError
-
-    if isinstance(error, SearchUnavailableError):
-        return OUTSIDE
-    if isinstance(error, QuorumError):
-        return OUTSIDE if error.outside else OURS
-    cause: BaseException | None = error
-    while cause is not None:
-        if isinstance(cause, (openai.APIConnectionError, openai.RateLimitError)):
-            return OUTSIDE
-        if (
-            isinstance(cause, openai.APIStatusError)
-            and cause.status_code >= SERVER_ERROR_STATUS
-        ):
-            return OUTSIDE
-        cause = cause.__cause__
-    return OURS
 
 
 def forecast_output(
@@ -101,18 +68,6 @@ def forecast_output(
             if source.url in cited
         ],
         "members_voting": len(state["ballots_round_1"]),
-        "step_seconds": step_seconds,
-    }
-
-
-def failure_output(
-    error: BaseException, step_seconds: dict[str, float]
-) -> dict[str, Any]:
-    """Return a failed forecast as a report row: whose failure, and what it said."""
-    return {
-        "finished": False,
-        "side": classify_failure(error),
-        "cause": f"{type(error).__name__}: {error}",
         "step_seconds": step_seconds,
     }
 
@@ -159,7 +114,7 @@ async def run_e2e_deep_forecaster(input: dict[str, Any]) -> dict[str, Any]:
         # end with a 504 is a failure here too, never a late "finished".
         _, capped = await run_under_time_limits(stream_steps(), LIMITS.wall_seconds)
         output = (
-            failure_output(_wall_error(LIMITS.wall_seconds, run.step), step_seconds)
+            build_failure_row(_wall_error(LIMITS.wall_seconds, run.step), step_seconds)
             if capped
             else forecast_output(state, step_seconds)
         )
@@ -167,8 +122,8 @@ async def run_e2e_deep_forecaster(input: dict[str, Any]) -> dict[str, Any]:
         # The traceback, logged: a KeyError of ours must not hide behind the
         # one-line cause the report row shows (review thread).
         logger.exception("the forecast failed: %s", input["query"])
-        output = failure_output(error, step_seconds)
-    _print_row(input["query"], output, time.monotonic() - started)
+        output = build_failure_row(error, step_seconds)
+    print_row(input["query"], output, time.monotonic() - started)
     return output
 
 
@@ -182,17 +137,6 @@ def _wall_error(wall_seconds: float, step: str) -> ResearchLimitError:
     if step:
         message += f" during this step: {step}"
     return ResearchLimitError(message)
-
-
-def _print_row(query: str, output: dict[str, Any], total: float) -> None:
-    """Print one report row: finished, side, voters, research and total seconds, cause."""
-    print(
-        f"{'finished' if output['finished'] else 'failed':8} "
-        f"{output['side'] or '-':7} "
-        f"voters {output.get('members_voting', '-')} "
-        f"research {output['step_seconds'].get('research', '-')} s "
-        f"total {total:.0f} s | {query} | {output['cause'] or '-'}"
-    )
 
 
 if __name__ == "__main__":

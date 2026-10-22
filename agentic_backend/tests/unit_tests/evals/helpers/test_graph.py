@@ -10,7 +10,7 @@ from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.graph import END, START, StateGraph
 from langgraph.types import Command, interrupt
 
-from evals.helpers.graph import load_sources, pending_pause, recorded_sources
+from evals.helpers.graph import load_sources, pending_pause, replay_sources
 from models import Candidate, Source, SourcePolicy
 
 search_node: Any = importlib.import_module("agents.expert.nodes.search_and_fetch")
@@ -34,14 +34,14 @@ def test_load_sources_builds_source_objects() -> None:
 
 
 @pytest.mark.anyio
-async def test_recorded_sources_patches_expert_retrieval() -> None:
+async def test_replay_sources_patches_expert_retrieval() -> None:
     # Arrange
     recorded = [Source(title="t", url="https://news.example/a", text="text")]
     original_search = search_node.search_allowlisted
     original_fetch = search_node.fetch_sources
 
     # Act
-    with recorded_sources(lambda: recorded):
+    with replay_sources(lambda: recorded):
         candidates = await search_node.search_allowlisted("q", POLICY)
         fetched = await search_node.fetch_sources(candidates, POLICY)
 
@@ -55,15 +55,15 @@ async def test_recorded_sources_patches_expert_retrieval() -> None:
 
 
 @pytest.mark.anyio
-async def test_recorded_sources_raises_when_no_sources_recorded() -> None:
+async def test_replay_sources_raises_when_no_sources_recorded() -> None:
     # Act + Assert
     with (
-        recorded_sources(lambda: None),
+        replay_sources(lambda: None),
         pytest.raises(RuntimeError, match="no recorded sources"),
     ):
         await search_node.search_allowlisted("q", POLICY)
     with (
-        recorded_sources(lambda: None),
+        replay_sources(lambda: None),
         pytest.raises(RuntimeError, match="no recorded sources"),
     ):
         await search_node.fetch_sources([], POLICY)
@@ -129,7 +129,7 @@ async def test_pending_pause_wraps_non_dict_interrupt_value() -> None:
 
 
 @pytest.mark.anyio
-async def test_recorded_sources_patches_deep_tools() -> None:
+async def test_replay_sources_patches_deep_tools() -> None:
     # Arrange: two recorded sources so a filter regression to "return all" or
     # "bind the wrong article to a URL" can actually fail this test.
     recorded = [
@@ -141,7 +141,7 @@ async def test_recorded_sources_patches_deep_tools() -> None:
     original_fetch = tools_module.fetch_sources
 
     # Act
-    with recorded_sources(lambda: recorded):
+    with replay_sources(lambda: recorded):
         candidates = await tools_module.search_allowlisted("q", POLICY)
         requested = await tools_module.fetch_sources(
             [Candidate(title="s", url="https://news.example/b", domain="recorded")],

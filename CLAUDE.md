@@ -187,7 +187,7 @@ deep_forecaster  START -> research -> draft_claims -> council_round_1 -> council
 - `agentic_backend/evals/` holds one script per eval, run from `agentic_backend/` as
   `uv run python -m evals.<name>` (`make evals` runs all). A new eval also joins `EVAL_MODULES` in
   `agentic_backend/Makefile` and gets a step in `evals.yml`.
-- Examples carry recorded, synthetic sources (`recorded_sources` patches the expert's and the deep
+- Examples carry recorded, synthetic sources (`replay_sources` patches the expert's and the deep
   expert's retrieval), never fetched article text. The models are called live; only
   `e2e_deep_forecaster` also uses Brave and reads pages, on questions users asked, under the
   forecast's wall cap, and a forecast that fails there is a report row judged by

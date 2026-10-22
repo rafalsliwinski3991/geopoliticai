@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from evals.helpers.judge import Judge, markdown_link_urls
+from evals.helpers.judge import Judge
+from evals.judges.shared import FAITHFUL_PROMPT, render_cited_sources, urls_from_sources
 
 ANSWER_PROMPT = """
 You grade a research answer written from a fixed set of sources.
@@ -29,27 +30,6 @@ Choose exactly one label:
 5: same substance as the expected answer.
 
 Give a concise evidence-based explanation.
-"""
-FAITHFUL_PROMPT = """
-You check whether a research answer is supported by the sources it cites.
-
-Answer:
-{answer}
-
-Cited sources:
-{sources}
-
-Every factual sentence must be supported by the source its link points to.
-Background knowledge that is not in the cited source text counts as unsupported.
-
-Choose exactly one label:
-1: most claims are unsupported or contradicted.
-2: several claims are unsupported.
-3: one material claim is unsupported.
-4: all material claims are supported; a minor detail is not.
-5: every claim is supported by its cited source.
-
-Give a concise evidence-based explanation naming any unsupported claim.
 """
 
 
@@ -76,22 +56,11 @@ def _faithful_view(
     input: dict[str, Any], output: dict[str, Any], expected: dict[str, Any]
 ) -> dict[str, Any]:
     answer = output.get("answer") or ""
-    cited = set(markdown_link_urls(answer))
-    sources = "\n\n".join(
-        f"SOURCE {source['url']}\n{source['title']}\n{source['text']}"
-        for source in input["sources"]
-        if source["url"] in cited
-    )
     return {
         "answer": answer,
-        "sources": sources or "(the answer cites no recorded source)",
+        "sources": render_cited_sources(input["sources"], answer)
+        or "(the answer cites no recorded source)",
     }
-
-
-def urls_from_sources(variables: dict[str, Any]) -> bool:
-    """Pass when the answer links, and only to recorded sources (expert rule 1)."""
-    urls = markdown_link_urls(variables["answer"])
-    return bool(urls) and set(urls) <= set(variables["source_urls"])
 
 
 def judges() -> tuple[Judge, ...]:

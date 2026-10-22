@@ -15,8 +15,6 @@ from datetime import date
 from typing import Any
 from unittest.mock import patch
 
-import httpx
-import openai
 import pytest
 
 import agents.deep_forecaster.config as config_module
@@ -25,14 +23,10 @@ from agents.deep_forecaster.council import QuorumError
 from agents.deep_forecaster.models import Ballot, Claim, EvidenceRef, Stance, Vote
 from agents.deep_forecaster.state import ClaimTally
 from evals.e2e_deep_forecaster import (
-    classify_failure,
     forecast_output,
     run_e2e_deep_forecaster,
 )
 from models import (
-    LLMInvocationError,
-    ResearchLimitError,
-    SearchUnavailableError,
     Source,
 )
 
@@ -97,127 +91,6 @@ def _state() -> dict[str, Any]:
             ),
         ],
     }
-
-
-def _model_error(kind: type[openai.APIStatusError], status: int) -> BaseException:
-    """Return a model-call failure whose cause chain carries `kind` with `status`."""
-    response = httpx.Response(
-        status, request=httpx.Request("POST", "https://router.example/v1")
-    )
-    call = kind("the model call failed", response=response, body=None)
-    wrapped: BaseException = RuntimeError("the step failed")
-    wrapped.__cause__ = call
-    return wrapped
-
-
-def _wrapped(error: BaseException, hops: int = 1) -> BaseException:
-    """Return `error` wrapped in `hops` RuntimeErrors, the first as `__cause__`."""
-    for _ in range(hops):
-        wrapper: BaseException = RuntimeError("the step failed")
-        wrapper.__cause__ = error
-        error = wrapper
-    return error
-
-
-_ROUTER_REQUEST = httpx.Request("POST", "https://router.example/v1")
-
-
-@pytest.mark.parametrize(
-    ("error", "side"),
-    [
-        pytest.param(
-            SearchUnavailableError("every search failed"),
-            "outside",
-            id="every search failed",
-        ),
-        pytest.param(
-            QuorumError("round 1 ended below quorum", outside=True),
-            "outside",
-            id="council down in an outage",
-        ),
-        pytest.param(
-            QuorumError("round 1 ended below quorum", outside=False),
-            "ours",
-            id="council broke our rules",
-        ),
-        pytest.param(
-            _model_error(openai.APIStatusError, 503),
-            "outside",
-            id="5xx under a model call",
-        ),
-        pytest.param(
-            _model_error(openai.APIStatusError, 500),
-            "outside",
-            id="exactly the 5xx boundary",
-        ),
-        pytest.param(
-            _model_error(openai.APIStatusError, 499),
-            "ours",
-            id="one below the 5xx boundary",
-        ),
-        pytest.param(
-            _model_error(openai.RateLimitError, 429),
-            "outside",
-            id="429 under a model call",
-        ),
-        pytest.param(
-            _model_error(openai.AuthenticationError, 401),
-            "ours",
-            id="refused auth under a model call",
-        ),
-        pytest.param(
-            _model_error(openai.APIStatusError, 400),
-            "ours",
-            id="refused request under a model call",
-        ),
-        pytest.param(
-            _wrapped(openai.APIConnectionError(request=_ROUTER_REQUEST)),
-            "outside",
-            id="connection error under a model call",
-        ),
-        pytest.param(
-            _wrapped(openai.APITimeoutError(_ROUTER_REQUEST)),
-            "outside",
-            id="timeout under a model call",
-        ),
-        pytest.param(
-            _wrapped(
-                openai.RateLimitError(
-                    "rate limited",
-                    response=httpx.Response(
-                        429, request=httpx.Request("POST", "https://router.example/v1")
-                    ),
-                    body=None,
-                ),
-                hops=2,
-            ),
-            "outside",
-            id="two hops to the outage",
-        ),
-        pytest.param(
-            TimeoutError("claim drafting timed out"),
-            "ours",
-            id="our step timeout",
-        ),
-        pytest.param(
-            LLMInvocationError("the verification found a defect"),
-            "ours",
-            id="our analysis check",
-        ),
-        pytest.param(
-            ResearchLimitError("The forecast ran past its 840-second wall."),
-            "ours",
-            id="past the wall",
-        ),
-    ],
-)
-def test_classify_failure(error: BaseException, side: str) -> None:
-    # Arrange: `error` comes from the parametrization above — each case is one
-    # failure shape the run's boundary can meet.
-    # Act
-    verdict = classify_failure(error)
-    # Assert
-    assert verdict == side
 
 
 @pytest.mark.anyio
