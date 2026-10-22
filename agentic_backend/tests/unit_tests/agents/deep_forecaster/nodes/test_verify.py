@@ -8,7 +8,7 @@ from typing import Any
 
 import pytest
 
-from agents.deep_forecaster.council import count_votes
+from agents.deep_forecaster.council import count_votes, final_ballots
 from agents.deep_forecaster.models import (
     Analysis,
     Ballot,
@@ -39,6 +39,187 @@ VOTING6_TALLY = [
     ),
 ]
 
+OUT_OF_RANGE_DEFECT = (
+    "The analysis cites 1 source number outside 1 to 2, the sources the forecast "
+    "read; cite whole source numbers such as (source:3)."
+)
+UNLINKABLE_DEFECT = (
+    "The analysis wrote a citation the answer cannot link; write each one "
+    "exactly as [anchor](source:N)."
+)
+RAW_URL_DEFECT = (
+    "The analysis wrote a URL; it must cite sources only as [anchor](source:N)."
+)
+DUPLICATE_SECTION_DEFECT = (
+    "The analysis did not discuss every claim exactly once: it needs one section "
+    "for each of claims 1 and 2 and wrote sections for 1 and 1."
+)
+EMPTY_OVERVIEW_DEFECT = "The analysis left a section empty: the overview."
+NO_CITATION_DEFECT = "The analysis cited none of the sources it read."
+PLAIN_SECTIONS = [
+    ClaimDiscussion(claim=1, discussion="Alpha reasons."),
+    ClaimDiscussion(claim=2, discussion="Beta reasons."),
+]
+
+# Each analysis breaks one check of `find_defect`; verify sends it back once with
+# that check's message, and a second defect is a hard error. Each case keeps its
+# own citation, so the message names the defect it has.
+CHECKED_DEFECTS = [
+    # Out of range: a number naming no source read is a 502, never a crash.
+    # `int("²")` and a 5000-digit run would raise `ValueError` without the digit rule.
+    pytest.param(
+        Analysis(
+            overview="The council leans yes. [A](source:0)", claims=PLAIN_SECTIONS
+        ),
+        OUT_OF_RANGE_DEFECT,
+        id="source zero",
+    ),
+    pytest.param(
+        Analysis(
+            overview="The council leans yes. [A](source:3)", claims=PLAIN_SECTIONS
+        ),
+        OUT_OF_RANGE_DEFECT,
+        id="one past the last source",
+    ),
+    pytest.param(
+        Analysis(
+            overview="The council leans yes. [A](source:1.2)", claims=PLAIN_SECTIONS
+        ),
+        OUT_OF_RANGE_DEFECT,
+        id="a paragraph number 1.2",
+    ),
+    pytest.param(
+        Analysis(
+            overview="The council leans yes. [A](source:x)", claims=PLAIN_SECTIONS
+        ),
+        OUT_OF_RANGE_DEFECT,
+        id="not a number",
+    ),
+    pytest.param(
+        Analysis(
+            overview="The council leans yes. [A](source:²)", claims=PLAIN_SECTIONS
+        ),
+        OUT_OF_RANGE_DEFECT,
+        id="a superscript digit ²",
+    ),
+    pytest.param(
+        Analysis(
+            overview="The council leans yes. [A](source:" + "9" * 5000 + ")",
+            claims=PLAIN_SECTIONS,
+        ),
+        OUT_OF_RANGE_DEFECT,
+        id="a 5000-digit run",
+    ),
+    # Unlinkable: one valid citation beside a broken one must not rescue it.
+    pytest.param(
+        Analysis(
+            overview='The council leans yes. [A](source:1) and [B](source:2 "t").',
+            claims=PLAIN_SECTIONS,
+        ),
+        UNLINKABLE_DEFECT,
+        id="a titled link",
+    ),
+    pytest.param(
+        Analysis(
+            overview="The council leans yes. [A](source:1) and <source:2>.",
+            claims=PLAIN_SECTIONS,
+        ),
+        UNLINKABLE_DEFECT,
+        id="angle brackets",
+    ),
+    pytest.param(
+        Analysis(
+            overview="The council leans yes. [A](source:1) and [B](source: 2).",
+            claims=PLAIN_SECTIONS,
+        ),
+        UNLINKABLE_DEFECT,
+        id="a space after the colon",
+    ),
+    pytest.param(
+        Analysis(
+            overview="The council leans yes. [A](source:1) and (source:2).",
+            claims=PLAIN_SECTIONS,
+        ),
+        UNLINKABLE_DEFECT,
+        id="a bare (source:2)",
+    ),
+    # Raw URL: any URL the writer still writes is a defect; the URLs come from the list.
+    pytest.param(
+        Analysis(
+            overview="The council leans yes. [A](source:1) and https://evil.example/x.",
+            claims=PLAIN_SECTIONS,
+        ),
+        RAW_URL_DEFECT,
+        id="a bare url",
+    ),
+    pytest.param(
+        Analysis(
+            overview="The council leans yes. [A](source:1) and <https://evil.example/y>.",
+            claims=PLAIN_SECTIONS,
+        ),
+        RAW_URL_DEFECT,
+        id="an autolink",
+    ),
+    pytest.param(
+        Analysis(
+            overview="The council leans yes. [A](source:1) and [1]: https://evil.example/ref.",
+            claims=PLAIN_SECTIONS,
+        ),
+        RAW_URL_DEFECT,
+        id="a reference definition",
+    ),
+    pytest.param(
+        Analysis(
+            overview="The council leans yes. [A](source:1) and www.evil.example/z.",
+            claims=PLAIN_SECTIONS,
+        ),
+        RAW_URL_DEFECT,
+        id="a www autolink",
+    ),
+    # Claim sections: one section for each claim, no more and no fewer.
+    pytest.param(
+        Analysis(
+            overview="Overview. [A](source:1)",
+            claims=[ClaimDiscussion(claim=1, discussion="Discussion. [B](source:2)")],
+        ),
+        MISSING_CLAIM_DEFECT,
+        id="a missing claim section",
+    ),
+    pytest.param(
+        Analysis(
+            overview="Overview. [A](source:1)",
+            claims=[
+                ClaimDiscussion(claim=1, discussion="Discussion. [B](source:2)"),
+                ClaimDiscussion(claim=1, discussion="Discussion. [B](source:2)"),
+            ],
+        ),
+        DUPLICATE_SECTION_DEFECT,
+        id="a duplicate claim section",
+    ),
+    pytest.param(
+        Analysis(
+            overview="   ",
+            claims=[
+                ClaimDiscussion(claim=1, discussion="Discussion. [B](source:2)"),
+                ClaimDiscussion(claim=2, discussion="More. [A](source:1)"),
+            ],
+        ),
+        EMPTY_OVERVIEW_DEFECT,
+        id="an empty overview",
+    ),
+    pytest.param(
+        Analysis(
+            overview="Overview without links.",
+            claims=[
+                ClaimDiscussion(claim=1, discussion="D."),
+                ClaimDiscussion(claim=2, discussion="E."),
+            ],
+        ),
+        NO_CITATION_DEFECT,
+        id="an analysis with no citation",
+    ),
+]
+
 
 def analysis() -> Analysis:
     """A valid analysis: every section cites the sources read, by number."""
@@ -64,19 +245,12 @@ def six_voters() -> dict[int, Ballot]:
 
 
 def checked(forecast_state: Any, analysis_: Analysis | None = None) -> str:
-    """Run `checked_answer` on `forecast_state`, with its ballots and tally."""
-    revised = set(forecast_state["ballots_round_2"])
-    answer: str = verify_module.checked_answer(
-        analysis_ or analysis(),
-        forecast_state["claims"],
-        forecast_state["tally"],
-        verify_module.final_ballots(
-            forecast_state["ballots_round_1"], forecast_state["ballots_round_2"]
-        ),
-        revised,
-        forecast_state["sources"],
-        forecast_state["research"],
+    """Run `checked_answer` on `forecast_state`, with its analysis and final ballots."""
+    forecast_state["analysis"] = analysis_ or analysis()
+    forecast_state["final_ballots"] = final_ballots(
+        forecast_state["ballots_round_1"], forecast_state["ballots_round_2"]
     )
+    answer: str = verify_module.checked_answer(forecast_state)
     return answer
 
 
@@ -90,6 +264,7 @@ async def test_the_answer_renders_the_tally_and_every_vote(
     forecast_state: Any = state(round_1=first, round_2=dict(first))
     forecast_state["tally"] = VOTING6_TALLY
     forecast_state["analysis"] = analysis()
+    forecast_state["final_ballots"] = final_ballots(first, dict(first))
     out = await verify_module.verify(forecast_state, runtime(events))
     answer = out["answer"]
     # Act
@@ -122,13 +297,12 @@ async def test_seven_voting_shows_no_unavailable_count(
     forecast_state: Any = state(
         round_2={member: ballot(["for", "unsure"]) for member in range(1, 8)}
     )
-    forecast_state["tally"] = count_votes(
-        2,
-        verify_module.final_ballots(
-            forecast_state["ballots_round_1"], forecast_state["ballots_round_2"]
-        ),
+    final = final_ballots(
+        forecast_state["ballots_round_1"], forecast_state["ballots_round_2"]
     )
+    forecast_state["tally"] = count_votes(2, final)
     forecast_state["analysis"] = analysis()
+    forecast_state["final_ballots"] = final
     # Act
     out = await verify_module.verify(forecast_state, runtime(events))
     # Assert
@@ -156,6 +330,7 @@ async def test_a_reason_is_flattened_to_one_line(events: list[dict[str, Any]]) -
     forecast_state: Any = state(round_1=first, round_2=dict(first))
     forecast_state["tally"] = VOTING6_TALLY
     forecast_state["analysis"] = analysis()
+    forecast_state["final_ballots"] = final_ballots(first, dict(first))
     # Act
     out = await verify_module.verify(forecast_state, runtime(events))
     # Assert
@@ -175,6 +350,7 @@ async def test_a_carried_vote_is_marked(events: list[dict[str, Any]]) -> None:
     forecast_state: Any = state(round_1=first, round_2=second)
     forecast_state["tally"] = VOTING6_TALLY
     forecast_state["analysis"] = analysis()
+    forecast_state["final_ballots"] = final_ballots(first, second)
     # Act
     out = await verify_module.verify(forecast_state, runtime(events))
     # Assert
@@ -183,6 +359,51 @@ async def test_a_carried_vote_is_marked(events: list[dict[str, Any]]) -> None:
         "Round 2: 1 of 6 kept their round-1 vote because they did not answer." in answer
     )
     assert "- Member 4 (round-1 vote): for — Reason 1." in answer
+
+
+@pytest.mark.anyio
+async def test_the_vote_list_shows_the_final_ballots_the_tally_stored(
+    events: list[dict[str, Any]],
+) -> None:
+    """The vote list reads the ballots `tally` stored, never a rebuild from the rounds."""
+    # Arrange
+    first = six_voters()
+    forecast_state: Any = state(round_1=first, round_2=dict(first))
+    forecast_state["tally"] = VOTING6_TALLY
+    forecast_state["analysis"] = analysis()
+    forecast_state["final_ballots"] = {**first, 2: ballot(["for", "unsure"])}
+    # Act
+    out = await verify_module.verify(forecast_state, runtime(events))
+    # Assert
+    answer = out["answer"]
+    assert "- Member 2: for — Reason 1." in answer
+    assert "- Member 2: against" not in answer
+
+
+@pytest.mark.anyio
+async def test_verify_checks_the_analysis_once(
+    monkeypatch: pytest.MonkeyPatch, events: list[dict[str, Any]]
+) -> None:
+    """The defect check runs once, in verify: a second run in the answer builder could drift from it."""
+    # Arrange
+    checks: list[Analysis] = []
+    find_defect = verify_module.find_defect
+
+    def counting_find_defect(analysis_: Analysis, *rest: Any) -> str | None:
+        checks.append(analysis_)
+        result: str | None = find_defect(analysis_, *rest)
+        return result
+
+    monkeypatch.setattr(verify_module, "find_defect", counting_find_defect)
+    first = six_voters()
+    forecast_state: Any = state(round_1=first, round_2=dict(first))
+    forecast_state["tally"] = VOTING6_TALLY
+    forecast_state["analysis"] = analysis()
+    forecast_state["final_ballots"] = final_ballots(first, dict(first))
+    # Act
+    await verify_module.verify(forecast_state, runtime(events))
+    # Assert
+    assert len(checks) == 1
 
 
 @pytest.mark.parametrize(
@@ -268,72 +489,6 @@ def test_the_evidence_line_reports_the_counts(
     assert line.startswith(expected)
 
 
-BAD_SOURCE_NUMBERS = [
-    pytest.param("(source:0)", id="source zero"),
-    pytest.param("(source:3)", id="one past the last source"),
-    pytest.param("(source:1.2)", id="a paragraph number 1.2"),
-    pytest.param("(source:x)", id="not a number"),
-    pytest.param("(source:²)", id="a superscript digit ²"),
-    pytest.param(f"(source:{'9' * 5000})", id="a 5000-digit run"),
-]
-
-
-@pytest.mark.parametrize("citation", BAD_SOURCE_NUMBERS)
-def test_an_out_of_range_source_number_raises(citation: str) -> None:
-    """A number naming no source the forecast read is a 502, never a crash.
-
-    `int("²")` and a 5000-digit run would raise `ValueError` if the digit rule
-    were not applied first, so the reader sees the 502 message instead.
-    """
-    # Arrange
-    first = six_voters()
-    forecast_state = state(round_1=first, round_2=dict(first))
-    forecast_state["tally"] = VOTING6_TALLY
-    analysis_ = Analysis(
-        overview=f"The council leans yes. [A]{citation}",
-        claims=[
-            ClaimDiscussion(claim=1, discussion="Alpha reasons."),
-            ClaimDiscussion(claim=2, discussion="Beta reasons."),
-        ],
-    )
-    # Act + Assert
-    with pytest.raises(
-        LLMInvocationError, match="cites 1 source number outside 1 to 2"
-    ):
-        checked(forecast_state, analysis_)
-
-
-UNLINKABLE_CITATIONS = [
-    pytest.param('[B](source:2 "t")', id="a titled link"),
-    pytest.param("<source:2>", id="angle brackets"),
-    pytest.param("[B](source: 2)", id="a space after the colon"),
-    pytest.param("(source:2)", id="a bare (source:2)"),
-]
-
-
-@pytest.mark.parametrize("broken", UNLINKABLE_CITATIONS)
-def test_an_unlinkable_citation_raises(broken: str) -> None:
-    """A citation the answer cannot link would ship as dead text, so it is a 502.
-
-    One valid citation beside it must not rescue the broken one: the reader
-    would see the dead text either way.
-    """
-    # Arrange
-    first = six_voters()
-    forecast_state = state(round_1=first, round_2=dict(first))
-    forecast_state["tally"] = VOTING6_TALLY
-    analysis_ = Analysis(
-        overview=f"The council leans yes. [A](source:1) and {broken}.",
-        claims=[
-            ClaimDiscussion(claim=1, discussion="Alpha reasons."),
-            ClaimDiscussion(claim=2, discussion="Beta reasons."),
-        ],
-    )
-    # Act + Assert
-    with pytest.raises(LLMInvocationError, match="a citation the answer cannot link"):
-        checked(forecast_state, analysis_)
-
-
 PROSE_THAT_NAMES_A_NUMBER = [
     pytest.param("resource: 3 pilots", id="a word ending in source"),
     pytest.param("(Source: 2024 yearbook)", id="a prose source line with a year"),
@@ -395,33 +550,6 @@ def test_a_citation_links_regardless_of_its_case(citation: str) -> None:
     assert "The council leans yes. [B](https://reuters.com/b)" in answer
 
 
-@pytest.mark.parametrize(
-    "url",
-    [
-        pytest.param("https://evil.example/x", id="a bare url"),
-        pytest.param("<https://evil.example/y>", id="an autolink"),
-        pytest.param("[1]: https://evil.example/ref", id="a reference definition"),
-        pytest.param("www.evil.example/z", id="a www autolink"),
-    ],
-)
-def test_a_raw_url_raises(url: str) -> None:
-    """Any URL the writer still writes is a 502: the URLs come from the source list."""
-    # Arrange
-    first = six_voters()
-    forecast_state = state(round_1=first, round_2=dict(first))
-    forecast_state["tally"] = VOTING6_TALLY
-    analysis_ = Analysis(
-        overview=f"The council leans yes. [A](source:1) and {url}.",
-        claims=[
-            ClaimDiscussion(claim=1, discussion="Alpha reasons."),
-            ClaimDiscussion(claim=2, discussion="Beta reasons."),
-        ],
-    )
-    # Act + Assert
-    with pytest.raises(LLMInvocationError, match="wrote a URL"):
-        checked(forecast_state, analysis_)
-
-
 @pytest.mark.parametrize("link", ["[x](//evil.example)", "[x](ftp://evil.example)"])
 def test_a_non_clickable_link_form_is_not_checked(link: str) -> None:
     """A link the chat UI cannot click stays unchecked: it renders as plain text."""
@@ -453,6 +581,7 @@ async def test_an_all_carried_round_two_is_disclosed(
     forecast_state: Any = state(round_1=first, round_2={})
     forecast_state["tally"] = count_votes(2, first)
     forecast_state["analysis"] = analysis()
+    forecast_state["final_ballots"] = final_ballots(first, {})
     # Act
     out = await verify_module.verify(forecast_state, runtime(events))
     # Assert
@@ -464,71 +593,42 @@ async def test_an_all_carried_round_two_is_disclosed(
         assert f"- Member {member} (round-1 vote):" in answer
 
 
-@pytest.mark.parametrize(
-    "sections",
-    [
-        pytest.param([1], id="a missing claim section"),
-        pytest.param([1, 1], id="a duplicate claim section"),
-    ],
-)
-def test_a_broken_claim_section_list_raises(sections: list[int]) -> None:
-    # Arrange
-    # Citations by number: a URL in the prose is itself a defect, so this
-    # test must not hand `find_defect` one (final review).
-    analysis_ = Analysis(
-        overview="Overview. [A](source:1)",
-        claims=[
-            ClaimDiscussion(claim=number, discussion="Discussion. [B](source:2)")
-            for number in sections
-        ],
-    )
-    first = six_voters()
-    forecast_state = state(round_1=first, round_2=dict(first))
-    forecast_state["tally"] = VOTING6_TALLY
-    with pytest.raises(
-        LLMInvocationError, match="did not discuss every claim exactly once"
-    ):
-        # Act
-        checked(forecast_state, analysis_)
-    # Assert: the raise is the assertion.
-
-
-def test_an_empty_overview_raises() -> None:
+@pytest.mark.anyio
+@pytest.mark.parametrize(("broken_analysis", "defect"), CHECKED_DEFECTS)
+async def test_a_defect_sends_the_analysis_back_once(
+    broken_analysis: Analysis, defect: str, events: list[dict[str, Any]]
+) -> None:
+    """A defect the writer can fix goes back once, with the defect named."""
     # Arrange
     first = six_voters()
-    forecast_state = state(round_1=first, round_2=dict(first))
+    forecast_state: Any = state(round_1=first, round_2=dict(first))
     forecast_state["tally"] = VOTING6_TALLY
-    analysis_ = Analysis(
-        overview="   ",
-        claims=[
-            ClaimDiscussion(claim=1, discussion="Discussion. [B](source:2)"),
-            ClaimDiscussion(claim=2, discussion="More. [A](source:1)"),
-        ],
-    )
-    with pytest.raises(LLMInvocationError, match="left a section empty"):
-        # Arrange
-        # Act
-        checked(forecast_state, analysis_)
-    # Assert: the raise is the assertion.
+    forecast_state["analysis"] = broken_analysis
+    forecast_state["final_ballots"] = final_ballots(first, dict(first))
+    # Act
+    out = await verify_module.verify(forecast_state, runtime(events))
+    # Assert
+    assert out == {"feedback": defect}
 
 
-def test_an_analysis_with_no_citation_raises() -> None:
+@pytest.mark.anyio
+@pytest.mark.parametrize(("broken_analysis", "defect"), CHECKED_DEFECTS)
+async def test_a_defect_after_the_rewrite_is_a_hard_error(
+    broken_analysis: Analysis, defect: str, events: list[dict[str, Any]]
+) -> None:
+    """With the one rewrite spent, a defect is a hard 502 naming it, never a second send-back."""
     # Arrange
     first = six_voters()
-    forecast_state = state(round_1=first, round_2=dict(first))
+    forecast_state: Any = state(round_1=first, round_2=dict(first))
     forecast_state["tally"] = VOTING6_TALLY
-    analysis_ = Analysis(
-        overview="Overview without links.",
-        claims=[
-            ClaimDiscussion(claim=1, discussion="D."),
-            ClaimDiscussion(claim=2, discussion="E."),
-        ],
-    )
-    with pytest.raises(LLMInvocationError, match="cited none of the sources"):
-        # Arrange
-        # Act
-        checked(forecast_state, analysis_)
-    # Assert: the raise is the assertion.
+    forecast_state["analysis"] = broken_analysis
+    forecast_state["final_ballots"] = final_ballots(first, dict(first))
+    forecast_state["feedback"] = defect
+    # Act + Assert
+    with pytest.raises(LLMInvocationError) as raised:
+        await verify_module.verify(forecast_state, runtime(events))
+    assert raised.value.status == 502
+    assert str(raised.value) == defect
 
 
 @pytest.mark.parametrize(("broken_analysis", "expected_defect"), DEFECTS)
@@ -568,6 +668,7 @@ async def test_a_first_defect_returns_feedback(events: list[dict[str, Any]]) -> 
     forecast_state: Any = state(round_1=first, round_2=dict(first))
     forecast_state["tally"] = VOTING6_TALLY
     forecast_state["analysis"] = MISSING_CLAIM
+    forecast_state["final_ballots"] = final_ballots(first, dict(first))
     # Act
     out = await verify_module.verify(forecast_state, runtime(events))
     # Assert
@@ -583,6 +684,7 @@ async def test_a_second_defect_raises(events: list[dict[str, Any]]) -> None:
     forecast_state: Any = state(round_1=first, round_2=dict(first))
     forecast_state["tally"] = VOTING6_TALLY
     forecast_state["analysis"] = MISSING_CLAIM
+    forecast_state["final_ballots"] = final_ballots(first, dict(first))
     forecast_state["feedback"] = MISSING_CLAIM_DEFECT
     # Act + Assert
     with pytest.raises(LLMInvocationError) as raised:

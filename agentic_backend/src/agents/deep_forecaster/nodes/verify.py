@@ -26,7 +26,6 @@ from agents.deep_forecaster.config import COUNCIL
 from agents.deep_forecaster.consts.editorial import CARRIED_VOTE, VOTE_LIST_HEADING
 from agents.deep_forecaster.consts.forecasters import FORECASTER_SOURCES, VIDEO_DOMAINS
 from agents.deep_forecaster.consts.progress import VERIFY_LABEL
-from agents.deep_forecaster.council import final_ballots
 from agents.deep_forecaster.evidence import (
     SOURCE_LINK,
     SOURCE_MENTION,
@@ -62,18 +61,7 @@ async def verify(state: ForecastState, runtime: Runtime[ForecastRun]) -> dict[st
             raise LLMInvocationError(defect)
         logger.warning("verify: sending the analysis back once: %s", defect)
         return {"feedback": defect}
-    revised = state["ballots_round_2"]
-    return {
-        "answer": checked_answer(
-            state["analysis"],
-            state["claims"],
-            state["tally"],
-            final_ballots(state["ballots_round_1"], revised),
-            set(revised),
-            state["sources"],
-            state["research"],
-        )
-    }
+    return {"answer": checked_answer(state)}
 
 
 def _host(url: str) -> str:
@@ -175,28 +163,30 @@ def evidence_line(
     return line
 
 
-def checked_answer(
-    analysis: Analysis,
-    claims: Sequence[Claim],
-    tally: Sequence[ClaimTally],
-    ballots: Mapping[int, Ballot],
-    revised: set[int],
-    sources: Sequence[Source],
-    research: ResearchOutcome,
-) -> str:
-    """Return the analysis followed by the vote list, or raise if it breaks a rule."""
-    defect = find_defect(analysis, tally, sources)
-    if defect is not None:
-        raise LLMInvocationError(defect)
+def checked_answer(state: ForecastState) -> str:
+    """Return the defect-free analysis followed by the vote list, or raise if it is too long.
+
+    `verify` has already run `find_defect` on this analysis.
+    """
+    analysis, tally, sources = state["analysis"], state["tally"], state["sources"]
     sections = sorted(analysis.claims, key=lambda section: section.claim)
     parts = [link_sources(analysis.overview.strip(), sources)]
-    for section, counted, claim in zip(sections, tally, claims, strict=True):
+    for section, counted, claim in zip(sections, tally, state["claims"], strict=True):
         parts.append(
             f"## Claim {counted.claim}: {claim.statement}\n"
             f"By {render_deadline(claim.deadline)}. Council verdict: **{counted.verdict}**"
             f"\n\n{link_sources(section.discussion.strip(), sources)}"
         )
-    parts.append(_vote_list(tally, ballots, revised, sources, research, claims))
+    parts.append(
+        _vote_list(
+            tally,
+            state["final_ballots"],
+            set(state["ballots_round_2"]),
+            sources,
+            state["research"],
+            state["claims"],
+        )
+    )
     answer = "\n\n".join(parts)
     # A vote list the delivery layer's clip cuts off is a design failure
     # (review thread, #143): the reader must see every verdict. A rewrite can

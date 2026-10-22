@@ -74,6 +74,9 @@ class ForecastState(TypedDict):
     # one missing from round 2 keeps its round-1 ballot (`council.final_ballots`).
     ballots_round_1: NotRequired[dict[int, Ballot]]
     ballots_round_2: NotRequired[dict[int, Ballot]]
+    # Written by `tally`: each member's latest ballot (`council.final_ballots`),
+    # which `write_analysis` and `verify` read instead of rebuilding it.
+    final_ballots: NotRequired[dict[int, Ballot]]
     tally: NotRequired[list[ClaimTally]]
     analysis: NotRequired[Analysis]
     # Set by `verify` on the analysis's first defect and read by the writer's

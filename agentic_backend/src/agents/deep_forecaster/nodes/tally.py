@@ -14,10 +14,11 @@ from tracing import start_span
 async def tally(state: ForecastState) -> dict[str, Any]:
     """Count each member's latest ballot; the verdicts are code's, never a model's."""
     first, second = state["ballots_round_1"], state["ballots_round_2"]
-    tallies = count_votes(len(state["claims"]), final_ballots(first, second))
+    final = final_ballots(first, second)
+    tallies = count_votes(len(state["claims"]), final)
     with start_span("council_tally") as span:
         span.set_attributes(_describe_tally(first, second, tallies))
-    return {"tally": tallies}
+    return {"tally": tallies, "final_ballots": final}
 
 
 def _describe_tally(
