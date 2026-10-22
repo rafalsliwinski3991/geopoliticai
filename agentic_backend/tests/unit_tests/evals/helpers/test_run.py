@@ -296,7 +296,6 @@ async def test_run_passes_and_needs_no_brave_key(
 ) -> None:
     # Arrange
     monkeypatch.delenv("BRAVE_SEARCH_KEY", raising=False)
-    monkeypatch.delenv("ARIZE_PLATFORM", raising=False)
     monkeypatch.setenv("OPENAI_API_KEY", "k")
     monkeypatch.setenv("OPENROUTER_API_KEY", "k")
     monkeypatch.setattr(run_mod, "init_environment", lambda *a, **kw: None)
@@ -334,7 +333,6 @@ async def test_run_exits_nonzero_on_failing_judge(
 ) -> None:
     # Arrange
     monkeypatch.delenv("BRAVE_SEARCH_KEY", raising=False)
-    monkeypatch.delenv("ARIZE_PLATFORM", raising=False)
     monkeypatch.setenv("OPENAI_API_KEY", "k")
     monkeypatch.setenv("OPENROUTER_API_KEY", "k")
     monkeypatch.setattr(run_mod, "init_environment", lambda *a, **kw: None)
@@ -357,6 +355,37 @@ async def test_run_exits_nonzero_on_failing_judge(
             eval_name="test-eval", dataset_path=path, task=_task, judges=[judge]
         )
     assert exc.value.code == 1
+
+
+@pytest.mark.anyio
+async def test_run_stops_before_phoenix_when_tracing_cannot_start(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """An eval whose traces would go nowhere must fail, not run untraced."""
+    # Arrange
+    monkeypatch.setenv("OPENAI_API_KEY", "k")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "k")
+    monkeypatch.setattr(run_mod, "init_environment", lambda *a, **kw: None)
+    monkeypatch.setattr(run_mod, "init_tracing", lambda: False)
+    calls: list[dict[str, Any]] = []
+
+    async def _fake_run(**kwargs: Any) -> Results:
+        calls.append(kwargs)
+        return Results(task_errors=[], verdicts={})
+
+    monkeypatch.setattr(phoenix_mod, "run", _fake_run)
+    path = tmp_path / "d.json"
+    path.write_text(
+        json.dumps([{"name": "a", "input": {}, "output": {}}]), encoding="utf-8"
+    )
+    judge = Judge("b", "binary", lambda i, o, e: {}, check=lambda variables: True)
+
+    # Act + Assert
+    with pytest.raises(RuntimeError, match="Phoenix tracing"):
+        await run_mod.run(
+            eval_name="test-eval", dataset_path=path, task=_task, judges=[judge]
+        )
+    assert calls == []
 
 
 def test_task_alias_is_a_coroutine_factory() -> None:

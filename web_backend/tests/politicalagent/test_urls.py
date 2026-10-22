@@ -143,6 +143,10 @@ class NginxAdminGuardTest(TestCase):
         self.assertIn("proxy_set_header Upgrade $http_upgrade;", body)
         self.assertIn("proxy_set_header Connection $http_connection;", body)
 
+    def test_the_phoenix_location_accepts_large_trace_uploads(self) -> None:
+        # A live eval's span batch passes nginx's 1 MB default; a 413 loses it.
+        self.assertIn("client_max_body_size 50m;", self.locations()["/phoenix/"])
+
 
 class NginxSeoTest(TestCase):
     """Search engines must see one host and an indexable-free chat shell.

@@ -21,11 +21,14 @@ from evals.helpers.judge import (
     Verdict,
     async_score,
     markdown_link_urls,
-    score,
     verdict_from_label,
 )
 
 View = Callable[[dict[str, Any], dict[str, Any], dict[str, Any]], dict[str, Any] | None]
+
+
+async def _no_sleep(seconds: float) -> None:
+    """Stand in for `asyncio.sleep` so a retry test never waits."""
 
 
 def _view(
@@ -92,12 +95,13 @@ def test_the_judge_model_is_a_paid_openrouter_model() -> None:
     assert not model.endswith(free_suffix)
 
 
-def test_score_returns_not_applicable_when_output_is_none() -> None:
+@pytest.mark.anyio
+async def test_async_score_returns_not_applicable_when_output_is_none() -> None:
     # Arrange
     judge = Judge("j", "binary", _never_called_view, check=lambda variables: True)
 
     # Act
-    verdict = score(judge, None, {}, None, {})
+    verdict = await async_score(judge, None, {}, None, {})
 
     # Assert
     assert verdict == Verdict(
@@ -105,33 +109,36 @@ def test_score_returns_not_applicable_when_output_is_none() -> None:
     )
 
 
-def test_score_returns_not_applicable_when_view_returns_none() -> None:
+@pytest.mark.anyio
+async def test_async_score_returns_not_applicable_when_view_returns_none() -> None:
     # Arrange
     judge = Judge("j", "binary", lambda i, o, e: None, check=lambda variables: True)
 
     # Act
-    verdict = score(judge, None, {}, {"answer": "x"}, {})
+    verdict = await async_score(judge, None, {}, {"answer": "x"}, {})
 
     # Assert
     assert verdict.label == NOT_APPLICABLE
 
 
+@pytest.mark.anyio
 @pytest.mark.parametrize(
     ("passed", "expected"),
     [(True, Verdict("pass", 1.0)), (False, Verdict("fail", 0.0))],
 )
-def test_score_runs_code_check(passed: bool, expected: Verdict) -> None:
+async def test_async_score_runs_code_check(passed: bool, expected: Verdict) -> None:
     # Arrange
     judge = Judge("j", "binary", _view, check=lambda variables: passed)
 
     # Act
-    verdict = score(judge, None, {}, {"answer": "x"}, {})
+    verdict = await async_score(judge, None, {}, {"answer": "x"}, {})
 
     # Assert
     assert verdict == expected
 
 
-def test_score_records_judge_error_when_view_raises() -> None:
+@pytest.mark.anyio
+async def test_async_score_records_judge_error_when_view_raises() -> None:
     # Arrange
     def _boom(
         input: dict[str, Any], output: dict[str, Any], expected: dict[str, Any]
@@ -141,103 +148,12 @@ def test_score_records_judge_error_when_view_raises() -> None:
     judge = Judge("j", "binary", _boom, check=lambda variables: True)
 
     # Act
-    verdict = score(judge, None, {}, {"answer": "x"}, {})
+    verdict = await async_score(judge, None, {}, {"answer": "x"}, {})
 
     # Assert
     assert verdict.label == JUDGE_ERROR
     assert "ValueError" in verdict.explanation
     assert "boom" in verdict.explanation
-
-
-def test_score_returns_verdict_for_valid_label() -> None:
-    # Arrange
-    judge = Judge("j", "numeric", _view, prompt="{x}")
-    outcome = SimpleNamespace(label="4", explanation="ok")
-    classifier = SimpleNamespace(evaluate=lambda prepared: [outcome])
-
-    # Act
-    verdict = score(judge, classifier, {}, {"answer": "x"}, {})
-
-    # Assert
-    assert verdict == Verdict("4", 0.75, "ok")
-
-
-def test_score_retries_then_records_judge_error(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    # Arrange
-    judge = Judge("j", "numeric", _view, prompt="{x}")
-    calls: list[Any] = []
-    sleeps: list[float] = []
-
-    def _boom(prepared: Any) -> list[Any]:
-        calls.append(prepared)
-        raise _transient()
-
-    def _sleep(seconds: float) -> None:
-        sleeps.append(seconds)
-
-    monkeypatch.setattr("time.sleep", _sleep)
-    classifier = SimpleNamespace(evaluate=_boom)
-
-    # Act
-    verdict = score(judge, classifier, {}, {"answer": "x"}, {})
-
-    # Assert
-    assert len(calls) == JUDGE_RETRIES
-    assert len(sleeps) == JUDGE_RETRIES - 1
-    assert all(0 < s <= JUDGE_BACKOFF_MAX_SECONDS for s in sleeps)
-    assert verdict.label == JUDGE_ERROR
-    assert f"after {JUDGE_RETRIES} attempts" in verdict.explanation
-
-
-def test_score_does_not_retry_a_non_transient_error(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    # Arrange
-    judge = Judge("j", "numeric", _view, prompt="{x}")
-    calls: list[Any] = []
-    sleeps: list[float] = []
-
-    def _boom(prepared: Any) -> list[Any]:
-        calls.append(prepared)
-        raise KeyError("bad request")
-
-    monkeypatch.setattr("time.sleep", sleeps.append)
-    classifier = SimpleNamespace(evaluate=_boom)
-
-    # Act
-    verdict = score(judge, classifier, {}, {"answer": "x"}, {})
-
-    # Assert
-    assert len(calls) == 1
-    assert sleeps == []
-    assert verdict.label == JUDGE_ERROR
-    assert "after 1 attempt:" in verdict.explanation
-    assert "KeyError" in verdict.explanation
-
-
-def test_score_backs_off_on_an_invalid_label(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    # Arrange
-    judge = Judge("j", "numeric", _view, prompt="{x}")
-    sleeps: list[float] = []
-    monkeypatch.setattr("time.sleep", sleeps.append)
-    outcomes = iter(
-        [
-            SimpleNamespace(label="9", explanation=""),
-            SimpleNamespace(label="4", explanation="ok"),
-        ]
-    )
-    classifier = SimpleNamespace(evaluate=lambda prepared: [next(outcomes)])
-
-    # Act
-    verdict = score(judge, classifier, {}, {"answer": "x"}, {})
-
-    # Assert
-    assert verdict == Verdict("4", 0.75, "ok")
-    assert len(sleeps) == 1
 
 
 @pytest.mark.anyio
@@ -285,6 +201,7 @@ async def test_async_score_retries_then_records_judge_error(
     assert len(sleeps) == JUDGE_RETRIES - 1
     assert all(0 < s <= JUDGE_BACKOFF_MAX_SECONDS for s in sleeps)
     assert verdict.label == JUDGE_ERROR
+    assert f"after {JUDGE_RETRIES} attempts" in verdict.explanation
 
 
 @pytest.mark.anyio
@@ -314,6 +231,7 @@ async def test_async_score_does_not_retry_a_non_transient_error(
     assert sleeps == []
     assert verdict.label == JUDGE_ERROR
     assert "after 1 attempt:" in verdict.explanation
+    assert "KeyError" in verdict.explanation
 
 
 @pytest.mark.anyio
@@ -438,34 +356,6 @@ def test_numeric_not_a_choice_label() -> None:
     assert verdict.label == JUDGE_ERROR
 
 
-def test_score_retries_a_phoenix_bad_answer_value_error(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    # Arrange
-    judge = Judge("j", "numeric", _view, prompt="{x}")
-    monkeypatch.setattr("time.sleep", lambda seconds: None)
-    outcomes: Iterator[Exception | list[Any]] = iter(
-        [
-            ValueError("received invalid label 'nope'"),
-            [SimpleNamespace(label="4", explanation="ok")],
-        ]
-    )
-
-    def _evaluate(prepared: Any) -> list[Any]:
-        outcome = next(outcomes)
-        if isinstance(outcome, Exception):
-            raise outcome
-        return outcome
-
-    classifier = SimpleNamespace(evaluate=_evaluate)
-
-    # Act
-    verdict = score(judge, classifier, {}, {"answer": "x"}, {})
-
-    # Assert
-    assert verdict.label == "4"
-
-
 @pytest.mark.anyio
 async def test_async_score_retries_a_phoenix_bad_answer_value_error(
     monkeypatch: pytest.MonkeyPatch,
@@ -499,22 +389,23 @@ async def test_async_score_retries_a_phoenix_bad_answer_value_error(
     assert verdict.label == "4"
 
 
-def test_score_does_not_retry_a_phoenix_misuse_value_error(
+@pytest.mark.anyio
+async def test_async_score_does_not_retry_a_phoenix_misuse_value_error(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     # Arrange
     judge = Judge("j", "numeric", _view, prompt="{x}")
     calls: list[Any] = []
-    monkeypatch.setattr("time.sleep", lambda seconds: None)
+    monkeypatch.setattr("asyncio.sleep", _no_sleep)
 
-    def _boom(prepared: Any) -> list[Any]:
+    async def _boom(prepared: Any) -> list[Any]:
         calls.append(prepared)
         raise ValueError("Input validation failed: missing field")
 
-    classifier = SimpleNamespace(evaluate=_boom)
+    classifier = SimpleNamespace(async_evaluate=_boom)
 
     # Act
-    verdict = score(judge, classifier, {}, {"answer": "x"}, {})
+    verdict = await async_score(judge, classifier, {}, {"answer": "x"}, {})
 
     # Assert
     assert len(calls) == 1
@@ -522,12 +413,13 @@ def test_score_does_not_retry_a_phoenix_misuse_value_error(
     assert "after 1 attempt:" in verdict.explanation
 
 
-def test_score_retries_a_null_choices_type_error(
+@pytest.mark.anyio
+async def test_async_score_retries_a_null_choices_type_error(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     # Arrange
     judge = Judge("j", "numeric", _view, prompt="{x}")
-    monkeypatch.setattr("time.sleep", lambda seconds: None)
+    monkeypatch.setattr("asyncio.sleep", _no_sleep)
     outcomes: Iterator[Exception | list[Any]] = iter(
         [
             TypeError("'NoneType' object is not subscriptable"),
@@ -535,37 +427,38 @@ def test_score_retries_a_null_choices_type_error(
         ]
     )
 
-    def _evaluate(prepared: Any) -> list[Any]:
+    async def _evaluate(prepared: Any) -> list[Any]:
         outcome = next(outcomes)
         if isinstance(outcome, Exception):
             raise outcome
         return outcome
 
-    classifier = SimpleNamespace(evaluate=_evaluate)
+    classifier = SimpleNamespace(async_evaluate=_evaluate)
 
     # Act
-    verdict = score(judge, classifier, {}, {"answer": "x"}, {})
+    verdict = await async_score(judge, classifier, {}, {"answer": "x"}, {})
 
     # Assert
     assert verdict.label == "4"
 
 
-def test_score_does_not_retry_an_unrelated_type_error(
+@pytest.mark.anyio
+async def test_async_score_does_not_retry_an_unrelated_type_error(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     # Arrange
     judge = Judge("j", "numeric", _view, prompt="{x}")
     calls: list[Any] = []
-    monkeypatch.setattr("time.sleep", lambda seconds: None)
+    monkeypatch.setattr("asyncio.sleep", _no_sleep)
 
-    def _boom(prepared: Any) -> list[Any]:
+    async def _boom(prepared: Any) -> list[Any]:
         calls.append(prepared)
         raise TypeError("unsupported operand type(s)")
 
-    classifier = SimpleNamespace(evaluate=_boom)
+    classifier = SimpleNamespace(async_evaluate=_boom)
 
     # Act
-    verdict = score(judge, classifier, {}, {"answer": "x"}, {})
+    verdict = await async_score(judge, classifier, {}, {"answer": "x"}, {})
 
     # Assert
     assert len(calls) == 1

@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable, Coroutine, Sequence
 from typing import Any
 
-from config import get_arize_platform, get_trace_endpoint
+from config import get_trace_endpoint
 from evals.helpers.judge import (
     JUDGE_ERROR,
     JUDGE_MODEL,
@@ -21,9 +21,7 @@ def base_url() -> str:
     """Derive the REST base URL from the repository's OTLP trace endpoint."""
     endpoint = get_trace_endpoint()
     if not endpoint:
-        raise ValueError(
-            f"Missing collector endpoint for ARIZE_PLATFORM={get_arize_platform()!r}"
-        )
+        raise ValueError("Missing collector endpoint: set PHOENIX_COLLECTOR_ENDPOINT")
     endpoint = endpoint.rstrip("/")
     suffix = "/v1/traces"
     if not endpoint.endswith(suffix):
@@ -90,7 +88,9 @@ async def run(
     """Get or create the dataset, run the task, then evaluate in a second call."""
     from phoenix.client import AsyncClient
 
-    # Only the auth-less local Phoenix is supported, so no API key is sent.
+    # No API key: the local Phoenix has no auth, and the VPS Phoenix's nginx
+    # Basic Auth header comes from PHOENIX_CLIENT_HEADERS, which the client
+    # reads itself (arize-phoenix-client 3.3.0, `utils/config.py:412`).
     client = AsyncClient(base_url=base_url())
     try:
         # Get before create: `create_dataset` upserts by name and appends

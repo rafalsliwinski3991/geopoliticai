@@ -11,8 +11,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from config import get_arize_platform, init_environment, require_env
-from evals.helpers import ax, phoenix
+from config import init_environment, require_env
+from evals.helpers import phoenix
 from evals.helpers.judge import (
     JUDGE_ERROR,
     MIN_AVERAGE,
@@ -23,7 +23,7 @@ from evals.helpers.judge import (
 )
 from tracing import init_tracing
 
-# Coroutine, not Awaitable: the AX path hands the call to `asyncio.run`.
+# A coroutine function: Phoenix's experiment runner awaits each call itself.
 Task = Callable[[dict[str, Any]], Coroutine[Any, Any, dict[str, Any]]]
 TIMEOUT_SECONDS = 180
 # Brave is deliberately absent: evals patch retrieval with recorded sources.
@@ -146,24 +146,17 @@ async def run(
     examples = load_examples(dataset_path)
     init_environment()
     require_env(EVAL_ENV_VARS)
-    platform = get_arize_platform()
-    if platform == "AX":
-        require_env(("ARIZE_API_KEY", "ARIZE_SPACE_ID"))
     if not init_tracing():
-        raise RuntimeError(f"{platform} tracing could not be initialized")
-    arguments: dict[str, Any] = {
-        "dataset_name": dataset_name(eval_name, dataset_path),
-        "experiment_name": experiment_name(eval_name),
-        "examples": examples,
-        "task": task,
-        "judges": judges,
-        "classifiers": build_classifiers(judges),
-        "timeout": timeout,
-    }
-    if platform == "AX":
-        results = await ax.run(**arguments)
-    else:
-        results = await phoenix.run(**arguments)
+        raise RuntimeError("Phoenix tracing could not be initialized")
+    results = await phoenix.run(
+        dataset_name=dataset_name(eval_name, dataset_path),
+        experiment_name=experiment_name(eval_name),
+        examples=examples,
+        task=task,
+        judges=judges,
+        classifiers=build_classifiers(judges),
+        timeout=timeout,
+    )
     for name, verdicts in results.verdicts.items():
         for verdict in verdicts:
             logger.info("%s %s: %s", name, verdict.label, verdict.explanation)

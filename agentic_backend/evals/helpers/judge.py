@@ -1,4 +1,4 @@
-"""Judge definitions and per-example scoring shared by both platforms."""
+"""Judge definitions and per-example scoring."""
 
 from __future__ import annotations
 
@@ -11,7 +11,6 @@ from typing import Any, Literal
 
 from tenacity import (
     AsyncRetrying,
-    Retrying,
     retry_if_exception,
     retry_if_exception_type,
     stop_after_attempt,
@@ -198,7 +197,7 @@ def _is_phoenix_bad_answer(exc: BaseException) -> bool:
 
 
 def _retry_policy() -> dict[str, Any]:
-    """The one backoff policy both scorers share."""
+    """The backoff policy `async_score` retries under."""
     import openai
     from phoenix.evals.rate_limiters import RateLimitError as PhoenixRateLimitError
 
@@ -240,28 +239,6 @@ def _gave_up(judge: Judge, attempts: int, last_error: str) -> Verdict:
     )
 
 
-def score(
-    judge: Judge,
-    classifier: Any,
-    input: Mapping[str, Any],
-    output: Mapping[str, Any] | None,
-    expected: Mapping[str, Any],
-) -> Verdict:
-    """Score one example synchronously (AX). Never raises."""
-    prepared = _prepare(judge, input, output, expected)
-    if isinstance(prepared, Verdict):
-        return prepared
-    attempts = 0
-    try:
-        for attempt in Retrying(**_retry_policy()):
-            with attempt:
-                attempts = attempt.retry_state.attempt_number
-                return _verdict_or_raise(judge, classifier.evaluate(prepared)[0])
-    except Exception as exc:  # noqa: BLE001 - scoring never raises
-        return _gave_up(judge, attempts, f"{type(exc).__name__}: {exc}")
-    raise AssertionError("unreachable: tenacity either returns or reraises")
-
-
 async def async_score(
     judge: Judge,
     classifier: Any,
@@ -269,7 +246,7 @@ async def async_score(
     output: Mapping[str, Any] | None,
     expected: Mapping[str, Any],
 ) -> Verdict:
-    """Score one example on the event loop (Phoenix). Never raises.
+    """Score one example on the event loop. Never raises.
 
     Async like today's runner: a sync judge call would block the loop, and
     `evaluate_experiment(timeout=...)` could not interrupt a hung request.

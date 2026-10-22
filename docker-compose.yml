@@ -27,12 +27,7 @@ services:
     environment:
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       DATABASE_URL: postgresql://geopoliticai:${POSTGRES_PASSWORD}@postgres:5432/geopoliticai
-      ARIZE_PLATFORM: ${ARIZE_PLATFORM:-PHOENIX}
-      ARIZE_COLLECTOR_ENDPOINT: ${ARIZE_COLLECTOR_ENDPOINT:-}
-      ARIZE_SPACE_ID: ${ARIZE_SPACE_ID:-}
       PHOENIX_COLLECTOR_ENDPOINT: http://phoenix:6006/v1/traces
-      ARIZE_PROJECT_NAME: ${ARIZE_PROJECT_NAME:-geopoliticai-expert}
-      ARIZE_API_KEY: ${ARIZE_API_KEY:-}
     depends_on:
       postgres:
         condition: service_healthy
