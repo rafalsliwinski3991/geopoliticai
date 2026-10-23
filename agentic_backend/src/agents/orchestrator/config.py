@@ -8,6 +8,17 @@ from __future__ import annotations
 
 from config import LLMSettings
 
+SUPERVISOR_LLM_SETTINGS: LLMSettings = LLMSettings(
+    model="gpt-5-mini",
+    temperature=0.0,
+)
+
+FOOTER_LLM_SETTINGS: LLMSettings = LLMSettings(
+    model="gpt-5-mini",
+    temperature=0.0,
+    max_output_tokens=250,
+)
+
 # Routing is a short, cheap, deterministic call: a small token ceiling and a
 # short timeout, because the user is waiting on it before anything else runs.
 CLASSIFY_LLM_SETTINGS = LLMSettings(
