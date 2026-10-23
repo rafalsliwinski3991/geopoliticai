@@ -17,7 +17,7 @@ from typing import Annotated, Any, AsyncGenerator
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, Path, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
-from langchain_core.messages import AIMessage
+from langchain_core.messages import AIMessage, ToolMessage
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
 from langgraph.store.base import TTLConfig
@@ -112,7 +112,7 @@ ThreadIdPath = Annotated[
 # ANSWER_PROGRESS fires when the first character is about to reach the
 # browser. Every *node*-scoped label now lives with its node, in that agent's
 # `consts/progress.py`, and arrives here as a forwarded custom event.
-THINKING_PROGRESS = {"node": "classify", "label": "Thinking..."}
+THINKING_PROGRESS = {"node": "supervisor", "label": "Thinking..."}
 ANSWER_PROGRESS = {"node": "answer", "label": "Writing the answer..."}
 
 # `write` is the reporter's composing node. Its streamed chunks are the report;
@@ -134,7 +134,7 @@ ANSWER_PROGRESS = {"node": "answer", "label": "Writing the answer..."}
 # `"deep_forecaster"` must never be added either, and no forecaster node may be
 # named `answer`, `chat` or `write`: the forecast reaches the browser once, as
 # that node's `notice`.
-ANSWER_NODES = frozenset({"answer", "chat", "write"})
+ANSWER_NODES = frozenset({"answer", "supervisor", "write"})
 
 # `other` — the chat branch — is absent on purpose (Q5b): chat turns stay
 # free. `classify` does not re-run on a resume, so approving or revising a
@@ -611,16 +611,7 @@ async def _astream_answer(
         if mode == "updates":
             if namespace or not isinstance(data, dict):
                 continue
-            # Counted from `classify`, NOT from `expert`/`reporter`. An
-            # `updates` frame arrives only after its node RETURNS, so counting
-            # on `expert` means the count lands after three Brave batches,
-            # trafilatura, and the whole streamed model call — while tokens
-            # reached the browser much earlier through `messages` mode. A
-            # client that aborts the fetch mid-answer has already spent the
-            # money and never gets counted. `classify` returns in about a
-            # second, before anything expensive starts, and its update already
-            # carries the branch (`agents/orchestrator/nodes/classify.py:68`).
-            decision = data.get("classify")
+            decision = data.get("supervisor")
             if not counted and isinstance(decision, dict):
                 destination = decision.get("destination")
                 if destination in RESEARCH_DESTINATIONS:
@@ -638,9 +629,12 @@ async def _astream_answer(
             continue
         # Chat nodes emit provider chunks and then the completed message they
         # return. Once chunks have been forwarded, the completed message would
-        # duplicate the answer; expert's nested completed message is tagged
-        # with the parent node and is filtered above.
-        if message.__class__ is AIMessage and node in streamed_nodes:
+        # duplicate the answer; supervisor's completed message in Pass 2 is a footer
+        # that already arrived as a notice event, so completed AIMessages from
+        # supervisor are always skipped.
+        if message.__class__ is AIMessage and (
+            node in streamed_nodes or node == "supervisor"
+        ):
             continue
         text = message.text
         if text:
@@ -906,13 +900,40 @@ async def _thread_messages(thread_id: str) -> list[dict[str, str]]:
     if getattr(graph, "checkpointer", None) is None:
         return []
     snapshot = await graph.aget_state(build_runtime_config(thread_id=thread_id))
-    return [
-        {
-            "role": "user" if message.type == "human" else "assistant",
-            "text": message.text,
-        }
-        for message in snapshot.values.get("messages", [])
-    ]
+    rendered: list[dict[str, str]] = []
+    messages = snapshot.values.get("messages", [])
+
+    i = 0
+    while i < len(messages):
+        msg = messages[i]
+        if msg.type == "human":
+            rendered.append({"role": "user", "text": msg.text})
+            i += 1
+        elif isinstance(msg, ToolMessage):
+            raw = (
+                msg.artifact.get("text")
+                if isinstance(msg.artifact, dict)
+                else msg.content
+            )
+            text: str = str(raw) if raw is not None else ""
+            # Verify immediately followed by supervisor post-tool footer before concatenating
+            if (
+                i + 1 < len(messages)
+                and isinstance(messages[i + 1], AIMessage)
+                and (messages[i + 1].text or "").startswith("\n\n---\n")
+            ):
+                footer_text = messages[i + 1].text or ""
+                text = f"{text}{footer_text}"
+                i += 1
+            rendered.append({"role": "assistant", "text": text})
+            i += 1
+        elif isinstance(msg, AIMessage):
+            if not msg.tool_calls and msg.text and not msg.text.startswith("\n\n---\n"):
+                rendered.append({"role": "assistant", "text": msg.text})
+            i += 1
+        else:
+            i += 1
+    return rendered
 
 
 @router.get("/threads")

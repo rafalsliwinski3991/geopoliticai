@@ -1016,12 +1016,11 @@ async def test_astream_answer_streams_the_answer_of_either_branch(
     from langchain_core.language_models.fake_chat_models import FakeListChatModel
     from langchain_core.messages import AIMessage
 
-    from agents.orchestrator.state import Destination, RouteDecision
     from agents.reporter.state import OutlineDraft
     from models import Candidate, Source
 
     search_module = importlib.import_module("agents.expert.nodes.search_and_fetch")
-    classify_module = importlib.import_module("agents.orchestrator.nodes.classify")
+    supervisor_module = importlib.import_module("agents.orchestrator.nodes.supervisor")
     outline_module = importlib.import_module("agents.reporter.nodes.outline")
     llm_module = importlib.import_module("llm")
     graph_module = importlib.import_module("agents.orchestrator.graph")
@@ -1032,21 +1031,56 @@ async def test_astream_answer_streams_the_answer_of_either_branch(
     async def sources(items: list[Candidate], policy: Any) -> list[Source]:
         return [Source("title", "https://reuters.com/x", "body")]
 
-    async def decide(*args: Any, **kwargs: Any) -> RouteDecision:
-        route = cast(Destination, destination)
-        return RouteDecision(destination=route, standalone_query="rewritten")
-
     async def draft(*args: Any, **kwargs: Any) -> OutlineDraft:
         return OutlineDraft(sections=["Section one"], notice="")
 
     monkeypatch.setattr(search_module, "search_allowlisted", candidates)
     monkeypatch.setattr(search_module, "fetch_sources", sources)
-    monkeypatch.setattr(classify_module, "ainvoke_structured", decide)
     monkeypatch.setattr(outline_module, "ainvoke_structured", draft)
     monkeypatch.setattr(
         llm_module,
         "_build_client",
         lambda settings: FakeListChatModel(responses=["Hello world."]),
+    )
+
+    class _SupervisorFake:
+        def bind_tools(self, *args: Any, **kwargs: Any) -> Any:
+            return self
+
+        def with_config(self, *args: Any, **kwargs: Any) -> Any:
+            return self
+
+        async def ainvoke(self, messages: Any, *args: Any, **kwargs: Any) -> Any:
+            if destination == "geopolitical":
+                return AIMessage(
+                    content="",
+                    tool_calls=[
+                        {
+                            "name": "run_expert",
+                            "args": {"query": "question"},
+                            "id": "call-1",
+                        }
+                    ],
+                )
+            elif destination == "report":
+                return AIMessage(
+                    content="",
+                    tool_calls=[
+                        {
+                            "name": "run_reporter",
+                            "args": {"topic": "question"},
+                            "id": "call-2",
+                        }
+                    ],
+                )
+            else:
+                return AIMessage(content="Hello world.", tool_calls=[])
+
+    monkeypatch.setattr(
+        supervisor_module, "_build_supervisor_client", lambda: _SupervisorFake()
+    )
+    monkeypatch.setattr(
+        supervisor_module, "_build_footer_client", lambda: _SupervisorFake()
     )
 
     state = build_initial_orchestrator_state("question")
@@ -1491,11 +1525,9 @@ async def test_a_research_routed_turn_increments_exactly_once(
     """
     # Arrange
     # Arrange
-    from langchain_core.messages import AIMessage
+    from langchain_core.messages import AIMessageChunk
 
-    classify_update = {
-        "classify": {"destination": destination, "standalone_query": "q"}
-    }
+    supervisor_update = {"supervisor": {"destination": destination}}
     seen_inputs: list[Any] = []
 
     class _FakeGraph:
@@ -1504,12 +1536,12 @@ async def test_a_research_routed_turn_increments_exactly_once(
         ) -> AsyncIterator[tuple[Any, str, Any]]:
             seen_inputs.append(graph_input)
             # updates mode, empty namespace first — as langgraph delivers it
-            yield ("", "updates", classify_update)
-            # the answer arrives via messages mode
+            yield ("", "updates", supervisor_update)
+            # the answer arrives via messages mode as chunks
             yield (
                 ("",),
                 "messages",
-                (AIMessage("Answer."), {"langgraph_node": "chat"}),
+                (AIMessageChunk(content="Answer."), {"langgraph_node": "supervisor"}),
             )
 
     monkeypatch.setattr(api, "graph", _FakeGraph())
@@ -2299,15 +2331,13 @@ async def test_a_deep_turn_reaches_the_browser_once(
     # Arrange
     import importlib
 
+    from langchain_core.messages import AIMessage
+
     from agents.deep_expert.consts.progress import PLANNING_PROGRESS
-    from agents.orchestrator.state import RouteDecision
 
-    classify_module = importlib.import_module("agents.orchestrator.nodes.classify")
-    deep_node = importlib.import_module("agents.orchestrator.nodes.deep_expert")
+    supervisor_module = importlib.import_module("agents.orchestrator.nodes.supervisor")
+    deep_tool_module = importlib.import_module("agents.orchestrator.tools.deep_expert")
     graph_module = importlib.import_module("agents.orchestrator.graph")
-
-    async def decide(*args: Any, **kwargs: Any) -> RouteDecision:
-        return RouteDecision(destination="deep", standalone_query="rewritten")
 
     DEEP_ANSWER = "Deep answer [a](https://reuters.com/x)."
 
@@ -2315,8 +2345,39 @@ async def test_a_deep_turn_reaches_the_browser_once(
         writer(PLANNING_PROGRESS)
         return DEEP_ANSWER
 
-    monkeypatch.setattr(classify_module, "ainvoke_structured", decide)
-    monkeypatch.setattr(deep_node, "research", fake_research)
+    class _SupervisorDeepFake:
+        def bind_tools(self, *args: Any, **kwargs: Any) -> Any:
+            return self
+
+        def with_config(self, *args: Any, **kwargs: Any) -> Any:
+            return self
+
+        async def ainvoke(self, messages: Any, *args: Any, **kwargs: Any) -> Any:
+            return AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "name": "run_deep_expert",
+                        "args": {"query": "q"},
+                        "id": "call-deep",
+                    }
+                ],
+            )
+
+    class _FooterDeepFake:
+        def with_config(self, *args: Any, **kwargs: Any) -> Any:
+            return self
+
+        async def ainvoke(self, messages: Any, *args: Any, **kwargs: Any) -> Any:
+            return AIMessage("1. Next steps")
+
+    monkeypatch.setattr(
+        supervisor_module, "_build_supervisor_client", lambda: _SupervisorDeepFake()
+    )
+    monkeypatch.setattr(
+        supervisor_module, "_build_footer_client", lambda: _FooterDeepFake()
+    )
+    monkeypatch.setattr(deep_tool_module, "research", fake_research)
     monkeypatch.setattr(api, "graph", graph_module.build_graph())
 
     # Act
@@ -2329,7 +2390,7 @@ async def test_a_deep_turn_reaches_the_browser_once(
     # Assert
     assert ("counted", "deep") in events
     assert ("progress", PLANNING_PROGRESS) in events
-    assert [v for k, v in events if k == "notice"] == [DEEP_ANSWER]
+    assert DEEP_ANSWER in [v for k, v in events if k == "notice"]
     assert [v for k, v in events if k == "token"] == []
 
 
@@ -2343,22 +2404,52 @@ async def test_a_forecast_reaches_the_browser_once(
     # Arrange
     import importlib
 
-    from agents.orchestrator.state import RouteDecision
+    from langchain_core.messages import AIMessage
 
-    classify_module = importlib.import_module("agents.orchestrator.nodes.classify")
-    forecast_node = importlib.import_module("agents.orchestrator.nodes.deep_forecaster")
+    supervisor_module = importlib.import_module("agents.orchestrator.nodes.supervisor")
+    forecast_tool_module = importlib.import_module(
+        "agents.orchestrator.tools.deep_forecaster"
+    )
     graph_module = importlib.import_module("agents.orchestrator.graph")
-
-    async def decide(*args: Any, **kwargs: Any) -> RouteDecision:
-        return RouteDecision(destination="forecast", standalone_query="rewritten")
 
     FORECAST_ANSWER = "Forecast answer [a](https://reuters.com/x)."
 
     async def fake_forecast(query: str, store: Any = None) -> str:
         return FORECAST_ANSWER
 
-    monkeypatch.setattr(classify_module, "ainvoke_structured", decide)
-    monkeypatch.setattr(forecast_node, "forecast", fake_forecast)
+    class _SupervisorForecastFake:
+        def bind_tools(self, *args: Any, **kwargs: Any) -> Any:
+            return self
+
+        def with_config(self, *args: Any, **kwargs: Any) -> Any:
+            return self
+
+        async def ainvoke(self, messages: Any, *args: Any, **kwargs: Any) -> Any:
+            return AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "name": "run_deep_forecaster",
+                        "args": {"question": "q"},
+                        "id": "call-forecast",
+                    }
+                ],
+            )
+
+    class _FooterForecastFake:
+        def with_config(self, *args: Any, **kwargs: Any) -> Any:
+            return self
+
+        async def ainvoke(self, messages: Any, *args: Any, **kwargs: Any) -> Any:
+            return AIMessage("1. Next steps")
+
+    monkeypatch.setattr(
+        supervisor_module, "_build_supervisor_client", lambda: _SupervisorForecastFake()
+    )
+    monkeypatch.setattr(
+        supervisor_module, "_build_footer_client", lambda: _FooterForecastFake()
+    )
+    monkeypatch.setattr(forecast_tool_module, "forecast", fake_forecast)
     monkeypatch.setattr(api, "graph", graph_module.build_graph())
 
     # Act
@@ -2370,7 +2461,7 @@ async def test_a_forecast_reaches_the_browser_once(
     ]
     # Assert
     assert ("counted", "forecast") in events
-    assert [v for k, v in events if k == "notice"] == [FORECAST_ANSWER]
+    assert FORECAST_ANSWER in [v for k, v in events if k == "notice"]
     assert [v for k, v in events if k == "token"] == []
 
 
@@ -2928,3 +3019,87 @@ async def test_concurrent_failed_forecasts_refund_once(
         == [("user", 1, CHARGE_DAY, DAILY_RESEARCH_TURNS, FORECAST_TURN_COST)] * 2
     )
     assert quota.refunds() == [("refund", 1, CHARGE_DAY, FORECAST_TURN_COST)]
+
+
+@pytest.mark.anyio
+async def test_quota_charged_from_supervisor_updates_frame(
+    client: httpx.AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+    quota: RecordingQuota,
+) -> None:
+    """A research turn charges quota when the supervisor updates frame arrives."""
+    # Arrange
+    from langchain_core.messages import AIMessage
+
+    RESEARCH_DESTINATION = "geopolitical"
+    supervisor_update = {"supervisor": {"destination": RESEARCH_DESTINATION}}
+
+    class _FakeGraph:
+        async def astream(
+            self, graph_input: Any, config: Any, **kwargs: Any
+        ) -> AsyncIterator[tuple[Any, str, Any]]:
+            yield ("", "updates", supervisor_update)
+            yield (
+                ("",),
+                "messages",
+                (AIMessage("Answer."), {"langgraph_node": "supervisor"}),
+            )
+
+    monkeypatch.setattr(api, "graph", _FakeGraph())
+
+    # Act
+    response = await client.post(
+        "/api/run_pipeline/stream", json={"query": "x", "thread_id": "t-1"}
+    )
+
+    # Assert
+    assert response.status_code == 200
+    assert quota.charged() == [("user", 1, CHARGE_DAY, DAILY_RESEARCH_TURNS, 1)]
+
+
+@pytest.mark.anyio
+async def test_thread_messages_reconstructs_assistant_turn_with_footer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Tool message artifact and supervisor footer are merged into one assistant message."""
+    # Arrange
+    from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
+
+    THREAD_ID = "t-history-1"
+    TOOL_TEXT = "Synthesized expert analysis on oil markets."
+    FOOTER_TEXT = "\n\n---\n1. Deep dive\n2. Forecast"
+    EXPECTED_COMBINED = f"{TOOL_TEXT}{FOOTER_TEXT}"
+
+    messages = [
+        HumanMessage("What is happening with oil?"),
+        AIMessage(
+            content="",
+            tool_calls=[{"name": "run_expert", "args": {}, "id": "tc-1"}],
+        ),
+        ToolMessage(
+            content="Summary from 3 sources.",
+            tool_call_id="tc-1",
+            artifact={"text": TOOL_TEXT},
+        ),
+        AIMessage(FOOTER_TEXT),
+    ]
+
+    class _FakeSnapshot:
+        values = {"messages": messages}
+
+    class _FakeCheckpointerGraph:
+        checkpointer = object()
+
+        async def aget_state(self, config: Any) -> Any:
+            return _FakeSnapshot()
+
+    monkeypatch.setattr(api, "graph", _FakeCheckpointerGraph())
+
+    # Act
+    rendered = await api._thread_messages(THREAD_ID)
+
+    # Assert
+    assert rendered == [
+        {"role": "user", "text": "What is happening with oil?"},
+        {"role": "assistant", "text": EXPECTED_COMBINED},
+    ]
