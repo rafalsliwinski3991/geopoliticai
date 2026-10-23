@@ -1,5 +1,5 @@
 import pytest
-from langchain_core.messages import AIMessage, AnyMessage, HumanMessage
+from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, ToolMessage
 from pydantic import Field, create_model
 
 from agents.reporter.state import (
@@ -177,3 +177,147 @@ def test_the_outline_schema_is_a_plain_string_field() -> None:
     # Assert
     del schema["title"], twin["title"]
     assert schema == twin
+
+
+def test_transcript_extracts_full_text_from_tool_message_artifact() -> None:
+    """Specialist tools return short summary content but attach the complete research
+    text in artifact['text']. The transcript extractor must read the artifact so
+    downstream report generation sees the full research.
+    """
+    # Arrange
+    messages: list[AnyMessage] = [
+        HumanMessage("What is the Baltic situation?"),
+        ToolMessage(
+            content="Synthesized verified research on 'Baltic situation' from 2 sources.",
+            tool_call_id="call_expert_1",
+            artifact={
+                "text": "Detailed Baltic briefing [1](https://example.com/baltic)."
+            },
+        ),
+    ]
+
+    # Act
+    transcript = build_transcript(messages)
+
+    # Assert
+    assert transcript == (
+        "User: What is the Baltic situation?\n\n"
+        "Assistant: Detailed Baltic briefing [1](https://example.com/baltic)."
+    )
+
+
+def test_transcript_falls_back_to_tool_message_content_when_artifact_is_not_dict() -> (
+    None
+):
+    """When a ToolMessage has no artifact or a non-dict artifact, the extractor must
+    fall back to content so research text is not silently dropped.
+    """
+    # Arrange
+    messages: list[AnyMessage] = [
+        ToolMessage(
+            content="Fallback content without artifact.",
+            tool_call_id="call_fallback",
+            artifact="not a dict",
+        ),
+    ]
+
+    # Act
+    transcript = build_transcript(messages)
+
+    # Assert
+    assert transcript == "Assistant: Fallback content without artifact."
+
+
+def test_transcript_skips_tool_calling_ai_messages() -> None:
+    """Assistant messages initiating tool calls contain function schemas rather than
+    conversational research text. The transcript must omit them to avoid leaking tool schemas.
+    """
+    # Arrange
+    messages: list[AnyMessage] = [
+        AIMessage(
+            content="",
+            tool_calls=[
+                {
+                    "name": "run_expert",
+                    "args": {"query": "NATO"},
+                    "id": "call_1",
+                    "type": "tool_call",
+                }
+            ],
+        ),
+        ToolMessage(
+            content="Done",
+            tool_call_id="call_1",
+            artifact={"text": "Verified research content."},
+        ),
+    ]
+
+    # Act
+    transcript = build_transcript(messages)
+
+    # Assert
+    assert transcript == "Assistant: Verified research content."
+    assert "run_expert" not in transcript
+
+
+def test_transcript_skips_footer_ai_messages() -> None:
+    """Assistant footer messages starting with '\\n\\n---\\n' are UI display metadata rather
+    than narrative content. The transcript must skip them to keep the report clean.
+    """
+    # Arrange
+    messages: list[AnyMessage] = [
+        AIMessage("Main answer text."),
+        AIMessage("\n\n---\n**Sources**: [Example](https://example.com)"),
+    ]
+
+    # Act
+    transcript = build_transcript(messages)
+
+    # Assert
+    assert transcript == "Assistant: Main answer text."
+    assert "Sources" not in transcript
+
+
+def test_has_researched_material_returns_true_when_workspace_synthesis_is_present() -> (
+    None
+):
+    """When the multi-agent workspace contains expert synthesis strings, the reporter has
+    research material to synthesize even if messages contain no inline links.
+    """
+    # Arrange
+    messages: list[AnyMessage] = [HumanMessage("Tell me about the treaties")]
+    synthesis = ["Synthesized analysis of the treaties."]
+
+    # Act + Assert
+    assert has_researched_material(messages, workspace_synthesis=synthesis) is True
+
+
+def test_has_researched_material_returns_true_when_workspace_forecasts_are_present() -> (
+    None
+):
+    """When the workspace contains forecast entries, the reporter can compile a report on
+    future projections without requiring inline citations in message content.
+    """
+    # Arrange
+    messages: list[AnyMessage] = [HumanMessage("What is the forecast?")]
+    forecasts = [{"question": "Will treaty pass?", "summary": "70% probability"}]
+
+    # Act + Assert
+    assert has_researched_material(messages, workspace_forecasts=forecasts) is True
+
+
+def test_has_researched_material_finds_citations_in_tool_message_artifact() -> None:
+    """Specialist tools store verified answers with markdown citations in
+    ToolMessage.artifact['text']. The material check must detect these citations as researched material.
+    """
+    # Arrange
+    messages: list[AnyMessage] = [
+        ToolMessage(
+            content="Summary",
+            tool_call_id="call_cites",
+            artifact={"text": "Verified source [1](https://example.com)."},
+        ),
+    ]
+
+    # Act + Assert
+    assert has_researched_material(messages) is True

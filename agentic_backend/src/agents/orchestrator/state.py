@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-from typing import Annotated, Any, Literal, TypedDict
+from typing import Annotated, Any, Literal
 
 from langchain_core.messages import AnyMessage, HumanMessage
 from langgraph.graph.message import add_messages
 from pydantic import BaseModel, Field
-from typing_extensions import NotRequired
+from typing_extensions import NotRequired, TypedDict
 
 from models import CleanText, squash_whitespace
 

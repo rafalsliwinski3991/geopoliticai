@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from typing import Literal, TypedDict
+from typing import Any, Literal, TypedDict
 
-from langchain_core.messages import AIMessage, AnyMessage, HumanMessage
+from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, ToolMessage
 from pydantic import BaseModel, Field
 from typing_extensions import NotRequired
 
@@ -80,7 +80,23 @@ def build_transcript(messages: Sequence[AnyMessage]) -> str:
     blocks: list[str] = []
     used = 0
     for message in reversed(list(messages)):
-        text = message.text.strip()
+        if isinstance(message, AIMessage):
+            if getattr(message, "tool_calls", None):
+                continue
+            if message.text.startswith("\n\n---\n"):
+                continue
+            text = message.text.strip()
+        elif isinstance(message, ToolMessage):
+            artifact = getattr(message, "artifact", None)
+            if isinstance(artifact, dict) and "text" in artifact:
+                text = str(artifact["text"]).strip()
+            else:
+                text = str(message.content).strip()
+        elif isinstance(message, HumanMessage):
+            text = message.text.strip()
+        else:
+            text = getattr(message, "text", str(message.content)).strip()
+
         if not text:
             continue
         speaker = "User" if isinstance(message, HumanMessage) else "Assistant"
@@ -93,7 +109,11 @@ def build_transcript(messages: Sequence[AnyMessage]) -> str:
     return "\n\n".join(blocks)
 
 
-def has_researched_material(messages: Sequence[AnyMessage]) -> bool:
+def has_researched_material(
+    messages: Sequence[AnyMessage],
+    workspace_synthesis: Sequence[str] | None = None,
+    workspace_forecasts: Sequence[Any] | None = None,
+) -> bool:
     """Is there anything in this thread a report could be built from?
 
     (Q5.) A report is made of researched answers, full stop (Q3). The expert's
@@ -120,10 +140,21 @@ def has_researched_material(messages: Sequence[AnyMessage]) -> bool:
     merged the user's own request into `messages`, so the transcript always
     holds at least that turn.
     """
-    return any(
-        isinstance(message, AIMessage) and "](http" in message.text
-        for message in messages
-    )
+    if workspace_synthesis:
+        return True
+    if workspace_forecasts:
+        return True
+    for message in messages:
+        if isinstance(message, AIMessage) and "](http" in message.text:
+            return True
+        if isinstance(message, ToolMessage):
+            artifact = getattr(message, "artifact", None)
+            if isinstance(artifact, dict) and "text" in artifact:
+                if "](http" in str(artifact["text"]):
+                    return True
+            elif "](http" in str(message.content):
+                return True
+    return False
 
 
 def build_initial_reporter_state(transcript: str) -> ReporterState:
