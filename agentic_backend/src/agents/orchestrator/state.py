@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Annotated, Literal, TypedDict
+from typing import Annotated, Any, Literal, TypedDict
 
 from langchain_core.messages import AnyMessage, HumanMessage
 from langgraph.graph.message import add_messages
@@ -40,22 +40,27 @@ class RouteDecision(BaseModel):
     )
 
 
-class OrchestratorState(TypedDict):
-    """Conversation state. `messages` is the only accumulating channel.
+class GeopoliticState(TypedDict):
+    """The multi-agent orchestrator shared workspace state.
 
-    `destination` and `standalone_query` are `NotRequired` because a turn's
-    input carries only the new human message; `classify` writes both before
-    anything reads them. Seeding them with defaults instead would turn a
-    classifier that failed to write `destination` into a silent fall-through
-    to the chat branch.
+    Specialist agent outputs (sources, synthesis, forecast, report draft) accumulate
+    in dedicated channels alongside conversation messages.
     """
 
     messages: Annotated[list[AnyMessage], add_messages]
     destination: NotRequired[Destination]
     standalone_query: NotRequired[str]
+    retrieved_sources: NotRequired[list[dict[str, str]]]
+    expert_synthesis: NotRequired[list[str]]
+    forecast_data: NotRequired[list[dict[str, Any]]]
+    report_draft: NotRequired[str | None]
 
 
-def build_initial_orchestrator_state(query: str) -> OrchestratorState:
+# Backward compatibility alias
+OrchestratorState = GeopoliticState
+
+
+def build_initial_orchestrator_state(query: str) -> GeopoliticState:
     """Return the input for one turn: exactly one new human message.
 
     The `add_messages` reducer appends this to whatever the checkpointer
