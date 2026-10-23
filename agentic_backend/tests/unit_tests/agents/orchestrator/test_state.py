@@ -2,7 +2,6 @@
 
 import pytest
 from langchain_core.messages import AIMessage, HumanMessage
-from pydantic import ValidationError
 
 from agents.orchestrator.config import (
     FOOTER_LLM_SETTINGS,
@@ -16,7 +15,6 @@ from agents.orchestrator.prompts import SUPERVISOR_SYSTEM_PROMPT
 from agents.orchestrator.state import (
     GeopoliticState,
     OrchestratorState,
-    RouteDecision,
     build_initial_orchestrator_state,
 )
 
@@ -36,32 +34,6 @@ def test_build_initial_state_rejects_empty_query(query: str) -> None:
     # Act + Assert
     with pytest.raises(ValueError):
         build_initial_orchestrator_state(query)
-
-
-def test_route_decision_rejects_unknown_destination() -> None:
-    # Act + Assert
-    with pytest.raises(ValidationError):
-        RouteDecision.model_validate(
-            {"destination": "unknown", "standalone_query": "question"}
-        )
-    assert (
-        RouteDecision.model_validate(
-            {"destination": "report", "standalone_query": "question"}
-        ).destination
-        == "report"
-    )
-    assert (
-        RouteDecision.model_validate(
-            {"destination": "deep", "standalone_query": "question"}
-        ).destination
-        == "deep"
-    )
-    assert (
-        RouteDecision.model_validate(
-            {"destination": "forecast", "standalone_query": "question"}
-        ).destination
-        == "forecast"
-    )
 
 
 def test_geopolitic_state_is_orchestrator_state_alias() -> None:
@@ -157,12 +129,12 @@ def test_static_next_steps_menu_and_footer_prompt_define_expected_turns() -> Non
     """Static and dynamic menus must offer consistent turn costs.
 
     The costs across follow-up, deep expert, forecaster, and reporter must match
-    the product turn specifications (0, 4, 8, 1).
+    the product turn specifications (0, 10, 20, 1).
     """
     # Arrange
     expected_follow_up = "Ask a follow-up (0 research turns)"
-    expected_deep = "Explore in depth with the deep research agent (4 research turns)"
-    expected_forecast = "Generate a Delphi forecast (8 research turns)"
+    expected_deep = "Explore in depth with the deep research agent (10 research turns)"
+    expected_forecast = "Generate a Delphi forecast (20 research turns)"
     expected_report = "Generate a comprehensive report (1 research turn)"
 
     # Act
@@ -175,8 +147,8 @@ def test_static_next_steps_menu_and_footer_prompt_define_expected_turns() -> Non
     assert expected_forecast in static_menu
     assert expected_report in static_menu
     assert "**What next?**" in dynamic_prompt
-    assert "4 research turns" in dynamic_prompt
-    assert "8 research turns" in dynamic_prompt
+    assert "10 research turns" in dynamic_prompt
+    assert "20 research turns" in dynamic_prompt
     assert "1 research turn" in dynamic_prompt
 
 

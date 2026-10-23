@@ -6,38 +6,9 @@ from typing import Annotated, Any, Literal
 
 from langchain_core.messages import AnyMessage, HumanMessage
 from langgraph.graph.message import add_messages
-from pydantic import BaseModel, Field
 from typing_extensions import NotRequired, TypedDict
 
 Destination = Literal["geopolitical", "deep", "forecast", "other", "report"]
-
-
-class RouteDecision(BaseModel):
-    """The classifier's structured output: where the turn goes, and as what.
-
-    Both fields are required with no default, which is what
-    `with_structured_output(..., strict=True)` needs.
-    """
-
-    destination: Destination = Field(
-        description=(
-            "The complete set of destinations is 'geopolitical', 'deep', "
-            "'forecast', 'report', 'other' — pick exactly one of those five, "
-            "never anything outside it. Choose 'geopolitical' when the last "
-            "user turn is a political or geopolitical question, 'deep' when it "
-            "is one and the user has explicitly asked for an in-depth answer on "
-            "this topic, 'forecast' when the last user turn itself explicitly "
-            "asks for a forecast or a prediction, 'report' when it asks for a "
-            "written report or write-up of what has already been discussed, "
-            "'other' for anything else."
-        )
-    )
-    standalone_query: str = Field(
-        description=(
-            "The last user turn rewritten so it stands alone, with pronouns "
-            "and elisions resolved from the conversation."
-        )
-    )
 
 
 class GeopoliticState(TypedDict):

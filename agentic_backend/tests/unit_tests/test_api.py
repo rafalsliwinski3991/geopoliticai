@@ -1120,6 +1120,49 @@ async def test_astream_answer_streams_the_answer_of_either_branch(
 
 
 @pytest.mark.anyio
+async def test_astream_answer_forwards_unstreamed_supervisor_chat_as_token(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When the supervisor emits an unstreamed chat AIMessage without prior token chunks,
+    _astream_answer must forward the completed message as a token while skipping footer notices.
+    """
+    # Arrange
+    from langchain_core.messages import AIMessage
+
+    expected_token = "Good morning! I am GeopoliticAI's supervisor assistant."
+    footer_text = "\n\n---\n**What next?**\n- Ask a follow-up (0 research turns)"
+
+    class _FakeUnstreamedGraph:
+        async def astream(self, *args: Any, **kwargs: Any) -> Any:
+            yield (
+                (),
+                "messages",
+                (
+                    AIMessage(content=expected_token),
+                    {"langgraph_node": "supervisor"},
+                ),
+            )
+            yield (
+                (),
+                "messages",
+                (
+                    AIMessage(content=footer_text),
+                    {"langgraph_node": "supervisor"},
+                ),
+            )
+
+    monkeypatch.setattr(api, "graph", _FakeUnstreamedGraph())
+    state = build_initial_orchestrator_state("Hello!")
+
+    # Act
+    events = [event async for event in api._astream_answer(state, "t-1")]
+
+    # Assert
+    tokens = [text for kind, text in events if kind == "token"]
+    assert tokens == [expected_token]
+
+
+@pytest.mark.anyio
 async def test_stream_without_a_token_is_401_and_the_graph_is_never_touched(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1523,7 +1566,6 @@ async def test_a_research_routed_turn_increments_exactly_once(
     branch, which is the whole point: implementing only the _astream_answer
     half ships an unlimited quota with a green suite.
     """
-    # Arrange
     # Arrange
     from langchain_core.messages import AIMessageChunk
 

@@ -24,7 +24,10 @@ async def run_deep_expert(
 
     parsed_citations = [
         {"title": m[0], "url": m[1]}
-        for m in re.findall(r"\[([^\]]+)\]\((https?://[^\)]+)\)", deep_answer)
+        for m in re.findall(
+            r"\[([^\]]+)\]\(((?:https?://[^\s()]+|\((?:[^\s()]+|\([^\s()]*\))*\))+)\)",
+            deep_answer,
+        )
     ]
 
     existing_sources: list[dict[str, str]] = (

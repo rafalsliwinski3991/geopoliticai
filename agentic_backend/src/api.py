@@ -630,10 +630,11 @@ async def _astream_answer(
         # Chat nodes emit provider chunks and then the completed message they
         # return. Once chunks have been forwarded, the completed message would
         # duplicate the answer; supervisor's completed message in Pass 2 is a footer
-        # that already arrived as a notice event, so completed AIMessages from
-        # supervisor are always skipped.
+        # that already arrived as a notice event, so completed footer AIMessages from
+        # supervisor are skipped, while unstreamed chat messages are forwarded as tokens.
         if message.__class__ is AIMessage and (
-            node in streamed_nodes or node == "supervisor"
+            node in streamed_nodes
+            or (node == "supervisor" and message.text.startswith("\n\n---\n"))
         ):
             continue
         text = message.text
