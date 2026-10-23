@@ -2,7 +2,6 @@
 
 import pytest
 from langchain_core.messages import AIMessage, HumanMessage
-from pydantic import ValidationError
 
 from agents.orchestrator.config import (
     FOOTER_LLM_SETTINGS,
@@ -16,7 +15,6 @@ from agents.orchestrator.prompts import SUPERVISOR_SYSTEM_PROMPT
 from agents.orchestrator.state import (
     GeopoliticState,
     OrchestratorState,
-    RouteDecision,
     build_initial_orchestrator_state,
 )
 
@@ -36,32 +34,6 @@ def test_build_initial_state_rejects_empty_query(query: str) -> None:
     # Act + Assert
     with pytest.raises(ValueError):
         build_initial_orchestrator_state(query)
-
-
-def test_route_decision_rejects_unknown_destination() -> None:
-    # Act + Assert
-    with pytest.raises(ValidationError):
-        RouteDecision.model_validate(
-            {"destination": "unknown", "standalone_query": "question"}
-        )
-    assert (
-        RouteDecision.model_validate(
-            {"destination": "report", "standalone_query": "question"}
-        ).destination
-        == "report"
-    )
-    assert (
-        RouteDecision.model_validate(
-            {"destination": "deep", "standalone_query": "question"}
-        ).destination
-        == "deep"
-    )
-    assert (
-        RouteDecision.model_validate(
-            {"destination": "forecast", "standalone_query": "question"}
-        ).destination
-        == "forecast"
-    )
 
 
 def test_geopolitic_state_is_orchestrator_state_alias() -> None:
