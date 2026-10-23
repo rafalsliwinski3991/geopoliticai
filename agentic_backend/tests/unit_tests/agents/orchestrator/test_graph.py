@@ -1,570 +1,194 @@
+"""Tests for the supervisor orchestrator graph topology and execution loops."""
+
+from __future__ import annotations
+
 import importlib
-from typing import Any, AsyncIterator, cast
+from typing import Any, Optional
 
 import pytest
-from langchain_core.language_models.fake_chat_models import FakeListChatModel
-from langchain_core.messages import AIMessage, HumanMessage
+from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, ToolMessage
+from langchain_core.runnables import RunnableConfig
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.constants import END, START
-from langgraph.types import Command
+from langgraph.store.memory import InMemoryStore
 
-from agents.orchestrator.consts.progress import SEARCH_PROGRESS
-from agents.orchestrator.state import (
-    Destination,
-    RouteDecision,
-    build_initial_orchestrator_state,
-)
-from agents.reporter.consts.messages import NO_MATERIAL_NOTICE
-from agents.reporter.consts.progress import OUTLINE_PROGRESS, REPORT_PROGRESS
-from agents.reporter.state import OutlineDraft
-from frames import NoticeEvent
-from models import Candidate, Source
+from agents.orchestrator import build_graph, build_runtime_config
+from agents.orchestrator.state import build_initial_orchestrator_state
 
-orchestrator = importlib.import_module("agents.orchestrator")
-graph_module = importlib.import_module("agents.orchestrator.graph")
-classify_module = importlib.import_module("agents.orchestrator.nodes.classify")
-chat_module = importlib.import_module("agents.orchestrator.nodes.chat")
-outline_module = importlib.import_module("agents.reporter.nodes.outline")
-retrieve_module = importlib.import_module("agents.expert.nodes.search_and_fetch")
-llm_module = importlib.import_module("llm")
-
-CITED_ANSWER = "Here is the situation [1](https://reuters.com/x)."
+supervisor_module = importlib.import_module("agents.orchestrator.nodes.supervisor")
 
 
-def test_graph_has_exactly_six_nodes() -> None:
+class ScriptedChatModel:
+    """Scripted chat model returning pre-programmed responses in order."""
+
+    def __init__(self, responses: list[AnyMessage]) -> None:
+        self.responses = list(responses)
+
+    def bind_tools(self, *args: Any, **kwargs: Any) -> ScriptedChatModel:
+        return self
+
+    def with_config(self, *args: Any, **kwargs: Any) -> ScriptedChatModel:
+        return self
+
+    async def ainvoke(
+        self,
+        messages: list[AnyMessage],
+        *,
+        config: Optional[RunnableConfig] = None,
+        **kwargs: Any,
+    ) -> AnyMessage:
+        if not self.responses:
+            raise AssertionError("ScriptedChatModel exhausted")
+        return self.responses.pop(0)
+
+
+def test_graph_has_supervisor_and_tools_nodes() -> None:
+    """The multi-agent orchestrator topology consists only of the supervisor and tools nodes."""
     # Act
-    nodes = set(orchestrator.build_graph().get_graph().nodes)
+    nodes = set(build_graph().get_graph().nodes)
 
     # Assert
-    assert nodes - {"__start__", "__end__"} == {
-        "classify",
-        "expert",
-        "deep_expert",
-        "deep_forecaster",
-        "chat",
-        "reporter",
-    }
+    assert nodes - {"__start__", "__end__"} == {"supervisor", "tools"}
 
 
-def test_graph_forks_after_classify() -> None:
+def test_graph_has_expected_edges() -> None:
+    """The graph routes from START to supervisor, conditionally to tools or END, and tools conditionally back."""
     # Act
-    edges = {
-        (edge.source, edge.target)
-        for edge in orchestrator.build_graph().get_graph().edges
-    }
+    edges = {(edge.source, edge.target) for edge in build_graph().get_graph().edges}
 
     # Assert
     assert {
-        (START, "classify"),
-        ("classify", "expert"),
-        ("classify", "deep_expert"),
-        ("classify", "chat"),
-        ("classify", "reporter"),
-        ("classify", "deep_forecaster"),
-        ("expert", END),
-        ("deep_forecaster", END),
-        ("deep_expert", END),
-        ("chat", END),
-        ("reporter", END),
+        (START, "supervisor"),
+        ("supervisor", "tools"),
+        ("supervisor", END),
+        ("tools", "supervisor"),
+        ("tools", END),
     } <= edges
 
 
 def test_build_graph_needs_no_checkpointer() -> None:
+    """Constructing the graph needs no checkpointer for offline compilation."""
     # Act + Assert
-    assert orchestrator.build_graph() is not None
-
-
-async def _geopolitical_candidates(query: str, policy: Any) -> list[Candidate]:
-    return [Candidate("title", "https://reuters.com/x", "reuters.com")]
-
-
-async def _geopolitical_sources(
-    candidates: list[Candidate], policy: Any
-) -> list[Source]:
-    return [Source("title", "https://reuters.com/x", "body")]
-
-
-def _route(monkeypatch: pytest.MonkeyPatch, destination: str) -> None:
-    async def decide(*args: Any, **kwargs: Any) -> RouteDecision:
-        return RouteDecision(
-            destination=cast(Destination, destination), standalone_query="rewritten"
-        )
-
-    monkeypatch.setattr(classify_module, "ainvoke_structured", decide)
-
-
-def _stub_outline_model(
-    monkeypatch: pytest.MonkeyPatch, calls: list[list[str]], sections: list[str]
-) -> None:
-    async def decide(
-        prompt: str,
-        messages: list[Any],
-        schema: Any,
-        *,
-        config: Any = None,
-        settings: Any = None,
-    ) -> OutlineDraft:
-        calls.append(list(sections))
-        return OutlineDraft(sections=list(sections), notice="")
-
-    monkeypatch.setattr(outline_module, "ainvoke_structured", decide)
-
-
-def _stub_report_client(monkeypatch: pytest.MonkeyPatch, text: str) -> None:
-    monkeypatch.setattr(
-        llm_module,
-        "_build_client",
-        lambda settings: FakeListChatModel(responses=[text]),
-    )
-
-
-def _compiled() -> Any:
-    return orchestrator.build_graph(checkpointer=InMemorySaver())
-
-
-def _config(thread_id: str) -> dict[str, dict[str, str]]:
-    return {"configurable": {"thread_id": thread_id}}
-
-
-async def _seed_researched_turn(
-    compiled: Any, monkeypatch: pytest.MonkeyPatch, config: dict[str, dict[str, str]]
-) -> None:
-    """Run one geopolitical turn so the thread holds a cited assistant answer."""
-    monkeypatch.setattr(retrieve_module, "search_allowlisted", _geopolitical_candidates)
-    monkeypatch.setattr(retrieve_module, "fetch_sources", _geopolitical_sources)
-    _route(monkeypatch, "geopolitical")
-    _stub_report_client(monkeypatch, CITED_ANSWER)
-    await compiled.ainvoke(build_initial_orchestrator_state("question"), config=config)
-
-
-@pytest.mark.anyio
-async def test_expert_branch_streams_namespaced_answer_tokens(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    # Arrange
-    monkeypatch.setattr(retrieve_module, "search_allowlisted", _geopolitical_candidates)
-    monkeypatch.setattr(retrieve_module, "fetch_sources", _geopolitical_sources)
-    _route(monkeypatch, "geopolitical")
-    _stub_report_client(monkeypatch, "Hello world.")
-
-    # Act
-    events = [
-        event
-        async for event in orchestrator.build_graph().astream(
-            build_initial_orchestrator_state("question"),
-            stream_mode="messages",
-            subgraphs=True,
-        )
-    ]
-    answer_events = [
-        event for event in events if event[1][1].get("langgraph_node") == "answer"
-    ]
-
-    # Assert
-    assert answer_events
-    assert all(event[0] for event in answer_events)
-    assert "".join(event[1][0].text for event in answer_events) == "Hello world."
-
-
-@pytest.mark.anyio
-async def test_expert_branch_streams_nothing_without_subgraphs(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    # Arrange
-    monkeypatch.setattr(retrieve_module, "search_allowlisted", _geopolitical_candidates)
-    monkeypatch.setattr(retrieve_module, "fetch_sources", _geopolitical_sources)
-    _route(monkeypatch, "geopolitical")
-    _stub_report_client(monkeypatch, "Hello world.")
-
-    # Act
-    events = [
-        event
-        async for event in orchestrator.build_graph().astream(
-            build_initial_orchestrator_state("question"), stream_mode="messages"
-        )
-    ]
-
-    answer_events = [
-        event for event in events if event[1].get("langgraph_node") == "answer"
-    ]
-
-    # Assert
-    assert answer_events == []
-
-
-@pytest.mark.anyio
-async def test_classifier_tokens_never_reach_the_stream(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    # Arrange
-    _route(monkeypatch, "other")
-
-    async def stream(
-        prompt: str,
-        messages: list[Any],
-        *,
-        config: Any = None,
-        settings: Any = None,
-    ) -> AsyncIterator[str]:
-        yield "chat answer"
-
-    monkeypatch.setattr(chat_module, "astream_messages", stream)
-
-    # Act
-    events = [
-        event
-        async for event in orchestrator.build_graph().astream(
-            build_initial_orchestrator_state("hello"), stream_mode="messages"
-        )
-    ]
-
-    # Assert
-    assert all(event[1].get("langgraph_node") != "classify" for event in events)
-
-
-@pytest.mark.anyio
-async def test_chat_branch_never_searches(monkeypatch: pytest.MonkeyPatch) -> None:
-    # Arrange
-    async def forbidden_search(query: str, policy: Any) -> list[Candidate]:
-        raise AssertionError("chat branch must not search")
-
-    monkeypatch.setattr(retrieve_module, "search_allowlisted", forbidden_search)
-    _route(monkeypatch, "other")
-
-    async def stream(
-        prompt: str,
-        messages: list[Any],
-        *,
-        config: Any = None,
-        settings: Any = None,
-    ) -> AsyncIterator[str]:
-        yield "chat answer"
-
-    monkeypatch.setattr(chat_module, "astream_messages", stream)
-
-    # Act
-    events = [
-        event
-        async for event in orchestrator.build_graph().astream(
-            build_initial_orchestrator_state("hello"), stream_mode="messages"
-        )
-    ]
-
-    # Assert
-    assert any(event[1].get("langgraph_node") == "chat" for event in events)
-
-
-@pytest.mark.anyio
-async def test_thread_carries_history_between_turns(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    # Arrange
-    received: list[list[Any]] = []
-
-    async def decide(
-        prompt: str,
-        messages: list[Any],
-        schema: Any,
-        *,
-        config: Any = None,
-        settings: Any = None,
-    ) -> RouteDecision:
-        received.append(list(messages))
-        return RouteDecision(destination="other", standalone_query="rewritten")
-
-    async def stream(
-        prompt: str,
-        messages: list[Any],
-        *,
-        config: Any = None,
-        settings: Any = None,
-    ) -> AsyncIterator[str]:
-        yield "assistant reply"
-
-    monkeypatch.setattr(classify_module, "ainvoke_structured", decide)
-    monkeypatch.setattr(chat_module, "astream_messages", stream)
-    compiled = orchestrator.build_graph(checkpointer=InMemorySaver())
-    config = orchestrator.build_runtime_config(thread_id="thread-1")
-
-    # Act
-    await compiled.ainvoke(
-        build_initial_orchestrator_state("first question"), config=config
-    )
-    await compiled.ainvoke(
-        build_initial_orchestrator_state("second question"), config=config
-    )
-
-    # Assert
-    assert len(received) == 2
-    assert [message.content for message in received[1]] == [
-        "first question",
-        "assistant reply",
-        "second question",
-    ]
-
-
-@pytest.mark.anyio
-async def test_report_branch_never_searches(monkeypatch: pytest.MonkeyPatch) -> None:
-    # Arrange
-    async def forbidden_search(query: str, policy: Any) -> list[Candidate]:
-        raise AssertionError("report branch must not search")
-
-    monkeypatch.setattr(retrieve_module, "search_allowlisted", forbidden_search)
-    outline_calls: list[list[str]] = []
-    _route(monkeypatch, "report")
-    _stub_outline_model(monkeypatch, outline_calls, ["First"])
-    compiled = _compiled()
-    config = _config("report-nosearch-1")
-
-    # The thread already holds a cited assistant answer; the report turn runs
-    # without touching the search.
-
-    # Act
-    await compiled.ainvoke(
-        {"messages": [AIMessage(CITED_ANSWER), HumanMessage("write me a report")]},
-        config=config,
-    )
-    state = compiled.get_state(config=config)
-
-    # Assert
-    assert state.next == ("reporter",)
-    assert outline_calls == [["First"]]
-
-
-@pytest.mark.anyio
-async def test_report_branch_pauses_at_top_level_namespace(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    # Arrange
-    outline_calls: list[list[str]] = []
-    compiled = _compiled()
-    config = _config("report-pause-ns-1")
-    await _seed_researched_turn(compiled, monkeypatch, config)
-    _route(monkeypatch, "report")
-    _stub_outline_model(monkeypatch, outline_calls, ["First", "Second"])
-
-    # Act
-    events = [
-        event
-        async for event in compiled.astream(
-            build_initial_orchestrator_state("write me a report"),
-            config=config,
-            stream_mode=["updates"],
-            subgraphs=True,
-        )
-    ]
-    interrupts = [
-        event for event in events if event[0] == () and "__interrupt__" in event[2]
-    ]
-
-    # Assert
-    assert len(interrupts) == 1
-
-
-@pytest.mark.anyio
-async def test_report_progress_arrives_under_the_child_namespace(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    # Arrange
-    compiled = _compiled()
-    config = _config("report-custom-ns-1")
-
-    async def collect(input_: Any) -> list[Any]:
-        return [
-            event
-            async for event in compiled.astream(
-                input_, config=config, stream_mode=["custom"], subgraphs=True
-            )
-        ]
-
-    monkeypatch.setattr(retrieve_module, "search_allowlisted", _geopolitical_candidates)
-    monkeypatch.setattr(retrieve_module, "fetch_sources", _geopolitical_sources)
-    _route(monkeypatch, "geopolitical")
-    _stub_report_client(monkeypatch, CITED_ANSWER)
-
-    # Act
-    seed_events = await collect(build_initial_orchestrator_state("question"))
-
-    outline_calls: list[list[str]] = []
-    _route(monkeypatch, "report")
-    _stub_outline_model(monkeypatch, outline_calls, ["First"])
-    report_events = await collect(build_initial_orchestrator_state("write me a report"))
-
-    search_events = [event for event in seed_events if event[2] == SEARCH_PROGRESS]
-    outline_events = [event for event in report_events if event[2] == OUTLINE_PROGRESS]
-
-    # Assert
-    # Reusing the `updates` namespace filter on the custom branch would drop
-    # every child progress frame silently; this is the guard for that.
-    assert search_events and search_events[0][0] == ()
-    assert outline_events and outline_events[0][0] != ()
-
-
-@pytest.mark.anyio
-async def test_every_writer_node_actually_emits_through_the_graph(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    # Arrange
-    async def collect(
-        graph: Any, input_: Any, config: dict[str, dict[str, str]] | None = None
-    ) -> list[Any]:
-        return [
-            event
-            async for event in graph.astream(
-                input_, config=config, stream_mode=["custom"], subgraphs=True
-            )
-        ]
-
-    monkeypatch.setattr(retrieve_module, "search_allowlisted", _geopolitical_candidates)
-    monkeypatch.setattr(retrieve_module, "fetch_sources", _geopolitical_sources)
-    _route(monkeypatch, "geopolitical")
-    _stub_report_client(monkeypatch, "Hello world.")
-
-    # Act + Assert
-    expert_events = await collect(
-        orchestrator.build_graph(), build_initial_orchestrator_state("question")
-    )
-    assert any(event[2] == SEARCH_PROGRESS for event in expert_events)
-
-    # Arrange
-    outline_calls: list[list[str]] = []
-    compiled = _compiled()
-    config = _config("report-writers-1")
-    await _seed_researched_turn(compiled, monkeypatch, config)
-    _route(monkeypatch, "report")
-    _stub_outline_model(monkeypatch, outline_calls, ["First", "Second"])
-
-    # Act + Assert
-    pause_events = await collect(
-        compiled, build_initial_orchestrator_state("write me a report"), config
-    )
-    assert any(event[2] == OUTLINE_PROGRESS for event in pause_events)
-    resume_events = await collect(
-        compiled, Command(resume={"action": "approve"}), config
-    )
-    assert any(event[2] == REPORT_PROGRESS for event in resume_events)
-
-    refusal_events = await collect(
-        compiled,
-        build_initial_orchestrator_state("write me a report"),
-        _config("report-writers-2"),
-    )
-    assert any(
-        event[2] == NoticeEvent(text=NO_MATERIAL_NOTICE) for event in refusal_events
-    )
-
-
-@pytest.mark.anyio
-async def test_report_branch_resumes_and_streams_from_write(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    # Arrange
-    outline_calls: list[list[str]] = []
-    compiled = _compiled()
-    config = _config("report-resume-stream-1")
-    await _seed_researched_turn(compiled, monkeypatch, config)
-    _route(monkeypatch, "report")
-    _stub_outline_model(monkeypatch, outline_calls, ["First", "Second"])
-    await compiled.ainvoke(
-        build_initial_orchestrator_state("write me a report"), config=config
-    )
-    _stub_report_client(monkeypatch, "The report text.")
-
-    # Act
-    events = [
-        event
-        async for event in compiled.astream(
-            Command(resume={"action": "approve"}),
-            config=config,
-            stream_mode="messages",
-            subgraphs=True,
-        )
-    ]
-    write_events = [
-        event for event in events if event[1][1].get("langgraph_node") == "write"
-    ]
-
-    # Assert
-    assert write_events
-    assert "".join(event[1][0].text for event in write_events) == "The report text."
-
-
-@pytest.mark.anyio
-async def test_report_branch_does_not_rerun_outline_on_resume(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    # Arrange
-    outline_calls: list[list[str]] = []
-    compiled = _compiled()
-    config = _config("report-resume-outline-1")
-    await _seed_researched_turn(compiled, monkeypatch, config)
-    _route(monkeypatch, "report")
-    _stub_outline_model(monkeypatch, outline_calls, ["First", "Second"])
-    await compiled.ainvoke(
-        build_initial_orchestrator_state("write me a report"), config=config
-    )
-    _stub_report_client(monkeypatch, "The report.")
-
-    # Act
-    await compiled.ainvoke(Command(resume={"action": "approve"}), config=config)
-    state = compiled.get_state(config=config)
-
-    # Assert
-    assert state.next == ()
-    assert state.values["messages"][-1].text == "The report."
-    assert len(outline_calls) == 1
-
-
-@pytest.mark.anyio
-async def test_query_on_a_paused_thread_supersedes_the_pause(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    # Arrange
-    outline_calls: list[list[str]] = []
-    compiled = _compiled()
-    config = _config("report-supersede-1")
-    await _seed_researched_turn(compiled, monkeypatch, config)
-    _route(monkeypatch, "report")
-    _stub_outline_model(monkeypatch, outline_calls, ["First"])
-    await compiled.ainvoke(
-        build_initial_orchestrator_state("write me a report"), config=config
-    )
-    paused = compiled.get_state(config=config)
-
-    # Assert
-    assert paused.next == ("reporter",)
-
-    # Arrange
-    _route(monkeypatch, "other")
-
-    async def stream(
-        prompt: str,
-        messages: list[Any],
-        *,
-        config: Any = None,
-        settings: Any = None,
-    ) -> AsyncIterator[str]:
-        yield "assistant reply"
-
-    monkeypatch.setattr(chat_module, "astream_messages", stream)
-
-    # Act
-    await compiled.ainvoke(
-        build_initial_orchestrator_state("hello again"), config=config
-    )
-    state = compiled.get_state(config=config)
-
-    # Assert
-    assert state.next == ()
-    assert state.values["messages"][-1].content == "assistant reply"
+    assert build_graph() is not None
 
 
 def test_build_graph_compiles_with_the_store() -> None:
-    from langgraph.store.memory import InMemoryStore
+    """The store passed to build_graph is bound to the compiled graph instance."""
+    # Arrange
+    store = InMemoryStore()
 
     # Act
-    store = InMemoryStore()
-    graph = orchestrator.build_graph(store=store)
+    graph = build_graph(store=store)
+
     # Assert
     assert graph.store is store
-    assert orchestrator.build_graph() is not None
+
+
+@pytest.mark.anyio
+async def test_graph_executes_supervisor_tool_supervisor_loop(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A specialist research tool execution loops back to supervisor for post-tool dynamic footer synthesis."""
+    # Arrange
+    TOOL_NAME = "run_expert"
+    CALL_ID = "call-expert-1"
+    TOOL_QUERY = "What is happening in Sudan?"
+    FOOTER_TEXT = "\n\n---\n1. Deep dive\n2. Forecast"
+
+    supervisor_response = AIMessage(
+        content="",
+        tool_calls=[{"name": TOOL_NAME, "args": {"query": TOOL_QUERY}, "id": CALL_ID}],
+    )
+    footer_response = AIMessage(content="1. Deep dive\n2. Forecast")
+
+    monkeypatch.setattr(
+        supervisor_module,
+        "_build_supervisor_client",
+        lambda: ScriptedChatModel([supervisor_response]),
+    )
+    monkeypatch.setattr(
+        supervisor_module,
+        "_build_footer_client",
+        lambda: ScriptedChatModel([footer_response]),
+    )
+
+    async def fake_expert_ainvoke(state: Any) -> dict[str, Any]:
+        return {
+            "answer": "Verified Sudan analysis [1](https://reuters.com/sudan).",
+            "sources": [],
+        }
+
+    monkeypatch.setattr(
+        "agents.orchestrator.tools.expert.expert_graph.ainvoke", fake_expert_ainvoke
+    )
+
+    compiled = build_graph(checkpointer=InMemorySaver())
+    config = build_runtime_config(thread_id="t-loop-1")
+    initial_state = build_initial_orchestrator_state(TOOL_QUERY)
+
+    # Act
+    updates = [
+        data
+        async for data in compiled.astream(
+            initial_state, config=config, stream_mode="updates"
+        )
+    ]
+    final_state = await compiled.aget_state(config)
+
+    # Assert
+    executed_nodes = [list(up.keys())[0] for up in updates]
+    assert executed_nodes == ["supervisor", "tools", "supervisor"]
+    assert final_state.next == ()
+    messages = final_state.values["messages"]
+    assert len(messages) == 4
+    assert isinstance(messages[0], HumanMessage)
+    assert isinstance(messages[1], AIMessage) and bool(messages[1].tool_calls)
+    assert isinstance(messages[2], ToolMessage)
+    assert isinstance(messages[3], AIMessage) and not messages[3].tool_calls
+    assert messages[3].text == FOOTER_TEXT
+
+
+@pytest.mark.anyio
+async def test_graph_routes_reporter_tool_straight_to_end(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Reporter tool execution skips supervisor pass 2 and routes straight to END."""
+    # Arrange
+    TOOL_NAME = "run_reporter"
+    CALL_ID = "call-rep-1"
+    TOPIC = "Sudan crisis report"
+
+    supervisor_response = AIMessage(
+        content="",
+        tool_calls=[{"name": TOOL_NAME, "args": {"topic": TOPIC}, "id": CALL_ID}],
+    )
+
+    monkeypatch.setattr(
+        supervisor_module,
+        "_build_supervisor_client",
+        lambda: ScriptedChatModel([supervisor_response]),
+    )
+
+    compiled = build_graph(checkpointer=InMemorySaver())
+    config = build_runtime_config(thread_id="t-rep-1")
+    initial_state = build_initial_orchestrator_state("Write a report on Sudan")
+
+    # Act
+    updates = [
+        data
+        async for data in compiled.astream(
+            initial_state, config=config, stream_mode="updates"
+        )
+    ]
+    final_state = await compiled.aget_state(config)
+
+    # Assert
+    executed_nodes = [list(up.keys())[0] for up in updates]
+    assert executed_nodes == ["supervisor", "tools"]
+    assert final_state.next == ()
+    assert final_state.values.get("destination") == "report"
+    messages = final_state.values["messages"]
+    assert len(messages) == 3
+    assert isinstance(messages[0], HumanMessage)
+    assert isinstance(messages[1], AIMessage) and bool(messages[1].tool_calls)
+    assert isinstance(messages[2], ToolMessage)
