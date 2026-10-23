@@ -4,7 +4,7 @@
 Maintainers: a line belongs here only if agents need it across tasks and cannot learn it from the
 code, its config, or another guidance file. Name a constant instead of copying its value. Changes to
 harness tooling (commands, skills, agents, plugins) need no update here. AGENTS.md is a symlink to
-this file, so OpenCode and Copilot read it too: name no tool or path that only one harness has.
+this file, so OpenCode, Copilot, and Antigravity read it too: name no tool or path that only one harness has.
 -->
 
 ## Working rules
