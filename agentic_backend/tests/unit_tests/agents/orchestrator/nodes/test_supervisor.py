@@ -706,3 +706,62 @@ def test_each_client_is_built_from_its_own_llm_settings(
 
     # Assert
     assert received == [expected]
+
+
+@pytest.mark.anyio
+async def test_supervisor_hands_the_model_the_deep_history_and_maps_a_deep_call_to_deep(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The model sees the earlier deep turn (answer text, then the new question), and a
+    `run_deep_expert` call routes to destination 'deep'. Whether the model chooses it
+    is the orchestrator eval's job, not this test's.
+    """
+    # Arrange
+    deep_answer = "German defense analysis [1](https://example.com/ger)."
+    messages: list[AnyMessage] = [
+        HumanMessage("Deep research the defense posture of Germany"),
+        AIMessage(
+            content="",
+            tool_calls=[
+                {
+                    "name": "run_deep_expert",
+                    "args": {"query": "Germany defense posture"},
+                    "id": "call_deep_1",
+                    "type": "tool_call",
+                }
+            ],
+        ),
+        ToolMessage(
+            content="Deep research synthesized.",
+            tool_call_id="call_deep_1",
+            artifact={"text": deep_answer},
+        ),
+        AIMessage(f"{FOOTER_PREFIX}**What next?**"),
+        HumanMessage("and Poland?"),
+    ]
+    deep_call = {
+        "name": "run_deep_expert",
+        "args": {"query": "Poland defense posture"},
+        "id": "call_deep_2",
+        "type": "tool_call",
+    }
+    supervisor_fake = ScriptedChatModel([AIMessage(content="", tool_calls=[deep_call])])
+    monkeypatch.setattr(
+        node_module, "_build_supervisor_client", lambda: supervisor_fake
+    )
+
+    # Act
+    result = await supervisor({"messages": messages}, writer=lambda _: None)
+
+    # Assert
+    payload = supervisor_fake.invocations[0]
+    assert (
+        ToolMessage(
+            content=deep_answer,
+            tool_call_id="call_deep_1",
+            artifact={"text": deep_answer},
+        )
+        in payload
+    )
+    assert payload[-1] == HumanMessage("and Poland?")
+    assert result["destination"] == "deep"

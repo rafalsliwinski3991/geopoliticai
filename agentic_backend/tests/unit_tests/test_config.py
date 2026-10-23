@@ -14,6 +14,7 @@ from config import (
     DEFAULT_LLM_SETTINGS,
     FORECAST_TURN_COST,
     MAX_DAILY_REFUND_UNITS,
+    REPORT_TURN_COST,
     LLMSettings,
     LogContextFilter,
     bind_log_context,
@@ -179,6 +180,11 @@ def test_deep_cost_fits_inside_the_daily_quota() -> None:
         < DEEP_RESEARCH_TURN_COST
         <= min(DAILY_RESEARCH_TURNS, DAILY_RESEARCH_TURNS_ALL_USERS)
     )
+
+
+def test_report_cost_is_one_turn() -> None:
+    # Assert
+    assert REPORT_TURN_COST == 1
 
 
 def test_the_daily_refund_cap_is_one_forecast() -> None:
