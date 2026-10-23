@@ -247,7 +247,7 @@ gh api repos/{owner}/{repo}/pulls/<number>/comments --paginate
 ```
 
 Drop any finding whose `path` and `line` already carry a comment starting with the
-`CC: <MODEL_NAME> ->` prefix (match on the `CC:` prefix, since `<MODEL_NAME>` has been resolved to
+`CC: <MODEL_NAME> ->` prefix (match on the `CC:`, `OPENCODE:`, `COPILOT:`, or `ANTIGRAVITY:` prefix, since `<MODEL_NAME>` has been resolved to
 the concrete model name on older comments) that makes the same point, so a rerun never double-posts.
 
 ## Step 5 — Confirm, then post

@@ -146,3 +146,17 @@ def test_rerun_does_not_repeat_session_line(tmp_path: Path):
     log_metrics.write_metrics(log, text, ["| row |"], "s1")
     log_metrics.write_metrics(log, log.read_text(), ["| row2 |"], "s1")
     assert log.read_text().count("Session: s1") == 1
+
+
+def test_antigravity_header_and_stage_write_na_usage_row(tmp_path: Path):
+    """An antigravity run log is accepted as a known harness and writes n/a token columns."""
+    # Arrange
+    log = tmp_path / "l.md"
+    log.write_text(HEADER.format(h="antigravity") + "## Pre-flight — antigravity (2026-10-04 14:00–14:05)\n")
+
+    # Act
+    exit_code = log_metrics.main([str(log)])
+
+    # Assert
+    assert exit_code == 0
+    assert "| Pre-flight — antigravity (2026-10-04 14:00–14:05) | 5 | n/a | n/a | n/a |" in log.read_text()

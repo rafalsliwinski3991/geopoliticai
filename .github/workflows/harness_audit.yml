@@ -1,6 +1,6 @@
 name: Harness Audit
 
-# Advisory: Claude Code reads the Claude Code, OpenCode, and Copilot harnesses
+# Advisory: Claude Code reads the Claude Code, OpenCode, Copilot, and Antigravity harnesses
 # against the checklist in scripts/harness_audit/prompt.md, and the report job
 # files one issue per run holding every finding. Gates nothing. Runs by hand
 # only (Actions tab, on the branch to audit), never on a pull request, because

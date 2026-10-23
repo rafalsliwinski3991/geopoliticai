@@ -214,7 +214,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         text = args.log.read_text()
         harness = parse_header(text).get("harness")
-        if harness not in {"claude-code", "opencode", "copilot"}:
+        if harness not in {"claude-code", "opencode", "copilot", "antigravity"}:
             return _skip("log has no header with a known harness")
         pending = pending_stages(text)
         if not pending:

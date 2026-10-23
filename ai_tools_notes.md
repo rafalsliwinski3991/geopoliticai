@@ -2,7 +2,7 @@
 
 Facts about this repository's AI harnesses that cannot be read off the
 filesystem. `make inventory` fails when a Claude command or skill has no
-counterpart under OpenCode or Copilot; this file explains the deliberate
+counterpart under OpenCode, Copilot, or Antigravity; this file explains the deliberate
 exceptions and everything else it cannot check. Keep only what a directory listing cannot tell you: a reason, a
 deliberate absence, a launch incantation.
 
@@ -14,23 +14,22 @@ second, drifting copy of the repository map.
 
 ## Skills
 
-Claude Code's `.claude/skills/` is canonical. `.opencode/skills/` holds
-symlinks into it, created by `make link-skills`, so the two cannot drift.
-OpenCode-only skills may be added there as real directories and are left
-untouched by that target.
+Claude Code's `.claude/skills/` is canonical. `.opencode/skills/` and
+`.agents/skills/` hold symlinks into it, created by `make link-skills`, so they
+cannot drift. OpenCode-only and Antigravity-only skills may be added in their
+respective directories as real directories and are left untouched by that target.
 
-`swarm` is excluded from both non-Claude harnesses (`SKIP_SKILLS` in the
+`swarm` is excluded from all non-Claude harnesses (`SKIP_SKILLS` in the
 `Makefile`, read by `sync-copilot` and `link-skills` alike). It needs the
-`@langchain/quickjs` code interpreter and a `swarm_task` PTC tool, which neither
-provides; loading it there would offer the model tools that do not exist.
+`@langchain/quickjs` code interpreter and a `swarm_task` PTC tool, which none of
+them provides; loading it there would offer the model tools that do not exist.
 `e2e` is excluded the same way: it drives Claude's `AskUserQuestion` and this
 repo's Compose stack, and has no port.
 
-`disable-model-invocation: true` is honoured by Claude Code only. OpenCode
-loads every skill it finds and keeps no invocation flag, so the three Python
-quickstarts still occupy its context.
+`disable-model-invocation: true` is honoured by Claude Code only. OpenCode and
+Antigravity load every skill they find and keep no invocation flag.
 
-The TypeScript quickstarts were deleted from both harnesses: this repository is
+The TypeScript quickstarts were deleted from all harnesses: this repository is
 Python, and `frontend/chat/` is React without LangChain.
 
 ## Commands
@@ -53,15 +52,17 @@ version has its own body, which dispatches the `.opencode/agents/` workers
 so its behaviour is kept in step with Claude's by hand.
 
 No port carries a harness note above its body. Where a Claude command
-dispatches one of its read-only subagents, the OpenCode and Copilot versions
-of `rs-code-review` and `rs-improve-plan`, and Copilot's `rs-implement-plan`,
-make that pass themselves, because neither harness has those agents.
-`rs-improve-codebase` is the exception: each harness has its own
-`architecture-scout` and `structure-scout` (`.claude/agents/`,
-`.opencode/agents/`, `.github/agents/`), and its ports dispatch them, OpenCode
-with the Task tool and Copilot with its `agent` tool. Its ports also write the
-page locally where Claude Code publishes an artifact, as `rs-explain-plan` and
-`rs-guidebook` do.
+dispatches one of its subagents, the OpenCode and Copilot versions of
+`rs-code-review`, `rs-improve-plan`, and `rs-plan-from-brainstorm`, and
+Copilot's `rs-implement-plan`, make that pass themselves, because neither
+harness keeps static lens agent files. Antigravity defines and invokes every
+subagent at runtime with `define_subagent` and `invoke_subagent`
+(`Model: "inherit"`). For `rs-improve-codebase`, Claude Code, OpenCode, and
+Copilot each have their own `architecture-scout` and `structure-scout`
+(`.claude/agents/`, `.opencode/agents/`, `.github/agents/`), while Antigravity
+defines and invokes both read-only scouts at runtime the same way.
+All three non-Claude ports also write the page locally where Claude Code
+publishes an artifact, as `rs-explain-plan` and `rs-guidebook` do.
 
 `make inventory` checks only that a port exists under each harness, never
 whether its body still matches the Claude original. That match is verified by
@@ -92,7 +93,22 @@ Anything hand-written under `.github/skills/` is destroyed with it: edit
 `.claude/skills/` and re-run the target. `.github/prompts/` is not synced and is
 maintained by hand.
 
-`make link-skills` prunes only symlinks, leaving OpenCode-only real directories
-in place, and refuses to link a canonical skill whose name is already taken by
-one of them. Linking over it would put the symlink inside that directory, where
-it dangles and `make inventory` reports the skill as missing.
+`make link-skills` prunes only symlinks, leaving OpenCode-only and
+Antigravity-only real directories in place, and refuses to link a canonical
+skill whose name is already taken by one of them. Linking over it would put the
+symlink inside that directory, where it dangles and `make inventory` reports
+the skill as missing.
+
+## Antigravity
+
+Antigravity reads workspace rules from `AGENTS.md` (which symlinks to `CLAUDE.md`)
+and workspace skills from `.agents/skills/<name>/SKILL.md`. Because Antigravity
+treats every skill in `.agents/skills/` as both a slash command (`/rs-*`) and a
+model-discoverable skill (`.agents/workflows/` is deprecated), the fourteen
+`rs-*` commands live as real directories `.agents/skills/rs-*/SKILL.md` alongside
+the symlinks `make link-skills` creates for the shared `.claude/skills/` skills.
+Antigravity command skills keep only `name` and `description` in YAML frontmatter
+and use Antigravity's native tools (`ask_question`, `define_subagent`,
+`invoke_subagent`, `read_file`, `write_file`, `edit_file`, `run_command`,
+`search_web`), writing run logs to `docs/harness_logs/antigravity/` and GitHub
+comments with the `ANTIGRAVITY: <MODEL_NAME> ->` prefix.
