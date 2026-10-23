@@ -129,12 +129,12 @@ def test_static_next_steps_menu_and_footer_prompt_define_expected_turns() -> Non
     """Static and dynamic menus must offer consistent turn costs.
 
     The costs across follow-up, deep expert, forecaster, and reporter must match
-    the product turn specifications (0, 4, 8, 1).
+    the product turn specifications (0, 10, 20, 1).
     """
     # Arrange
     expected_follow_up = "Ask a follow-up (0 research turns)"
-    expected_deep = "Explore in depth with the deep research agent (4 research turns)"
-    expected_forecast = "Generate a Delphi forecast (8 research turns)"
+    expected_deep = "Explore in depth with the deep research agent (10 research turns)"
+    expected_forecast = "Generate a Delphi forecast (20 research turns)"
     expected_report = "Generate a comprehensive report (1 research turn)"
 
     # Act
@@ -147,8 +147,8 @@ def test_static_next_steps_menu_and_footer_prompt_define_expected_turns() -> Non
     assert expected_forecast in static_menu
     assert expected_report in static_menu
     assert "**What next?**" in dynamic_prompt
-    assert "4 research turns" in dynamic_prompt
-    assert "8 research turns" in dynamic_prompt
+    assert "10 research turns" in dynamic_prompt
+    assert "20 research turns" in dynamic_prompt
     assert "1 research turn" in dynamic_prompt
 
 

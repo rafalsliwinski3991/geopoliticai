@@ -291,16 +291,16 @@ async def test_supervisor_pass_two_generates_dynamic_footer(
     dynamic_footer_text = (
         "**What next?**\n"
         "- Ask about NATO enhanced Forward Presence in Estonia (0 research turns)\n"
-        "- Explore in depth with the deep research agent (4 research turns)\n"
-        "- Generate a Delphi forecast (8 research turns)\n"
+        "- Explore in depth with the deep research agent (10 research turns)\n"
+        "- Generate a Delphi forecast (20 research turns)\n"
         "- Generate a comprehensive report (1 research turn)"
     )
     expected_notice_chunk = (
         "\n\n---\n"
         "**What next?**\n"
         "- Ask about NATO enhanced Forward Presence in Estonia (0 research turns)\n"
-        "- Explore in depth with the deep research agent (4 research turns)\n"
-        "- Generate a Delphi forecast (8 research turns)\n"
+        "- Explore in depth with the deep research agent (10 research turns)\n"
+        "- Generate a Delphi forecast (20 research turns)\n"
         "- Generate a comprehensive report (1 research turn)"
     )
 
@@ -342,8 +342,8 @@ async def test_supervisor_pass_two_falls_back_to_static_menu_on_failure(
         "\n\n---\n"
         "**What next?**\n"
         "- Ask a follow-up (0 research turns)\n"
-        "- Explore in depth with the deep research agent (4 research turns)\n"
-        "- Generate a Delphi forecast (8 research turns)\n"
+        "- Explore in depth with the deep research agent (10 research turns)\n"
+        "- Generate a Delphi forecast (20 research turns)\n"
         "- Generate a comprehensive report (1 research turn)"
     )
 
@@ -492,3 +492,65 @@ def test_supervisor_sanitizes_unanswered_tool_calls_at_end_of_history() -> None:
     assert isinstance(synthetic_msg, ToolMessage)
     assert synthetic_msg.content == "Tool execution for run_expert was cancelled."
     assert synthetic_msg.tool_call_id == "call_end_dangling"
+
+
+@pytest.mark.anyio
+async def test_supervisor_routes_same_topic_follow_up_to_deep_expert(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When following up on an earlier deep research turn on the same topic, the supervisor must
+    dispatch run_deep_expert and route to destination 'deep'.
+    """
+    # Arrange
+    messages: list[AnyMessage] = [
+        HumanMessage("Deep research the defense posture of Germany"),
+        AIMessage(
+            content="",
+            tool_calls=[
+                {
+                    "name": "run_deep_expert",
+                    "args": {"query": "Germany defense posture"},
+                    "id": "call_deep_1",
+                    "type": "tool_call",
+                }
+            ],
+        ),
+        ToolMessage(
+            content="Detailed synthesis on German defense posture",
+            tool_call_id="call_deep_1",
+            artifact={"text": "German defense analysis [1](https://example.com/ger)."},
+        ),
+        AIMessage("\n\n---\n**What next?**\n- Ask a follow-up (0 research turns)"),
+        HumanMessage("and Poland?"),
+    ]
+    state: GeopoliticState = {"messages": messages}
+
+    expected_tool_call = {
+        "name": "run_deep_expert",
+        "args": {"query": "Poland defense posture"},
+        "id": "call_deep_2",
+        "type": "tool_call",
+    }
+    supervisor_fake = ScriptedChatModel(
+        [AIMessage(content="", tool_calls=[expected_tool_call])]
+    )
+    events: list[dict[str, Any]] = []
+
+    monkeypatch.setattr(
+        node_module, "_build_supervisor_client", lambda: supervisor_fake
+    )
+
+    # Act
+    result = await supervisor(state, writer=events.append)
+
+    # Assert
+    assert result == {
+        "messages": [AIMessage(content="", tool_calls=[expected_tool_call])],
+        "destination": "deep",
+    }
+    assert events == []
+    assert len(supervisor_fake.invocations) == 1
+    payload = supervisor_fake.invocations[0]
+    assert payload[0] == SystemMessage(SUPERVISOR_SYSTEM_PROMPT)
+    assert "Follow-ups to deep research stay deep" in SUPERVISOR_SYSTEM_PROMPT
+    assert payload[-1] == HumanMessage("and Poland?")

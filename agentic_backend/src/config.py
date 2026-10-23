@@ -48,6 +48,7 @@ DEEP_RESEARCH_TURN_COST = 10
 # research over the forecasters' sites, a 7-member council voting twice, and up to 14 minutes
 # of wall time (brainstorm 2026Sep30 Q22, Q25). Follow-ups are ordinary turns.
 FORECAST_TURN_COST = 20
+REPORT_TURN_COST = 1
 # The most research units one user gets back for failed turns in a UTC day
 # (brainstorm 2026Oct16, capped after plan review): one forecast's worth.
 # Without a cap, a user who can force failures (a question that makes the
