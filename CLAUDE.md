@@ -43,8 +43,8 @@ this file, so OpenCode, Copilot, and Antigravity read it too: name no tool or pa
   re-export `requirements.txt` (command in its header) whenever `agentic_backend/uv.lock` changes.
 
 ```text
-orchestrator     START -> classify -> expert | chat | deep_expert | deep_forecaster | reporter -> END
-                 (routes: geopolitical | other | deep | forecast | report, in that order)
+orchestrator     START -> supervisor -> tools -> supervisor -> END
+                 tools -> END (on reporter)
 expert           START -> search_and_fetch -> answer -> END
 reporter         START -> outline -> gate | END;  gate -> outline | write | END;  write -> END
 deep_forecaster  START -> research -> draft_claims -> council_round_1 -> council_round_2

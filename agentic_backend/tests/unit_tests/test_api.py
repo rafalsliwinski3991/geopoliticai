@@ -1559,7 +1559,6 @@ async def test_a_research_routed_turn_increments_exactly_once(
     half ships an unlimited quota with a green suite.
     """
     # Arrange
-    # Arrange
     from langchain_core.messages import AIMessageChunk
 
     supervisor_update = {"supervisor": {"destination": destination}}
