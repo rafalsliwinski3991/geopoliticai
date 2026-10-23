@@ -1,6 +1,6 @@
 ---
 name: rs-plan-from-brainstorm
-description: Turn a brainstorming doc into a right-sized implementation plan, using full multi-pass review only when the change warrants it
+description: Turn a brainstorming doc into a right-sized implementation plan, using full multi-agent review only when the change warrants it
 ---
 
 Input: the arguments the user passed after `/rs-plan-from-brainstorm`.
@@ -43,7 +43,7 @@ Before drafting, choose the smallest planning depth that makes implementation sa
 - **Lightweight plan** -- use for a minor, contained change to one existing flow:
   a small bug fix, a narrowly scoped behavior change, or a routine local update.
   Do not inflate it into artificial commits, speculative alternatives, a migration
-  section, or a multi-pass review merely because a plan was requested.
+  section, or a multi-agent review merely because a plan was requested.
 - **Standard plan** -- use for a coherent multi-file feature or refactor within
    one existing subsystem. It needs ordered file-level tasks and focused testing,
    but has no migration, high-risk interface, or cross-subsystem concern.
@@ -169,47 +169,47 @@ In every tier, write the tests as `.agents/skills/unit-tests/SKILL.md`'s edge-ca
 plan's Validation, a standard plan's test notes, and a full plan's test plan each hold one row per
 rule, the test name that guards it, and its file.
 
-## Step 4 — Review passes
+## Step 4 — Review by subagents
 
 For a **lightweight plan**, self-review it before reporting back: verify it covers
 every settled decision, names the exact code path and validation, has no placeholder,
-does not add unnecessary work, and matches the approved tree and naming rules. Do not make the three review passes unless new
+does not add unnecessary work, and matches the approved tree and naming rules. Do not dispatch the three reviewers unless new
 information raises the plan to full scope.
 
-For a **standard plan**, perform the same self-review, then make one focused
-correctness review pass yourself. Read the actual source and tests and identify broken
-callers, behavior regressions, error-path gaps, and missing validation. Incorporate
-supported findings. Do not expand to three passes unless new information raises
+For a **standard plan**, perform the same self-review, then define and launch one focused
+read-only `correctness-reviewer` subagent with `define_subagent` (`Name: "correctness-reviewer"`, `Description: "Read-only correctness reviewer of a draft implementation plan. Never writes."`, `SystemPrompt: "You are the correctness reviewer. You review a draft plan against the actual source files and report severity-ranked defects. You never modify anything."`, `EnableWriteTools: false`, `EnableMCPTools: false`, `EnableSubagentTools: false`) and `invoke_subagent` (`TypeName: "correctness-reviewer"`, `Role: "Correctness Reviewer"`, `Model: "inherit"`). Ask it to read the actual source and tests and identify broken
+callers, behavior regressions, error-path gaps, and missing validation. End your turn (call no more tools) and wait for its message. Incorporate
+supported findings. Do not expand to three reviewers unless new information raises
 the plan to full scope.
 
-For a **full plan**, once the plan file exists, make three separate review passes yourself, each over the
-brainstorm and the plan. In each, read the actual source files
-rather than trusting the plan's claims about them.
+For a **full plan**, once the plan file exists, define and launch three read-only subagents in parallel with `define_subagent` and `invoke_subagent` (`Model: "inherit"`). Give each one the
+brainstorm path and the plan path, and instruct each to read the actual source files
+rather than trusting the plan's claims about them:
 
-- **Correctness pass.** Does each commit leave the
+- **Correctness reviewer** (`Name: "correctness-reviewer"`, `Description: "Read-only correctness reviewer of a draft implementation plan. Never writes."`, `SystemPrompt: "You are the correctness reviewer. You review a draft plan against the actual source files and report severity-ranked defects. You never modify anything."`, `EnableWriteTools: false`, `EnableMCPTools: false`, `EnableSubagentTools: false`). Brief: Does each commit leave the
   repo importable, runnable, and its tests passing? Hunt for deletions whose callers
   survive, survivors whose dependencies are deleted, behaviour that silently changes,
   and error or state paths that quietly differ from today.
-- **Domain and framework pass.** For the frameworks,
+- **Domain and framework reviewer** (`Name: "framework-reviewer"`, `Description: "Read-only domain and framework reviewer of a draft implementation plan. Never writes."`, `SystemPrompt: "You are the domain and framework reviewer. You check a draft plan against the library versions actually installed in this repo, using Context7 when needed. You never modify anything."`, `EnableWriteTools: false`, `EnableMCPTools: true`, `EnableSubagentTools: false`). Brief: For the frameworks,
   libraries, and versions this repo actually has installed, is the proposed approach the
   current correct idiom? Check the API surfaces the plan calls, the version constraints,
   and any pattern the plan copies from a reference or template. Use Context7's
   `resolve-library-id` and `query-docs` when current library documentation is needed.
-- **Devil's advocate pass.** Argue the plan is wrong. Attack the
+- **Devil's advocate** (`Name: "devils-advocate"`, `Description: "Read-only adversarial reviewer of a draft implementation plan. Never writes."`, `SystemPrompt: "You are the devil's advocate reviewer. You attack the plan's premises and deletions against the live codebase and name the cheaper plan that gets most of the benefit. You never modify anything."`, `EnableWriteTools: false`, `EnableMCPTools: false`, `EnableSubagentTools: false`). Brief: Argue the plan is wrong. Attack the
   premises the brainstorm settled on, especially any decision justified by future work
   that is not yet scheduled. Attack every deletion by naming what breaks if the future
   never arrives. Name the cheaper plan that gets most of the benefit.
 
-Each pass yields findings ranked by severity, each with a file path, a line, and a
+After launching the subagents, end your turn (call no more tools) and wait for their messages. Each reviewer returns findings ranked by severity, each with a file path, a line, and a
 concrete failure scenario. No style notes, no praise.
 
 ## Step 5 — Revise
 
-For a full plan, revise it yourself with what the passes surfaced. Add an **Open
+For a full plan, revise it yourself with what the reviews surfaced. Add an **Open
 questions and rejected objections** section recording every finding, whether you
-accepted it, and why. Do not make a fourth pass. For a lightweight plan, correct
+accepted it, and why. Do not spawn a fourth subagent. For a lightweight plan, correct
 any self-review finding inline and add only genuine unresolved questions. For a
-standard plan, correct supported review findings inline and record only genuine
+standard plan, correct supported reviewer findings inline and record only genuine
 unresolved questions or rejected objections.
 
 Stop before implementing. Ask the user to review and explicitly approve the written

@@ -9,11 +9,16 @@ from the base branch, final review, and pull requests. Steps 1 and 2 cover every
 3–6 then run for one plan at a time, and the next plan starts from a fresh checkout of the base
 branch. Step 7 reports on all of them.
 
-You are the implementer and the only writer. Every review role is a separate read-only pass of yours over a diff file, and you apply the fixes yourself. You also write the ledger, the diff files, and the pull-request bodies.
+You are the lead. You coordinate and write briefs, the ledger, diff files, and pull-request
+bodies. Lightweight and standard plans: you are also the only code writer. Full plan: every unit is
+implemented by a fresh `plan-implementer` subagent working from a brief file, and you do not edit
+production code or tests. Every review subagent is read-only.
 
 Workspace, one directory per plan: `docs/harness_logs/antigravity/<plan-filename-stem>/` (gitignored; create it if missing). Files:
 
 - `ledger.md` — resume map and run log. Trust it and `git log` over your own memory. It is exempt from `docs/harness_logs/TEMPLATE.md`: no header, no metrics table.
+- `unit-<NN>-brief.md`, `unit-<NN>-report.md` — full plan only: that unit's requirements and the
+  implementer's report.
 - `unit-<NN>.diff` — `git diff <BASE>..HEAD` for that unit, `BASE` being the unit branch's start.
 - `branch.diff` — `git diff <base>...HEAD` for the final review.
 
@@ -31,7 +36,7 @@ code exposes a concrete major, cross-component, interface, migration, or reliabi
 add process merely because several related files change.
 
 For a **lightweight plan**, verify the named files, current behavior, and focused validation command
-yourself, then write a short status and staleness note to the ledger. One contained change needs no separate pre-flight pass.
+yourself, then write a short status and staleness note to the ledger. One contained change needs no scout.
 
 When implementation or review depends on current external framework or library
 behavior, use Context7 before changing code: call `resolve-library-id` for the
@@ -39,7 +44,7 @@ exact library and installed version, then call `query-docs` with that identifier
 Record any material documentation result in the ledger. The checked-out code,
 lockfile, and repository guidance remain authoritative for local behavior.
 
-For a **standard or full plan**, make a separate pre-flight pass yourself over the plan, using this brief:
+For a **standard or full plan**, define the read-only `preflight-scout` subagent type with `define_subagent` (`Name: "preflight-scout"`, `Description: "Read-only pre-flight pass for a plan run. Compares an implementation plan against the current repo and reports per-commit status, risk, and staleness. Never writes."`, `SystemPrompt: "You are the pre-flight scout for a plan run. You compare a written plan against the repository as it actually is today, and you never modify anything. Your entire output is one table plus a short list of blockers."`, `EnableWriteTools: false`, `EnableMCPTools: false`, `EnableSubagentTools: false`), then launch it with `invoke_subagent` (`TypeName: "preflight-scout"`, `Role: "Pre-flight Scout"`, `Model: "inherit"`), giving it the plan path and this brief:
 
 > Compare the plan at `<path>` against this repository as it is right now. Read the actual files the
 > plan names — never trust the plan's description of the code. Produce **one markdown table, one row
@@ -55,12 +60,12 @@ For a **standard or full plan**, make a separate pre-flight pass yourself over t
 >   plan assumes, whether `main` has advanced since the plan was written, or `—` if clean.
 >
 > Below the table, list any **blockers**: plan sections that cannot be implemented as written against
-> the current code. Write nothing to disk and change nothing. Write the table and the blockers
-> into the ledger.
+> the current code. Write nothing to disk and change nothing. Your final message is your whole output:
+> the table and the blockers.
 
-Write the pass's table and blockers into the ledger verbatim.
+After launching `preflight-scout`, end your turn (call no more tools) and wait for its message. Write the scout's table and blockers into the ledger verbatim.
 
-Also record in the ledger: the base branch (`gh repo view --json defaultBranchRef --jq
+For every plan, also record in the ledger: the base branch (`gh repo view --json defaultBranchRef --jq
 .defaultBranchRef.name` unless the user named another) and the stack slug; the staleness result from
 `git fetch` then `git log --name-only <plan-base>..origin/<base>`, where `<plan-base>` is `git rev-list -1 --before="$(date -r <plan-path> -Iseconds)" origin/<base>`, the base branch as it stood when the plan file was last written (re-read a cited line only when that
 log touches its file; an empty log is a clean result, not a skipped check); a conflict table with one
@@ -78,17 +83,16 @@ plan's Scope. Record the map in the ledger. A unit left with no source is a chec
 
 **Stop here.** This is the only scheduled stop in the run.
 
-Present every plan in one checkpoint. For a **lightweight plan**, show the direct pre-flight note. For a
-**standard or full plan**, show the pass's table and blockers, then ask which task or commit its
-run should start from. Ask once, for all plans, whether to proceed. Show the unit-to-source map and ask for the source of
-any unit that has none. Also show the conflict table and operator checklist and ask whether the
+Present every plan in one checkpoint. For a **lightweight plan**, show the direct pre-flight note; for a
+**standard or full plan**, show the scout's table and blockers and ask which task or commit its
+run should start from. For every plan, show the unit-to-source map and ask for the source of
+any unit that has none. Show each plan's conflict table and operator checklist, and ask whether the
 checklist is done: a live gate whose key or credit is missing stays blocked, and you do not start a
-later unit to get around it.
-
-Ask how Step 6 opens the pull requests:
-- **a stack**, one PR per unit, or **one PR** for the whole plan;
-- or **none**, leaving the branches local and unpushed;
-- and **draft** or **ready for review**.
+later unit to get around it. Then ask once, for all plans, whether to proceed, and how Step 6 opens each
+plan's pull requests:
+- **a stack**, one PR per unit, or **one PR** for the whole plan, which suits a small or simple plan;
+- or **none**, where the unit branches stay local and unpushed;
+- and, for a stack or one PR, whether it opens as **draft** or **ready for review**.
 
 Begin implementing only after the user answers. If the user does not respond, the run does not start.
 
@@ -97,8 +101,23 @@ Begin implementing only after the user answers. If the user does not respond, th
 Walk the plan's ordered change steps, tasks, or commits **in order**, starting where the user said.
 Work on one at a time, in the plan's order — the ordering is the plan's safety property.
 
-You implement every unit directly. The standard plan receives exactly one final `correctness-lens`
-pass. Before editing a unit's branch, record `BASE` (`git rev-parse HEAD`) in the ledger.
+Lightweight and standard plans are implemented directly by the lead; the standard plan receives
+exactly one final `correctness-lens` review. For a full plan, define `plan-implementer` with `define_subagent` (`Name: "plan-implementer"`, `Description: "Implements one rs-implement-plan unit from a brief file and commits on the named branch. Writes code and tests; never pushes."`, `EnableWriteTools: true`, `EnableMCPTools: true`, `EnableSubagentTools: false`, and `SystemPrompt` instructing it:
+1. Read the brief file first (exact values live only there) and confirm `git branch --show-current` matches the branch in the brief before editing, stopping with status `BLOCKED` if it does not.
+2. Read `.agents/skills/unit-tests/SKILL.md` before writing a test, and write every test by it. When the unit changes production behavior: write the unit's new tests from the brief; run that focused command once and confirm each new test fails because the behavior is missing (record the command and failing line in the report; revise any test that passes before the production change); write the smallest production change that makes the tests pass; re-run the focused command while editing; run the brief's full gate once after the focused command is green and before committing. Assert the observable result and derive expected values by hand. Documentation-only, configuration-only, and generated-code units have no new test: say so in the report and run the brief's gate anyway.
+3. Commit on the brief's branch only when the focused command and the full gate are green, recording the gate command and the tail of its real output in the report. Follow the repo's commit style. Never push, open a pull request, amend, or rewrite history.
+4. Write the full report to the report path (what changed, files, RED evidence, GREEN evidence, gate tail, concerns), then reply in under 15 lines with `Status: DONE | DONE_WITH_CONCERNS | BLOCKED | NEEDS_CONTEXT`, commits (short SHA and subject), one line of test results, concerns if any, and the report path. `NEEDS_CONTEXT` means the brief omitted a required fact: name it in the reply and do not guess a scope change).
+
+For a full plan, run this loop per unit, finishing its audit before cutting the next branch:
+
+1. Cut the unit branch from the previous one and record `BASE` (`git rev-parse HEAD`) in the ledger.
+2. Write `unit-<NN>-brief.md`: that unit's plan section, the interfaces earlier units established, the
+   branch name, `BASE`, the focused test command, and the full gate command. Not the rest of the plan.
+3. Launch `plan-implementer` with `invoke_subagent` (`TypeName: "plan-implementer"`, `Role: "Unit <NN> Implementer"`, `Model: "inherit"`), giving it the brief path, the report path, and one line on where the unit sits, then end your turn (call no more tools) and wait for its message.
+4. Read its status. `DONE` / `DONE_WITH_CONCERNS`: go to Step 4. `NEEDS_CONTEXT`: add the fact to the
+   brief and launch a fresh `plan-implementer` with `invoke_subagent`. `BLOCKED`: launch one fresh `plan-implementer` with `invoke_subagent`, giving it the report path,
+   the failure, and an instruction to take a different approach; if that is also `BLOCKED`, stop and
+   ask the user.
 
 ### Stacked pull-request compatibility
 
@@ -107,7 +126,7 @@ Keep every ordered plan unit independently reviewable and compatible with GitHub
 - Each plan gets its own stack slug and its own chain, whose bottom branch is cut from the base branch. Plans never stack on one another.
 - At pre-flight, record the trunk/base branch and a stable stack slug. The default base is the repository's default branch from `gh repo view --json defaultBranchRef --jq .defaultBranchRef.name` unless the user specifies another one.
 - Each ordered plan unit must have its own linear branch. Create the unit branch from the previous branch before editing, use names such as `<stack-slug>/01-<short-slug>`, and keep the implementation and any reviewer-fix commits on that branch. Never squash, merge, reorder, or rewrite those commits.
-- Record each unit branch, its parent branch, commits, focused validation, gate output, and ledger entry. Review passes compare a unit branch with its immediate parent, not only with the cumulative top branch.
+- Record each unit branch, its parent branch, commits, focused validation, gate output, and ledger entry. Reviewers and auditors compare a unit branch with its immediate parent, not only with the cumulative top branch.
 - If existing work is not already split into linear unit branches, leave history unchanged and stop that plan at Step 6: report that its history needs one branch per unit. Cut each as `git branch <stack-slug>/NN-<short-slug> <sha>` at the unit's last commit (check each SHA against `git ls-remote origin`, and that each branch descends from the one below it, so the chain stays linear), then rerun; or open its pull requests by hand with `gh pr create --base <parent>`. Never force-push or silently rewrite history here.
 
 ### TDD rule
@@ -135,33 +154,35 @@ For each unit of work:
    forward applies to *reviewer findings only*, never to gate failures.
 4. Append to the ledger: the commit subject, the gate command you ran, and the **tail of its real
    output**. This is the evidence that the gate actually ran; an entry without it is treated as a
-   skipped gate.
-5. For a standard plan, run Step 4 only when the pre-flight pass marked the unit `moderate` or `high`. For a
+   skipped gate. (A full plan's implementer puts this in its report.)
+5. For a standard plan, run Step 4 only when the scout marked the unit `moderate` or `high`. For a
    full plan, run Step 4 after every unit. A lightweight plan does not require a per-unit audit unless
    implementation reveals a concrete risk that escalates its tier.
 
 ## Step 4 — Per-unit audit
 
-Write `unit-<NN>.diff` as `git diff <BASE>..HEAD`. Never use `HEAD~1`: a unit may have more than one
-commit. Then, in a separate review pass, read that diff, the plan section it implements, and the real
-source files, and give three verdicts:
+Write `unit-<NN>.diff` as `git diff <BASE>..HEAD` on the unit branch. Never use `HEAD~1`: a unit may
+have more than one commit. Define `commit-auditor` with `define_subagent` (`Name: "commit-auditor"`, `Description: "Read-only per-commit auditor for a plan run. Reads one commit's diff against the plan section it implements and reports whether it did what the plan said and only that. Never writes."`, `EnableWriteTools: false`, `EnableMCPTools: false`, `EnableSubagentTools: false`, and `SystemPrompt` instructing it:
+"You are the per-commit auditor for a plan run. You read one unit's diff and the plan section or brief it claims to implement, and you report discrepancies. You never modify the working tree. Read the source files themselves rather than trusting the report or the diff summary. Reply with only these three sections:
+### Spec
+- `PASS` or `FAIL`, with file:line for anything the brief/plan asked for that the diff does not do, or that the diff does and the brief/plan did not ask for.
+- `HALT` when the brief/plan cannot be applied to the current code, or the diff does something the plan never asked for. A `HALT` is also a `FAIL`.
+### Quality
+- `PASS` or `FAIL`.
+- `Important`: wrong behavior, a missed requirement, a test that cannot fail, an assertion on a fake, an expected value computed by the code under test, a test missing an `# Arrange`, `# Act`, or `# Assert` section (`# Act + Assert` counts as both), or an edge case the plan's test catalogue names with no test. Each with a concrete failure scenario.
+- `Minor`: polish, including a test that breaks the `unit-tests` skill's readability rules. A minor does not fail the unit.
+### Gate
+- `PASS` if the report or ledger entry contains a real gate command and output tail, `FAIL` if it does not.").
 
-- **Spec** — `PASS` or `FAIL`, with file:line for anything the plan asked for that the diff does not
-  do, or the diff does and the plan did not ask for. `HALT` when the plan section cannot be applied to
-  the current code or the diff does something the plan never asked for; a `HALT` is also a `FAIL`.
-- **Quality** — `PASS` or `FAIL`. `Important`: wrong behavior, a missed requirement, a test that cannot
-  fail, an assertion on a fake, an expected value computed by the code under test, a test missing an
-  `# Arrange`, `# Act`, or `# Assert` section (`# Act + Assert` counts as both), or an edge case the
-  plan's test catalogue names with no test. `Minor`: polish.
-- **Gate** — `PASS` only if the ledger entry holds a real gate command and output tail.
-
-Then:
+Launch `commit-auditor` with `invoke_subagent` (`TypeName: "commit-auditor"`, `Role: "Unit <NN> Commit Auditor"`, `Model: "inherit"`), giving it the plan path, the unit's plan section (or brief path), the diff path, and where its gate evidence is (the report for a full plan, the ledger otherwise). End your turn (call no more tools) and wait for its message. It returns Spec, Quality, and Gate verdicts; the first line of each says `PASS` or `FAIL`.
 
 - **`HALT`** → stop the run, report it to the user, and wait. This is a scope question and it is not
   yours to settle.
-- **`FAIL` or an `Important` finding** → fix it as a follow-up commit, using the TDD rule when behavior
-  changes, then gate and log it. After each fix, rewrite `unit-<NN>.diff` from `BASE` to the new HEAD and re-audit that whole unit diff. At most
-  two fix rounds per unit; if it still fails, stop and ask the user.
+- **`FAIL` or an `Important` finding** → fix it (full plan: launch `plan-implementer` with `invoke_subagent` and the findings;
+  otherwise yourself) as a follow-up commit, using the TDD rule when behavior changes, then gate and
+  log it. After each fix, rewrite `unit-<NN>.diff` from `BASE` to the new HEAD and re-audit that whole unit diff with `commit-auditor`. At most two fix rounds per
+  unit; if it still fails, stop and ask the user.
+- **Gate `FAIL`** → the missing gate is run and its tail logged before the unit is marked complete.
 - **`Minor`** → copy it into the ledger. It does not block the next unit.
 
 Then append `Unit <NN>: complete (commits <BASE>..<head>, review <clean|N minor>)` to the ledger.
@@ -172,27 +193,20 @@ After the last plan unit, review the result against the branch diff
 (`git diff <base>...HEAD`, base being the plan's base branch) according to its tier:
 
 - **Lightweight plan** -- review the final diff yourself against its scope and focused validation.
-  Make a lens pass only when a concrete finding escalates the work.
-- **Standard plan** -- make exactly one `correctness-lens` pass, using the correctness brief below.
-- **Full plan** -- make all three lens passes, one after another, each as a separate review pass you
-  make yourself over `branch.diff`.
+  Spawn a lens only when a concrete finding escalates the work.
+- **Standard plan** -- define and launch exactly one `correctness-lens` subagent using the correctness brief below.
+- **Full plan** -- define and launch all three lenses in parallel with `define_subagent` and `invoke_subagent` (`Model: "inherit"`). A subagent cannot spawn subagents, so this fan-out has to come from here.
 
-- `correctness-lens` — broken call sites, deletions whose callers survive, behaviour that silently
-  changed, error and state paths that differ from before.
-- `framework-lens` — is this the current correct idiom for the versions **actually installed** in
-  this repo? Check the API surfaces the diff calls and the version constraints it assumes.
-  Use Context7's `resolve-library-id` and `query-docs` when current external
-  documentation is needed.
-- `guidance-compliance-lens` — did this change require updating `CLAUDE.md`, `AGENTS.md`, and
-  `.github/copilot-instructions.md` per this repo's own rule, and do those files still describe the
-  code truthfully?
+Define the needed lens subagent types with `define_subagent`:
+- `Name: "correctness-lens"`, `Description: "Read-only final-review lens. Reviews a completed branch diff for correctness defects — broken call sites, changed behaviour, error and state paths. Never writes."`, `SystemPrompt: "You are the correctness lens on a completed plan run. You hunt for defects in a finished diff and report them. You never modify anything."`, `EnableWriteTools: false`, `EnableMCPTools: false`, `EnableSubagentTools: false` — brief: broken call sites, deletions whose callers survive, behaviour that silently changed, error and state paths that differ from before.
+- `Name: "framework-lens"`, `Description: "Read-only final-review lens. Checks a completed branch diff against the installed versions of the frameworks it uses — correct current idiom, real API surfaces, valid version assumptions. Never writes."`, `SystemPrompt: "You are the framework lens on a completed plan run. You check the diff against the library versions actually installed in this repo, not against what the plan assumed. You never modify anything."`, `EnableWriteTools: false`, `EnableMCPTools: true`, `EnableSubagentTools: false` — brief: is this the current correct idiom for the versions **actually installed** in this repo? Check the API surfaces the diff calls and the version constraints it assumes. Use Context7's `resolve-library-id` and `query-docs` when current external documentation is needed.
+- `Name: "guidance-compliance-lens"`, `Description: "Read-only final-review lens. Verifies that a completed branch diff kept this repo's own guidance files truthful and in sync. Never writes."`, `SystemPrompt: "You are the guidance-compliance lens on a completed plan run. You check whether the repo's own documented rules were followed and whether its guidance files still describe the code truthfully. You never modify anything."`, `EnableWriteTools: false`, `EnableMCPTools: false`, `EnableSubagentTools: false` — brief: did this change require updating `CLAUDE.md`, `AGENTS.md`, and `.github/copilot-instructions.md` per this repo's own rule, and do those files still describe the code truthfully?
 
-In each pass, work from the plan path and the diff path, and read the real source files. A standard
-plan makes only the first pass.
+Write `branch.diff` first and give each spawned lens the plan path, the diff path, and an instruction to read the real source files and return its findings as its final message. A standard plan launches only `correctness-lens`. After launching the lens subagent(s) with `invoke_subagent` (`Model: "inherit"`), end your turn (call no more tools) and wait for their messages.
 
-Write `branch.diff` first and review that file. Fix substantive findings in one wave before
+Fix substantive findings in one wave before
 completing the run. For a behavior change, use the TDD rule; in all
-cases rerun the focused validation and applicable gate. Then rerun the same lens pass on the fix diff. A
+cases rerun the focused validation and applicable gate. Then rerun the same lens on the fix diff. A
 finding that contradicts the approved plan is a `HALT`; stop and ask the user rather than silently
 expanding scope. Any other residual failure or substantive finding stops the run the same way: show it
 and ask the user before Step 6. Only minor residuals go in the ledger and the Step 7 report; there is no
@@ -291,11 +305,11 @@ a stack.
 
 ## Step 7 — Report
 
-Write any lens findings into the ledger, then **also print them to the terminal**. The ledger is
+Write any lens findings into each plan's ledger, then **also print them to the terminal**. The ledger is
 gitignored, so anything that exists only there is invisible to any later reader. For lightweight
 plans, record the lead's final self-review instead.
 
-Report on every plan. For each, report to the user: the plan path and tier, tasks or commits made, units audited and what the audits
+Report to the user, per plan: the plan path and tier, tasks or commits made, units audited and what the audits
 found, what was fix-forwarded, any `HALT` you hit, the outstanding applicable review findings you did
 **not** act on, the PR URLs with their sources (or "no PRs opened; rerun this command to open them"), and the ledger path.
 
@@ -303,7 +317,8 @@ found, what was fix-forwarded, any `HALT` you hit, the outstanding applicable re
 
 ## Standing rules
 
-- You are the only writer; every review pass is read-only, and you apply the fixes.
+- Every spawned subagent (`preflight-scout`, `commit-auditor`, `plan-implementer`, and all three lenses) is defined with `define_subagent` and launched with `invoke_subagent` (`Model: "inherit"`).
+- Lightweight and standard: you are the only writer. Full: `plan-implementer` is the only code writer, one at a time, on the checked-out unit branch. Every review subagent has `EnableWriteTools: false`; asking one to change a file will fail.
 - Mark a commit done only on a gate you actually ran.
 - Mark a behavior change done only once the failing focused test, green validation, and applicable
   gate are recorded.

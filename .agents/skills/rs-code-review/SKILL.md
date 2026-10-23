@@ -152,7 +152,7 @@ documentation result in the run log, and cite it in the finding.
 
 A comment on a pull request is public and sticks, so the check happens before anything is posted: a
 finding the docs contradict is dropped, and a `Fix:` line the docs do not support is rewritten or
-removed. Hold every review pass to the same rule, and keep the head SHA in front of it. Every file read and every lockfile
+removed. Tell every lens the same, and tell it the head SHA. Every file read and every lockfile
 version comes from the reviewed commit, not the working tree (`git show <headRefOid>:<path>`),
 because a review runs without checking the branch out. That code, its lockfile, and this
 repository's guidance stay authoritative for local behavior; use Context7 only for facts those
@@ -179,63 +179,61 @@ value; if no diff line fits, it goes in the review body instead.
 The step is done when every open pull request has a findings list or `NO FINDINGS`, recorded in the
 run log with its tier and scope-check verdict.
 
-## Step 3 — Review passes
+## Step 3 — Lenses
 
 Per pull request, each with its own tier. Skip this step entirely for a **lightweight** tier and say
-so: "Lightweight tier (N lines) — review passes skipped." Otherwise make each in-scope pass yourself,
-one after another, as a separate review pass over the pull request's diff. Read the real source files
-in each pass, and name the pass in each finding's `lens` field.
+so: "Lightweight tier (N lines) — lenses skipped." Otherwise define the in-scope read-only lens subagent types with `define_subagent` (`EnableWriteTools: false`, `EnableMCPTools: true`, `EnableSubagentTools: false`) and launch them **in parallel** with `invoke_subagent` (`Model: "inherit"`), each told to read the real source files at `<headRefOid>` and return its findings as its final message.
 
 Always on for standard and full:
 
-- `correctness-lens` pass — broken call sites, deletions whose callers survive, behavior that silently
+- `correctness-lens` (`Name: "correctness-lens"`, `Description: "Read-only review lens. Reviews a pull-request diff for correctness defects — broken call sites, changed behaviour, error and state paths. Never writes."`, `SystemPrompt: "You are the correctness lens. You hunt for defects in a pull-request diff and report them. You never modify anything."`) — broken call sites, deletions whose callers survive, behavior that silently
   changed, error and state paths that differ from before.
-- `guidance-compliance-lens` pass — whether the change required updating `CLAUDE.md`, `AGENTS.md`, and
+- `guidance-compliance-lens` (`Name: "guidance-compliance-lens"`, `Description: "Read-only review lens. Verifies that a pull-request diff kept this repo's own guidance files truthful and in sync. Never writes."`, `SystemPrompt: "You are the guidance-compliance lens. You check whether the repo's own documented rules were followed and whether its guidance files still describe the code truthfully. You never modify anything."`) — whether the change required updating `CLAUDE.md`, `AGENTS.md`, and
   `.github/copilot-instructions.md`, and whether those files still describe the code truthfully.
-- A `testing` pass — missing negative paths and error branches, untested
+- `testing` (`Name: "testing"`, `Description: "Read-only review lens for test coverage and quality. Never writes."`, `SystemPrompt: "You are the testing lens. You review a pull-request diff and its tests for coverage gaps and test-quality defects. You never modify anything."`) — missing negative paths and error branches, untested
   guard clauses, boundary values, order-dependent or clock-dependent tests, real network calls in
-  tests, new public functions with no coverage, and tests that break the `unit-tests` skill's rules.
+  tests, new public functions with no coverage, and tests that break `.agents/skills/unit-tests/SKILL.md`'s rules.
 
-Conditional, made only when the signal is real:
+Conditional, dispatched only when the signal is real:
 
-- `framework-lens` pass — when the diff touches dependencies, a lockfile, or a framework API surface.
-  Check the idiom against the versions **actually installed** here, using Context7's
+- `framework-lens` (`Name: "framework-lens"`, `Description: "Read-only review lens. Checks a pull-request diff against the installed versions of the frameworks it uses — correct current idiom, real API surfaces, valid version assumptions. Never writes."`, `SystemPrompt: "You are the framework lens. You check the diff against the library versions actually installed in this repo. You never modify anything."`) — when the diff touches dependencies, a lockfile, or a framework API surface. Tell
+  it to check the idiom against the versions **actually installed** here, using Context7's
   `resolve-library-id` and `query-docs` when current external documentation is needed.
-- A `security` pass — when the diff touches authentication, the API
-  layer, secrets handling, or deployment configuration. Hunt for authorization defaults that allow,
+- `security` (`Name: "security"`, `Description: "Read-only security review lens. Never writes."`, `SystemPrompt: "You are the security lens. You hunt for security defects in a pull-request diff. You never modify anything."`) — when the diff touches authentication, the API
+  layer, secrets handling, or deployment configuration. It hunts authorization defaults that allow,
   secrets in source or logs, path traversal, server-side request forgery, weak or non-constant-time
   comparisons, and unsafe deserialization.
-- A `simplification` pass — full tier only, and advisory. Hunt for
+- `simplification` (`Name: "simplification"`, `Description: "Read-only advisory simplification lens. Never writes."`, `SystemPrompt: "You are the simplification lens. You hunt for unrequested structure in a pull-request diff without proposing to delete tests, error paths, validation, or edge-case branches. You never modify anything."`) — full tier only, and advisory. It hunts
   unrequested structure: an abstraction with one implementation, hand-rolled standard library, a
-  dependency duplicating a platform feature, dead configuration. Never propose deleting a test,
+  dependency duplicating a platform feature, dead configuration. It never proposes deleting a test,
   an error path, a validation, or an edge-case branch.
 
-`--all-lenses` in the input forces every pass regardless of scope. A named lens flag such as
+`--all-lenses` in the input forces every lens regardless of scope. A named lens flag such as
 `--security` forces just that one.
 
-In each pass, work from the pull request's base ref and head SHA (`<headRefOid>`), the relevant category list above, the
+Give each subagent the pull request's base ref and head SHA (`<headRefOid>`), the relevant category list above, the
 confidence-and-evidence rule from Step 2, and the Context7 rule from Step 2 for any finding that
-turns on external framework behavior. Write one finding per line as JSON:
+turns on external framework behavior. Require one finding per line as JSON:
 
 ```json
 {"severity":"CRITICAL|INFORMATIONAL","confidence":8,"path":"agentic_backend/src/api.py","line":42,"category":"...","summary":"...","fix":"...","fingerprint":"path:line:category","lens":"..."}
 ```
 
-with `NO FINDINGS` and nothing else when a pass finds nothing. If a pass cannot be completed, log the
-failure and continue; partial coverage beats none.
+with `NO FINDINGS` and nothing else when a lens finds nothing. After launching the in-scope lenses with `invoke_subagent`, end your turn (call no more tools) and wait for their messages. If a lens fails or times out, log the
+failure and continue; partial lens coverage beats none.
 
 **Merge.** Group findings by fingerprint, keep the highest confidence of each group, and mark a
-repeated fingerprint as confirmed by more than one pass, raising its confidence by one to a maximum
+repeated fingerprint as confirmed by more than one lens, raising its confidence by one to a maximum
 of ten. Apply the confidence gate from Step 2 to the merged list. Simplification findings are
 advisory: report them separately and keep them out of the finding counts; they would post as
 informational comments only if the user picks "Post all".
 
 ### Adversarial pass (full tier only)
 
-Make one more pass, `red-team`, after the others, with the merged
-findings in front of you. Its job is what they missed: silent failures and swallowed exceptions,
+Define a read-only `red-team` subagent type with `define_subagent` (`Name: "red-team"`, `Description: "Read-only adversarial reviewer for full-tier pull requests. Never writes."`, `SystemPrompt: "You are the red-team reviewer. You hunt for what earlier review lenses missed in a pull-request diff. You never modify anything."`, `EnableWriteTools: false`, `EnableMCPTools: true`, `EnableSubagentTools: false`) and launch it with `invoke_subagent` (`TypeName: "red-team"`, `Role: "Red-Team Reviewer"`, `Model: "inherit"`), after the others return, with the merged
+findings in its brief. Its job is what they missed: silent failures and swallowed exceptions,
 partial completion that leaves inconsistent state, integration boundaries between two systems,
-first-run and empty-data behavior, and double submissions. Same JSON schema, same evidence gate.
+first-run and empty-data behavior, and double submissions. Same JSON schema, same evidence gate. End your turn and wait for its message.
 
 ## Step 4 — Deduplicate against each PR
 
@@ -307,7 +305,8 @@ List anything you did not post, and say plainly what remains unverified.
 - You change no code: no edits, commits, or pushes, anywhere in this run. Posting review comments is
   the only external action, and it happens once, after the user confirms. Fixes never happen here —
   they flow through `/rs-address-feedback`.
-- You are the only writer, and the only one who posts.
+- Every spawned lens subagent is defined with `define_subagent` (`EnableWriteTools: false`) and launched with `invoke_subagent` (`Model: "inherit"`); a lens has no write
+  tools, so asking one to change code will fail, and you are the only one who posts.
 - Read the whole diff before the first finding. Never flag what the diff already addresses.
 - Quote the motivating line in the run log for every posted finding. "This looks fine" is not a
   finding either: cite the evidence that it is fine, or record it as unverified.

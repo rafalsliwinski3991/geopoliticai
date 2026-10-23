@@ -206,8 +206,10 @@ and `red-team` when the diff calls for them.
 
 ### Antigravity
 
-Antigravity defines and invokes its read-only `architecture-scout` and `structure-scout` subagents at
-runtime via `define_subagent` and `invoke_subagent` (`Model: "inherit"`) during `/rs-improve-codebase`.
+Antigravity defines and invokes every subagent (`preflight-scout`, `plan-implementer`,
+`commit-auditor`, `correctness-lens`, `framework-lens`, `guidance-compliance-lens`,
+`architecture-scout`, `structure-scout`, and the command-specific review subagents) at
+runtime via `define_subagent` and `invoke_subagent` (`Model: "inherit"`).
 
 ## Skills
 
@@ -279,9 +281,10 @@ Exceptions to know about:
 - OpenCode's `rs-implement-plan` has its own body, because it dispatches OpenCode's own workers. Keep it in
   step with Claude's by hand.
 - No port carries a harness note; each step is written for its own harness. Where Claude dispatches a
-  read-only lens, the OpenCode, Copilot, and Antigravity versions of `rs-code-review` and `rs-improve-plan`,
-  and Copilot's and Antigravity's `rs-implement-plan`, make that pass themselves. `rs-improve-codebase`
-  differs: Claude Code, OpenCode, and Copilot each have their own `architecture-scout` and `structure-scout`,
+  subagent, the OpenCode and Copilot versions of `rs-code-review`, `rs-improve-plan`, and `rs-plan-from-brainstorm`,
+  and Copilot's `rs-implement-plan`, make that pass themselves, while Antigravity defines and invokes every
+  subagent at runtime via `define_subagent` and `invoke_subagent`. `rs-improve-codebase`
+  gives Claude Code, OpenCode, and Copilot their own `architecture-scout` and `structure-scout` files,
   Antigravity defines and invokes them via `define_subagent` and `invoke_subagent`, and all three non-Claude
   ports write the page locally instead of publishing.
 - `swarm` and `e2e` are skipped in all three ports (`SKIP_SKILLS` in the `Makefile`).

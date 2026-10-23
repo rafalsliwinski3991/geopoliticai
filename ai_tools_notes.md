@@ -52,14 +52,15 @@ version has its own body, which dispatches the `.opencode/agents/` workers
 so its behaviour is kept in step with Claude's by hand.
 
 No port carries a harness note above its body. Where a Claude command
-dispatches one of its read-only subagents, the OpenCode, Copilot, and
-Antigravity versions of `rs-code-review` and `rs-improve-plan`, and Copilot's
-and Antigravity's `rs-implement-plan`, make that pass themselves, because none
-of those harnesses keeps static lens agent files.
-`rs-improve-codebase` is the exception: Claude Code, OpenCode, and Copilot each
-have their own `architecture-scout` and `structure-scout` (`.claude/agents/`,
-`.opencode/agents/`, `.github/agents/`), while Antigravity defines and invokes
-both read-only scouts at runtime with `define_subagent` and `invoke_subagent`.
+dispatches one of its subagents, the OpenCode and Copilot versions of
+`rs-code-review`, `rs-improve-plan`, and `rs-plan-from-brainstorm`, and
+Copilot's `rs-implement-plan`, make that pass themselves, because neither
+harness keeps static lens agent files. Antigravity defines and invokes every
+subagent at runtime with `define_subagent` and `invoke_subagent`
+(`Model: "inherit"`). For `rs-improve-codebase`, Claude Code, OpenCode, and
+Copilot each have their own `architecture-scout` and `structure-scout`
+(`.claude/agents/`, `.opencode/agents/`, `.github/agents/`), while Antigravity
+defines and invokes both read-only scouts at runtime the same way.
 All three non-Claude ports also write the page locally where Claude Code
 publishes an artifact, as `rs-explain-plan` and `rs-guidebook` do.
 
