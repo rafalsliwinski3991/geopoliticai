@@ -1,24 +1,24 @@
 # Harness guide
 
-This repository ships one set of AI workflows to three harnesses: Claude Code, OpenCode, and GitHub
-Copilot. The workflows are fourteen `rs-*` commands, 26 skills, and a handful of subagents. The commands
+This repository ships one set of AI workflows to four harnesses: Claude Code, OpenCode, GitHub
+Copilot, and Antigravity. The workflows are fourteen `rs-*` commands, 17 skills, and a handful of subagents. The commands
 take an idea from a first conversation to merged pull requests. The skills hold know-how for one area of
 the code and load when the work touches that area.
 
-Claude Code's copies are canonical. The other two harnesses get ports (see
+Claude Code's copies are canonical. The other three harnesses get ports (see
 [Keeping the harnesses in sync](#keeping-the-harnesses-in-sync)).
 
 ## Where everything lives
 
-| What | Claude Code | OpenCode | Copilot |
-|---|---|---|---|
-| Commands | `.claude/commands/rs-*.md` | `.opencode/command/rs-*.md` | `.github/prompts/rs-*.prompt.md` |
-| Skills | `.claude/skills/<name>/SKILL.md` | `.opencode/skills/` (symlinks to `.claude/skills/`) | `.github/skills/` (copies) |
-| Subagents | `.claude/agents/` | `.opencode/agent/`, `.opencode/agents/` | `.github/agents/` |
-| Project guidance | `CLAUDE.md` | `AGENTS.md` (points at `CLAUDE.md`) | `.github/copilot-instructions.md` (points at `CLAUDE.md`) |
-| Run logs | `docs/harness_logs/claude-code/` | `docs/harness_logs/opencode/` | `docs/harness_logs/copilot/` |
+| What | Claude Code | OpenCode | Copilot | Antigravity |
+|---|---|---|---|---|
+| Commands | `.claude/commands/rs-*.md` | `.opencode/command/rs-*.md` | `.github/prompts/rs-*.prompt.md` | `.agents/skills/rs-*/SKILL.md` |
+| Skills | `.claude/skills/<name>/SKILL.md` | `.opencode/skills/` (symlinks to `.claude/skills/`) | `.github/skills/` (copies) | `.agents/skills/` (symlinks to `.claude/skills/`) |
+| Subagents | `.claude/agents/` | `.opencode/agent/`, `.opencode/agents/` | `.github/agents/` | Defined at runtime via `define_subagent` |
+| Project guidance | `CLAUDE.md` | `AGENTS.md` (points at `CLAUDE.md`) | `.github/copilot-instructions.md` (points at `CLAUDE.md`) | `AGENTS.md` (points at `CLAUDE.md`) |
+| Run logs | `docs/harness_logs/claude-code/` | `docs/harness_logs/opencode/` | `docs/harness_logs/copilot/` | `docs/harness_logs/antigravity/` |
 
-`make inventory` fails when a Claude command or skill is missing from OpenCode or Copilot.
+`make inventory` fails when a Claude command or skill is missing from OpenCode, Copilot, or Antigravity.
 `ai_tools_notes.md` explains the deliberate gaps.
 
 ## The flow
@@ -114,18 +114,18 @@ Choosing between the three ways to build:
 | Command | Purpose | Reads | Writes | Stops to ask you |
 |---|---|---|---|---|
 | `rs-brainstorming` | Stress-tests an idea. Classifies it as a spike, bounded change, or architectural change, then asks questions in rounds and pushes back once on every answer. | The idea, the code | `docs/brainstorming/<date>_brainstorm_v<N>_<slug>.md` (architectural only) | Every round; final approval of the design |
-| `rs-improve-codebase` | Scans an area you name with two read-only scouts (architecture, structure), checks every finding against the code, shows them on one page, and hands your pick to `rs-brainstorming`. Claude Code publishes the page as an artifact; OpenCode and Copilot write the local HTML file. | The area, `CLAUDE.md`, `codebase-design` | `report.html`, `improve_codebase.md`; commits only for picks you approve | The area, with hot spots offered, when none is given; your pick; each exception, naming rule, and in-session line before it is written |
+| `rs-improve-codebase` | Scans an area you name with two read-only scouts (architecture, structure), checks every finding against the code, shows them on one page, and hands your pick to `rs-brainstorming`. Claude Code publishes the page as an artifact; OpenCode, Copilot, and Antigravity write the local HTML file. | The area, `CLAUDE.md`, `codebase-design` | `report.html`, `improve_codebase.md`; commits only for picks you approve | The area, with hot spots offered, when none is given; your pick; each exception, naming rule, and in-session line before it is written |
 | `rs-plan-from-brainstorm` | Turns an approved brainstorm into a plan sized as lightweight, standard, or full. | Brainstorm doc, every file it names | `docs/plans/<date>_plan_<slug>_v<N>.md` | The file tree and names before drafting; approval of the plan |
 | `rs-plan-from-asana` | Same as above, from Asana tasks. Only explicit task text and confirmed comments count as decided. | Asana tasks and comments | Plan file(s), one per subsystem | Open questions; structure; approval |
 | `rs-plan-from-gh-issues` | Same as above, from GitHub issues. Each unit names the issues it closes. | Issues and comments | Plan file(s), one per subsystem | Open questions; structure; approval |
 | `rs-improve-plan` | Audits a plan against the live code and writes a complete new version with a changelog. Never edits the old file. | Plan, source doc, code | `<plan>_v<N+1>.md`, `review.md` log | Approve, request changes, or cancel the new version |
-| `rs-explain-plan` | Explains a plan as a page with diagrams and tables for a newcomer. Claude Code publishes it as an artifact; OpenCode and Copilot write the local HTML file. Changes nothing else. | Plan, brainstorm, `CLAUDE.md`, code | `explainer.html`; also a published artifact in Claude Code | Only if the plan path is unclear |
+| `rs-explain-plan` | Explains a plan as a page with diagrams and tables for a newcomer. Claude Code publishes it as an artifact; OpenCode, Copilot, and Antigravity write the local HTML file. Changes nothing else. | Plan, brainstorm, `CLAUDE.md`, code | `explainer.html`; also a published artifact in Claude Code | Only if the plan path is unclear |
 | `rs-implement-plan` | Implements one or more plans unit by unit, test first, with per-unit audits and a final review. Opens PRs. | Plan(s), code | Unit branches, commits, `ledger.md`, PRs | One checkpoint before any code: start point, sources, and PR shape (stack, one PR, or none; draft or ready) |
 | `rs-implement-from-brainstorm-in-loop` | Builds a brainstorm slice on `loop/<slug>` with a draft PR, iterating until every agreed check passes. | Brainstorm, code | Branch, commits, draft PR, `loop.md` | Scope, definition of done, budget, base; your verdict on each user check |
 | `rs-prototype-from-brainstorm-in-loop` | Builds throwaway code on `prototype/<slug>` that answers one question, looping on your verdict. | Question, optional brainstorm | Prototype branch, `loop.md`, verdict in the brainstorm | Question, checklist, budget; your verdict each round |
 | `rs-code-review` | Reviews each PR against its own base, bottom to top in a stack, and posts findings as inline comments. Changes no code. | PR diffs, code at the head SHA | PR review comments, `review.md` | Post all, critical only, or cancel |
 | `rs-address-feedback` | Decides apply or reject for every unresolved thread, commits and pushes the applies, replies once per thread. Never resolves threads. | PR threads and comments | Commits, pushes, thread replies, `address_feedback.md` | Proceed all, applies only, adjust, or cancel |
-| `rs-guidebook` | Explains a PR chain on one page: what it does, how to review each PR, every finding with its outcome, what is still open. Claude Code publishes it as an artifact; OpenCode and Copilot write the local HTML file. Changes nothing. | PRs, threads, local logs | `guidebook.html`; also a published artifact in Claude Code | Only if the PR or plan is unclear |
+| `rs-guidebook` | Explains a PR chain on one page: what it does, how to review each PR, every finding with its outcome, what is still open. Claude Code publishes it as an artifact; OpenCode, Copilot, and Antigravity write the local HTML file. Changes nothing. | PRs, threads, local logs | `guidebook.html`; also a published artifact in Claude Code | Only if the PR or plan is unclear |
 | `rs-gh-stack-merge` | Merges a whole stack in one `gh stack merge`, then closes the Asana tasks and GitHub issues listed in each PR's `## Source`. | PRs, their `## Source` sections | Merge, closed issues and tasks, `stack_merge.md` | Squash, merge commit, rebase, or cancel |
 
 ### Plan tiers
@@ -155,8 +155,8 @@ standard, and over 200, or any critical finding, is full (all lenses plus a red-
 - Nothing is posted, pushed, or merged without one explicit confirmation from you.
 - Comments and replies on GitHub start with a harness prefix and the model name, for example
   `CC: Opus 5.5 -> [CRITICAL, 8/10] ...`, `CC: Opus 5.5 -> applied: ...`, or `... -> rejected: ...`.
-  OpenCode uses `OPENCODE:` and Copilot `COPILOT:`. `/rs-guidebook` reads these prefixes to report
-  outcomes, so keep them exact.
+  OpenCode uses `OPENCODE:`, Copilot `COPILOT:`, and Antigravity `ANTIGRAVITY:`. `/rs-guidebook` reads
+  these prefixes to report outcomes, so keep them exact.
 - PR descriptions written by `/rs-implement-plan` end with a `## Source` section. `/rs-gh-stack-merge`
   parses it to close tasks and issues, so its headings and prefixes stay verbatim.
 
@@ -204,11 +204,16 @@ and `red-team` when the diff calls for them.
 | `architecture-scout` | Read-only architecture scan for Copilot's `rs-improve-codebase`; hidden from the agent picker |
 | `structure-scout` | Read-only structure scan for Copilot's `rs-improve-codebase`; hidden from the agent picker |
 
+### Antigravity
+
+Antigravity defines and invokes its read-only `architecture-scout` and `structure-scout` subagents at
+runtime via `define_subagent` and `invoke_subagent` (`Model: "inherit"`) during `/rs-improve-codebase`.
+
 ## Skills
 
-Skills load on their own when a task matches their description; you can also call one by name. Three
-quickstarts and `e2e` carry `disable-model-invocation: true`, so Claude Code loads them only when you ask
-(OpenCode ignores the flag).
+Skills load on their own when a task matches their description; you can also call one by name. `e2e`
+carries `disable-model-invocation: true`, so Claude Code loads it only when you ask (OpenCode and
+Antigravity ignore the flag).
 
 ### Writing
 
@@ -263,22 +268,23 @@ themselves. `/rs-implement-plan` resumes from its ledger: a unit marked `complet
 
 ## Keeping the harnesses in sync
 
-| Piece | How it reaches OpenCode | How it reaches Copilot |
-|---|---|---|
-| Skills | `make link-skills` symlinks into `.claude/skills/` | `make sync-copilot` rebuilds `.github/skills/` from scratch |
-| Commands | Copied by hand; body matches Claude's apart from steps that name a tool, path, or helper only Claude has, frontmatter swapped for `agent: build` and `model: opencode-go/glm-5.3-flash` | Ported by hand to `.github/prompts/`; `allowed-tools` becomes `tools` |
-| Guidance | `AGENTS.md` points at `CLAUDE.md` | `.github/copilot-instructions.md` points at `CLAUDE.md` |
+| Piece | How it reaches OpenCode | How it reaches Copilot | How it reaches Antigravity |
+|---|---|---|---|
+| Skills | `make link-skills` symlinks into `.claude/skills/` | `make sync-copilot` rebuilds `.github/skills/` from scratch | `make link-skills` symlinks into `.claude/skills/` |
+| Commands | Copied by hand; body matches Claude's apart from steps that name a tool, path, or helper only Claude has, frontmatter swapped for `agent: build` and `model: opencode-go/glm-5.3-flash` | Ported by hand to `.github/prompts/`; `allowed-tools` becomes `tools` | Ported by hand to `.agents/skills/rs-*/SKILL.md`; frontmatter holds `name` and `description` |
+| Guidance | `AGENTS.md` points at `CLAUDE.md` | `.github/copilot-instructions.md` points at `CLAUDE.md` | `AGENTS.md` points at `CLAUDE.md` |
 
 Exceptions to know about:
 
 - OpenCode's `rs-implement-plan` has its own body, because it dispatches OpenCode's own workers. Keep it in
   step with Claude's by hand.
 - No port carries a harness note; each step is written for its own harness. Where Claude dispatches a
-  read-only lens, the OpenCode and Copilot versions of `rs-code-review` and `rs-improve-plan`, and
-  Copilot's `rs-implement-plan`, make that pass themselves. `rs-improve-codebase` differs: each harness
-  has its own `architecture-scout` and `structure-scout`, its ports dispatch them, and its ports write
-  the page locally instead of publishing.
-- `swarm` and `e2e` are skipped in both ports (`SKIP_SKILLS` in the `Makefile`).
+  read-only lens, the OpenCode, Copilot, and Antigravity versions of `rs-code-review` and `rs-improve-plan`,
+  and Copilot's and Antigravity's `rs-implement-plan`, make that pass themselves. `rs-improve-codebase`
+  differs: Claude Code, OpenCode, and Copilot each have their own `architecture-scout` and `structure-scout`,
+  Antigravity defines and invokes them via `define_subagent` and `invoke_subagent`, and all three non-Claude
+  ports write the page locally instead of publishing.
+- `swarm` and `e2e` are skipped in all three ports (`SKIP_SKILLS` in the `Makefile`).
 - Anything hand-written under `.github/skills/` is deleted by the next `make sync-copilot`. Edit
   `.claude/skills/` and re-run the target.
 
@@ -289,5 +295,5 @@ Three workflows watch the harness:
 | Workflow | Runs | Does |
 |---|---|---|
 | `harness_integrity.yml` | On PRs touching harness files | Re-runs `make sync-copilot link-skills` and fails on any drift; runs `make inventory`; checks that `AGENTS.md` and the Copilot instructions still point at `CLAUDE.md` |
-| `harness_audit.yml` | By hand only | Claude Code audits all three harnesses against `scripts/harness_audit/prompt.md` and files one issue with the findings |
+| `harness_audit.yml` | By hand only | Claude Code audits all four harnesses against `scripts/harness_audit/prompt.md` and files one issue with the findings |
 | `harness-eval.yml` | By hand, or `/harness_eval` on a PR | Runs `/rs-implement-plan` on a frozen task, scores it, and appends the scores to the `eval-history` branch. Gates nothing |

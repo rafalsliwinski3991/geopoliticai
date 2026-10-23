@@ -177,7 +177,7 @@ gh pr comment <number> --body "<reply body>"
 
 If GitHub rejects a payload (422), fall back to a plain PR comment prefixed the same way. Never
 post twice to the same thread: before posting, re-fetch the thread and skip if a reply starting
-with `CC:`, `OPENCODE:`, or `COPILOT:` already exists (from this run or a previous one).
+with `CC:`, `OPENCODE:`, `COPILOT:`, or `ANTIGRAVITY:` already exists (from this run or a previous one).
 
 ## Step 5 — Report
 

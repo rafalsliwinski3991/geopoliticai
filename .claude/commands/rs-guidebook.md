@@ -73,7 +73,7 @@ Turn every thread into one **finding** with these fields:
 
 | Field | Rule |
 |---|---|
-| Found by | `copilot-pull-request-reviewer` or `copilot-pull-request-reviewer[bot]` is Copilot. A root comment starting `<prefix>: <model> -> [<SEVERITY>, <n>/10]` (`<prefix>` is `CC`, `OPENCODE`, or `COPILOT`) is that model's review, with that severity and confidence. Any other author is that person, by login. |
+| Found by | `copilot-pull-request-reviewer` or `copilot-pull-request-reviewer[bot]` is Copilot. A root comment starting `<prefix>: <model> -> [<SEVERITY>, <n>/10]` (`<prefix>` is `CC`, `OPENCODE`, `COPILOT`, or `ANTIGRAVITY`) is that model's review, with that severity and confidence. Any other author is that person, by login. |
 | Finding | The root comment's first line, linked to its `url`. |
 | Outcome | Take the latest comment in `latest`. One starting `<prefix>: <model> -> applied:` gives outcome **applied**; one starting `<prefix>: <model> -> rejected:` gives **rejected**. Show the reply text, which names the change and SHA, or the reason. With neither, the outcome is **no outcome recorded**. |
 | Same spot | When another finding in the same layer sits on the same path within three lines, link the two as "same spot". Count each thread once. |
@@ -107,19 +107,19 @@ Local logs enrich the page; they never replace GitHub.
 ask with `AskUserQuestion`, offering "no plan".
 
 **Logs to read.** Read each of these that exists, in `docs/harness_logs/claude-code/`,
-`docs/harness_logs/opencode/`, or `docs/harness_logs/copilot/` (per-harness run dir `<YYYYMonDD>_<slug>` inside each):
+`docs/harness_logs/opencode/`, `docs/harness_logs/copilot/`, or `docs/harness_logs/antigravity/` (per-harness run dir `<YYYYMonDD>_<slug>` inside each):
 
-- **The `rs-implement-plan` ledger**, at `docs/harness_logs/<harness>/<plan-stem>/ledger.md` for `<harness>` in `claude-code`, `opencode`, and `copilot`. Take
+- **The `rs-implement-plan` ledger**, at `docs/harness_logs/<harness>/<plan-stem>/ledger.md` for `<harness>` in `claude-code`, `opencode`, `copilot`, and `antigravity`. Take
   from it:
   - the plan's units, and which commits were added to a unit during the run, with the failed check or
     finding behind each;
   - gates that are still failing or open;
   - audit minors left in place.
-- **`claude-code|opencode|copilot`/`<YYYYMonDD>_<slug>`/review.md.** Its `Not posted: <count and reason>` line, and any per-finding
+- **`claude-code|opencode|copilot|antigravity`/`<YYYYMonDD>_<slug>`/review.md.** Its `Not posted: <count and reason>` line, and any per-finding
   "Dropped or not posted" list a run wrote, give findings whose outcome is **not posted**, with the
   reason. When the log has only the count, show that count and reason under the layer; never guess which
   findings they were.
-- **`claude-code|opencode|copilot`/`<YYYYMonDD>_<slug>`/address_feedback.md.** A decision drafted there with no matching reply on GitHub gets
+- **`claude-code|opencode|copilot|antigravity`/`<YYYYMonDD>_<slug>`/address_feedback.md.** A decision drafted there with no matching reply on GitHub gets
   outcome **drafted, not posted**, with the drafted text.
 
 Record every path you looked for. The page lists each missing one as "Not found on this machine: `<path>`".

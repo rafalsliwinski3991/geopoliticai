@@ -81,7 +81,7 @@ test-web-backend:
 test-web-integration:
 	$(DJANGO_HOST_ENV) uv run --directory web_backend python manage.py test tests.integration_tests
 
-# Skills excluded from both non-Claude harnesses: they need a Claude-only
+# Skills excluded from all non-Claude harnesses: they need a Claude-only
 # runtime, so neither `sync-copilot` nor `link-skills` propagates them.
 # `e2e` drives Claude-only tools (`AskUserQuestion`) and this repo's Compose
 # stack; it has no port.
@@ -104,29 +104,33 @@ sync-copilot:
 inventory:
 	python3 scripts/harness_integrity/ai_tools_inventory.py $(SKIP_SKILLS)
 
-# Unlike sync-copilot this prunes only the symlinks, because OpenCode-only skills
-# live here as real directories and must survive. A real directory sharing a
-# canonical skill's name is refused rather than linked: `ln -s` would silently
-# create the link *inside* it, where it dangles and `make inventory` reports
-# the skill as missing. Every name is checked before anything is pruned,
-# so a refusal leaves the existing links alone instead of deleting the ones it
-# had not reached yet. git cannot track an empty directory, so a fresh checkout
-# has no .opencode/skills at all until mkdir creates it.
+# Unlike sync-copilot this prunes only the symlinks, because OpenCode-only and
+# Antigravity-only skills live in .opencode/skills and .agents/skills as real
+# directories and must survive. A real directory sharing a canonical skill's
+# name is refused rather than linked: `ln -s` would silently create the link
+# *inside* it, where it dangles and `make inventory` reports the skill as
+# missing. Every name is checked before anything is pruned, so a refusal leaves
+# the existing links alone instead of deleting the ones it had not reached yet.
+# git cannot track an empty directory, so a fresh checkout has no .opencode/skills
+# or .agents/skills at all until mkdir creates it.
 link-skills:
-	@set -e; mkdir -p .opencode/skills; \
-		for d in .claude/skills/*/; do n=$$(basename $$d); \
-			case ' $(SKIP_SKILLS) ' in *" $$n "*) continue;; esac; \
-			if [ -e .opencode/skills/$$n ] && [ ! -L .opencode/skills/$$n ]; then \
-				echo "$$n already exists as a real directory in .opencode/skills; remove or rename it" >&2; \
-				exit 1; \
-			fi; \
+	@set -e; \
+		for target in .opencode/skills .agents/skills; do \
+			mkdir -p $$target; \
+			for d in .claude/skills/*/; do n=$$(basename $$d); \
+				case ' $(SKIP_SKILLS) ' in *" $$n "*) continue;; esac; \
+				if [ -e $$target/$$n ] && [ ! -L $$target/$$n ]; then \
+					echo "$$n already exists as a real directory in $$target; remove or rename it" >&2; \
+					exit 1; \
+				fi; \
 			done; \
-		find .opencode/skills -maxdepth 1 -type l -delete; \
-		for d in .claude/skills/*/; do n=$$(basename $$d); \
-			case ' $(SKIP_SKILLS) ' in *" $$n "*) continue;; esac; \
-			ln -s ../../.claude/skills/$$n .opencode/skills/$$n; \
+			find $$target -maxdepth 1 -type l -delete; \
+			for d in .claude/skills/*/; do n=$$(basename $$d); \
+				case ' $(SKIP_SKILLS) ' in *" $$n "*) continue;; esac; \
+				ln -s ../../.claude/skills/$$n $$target/$$n; \
 			done; \
-		echo 'linked .claude/skills -> .opencode/skills (skipped: $(SKIP_SKILLS))'
+		done; \
+		echo 'linked .claude/skills -> .opencode/skills and .agents/skills (skipped: $(SKIP_SKILLS))'
 
 help:
 	@printf '%s\n' \
@@ -142,8 +146,8 @@ help:
 		'migrate-agentic Run Alembic migrations for the agentic-owned schema (runs after migrate-web)' \
 		'createsuperuser Create a Django admin user' \
 		'sync-copilot Copy .claude/skills into .github/skills (Copilot keeps real copies, not symlinks)' \
-		'inventory Fail if a Claude command or skill is missing from OpenCode or Copilot' \
-		'link-skills Symlink .claude/skills into .opencode/skills (Claude Code is canonical; OpenCode-only skills stay untouched)' \
+		'inventory Fail if a Claude command or skill is missing from OpenCode, Copilot, or Antigravity' \
+		'link-skills Symlink .claude/skills into .opencode/skills and .agents/skills (Claude Code is canonical; harness-only skills stay untouched)' \
 		'test-web-backend Run the Django service test suite (unit tests; integration excluded)' \
 		'test-web-integration Run the Django integration suite against the dev Postgres' \
 		'' \

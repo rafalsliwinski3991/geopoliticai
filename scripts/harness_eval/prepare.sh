@@ -8,7 +8,7 @@
 set -euo pipefail
 
 src=$1 start=$2 fixture=$3 dest=$4 ws=$5
-HARNESS=(.claude .opencode .github/prompts AGENTS.md opencode.jsonc
+HARNESS=(.claude .opencode .agents .github/prompts AGENTS.md opencode.jsonc
   scripts/log_metrics.py docs/harness_logs/TEMPLATE.md)
 
 # Fetching a ref brings only its ancestors; fetching by SHA from a plain

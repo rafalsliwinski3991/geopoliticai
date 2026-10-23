@@ -1,5 +1,5 @@
 ---
-harness: claude-code | opencode | copilot
+harness: claude-code | opencode | copilot | antigravity
 command: rs-code-review
 subject: <branch, plan stem, or stack slug>
 branch: <branch the run worked on>
@@ -17,7 +17,7 @@ One run log per run, in that run's directory under its harness. The layout for e
 
     docs/harness_logs/<harness>/<YYYYMonDD>_<slug>/<log-name>
 
-`harness` is `claude-code`, `opencode`, or `copilot`; the dir is named `<YYYYMonDD>_<slug>`, the slug
+`harness` is `claude-code`, `opencode`, `copilot`, or `antigravity`; the dir is named `<YYYYMonDD>_<slug>`, the slug
 being the run's topic (a branch name, plan stem, stack slug, or `improve-<area-slug>`); `<log-name>`
 keeps the command's own suffix file name — `review.md`, `address_feedback.md`, `stack_merge.md`,
 `loop.md`, `improve_codebase.md` — and the three HTML outputs (`explainer.html`, `guidebook.html`,

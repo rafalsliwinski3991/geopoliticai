@@ -8,6 +8,7 @@ GIT = ["git", "-c", "user.name=t", "-c", "user.email=t@t"]
 HARNESS = [
     ".claude/commands/x.md",
     ".opencode/x.md",
+    ".agents/skills/x/SKILL.md",
     ".github/prompts/x.md",
     "AGENTS.md",
     "opencode.jsonc",

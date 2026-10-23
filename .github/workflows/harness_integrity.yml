@@ -5,6 +5,7 @@ on:
     paths:
       - ".claude/**"
       - ".opencode/**"
+      - ".agents/**"
       - ".github/skills/**"
       - ".github/prompts/**"
       - ".github/copilot-instructions.md"
@@ -39,8 +40,8 @@ jobs:
           # to .claude/skills but not copied/linked) would pass silently.
           # `status --porcelain` catches those too.
           if [ -n "$(git status --porcelain -- \
-            .github/skills .opencode/skills)" ]; then
-            git diff -- .github/skills .opencode/skills
+            .github/skills .opencode/skills .agents/skills)" ]; then
+            git diff -- .github/skills .opencode/skills .agents/skills
             echo
             echo "Harness drift detected: the sync targets changed files above."
             echo "Re-run from the repo root and commit the result:"
@@ -74,6 +75,7 @@ jobs:
           if grep -rsInE "docs/(cc|opencode)_logs" \
             .claude/commands .claude/agents .claude/skills \
             .opencode/command .opencode/agents .opencode/agent \
+            .agents/skills \
             .github/prompts .github/agents .github/copilot-instructions.md AGENTS.md; then
             echo "Use docs/harness_logs/ (see docs/harness_logs/TEMPLATE.md)." >&2
             exit 1
