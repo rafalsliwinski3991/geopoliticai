@@ -44,7 +44,7 @@ exact library and installed version, then call `query-docs` with that identifier
 Record any material documentation result in the ledger. The checked-out code,
 lockfile, and repository guidance remain authoritative for local behavior.
 
-For a **standard or full plan**, define the read-only `preflight-scout` subagent type with `define_subagent` (`Name: "preflight-scout"`, `Description: "Read-only pre-flight pass for a plan run. Compares an implementation plan against the current repo and reports per-commit status, risk, and staleness. Never writes."`, `SystemPrompt: "You are the pre-flight scout for a plan run. You compare a written plan against the repository as it actually is today, and you never modify anything. Your entire output is one table plus a short list of blockers."`, `EnableWriteTools: false`, `EnableMCPTools: false`, `EnableSubagentTools: false`), then launch it with `invoke_subagent` (`TypeName: "preflight-scout"`, `Role: "Pre-flight Scout"`, `Model: "inherit"`), giving it the plan path and this brief:
+For a **standard or full plan**, define the read-only `preflight-scout` subagent type with `define_subagent` (`Name: "preflight-scout"`, `Description: "Read-only pre-flight pass for a plan run. Compares an implementation plan against the current repo and reports per-commit status, risk, and staleness. Never writes."`, `SystemPrompt: "You are the pre-flight scout for a plan run. You compare a written plan against the repository as it actually is today, and you never modify anything. Your entire output is one table plus a short list of blockers."`, `EnableWriteTools: false`, `EnableMCPTools: false`, `EnableSubagentTools: false`), then launch it with `invoke_subagent` (`TypeName: "preflight-scout"`, `Role: "Pre-flight Scout"`, `Model: "flash"`), giving it the plan path and this brief:
 
 > Compare the plan at `<path>` against this repository as it is right now. Read the actual files the
 > plan names — never trust the plan's description of the code. Produce **one markdown table, one row
@@ -113,9 +113,9 @@ For a full plan, run this loop per unit, finishing its audit before cutting the 
 1. Cut the unit branch from the previous one and record `BASE` (`git rev-parse HEAD`) in the ledger.
 2. Write `unit-<NN>-brief.md`: that unit's plan section, the interfaces earlier units established, the
    branch name, `BASE`, the focused test command, and the full gate command. Not the rest of the plan.
-3. Launch `plan-implementer` with `invoke_subagent` (`TypeName: "plan-implementer"`, `Role: "Unit <NN> Implementer"`, `Model: "inherit"`), giving it the brief path, the report path, and one line on where the unit sits, then end your turn (call no more tools) and wait for its message.
+3. Launch `plan-implementer` with `invoke_subagent` (`TypeName: "plan-implementer"`, `Role: "Unit <NN> Implementer"`, `Model: "flash"`), giving it the brief path, the report path, and one line on where the unit sits, then end your turn (call no more tools) and wait for its message.
 4. Read its status. `DONE` / `DONE_WITH_CONCERNS`: go to Step 4. `NEEDS_CONTEXT`: add the fact to the
-   brief and launch a fresh `plan-implementer` with `invoke_subagent`. `BLOCKED`: launch one fresh `plan-implementer` with `invoke_subagent`, giving it the report path,
+   brief and launch a fresh `plan-implementer` with `invoke_subagent` (`Model: "flash"`). `BLOCKED`: launch one fresh `plan-implementer` with `invoke_subagent` (`Model: "flash"`), giving it the report path,
    the failure, and an instruction to take a different approach; if that is also `BLOCKED`, stop and
    ask the user.
 
@@ -178,7 +178,7 @@ Launch `commit-auditor` with `invoke_subagent` (`TypeName: "commit-auditor"`, `R
 
 - **`HALT`** → stop the run, report it to the user, and wait. This is a scope question and it is not
   yours to settle.
-- **`FAIL` or an `Important` finding** → fix it (full plan: launch `plan-implementer` with `invoke_subagent` and the findings;
+- **`FAIL` or an `Important` finding** → fix it (full plan: launch `plan-implementer` with `invoke_subagent` (`Model: "flash"`) and the findings;
   otherwise yourself) as a follow-up commit, using the TDD rule when behavior changes, then gate and
   log it. After each fix, rewrite `unit-<NN>.diff` from `BASE` to the new HEAD and re-audit that whole unit diff with `commit-auditor`. At most two fix rounds per
   unit; if it still fails, stop and ask the user.
@@ -317,7 +317,7 @@ found, what was fix-forwarded, any `HALT` you hit, the outstanding applicable re
 
 ## Standing rules
 
-- Every spawned subagent (`preflight-scout`, `commit-auditor`, `plan-implementer`, and all three lenses) is defined with `define_subagent` and launched with `invoke_subagent` (`Model: "inherit"`).
+- Every spawned subagent is defined with `define_subagent` and launched with `invoke_subagent`: `preflight-scout` and `plan-implementer` use `Model: "flash"`; `commit-auditor` and all three lenses use `Model: "inherit"`.
 - Lightweight and standard: you are the only writer. Full: `plan-implementer` is the only code writer, one at a time, on the checked-out unit branch. Every review subagent has `EnableWriteTools: false`; asking one to change a file will fail.
 - Mark a commit done only on a gate you actually ran.
 - Mark a behavior change done only once the failing focused test, green validation, and applicable

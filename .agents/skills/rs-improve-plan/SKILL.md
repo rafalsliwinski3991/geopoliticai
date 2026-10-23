@@ -82,7 +82,7 @@ For a **lightweight plan**, inspect the named files and focused validation yours
 Write a short status and staleness note into the run log; do not spawn a scout just to
 produce one row for one contained change.
 
-For a **standard or full plan**, define the read-only `preflight-scout` subagent type with `define_subagent` (`Name: "preflight-scout"`, `Description: "Read-only pre-flight pass for a plan run. Compares an implementation plan against the current repo and reports per-commit status, risk, and staleness. Never writes."`, `SystemPrompt: "You are the pre-flight scout for a plan run. You compare a written plan against the repository as it actually is today, and you never modify anything. Your entire output is one table plus a short list of blockers."`, `EnableWriteTools: false`, `EnableMCPTools: false`, `EnableSubagentTools: false`), then launch it with `invoke_subagent` (`TypeName: "preflight-scout"`, `Role: "Pre-flight Scout"`, `Model: "inherit"`), giving it the plan path and this brief:
+For a **standard or full plan**, define the read-only `preflight-scout` subagent type with `define_subagent` (`Name: "preflight-scout"`, `Description: "Read-only pre-flight pass for a plan run. Compares an implementation plan against the current repo and reports per-commit status, risk, and staleness. Never writes."`, `SystemPrompt: "You are the pre-flight scout for a plan run. You compare a written plan against the repository as it actually is today, and you never modify anything. Your entire output is one table plus a short list of blockers."`, `EnableWriteTools: false`, `EnableMCPTools: false`, `EnableSubagentTools: false`), then launch it with `invoke_subagent` (`TypeName: "preflight-scout"`, `Role: "Pre-flight Scout"`, `Model: "flash"`), giving it the plan path and this brief:
 
 > Compare the plan at `<path>` against this repository as it is right now. Read the actual files the
 > plan names — never trust the plan's description of the code. Produce **one markdown table, one row
@@ -243,7 +243,7 @@ run-log path.
 ## Standing rules
 
 - You are the only writer. Every review subagent has `EnableWriteTools: false`; asking one to change something will fail.
-- Every spawned subagent (`preflight-scout`, the Step 3 lenses, and `plan-critic`) is defined with `define_subagent` and launched with `invoke_subagent` (`Model: "inherit"`).
+- Every spawned subagent is defined with `define_subagent` and launched with `invoke_subagent`: `preflight-scout` uses `Model: "flash"`; the Step 3 lenses and `plan-critic` use `Model: "inherit"`.
 - The Step 5 critique runs at every tier, before the user is asked to approve.
 - Where the plan and the code disagree, the code wins, and the disagreement goes in the changelog.
 - The new version is a complete replacement, never a diff or a pointer back to the old one.

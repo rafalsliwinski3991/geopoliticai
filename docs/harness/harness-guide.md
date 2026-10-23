@@ -209,7 +209,7 @@ and `red-team` when the diff calls for them.
 Antigravity defines and invokes every subagent (`preflight-scout`, `plan-implementer`,
 `commit-auditor`, `correctness-lens`, `framework-lens`, `guidance-compliance-lens`,
 `architecture-scout`, `structure-scout`, and the command-specific review subagents) at
-runtime via `define_subagent` and `invoke_subagent` (`Model: "inherit"`).
+runtime via `define_subagent` and `invoke_subagent` (`Model: "flash"` for `preflight-scout` and `plan-implementer`, `Model: "inherit"` otherwise).
 
 ## Skills
 
