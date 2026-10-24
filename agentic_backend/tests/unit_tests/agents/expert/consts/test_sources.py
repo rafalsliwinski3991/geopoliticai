@@ -7,7 +7,7 @@ from agents.expert.consts.sources import (
 from search import build_batch_query
 
 BRAVE_MAX_DOMAINS_PER_BATCH = 10
-LONGEST_QUESTION = " ".join(["geopolitics"] * 11)[:140].rstrip()
+LONGEST_QUESTION = " ".join(["international"] * 9 + ["geopolitically"])
 THINK_TANKS = (
     "brookings.edu",
     "aei.org",
@@ -56,7 +56,9 @@ def test_policy_matches_constants() -> None:
 def test_no_batch_holds_more_than_ten_domains() -> None:
     """Brave reads at most ten site: filters in one query, so a bigger batch silently loses domains."""
     # Arrange
-    sizes = [len(batch) for batch in SEARCH_BATCHES]
+    batches = SEARCH_BATCHES
+    # Act
+    sizes = [len(batch) for batch in batches]
     # Assert
     assert max(sizes) <= BRAVE_MAX_DOMAINS_PER_BATCH
 
@@ -64,9 +66,10 @@ def test_no_batch_holds_more_than_ten_domains() -> None:
 def test_no_batch_loses_a_domain_to_the_query_limit() -> None:
     """A long question plus a long batch can pass Brave's 400 characters, and the builder then drops domains."""
     # Arrange
-    assert len(LONGEST_QUESTION) > 130
+    question = LONGEST_QUESTION
+    assert len(question) == 140
     # Act
-    queries = [build_batch_query(LONGEST_QUESTION, batch) for batch in SEARCH_BATCHES]
+    queries = [build_batch_query(question, batch) for batch in SEARCH_BATCHES]
     # Assert
     for batch, query in zip(SEARCH_BATCHES, queries, strict=True):
         assert all(f"site:{domain}" in query for domain in batch)
@@ -74,5 +77,9 @@ def test_no_batch_loses_a_domain_to_the_query_limit() -> None:
 
 def test_the_think_tanks_are_on_the_list() -> None:
     """The expert reads institutes as well as newsrooms; losing one removes a whole kind of source."""
+    # Arrange
+    expected = set(THINK_TANKS)
+    # Act
+    missing = expected - set(ALLOWED_DOMAINS)
     # Assert
-    assert set(THINK_TANKS) <= set(ALLOWED_DOMAINS)
+    assert missing == set()
