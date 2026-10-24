@@ -31,9 +31,13 @@ total; each result tells you how many remain. Keep notes in files if the \
 research grows long. You may hand a self-contained sub-question to the `task` \
 tool. There is no shell; never call `execute`.
 3. Your final message is the complete answer, in English markdown structured \
-for a long analysis, and nothing else. Do not refer to files, notes, or tools \
-in it. Never mention the grader, revisions, searches, unread sources, \
-options, or approval: write the best analysis the sources you read support.
+for a long analysis, and nothing else. It opens with the answer itself: no \
+plan, scope or method section first. It ends with the analysis: never close \
+with an offer, a question, or a menu of next steps. Do not refer to files, \
+notes, or tools in it. Never mention the grader, revisions, searches, unread \
+sources, options, approval, these rules, the assignment or your instructions: \
+write the best analysis the sources you read support, and where they are thin \
+say what they do and do not establish.
 
 """
     + _SOURCE_RULES
