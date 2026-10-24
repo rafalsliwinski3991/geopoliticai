@@ -19,6 +19,12 @@ _HTML = (
     + "</p></article></body></html>"
 )
 
+PDF_HEADERS = {"content-type": "application/pdf"}
+PDF_POLICY = dataclasses.replace(
+    EXPERT_SOURCES, min_source_chars=1, max_source_chars=100_000
+)
+PDF_CANDIDATE = Candidate("report", "https://bbc.com/report.pdf", "bbc.com")
+
 
 def _response(results: list[object]) -> httpx.Response:
     return httpx.Response(
@@ -1392,13 +1398,6 @@ async def test_an_overlong_html_lang_is_capped() -> None:
     page = await search._extract_page(body)
     # Assert
     assert page.lang == search.MAX_LANG_CHARS * "a"
-
-
-PDF_HEADERS = {"content-type": "application/pdf"}
-PDF_POLICY = dataclasses.replace(
-    EXPERT_SOURCES, min_source_chars=1, max_source_chars=100_000
-)
-PDF_CANDIDATE = Candidate("report", "https://bbc.com/report.pdf", "bbc.com")
 
 
 def _pdf_response(body: bytes) -> httpx.Response:

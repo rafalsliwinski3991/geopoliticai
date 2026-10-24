@@ -14,10 +14,17 @@ from agents.deep_forecaster.models import Claim, EvidenceRef
 from frames import ProgressFrame
 from models import LLMInvocationError, Source
 from unit_tests.agents.deep_forecaster.conftest import (
+    MARKER,
     TODAY,
     ScriptedDrafter,
     claims,
     sources,
+)
+
+PAST_DEADLINE = date(2026, 9, 1)
+DEADLINE_DEFECT_1 = (
+    "The forecast drafted claim 2 with the deadline 2026-09-01, "
+    "which is not after today (2026-09-30)."
 )
 
 draft_module: Any = importlib.import_module("agents.deep_forecaster.nodes.draft_claims")
