@@ -20,7 +20,10 @@ from agents.deep_forecaster.evidence import (
     render_sources,
 )
 from agents.deep_forecaster.models import Claim, DraftedClaims
-from agents.deep_forecaster.prompts import DRAFT_CLAIMS_PROMPT
+from agents.deep_forecaster.prompts import (
+    DRAFT_CLAIMS_PROMPT,
+    DRAFT_CLAIMS_RETRY_INSTRUCTIONS,
+)
 from agents.deep_forecaster.state import ForecastRun, ForecastState
 from llm import ainvoke_structured
 from models import LLMInvocationError, Source
@@ -35,18 +38,48 @@ async def draft_claims(
     """Draft 2-4 dated, checkable claims, each pointing at its evidence; check them in code."""
     runtime.context.enter(CLAIMS_LABEL, runtime.stream_writer)
     today = runtime.context.today
-    drafted = await ainvoke_structured(
-        DRAFT_CLAIMS_PROMPT.format(today=render_deadline(today)),
-        [
-            HumanMessage(
-                f"Question: {state['question']}\n\nSources:\n\n"
-                f"{render_sources(state['sources'])}"
-            )
-        ],
-        DraftedClaims,
-        settings=CLAIMS_LLM_SETTINGS,
+    prompt = DRAFT_CLAIMS_PROMPT.format(today=render_deadline(today))
+    brief = (
+        f"Question: {state['question']}\n\nSources:\n\n"
+        f"{render_sources(state['sources'])}"
     )
-    claims = checked_claims(drafted.claims, today=today, sources=state["sources"])
+    attempts = 0
+    first_defect = ""
+    last_defect = ""
+    claims: list[Claim] | None = None
+    with start_span("claim_draft") as span:
+        try:
+            while claims is None:
+                attempts += 1
+                drafted = await ainvoke_structured(
+                    prompt,
+                    [HumanMessage(brief)],
+                    DraftedClaims,
+                    settings=CLAIMS_LLM_SETTINGS,
+                )
+                try:
+                    claims = checked_claims(
+                        drafted.claims, today=today, sources=state["sources"]
+                    )
+                except LLMInvocationError as defect:
+                    last_defect = str(defect)
+                    first_defect = first_defect or last_defect
+                    if attempts >= LIMITS.draft_attempts:
+                        raise
+                    logger.warning("draft_claims: redrafting once: %s", defect)
+                    brief += "\n\n" + DRAFT_CLAIMS_RETRY_INSTRUCTIONS.format(
+                        defect=last_defect
+                    )
+        finally:
+            span.set_attributes(
+                {
+                    "claims.attempts": attempts,
+                    "claims.first_defect": first_defect,
+                    "claims.last_defect": last_defect,
+                    "claims.redraft_fixed": claims is not None and attempts > 1,
+                    "claims.kept": len(claims or []),
+                }
+            )
     _record_evidence_positions(claims, state["sources"])
     return {"claims": claims}
 
@@ -112,7 +145,9 @@ def checked_claims(
             )
         if claim.deadline <= today:
             raise LLMInvocationError(
-                "The forecast drafted a claim whose deadline is not in the future."
+                f"The forecast drafted claim {number} with the deadline "
+                f"{claim.deadline.isoformat()}, which is not after today "
+                f"({today.isoformat()})."
             )
         real = {
             (ref.source, ref.paragraph): ref

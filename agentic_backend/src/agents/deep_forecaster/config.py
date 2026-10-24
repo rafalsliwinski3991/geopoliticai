@@ -166,6 +166,9 @@ class ForecastLimits:
     user decision 2026-10-19, brainstorm 2026Oct19 Q2b); 5 or more is the
     normal council, and the eval reports a council of 4 separately.
 
+    `draft_attempts` is the claims drafter's tries: one redraft with the defect named
+    (brainstorm 2026Oct22 Q4); both tries share `claims_seconds`.
+
     `max_passage_chars` cuts one quoted paragraph, so a member's prompt stays
     near 10k tokens (4 claims x 6 passages x 1,200 characters). Up to 7
     members x 4 claims of reasons, each with its source links, are printed in
@@ -187,6 +190,7 @@ class ForecastLimits:
     quorum: int = 4
     min_claims: int = 2
     max_claims: int = 4
+    draft_attempts: int = 2
     max_passages: int = 6
     max_passage_chars: int = 1_200
     max_reason_chars: int = 600

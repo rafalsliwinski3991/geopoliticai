@@ -352,6 +352,35 @@ class ScriptedWriter:
         return len(self.briefs)
 
 
+class ScriptedDrafter:
+    """Stands in for the drafter's model call: returns its script in order.
+
+    Each reply is a list of `Claim`s (wrapped in `DraftedClaims`) or an
+    exception to raise. Every brief it is sent is recorded, and a call past
+    the end of the script fails the test, so "the drafter ran exactly twice"
+    is provable.
+    """
+
+    def __init__(self, *replies: Any) -> None:
+        self.replies = list(replies)
+        self.briefs: list[str] = []
+
+    async def __call__(
+        self, prompt: str, messages: Any, schema: Any, *, settings: Any = None
+    ) -> DraftedClaims:
+        self.briefs.append(str(messages[-1].content))
+        if not self.replies:
+            raise AssertionError("the drafter was called more often than scripted")
+        reply = self.replies.pop(0)
+        if isinstance(reply, BaseException):
+            raise reply
+        return DraftedClaims(claims=reply)
+
+    @property
+    def calls(self) -> int:
+        return len(self.briefs)
+
+
 @dataclass
 class ForecastRig:
     """The real forecast graph, with one fake at each of its four seams.
