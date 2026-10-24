@@ -1,7 +1,7 @@
 import asyncio
 import dataclasses
 import unicodedata
-from collections.abc import Mapping, Sequence
+from collections.abc import AsyncIterator, Callable, Mapping, Sequence
 
 import httpx
 import pytest
@@ -1333,3 +1333,250 @@ async def test_an_overlong_html_lang_is_capped() -> None:
     page = await search._extract_page(body)
     # Assert
     assert page.lang == search.MAX_LANG_CHARS * "a"
+
+
+PDF_HEADERS = {"content-type": "application/pdf"}
+PDF_POLICY = dataclasses.replace(
+    EXPERT_SOURCES, min_source_chars=1, max_source_chars=100_000
+)
+PDF_CANDIDATE = Candidate("report", "https://bbc.com/report.pdf", "bbc.com")
+
+
+def _pdf_response(body: bytes) -> httpx.Response:
+    return httpx.Response(
+        200,
+        content=body,
+        headers=PDF_HEADERS,
+        request=httpx.Request("GET", PDF_CANDIDATE.url),
+    )
+
+
+async def _fetch_pdf(
+    monkeypatch: pytest.MonkeyPatch, body: bytes, policy: SourcePolicy = PDF_POLICY
+) -> search.FetchResult:
+    """Serve `body` as a PDF through a patched `get` and run `_fetch_page` on it."""
+
+    async def fake_get(
+        self: httpx.AsyncClient,
+        url: str,
+        *,
+        timeout: object | None = None,
+        follow_redirects: bool = False,
+    ) -> httpx.Response:
+        return _pdf_response(body)
+
+    monkeypatch.setattr(httpx.AsyncClient, "get", fake_get)
+    return await search._fetch_page(httpx.AsyncClient(), PDF_CANDIDATE, policy)
+
+
+@pytest.mark.anyio
+async def test_a_pdf_is_read_into_one_paragraph_per_page(
+    monkeypatch: pytest.MonkeyPatch, build_pdf: Callable[..., bytes]
+) -> None:
+    """The forecaster counts a line as a paragraph, so each page must be one line."""
+    # Arrange
+    body = build_pdf(["First page text.", "Second page text."])
+    # Act
+    result = await _fetch_pdf(monkeypatch, body)
+    # Assert
+    assert result.outcome == "ok"
+    assert result.source is not None
+    assert result.source.text == "First page text.\n\nSecond page text."
+
+
+@pytest.mark.anyio
+async def test_pdf_reading_stops_once_the_source_cap_is_reached(
+    build_pdf: Callable[..., bytes],
+) -> None:
+    """Pages past the cap would be cut anyway; parsing them wastes a worker's time."""
+    # Arrange
+    pages = ["a" * 100, "b" * 100, "c" * 100]
+    body = build_pdf(pages)
+    # Act
+    page = await search._extract_pdf(body, 150)
+    # Assert
+    assert page.text == "a" * 100 + "\n\n" + "b" * 100
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    ("page_count", "pages_read"),
+    [
+        (search.PDF_MAX_PAGES - 1, search.PDF_MAX_PAGES - 1),
+        (search.PDF_MAX_PAGES, search.PDF_MAX_PAGES),
+        (search.PDF_MAX_PAGES + 1, search.PDF_MAX_PAGES),
+    ],
+    ids=["one under the cap", "exactly the cap", "one over the cap"],
+)
+async def test_only_the_first_pages_of_a_long_pdf_are_read(
+    build_pdf: Callable[..., bytes], page_count: int, pages_read: int
+) -> None:
+    """A book-length PDF must not hold a worker thread for every page."""
+    # Arrange
+    body = build_pdf([f"page{number}" for number in range(1, page_count + 1)])
+    expected = "\n\n".join(f"page{number}" for number in range(1, pages_read + 1))
+    # Act
+    page = await search._extract_pdf(body, 10_000_000)
+    # Assert
+    assert page.text == expected
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    ("padding_to", "outcome"),
+    [
+        (search.PDF_MAX_BYTES, "ok"),
+        (search.PDF_MAX_BYTES + 1, "too_large"),
+    ],
+    ids=["exactly the byte cap", "one byte over the cap"],
+)
+async def test_a_pdf_over_the_byte_cap_is_dropped(
+    monkeypatch: pytest.MonkeyPatch,
+    build_pdf: Callable[..., bytes],
+    padding_to: int,
+    outcome: str,
+) -> None:
+    """A huge scan would be read whole into memory and parsed; the cap refuses it."""
+    # Arrange
+    body = build_pdf(["Text."], size=padding_to)
+    # Act
+    result = await _fetch_pdf(monkeypatch, body)
+    # Assert
+    assert len(body) == padding_to
+    assert result.outcome == outcome
+
+
+@pytest.mark.anyio
+async def test_a_declared_oversized_pdf_is_refused_before_download() -> None:
+    """A server that declares a huge PDF must be cut off before its body is read."""
+    # Arrange
+    chunks_read: list[int] = []
+
+    async def body_stream() -> AsyncIterator[bytes]:
+        chunks_read.append(1)
+        yield b"%PDF-1.4"
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            headers={**PDF_HEADERS, "content-length": str(search.PDF_MAX_BYTES + 1)},
+            content=body_stream(),
+        )
+
+    client = httpx.AsyncClient(
+        transport=httpx.MockTransport(handler),
+        event_hooks={"response": [search.refuse_oversized_pdf]},
+    )
+    # Act
+    result = await search._fetch_page(client, PDF_CANDIDATE, PDF_POLICY)
+    # Assert
+    assert result.outcome == "too_large"
+    assert chunks_read == []
+
+
+@pytest.mark.anyio
+async def test_a_pdf_without_a_declared_length_is_checked_after_download(
+    build_pdf: Callable[..., bytes],
+) -> None:
+    """A chunked response declares no length, so only the downloaded size can refuse it."""
+    # Arrange
+    body = build_pdf(["Text."], size=search.PDF_MAX_BYTES + 1)
+
+    async def body_stream() -> AsyncIterator[bytes]:
+        yield body
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, headers=PDF_HEADERS, content=body_stream())
+
+    client = httpx.AsyncClient(
+        transport=httpx.MockTransport(handler),
+        event_hooks={"response": [search.refuse_oversized_pdf]},
+    )
+    # Act
+    result = await search._fetch_page(client, PDF_CANDIDATE, PDF_POLICY)
+    # Assert
+    assert result.outcome == "too_large"
+
+
+@pytest.mark.anyio
+async def test_an_owner_password_only_pdf_is_read(
+    monkeypatch: pytest.MonkeyPatch, build_encrypted_pdf: Callable[..., bytes]
+) -> None:
+    """Many publishers lock editing only; readers open these files without a prompt."""
+    # Arrange
+    body = build_encrypted_pdf(["Open to readers."], user_password="")
+    # Act
+    result = await _fetch_pdf(monkeypatch, body)
+    # Assert
+    assert result.outcome == "ok"
+    assert result.source is not None
+    assert result.source.text == "Open to readers."
+
+
+@pytest.mark.anyio
+async def test_a_pdf_that_needs_a_password_is_an_extract_failure(
+    monkeypatch: pytest.MonkeyPatch, build_encrypted_pdf: Callable[..., bytes]
+) -> None:
+    """A locked file has no text for us; it must be a named failure, not an empty page."""
+    # Arrange
+    body = build_encrypted_pdf(["Secret."], user_password="secret")
+    # Act
+    result = await _fetch_pdf(monkeypatch, body)
+    # Assert
+    assert result.outcome == "extract_failed"
+
+
+@pytest.mark.anyio
+async def test_a_corrupt_pdf_is_an_extract_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A server can send an error page labelled PDF; one bad file must not abort the batch."""
+    # Arrange
+    body = b"this is not a pdf at all"
+    # Act
+    result = await _fetch_pdf(monkeypatch, body)
+    # Assert
+    assert result.outcome == "extract_failed"
+
+
+@pytest.mark.anyio
+async def test_a_pdf_with_no_text_is_too_short(
+    monkeypatch: pytest.MonkeyPatch, build_pdf: Callable[..., bytes]
+) -> None:
+    """A scanned PDF has no text layer; it reads as an empty page, not as a source."""
+    # Arrange
+    body = build_pdf([""])
+    # Act
+    result = await _fetch_pdf(monkeypatch, body)
+    # Assert
+    assert result.outcome == "too_short"
+
+
+@pytest.mark.anyio
+async def test_nul_characters_are_stripped_from_pdf_text(
+    build_pdf: Callable[..., bytes],
+) -> None:
+    """Postgres text columns reject NUL, and a stored source would fail the whole turn."""
+    # Arrange
+    body = build_pdf(["abc\x00def"])
+    # Act
+    page = await search._extract_pdf(body, 10_000)
+    # Assert
+    assert page.text == "abcdef"
+
+
+def test_the_fetch_client_installs_the_pdf_size_hook() -> None:
+    """Without the hook on the real client, a declared 2 GB PDF would download in full."""
+    # Act
+    client = search.build_fetch_client()
+    # Assert
+    assert client.event_hooks["response"] == [search.refuse_oversized_pdf]
+
+
+def test_the_fetch_headers_accept_pdf() -> None:
+    """Servers choose the representation from Accept; without PDF listed some send HTML."""
+    # Assert
+    assert (
+        search.FETCH_HEADERS["Accept"]
+        == "text/html,application/xhtml+xml,application/pdf;q=0.9"
+    )
