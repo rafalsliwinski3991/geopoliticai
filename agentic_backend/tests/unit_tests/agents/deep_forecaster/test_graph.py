@@ -15,6 +15,7 @@ from langgraph.errors import NodeTimeoutError
 from langgraph.graph import END, START, StateGraph
 from typing_extensions import TypedDict
 
+from agents import capped_run
 from agents.deep_forecaster.config import COUNCIL
 from agents.deep_forecaster.council import QuorumError
 from agents.deep_forecaster.models import (
@@ -25,6 +26,7 @@ from agents.deep_forecaster.models import (
     EvidenceRef,
 )
 from agents.deep_forecaster.state import ForecastRun, ResearchRun
+from frames import ProgressFrame
 from models import (
     LLMInvocationError,
     NoSourcesError,
@@ -180,7 +182,7 @@ async def test_forecast_returns_the_answer(monkeypatch: pytest.MonkeyPatch) -> N
     answer = await graph_module.forecast("Will it happen?")
     # Assert
     assert answer == "The answer."
-    assert recorded["config"] is graph_module.NO_CHECKPOINTER_CONFIG
+    assert recorded["config"] is capped_run.NO_CHECKPOINTER_CONFIG
     assert isinstance(recorded["context"], ForecastRun)
 
 
@@ -404,8 +406,8 @@ async def test_a_forecast_runs_every_step_once_inside_a_checkpointed_parent(
         stream_mode="custom",
         subgraphs=True,
     ):
-        if isinstance(chunk[1], dict) and "label" in chunk[1]:
-            labels.append(chunk[1]["label"])
+        if isinstance(chunk[1], ProgressFrame):
+            labels.append(chunk[1].label)
     final = await parent.aget_state({"configurable": {"thread_id": "t"}})
     result = final.values
     answer_text = str(result["answer"])

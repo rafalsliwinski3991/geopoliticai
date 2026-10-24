@@ -5,6 +5,7 @@ import pytest
 from langchain_core.messages import AIMessage, HumanMessage
 
 from agents.reporter.consts.messages import CANCELLED_NOTICE, NO_MATERIAL_NOTICE
+from frames import NoticeEvent
 
 node_module = importlib.import_module("agents.orchestrator.nodes.reporter")
 
@@ -53,7 +54,7 @@ async def test_a_fresh_request_without_material_refuses_without_invoking_the_chi
 
     # Assert
     assert result["messages"][0].text == NO_MATERIAL_NOTICE
-    assert events == [{"type": "notice", "text": NO_MATERIAL_NOTICE}]
+    assert events == [NoticeEvent(text=NO_MATERIAL_NOTICE)]
     assert child.calls == []
 
 
@@ -73,7 +74,7 @@ async def test_a_chat_only_thread_without_citations_refuses_without_invoking_the
 
     # Assert
     assert result["messages"][0].text == NO_MATERIAL_NOTICE
-    assert events == [{"type": "notice", "text": NO_MATERIAL_NOTICE}]
+    assert events == [NoticeEvent(text=NO_MATERIAL_NOTICE)]
     assert child.calls == []
 
 
@@ -156,7 +157,7 @@ async def test_a_notice_result_is_returned_and_emitted(
 
     # Assert
     assert result["messages"][0].text == "Refused."
-    assert events == [{"type": "notice", "text": "Refused."}]
+    assert events == [NoticeEvent(text="Refused.")]
 
 
 @pytest.mark.anyio
@@ -175,4 +176,4 @@ async def test_a_result_with_neither_report_nor_notice_returns_the_cancel_notice
 
     # Assert
     assert result["messages"][0].text == CANCELLED_NOTICE
-    assert events == [{"type": "notice", "text": CANCELLED_NOTICE}]
+    assert events == [NoticeEvent(text=CANCELLED_NOTICE)]

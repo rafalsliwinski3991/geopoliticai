@@ -60,7 +60,7 @@ def events() -> list[dict[str, Any]]:
     return []
 
 
-def runtime(events: list[dict[str, Any]]) -> SimpleNamespace:
+def runtime(events: list[object]) -> SimpleNamespace:
     """Return a stand-in for the graph's `Runtime` (unit 04 adds `today`)."""
     return SimpleNamespace(
         context=ForecastRun(today=TODAY), stream_writer=events.append

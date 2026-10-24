@@ -80,8 +80,10 @@ py-modules = [
     "api",
     "auth",
     "config",
+    "frames",
     "llm",
     "models",
+    "quota",
     "search",
     "tracing",
 ]

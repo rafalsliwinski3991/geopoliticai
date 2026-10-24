@@ -9,7 +9,6 @@ from langgraph.runtime import Runtime
 
 from agents.deep_forecaster.config import WRITE_LLM_SETTINGS
 from agents.deep_forecaster.consts.progress import REWRITE_LABEL, WRITE_LABEL
-from agents.deep_forecaster.council import final_ballots
 from agents.deep_forecaster.evidence import (
     LINK,
     REMOVED_LINK,
@@ -56,12 +55,11 @@ def _brief(state: ForecastState) -> str:
         for t in state["tally"]
     )
     revised = state["ballots_round_2"]
-    final = final_ballots(state["ballots_round_1"], revised)
     votes = "\n\n".join(
         f"Member {member}"
         f"{'' if member in revised else ' (did not answer round 2; its round-1 vote)'}"
         f":\n{render_ballot(ballot)}"
-        for member, ballot in sorted(final.items())
+        for member, ballot in sorted(state["final_ballots"].items())
     )
     return (
         f"Question: {LINK.sub(REMOVED_LINK, state['question'])}\n\n"

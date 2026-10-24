@@ -16,6 +16,7 @@ from agents.reporter import (
 )
 from agents.reporter import graph as reporter_graph
 from agents.reporter.consts.messages import CANCELLED_NOTICE, NO_MATERIAL_NOTICE
+from frames import NoticeEvent
 
 logger = logging.getLogger(__name__)
 
@@ -52,7 +53,7 @@ async def reporter(state: OrchestratorState, writer: StreamWriter) -> dict[str, 
         # never invoked: no model call, no interrupt, no gate. The refusal is a
         # pure function of the thread, so it cannot vary run to run.
         logger.info("reporter: refusing, no researched material in thread")
-        writer({"type": "notice", "text": NO_MATERIAL_NOTICE})
+        writer(NoticeEvent(text=NO_MATERIAL_NOTICE))
         return {"messages": [AIMessage(NO_MATERIAL_NOTICE)]}
     transcript = build_transcript(state["messages"])
     result = await reporter_graph.ainvoke(build_initial_reporter_state(transcript))
@@ -64,7 +65,7 @@ async def reporter(state: OrchestratorState, writer: StreamWriter) -> dict[str, 
         # `api.py` turns a notice into a token, so it passes through the
         # `MAX_ANSWER_CHARS` accounting like any other answer. Only hardcoded
         # literals are ever forwarded to the browser verbatim (§1).
-        writer({"type": "notice", "text": text})
+        writer(NoticeEvent(text=text))
     logger.info(
         "reporter: %d transcript chars, %d sections, %d report chars",
         len(transcript),

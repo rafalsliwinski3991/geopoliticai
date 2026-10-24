@@ -8,12 +8,12 @@ from typing import Any, Optional
 from langchain_core.runnables import RunnableConfig
 from langgraph.types import StreamWriter
 
-from agents.reporter.config import MAX_REPORT_CHARS, REPORT_LLM_SETTINGS
+from agents.reporter.config import REPORT_LLM_SETTINGS
 from agents.reporter.consts.progress import REPORT_PROGRESS
 from agents.reporter.prompts import REPORT_SYSTEM_PROMPT
 from agents.reporter.state import ReporterState
-from llm import astream_text
-from models import LLMInvocationError
+from config import MAX_ANSWER_CHARS
+from llm import astream_text, collect_text
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +27,7 @@ async def write(
 
     This node's name is load-bearing twice over: `api.ANSWER_NODES` forwards
     streamed `AIMessage` chunks tagged `langgraph_node == "write"`, and
-    `_astream_answer` uses the same tag to emit the `("kind", "report")` event
+    `_astream_answer` uses the same tag to emit the `_ReportStarted` event
     that puts a Download .md button on the answer. Renaming it would silently
     stop the report reaching the browser. Measured: after a resume, these chunks
     do arrive at the parent tagged `"write"`.
@@ -45,20 +45,20 @@ async def write(
     logger.info(
         "write: %d sections, prompt %d chars", len(state["outline"]), len(human_prompt)
     )
-    chunks: list[str] = []
-    async for chunk in astream_text(
-        REPORT_SYSTEM_PROMPT, human_prompt, config=config, settings=REPORT_LLM_SETTINGS
-    ):
-        chunks.append(chunk)
-    text = "".join(chunks).strip()
-    if not text:
-        raise LLMInvocationError("Model returned an empty report.")
-    if len(text) > MAX_REPORT_CHARS:
-        # The stream is drained fully above before this trim, so the model call
-        # completes normally; only what is *stored* is bounded. See
-        # MAX_REPORT_CHARS for why storing more helps nobody. Note this bounds
-        # the checkpoint only — the browser was already capped independently by
-        # `api.MAX_ANSWER_CHARS` as the chunks streamed past.
+    text = await collect_text(
+        astream_text(
+            REPORT_SYSTEM_PROMPT,
+            human_prompt,
+            config=config,
+            settings=REPORT_LLM_SETTINGS,
+        ),
+        empty_message="Model returned an empty report.",
+    )
+    if len(text) > MAX_ANSWER_CHARS:
+        # The stored report is capped at the delivery cap because nobody can read
+        # past it: the browser receives at most `MAX_ANSWER_CHARS`. The stream is
+        # drained fully above before this trim, so the model call completes
+        # normally; only what is *stored* is bounded.
         logger.info("write: report clipped from %d chars", len(text))
-        text = text[:MAX_REPORT_CHARS]
+        text = text[:MAX_ANSWER_CHARS]
     return {"report": text}

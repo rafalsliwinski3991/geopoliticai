@@ -13,6 +13,7 @@ from langchain_core.language_models.base import LangSmithParams
 from langchain_core.language_models.fake_chat_models import FakeMessagesListChatModel
 from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.checkpoint.memory import InMemorySaver
+from langgraph.errors import NodeTimeoutError
 from langgraph.graph import END, START, StateGraph
 from opentelemetry.sdk.trace import ReadableSpan
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
@@ -20,8 +21,10 @@ from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
 )
 from typing_extensions import TypedDict
 
+from agents import capped_run
 from agents.deep_forecaster.consts.progress import RESEARCH_LABEL
 from agents.deep_forecaster.state import ForecastRun, ResearchOutcome, ResearchRun
+from frames import ProgressFrame
 from models import (
     LLMInvocationError,
     NoSourcesError,
@@ -48,12 +51,8 @@ FORECASTER_IDS = [
     "sidiropoulos",
 ]
 
-NO_CHECKPOINTER_CONFIG = {
-    "configurable": {"thread_id": "", "checkpoint_ns": "", "checkpoint_id": None}
-}
 
-
-def _runtime(events: list[dict[str, Any]]) -> SimpleNamespace:
+def _runtime(events: list[object]) -> SimpleNamespace:
     return SimpleNamespace(
         context=ForecastRun(), stream_writer=events.append, store=None
     )
@@ -102,7 +101,7 @@ def _record_one_source(run: ResearchRun) -> None:
 
 @pytest.mark.anyio
 async def test_research_returns_the_sources_in_read_order(
-    monkeypatch: pytest.MonkeyPatch, events: list[dict[str, Any]]
+    monkeypatch: pytest.MonkeyPatch, events: list[object]
 ) -> None:
     # Arrange
     def mutate(run: ResearchRun) -> None:
@@ -121,11 +120,7 @@ async def test_research_returns_the_sources_in_read_order(
     # Act
     out = await research_module.research({"question": "q"}, _runtime(events))
     # Assert
-    assert events[0] == {
-        "type": "progress",
-        "node": "deep_forecaster",
-        "label": RESEARCH_LABEL,
-    }
+    assert events[0] == ProgressFrame(node="deep_forecaster", label=RESEARCH_LABEL)
     assert fake.runtime_step() if hasattr(fake, "runtime_step") else True
     assert out["sources"][0].url == "https://a.example/1"
     assert out["research"] == ResearchOutcome(
@@ -135,7 +130,7 @@ async def test_research_returns_the_sources_in_read_order(
 
 @pytest.mark.anyio
 async def test_no_source_read_is_no_sources_error(
-    monkeypatch: pytest.MonkeyPatch, events: list[dict[str, Any]]
+    monkeypatch: pytest.MonkeyPatch, events: list[object]
 ) -> None:
     # Arrange
     _patch_agent(monkeypatch, lambda run: _FakeAgent(run))
@@ -146,7 +141,7 @@ async def test_no_source_read_is_no_sources_error(
 
 @pytest.mark.anyio
 async def test_every_search_failing_is_a_search_outage(
-    monkeypatch: pytest.MonkeyPatch, events: list[dict[str, Any]]
+    monkeypatch: pytest.MonkeyPatch, events: list[object]
 ) -> None:
     # Act
     def mutate(run: ResearchRun) -> None:
@@ -161,7 +156,7 @@ async def test_every_search_failing_is_a_search_outage(
 
 @pytest.mark.anyio
 async def test_some_failed_searches_with_nothing_read_is_no_sources(
-    monkeypatch: pytest.MonkeyPatch, events: list[dict[str, Any]]
+    monkeypatch: pytest.MonkeyPatch, events: list[object]
 ) -> None:
     # Arrange
     def mutate(run: ResearchRun) -> None:
@@ -175,7 +170,7 @@ async def test_some_failed_searches_with_nothing_read_is_no_sources(
 
 @pytest.mark.anyio
 async def test_failed_searches_are_counted_for_the_answer(
-    monkeypatch: pytest.MonkeyPatch, events: list[dict[str, Any]]
+    monkeypatch: pytest.MonkeyPatch, events: list[object]
 ) -> None:
     # Arrange
     def mutate(run: ResearchRun) -> None:
@@ -194,7 +189,7 @@ async def test_failed_searches_are_counted_for_the_answer(
 
 @pytest.mark.anyio
 async def test_the_time_box_keeps_what_was_read(
-    monkeypatch: pytest.MonkeyPatch, events: list[dict[str, Any]]
+    monkeypatch: pytest.MonkeyPatch, events: list[object]
 ) -> None:
     # Arrange
     import agents.deep_forecaster.config as config
@@ -219,7 +214,7 @@ async def test_the_time_box_keeps_what_was_read(
 
 @pytest.mark.anyio
 async def test_an_inner_timeout_is_llm_invocation_error(
-    monkeypatch: pytest.MonkeyPatch, events: list[dict[str, Any]]
+    monkeypatch: pytest.MonkeyPatch, events: list[object]
 ) -> None:
     fake = _FakeAgent(ResearchRun(writer=events.append), fail=TimeoutError("inner"))
     # Arrange
@@ -232,8 +227,29 @@ async def test_an_inner_timeout_is_llm_invocation_error(
 
 
 @pytest.mark.anyio
+async def test_a_node_timeout_in_the_lead_is_llm_invocation_error(
+    monkeypatch: pytest.MonkeyPatch, events: list[object]
+) -> None:
+    """A node's own timeout in the lead is a 502 for this step, not a time box.
+
+    The time box ending is not an error (user decision 2026-09-30); a node
+    timeout is a failed step, as every other failure of the lead is.
+    """
+    timeout = NodeTimeoutError("research", 90.5, kind="run", run_timeout=90.0)
+    fake = _FakeAgent(ResearchRun(writer=events.append), fail=timeout)
+    # Arrange
+    _patch_agent(
+        monkeypatch, lambda run: _FakeAgent(run, fail=fake.fail, mutate=fake.mutate)
+    )
+    # Act + Assert
+    with pytest.raises(LLMInvocationError, match="research failed") as raised:
+        await research_module.research({"question": "q"}, _runtime(events))
+    assert isinstance(raised.value.__cause__, NodeTimeoutError)
+
+
+@pytest.mark.anyio
 async def test_a_search_outage_propagates(
-    monkeypatch: pytest.MonkeyPatch, events: list[dict[str, Any]]
+    monkeypatch: pytest.MonkeyPatch, events: list[object]
 ) -> None:
     fake = _FakeAgent(
         ResearchRun(writer=events.append), fail=SearchUnavailableError("outage")
@@ -249,7 +265,7 @@ async def test_a_search_outage_propagates(
 
 @pytest.mark.anyio
 async def test_an_arbitrary_failure_is_llm_invocation_error(
-    monkeypatch: pytest.MonkeyPatch, events: list[dict[str, Any]]
+    monkeypatch: pytest.MonkeyPatch, events: list[object]
 ) -> None:
     fake = _FakeAgent(ResearchRun(writer=events.append), fail=RuntimeError("bug"))
     # Arrange
@@ -263,7 +279,7 @@ async def test_an_arbitrary_failure_is_llm_invocation_error(
 
 @pytest.mark.anyio
 async def test_the_lead_gets_the_question_and_no_checkpointer(
-    monkeypatch: pytest.MonkeyPatch, events: list[dict[str, Any]]
+    monkeypatch: pytest.MonkeyPatch, events: list[object]
 ) -> None:
     # Arrange
     def mutate(run: ResearchRun) -> None:
@@ -288,7 +304,7 @@ async def test_the_lead_gets_the_question_and_no_checkpointer(
     # Assert
     assert isinstance(agent_input["messages"][0], HumanMessage)
     assert agent_input["messages"][0].content == "Will Russia attack?"
-    assert config == research_module.NO_CHECKPOINTER_CONFIG
+    assert config == capped_run.NO_CHECKPOINTER_CONFIG
 
 
 @pytest.mark.anyio
@@ -406,7 +422,7 @@ class _Model(FakeMessagesListChatModel):
 
 @pytest.mark.anyio
 async def test_a_real_lead_and_scout_record_a_source_without_nested_checkpoints(
-    monkeypatch: pytest.MonkeyPatch, events: list[dict[str, Any]]
+    monkeypatch: pytest.MonkeyPatch, events: list[object]
 ) -> None:
     """Real `create_deep_agent`: lead → task → scout search/read → source recorded."""
     # Arrange
@@ -518,7 +534,7 @@ async def test_a_real_lead_and_scout_record_a_source_without_nested_checkpoints(
 
 @pytest.mark.anyio
 async def test_a_real_research_loop_stops_at_the_time_box_and_keeps_its_source(
-    monkeypatch: pytest.MonkeyPatch, events: list[dict[str, Any]]
+    monkeypatch: pytest.MonkeyPatch, events: list[object]
 ) -> None:
     # Arrange
     monkeypatch.setenv("OPENAI_API_KEY", "test")
@@ -628,7 +644,7 @@ async def test_a_real_research_loop_stops_at_the_time_box_and_keeps_its_source(
 
 @pytest.mark.anyio
 async def test_a_real_lead_cannot_start_a_general_purpose_helper(
-    monkeypatch: pytest.MonkeyPatch, events: list[dict[str, Any]]
+    monkeypatch: pytest.MonkeyPatch, events: list[object]
 ) -> None:
     """With the default helper switched off, a lead that calls for
     `general-purpose` is refused by name and no scout runs."""
@@ -674,7 +690,7 @@ async def test_a_real_lead_cannot_start_a_general_purpose_helper(
     # Act
     result = await agent.ainvoke(
         {"messages": [HumanMessage("q")]},
-        config=research_module.NO_CHECKPOINTER_CONFIG,
+        config=capped_run.NO_CHECKPOINTER_CONFIG,
     )
 
     # Assert
@@ -691,7 +707,7 @@ async def test_a_real_lead_cannot_start_a_general_purpose_helper(
 
 @pytest.mark.anyio
 async def test_the_profile_applies_to_the_real_build_chat_model(
-    monkeypatch: pytest.MonkeyPatch, events: list[dict[str, Any]]
+    monkeypatch: pytest.MonkeyPatch, events: list[object]
 ) -> None:
     """The profile lookup reads the identity a real `ChatOpenAI` resolves —
     its own `model_name` and `_get_ls_params`, not a fake's hand-copied
@@ -710,7 +726,7 @@ async def test_the_profile_applies_to_the_real_build_chat_model(
 
 @pytest.mark.anyio
 async def test_the_lead_profile_leaves_the_deep_experts_helper_in_place(
-    monkeypatch: pytest.MonkeyPatch, events: list[dict[str, Any]]
+    monkeypatch: pytest.MonkeyPatch, events: list[object]
 ) -> None:
     """The lead's profile is process-wide and keyed by `openai:gpt-5-mini`,
     the deep expert's model too; the comment and CLAUDE.md promise its own
@@ -741,7 +757,7 @@ async def test_the_lead_profile_leaves_the_deep_experts_helper_in_place(
 
 @pytest.mark.anyio
 async def test_research_hands_the_runtime_store_to_its_tools(
-    monkeypatch: pytest.MonkeyPatch, events: list[dict[str, Any]]
+    monkeypatch: pytest.MonkeyPatch, events: list[object]
 ) -> None:
     # Arrange
     sentinel: object = object()
@@ -782,7 +798,7 @@ def _span_by_name(captured: InMemorySpanExporter, name: str) -> ReadableSpan:
 @pytest.mark.anyio
 async def test_research_span_records_the_time_box(
     monkeypatch: pytest.MonkeyPatch,
-    events: list[dict[str, Any]],
+    events: list[object],
     captured_spans: InMemorySpanExporter,
 ) -> None:
     # Arrange
@@ -808,7 +824,7 @@ async def test_research_span_records_the_time_box(
 @pytest.mark.anyio
 async def test_research_span_records_a_full_source_budget(
     monkeypatch: pytest.MonkeyPatch,
-    events: list[dict[str, Any]],
+    events: list[object],
     captured_spans: InMemorySpanExporter,
 ) -> None:
     # Arrange
@@ -832,7 +848,7 @@ async def test_research_span_records_a_full_source_budget(
 @pytest.mark.anyio
 async def test_research_span_records_the_search_budget_reached(
     monkeypatch: pytest.MonkeyPatch,
-    events: list[dict[str, Any]],
+    events: list[object],
     captured_spans: InMemorySpanExporter,
 ) -> None:
     # Arrange
@@ -863,7 +879,7 @@ async def test_research_span_records_the_search_budget_reached(
 @pytest.mark.anyio
 async def test_research_span_records_forecasters_and_empty_searches(
     monkeypatch: pytest.MonkeyPatch,
-    events: list[dict[str, Any]],
+    events: list[object],
     captured_spans: InMemorySpanExporter,
 ) -> None:
     """The `forecast_research` span reports which forecasters were searched,
@@ -900,7 +916,7 @@ async def test_research_span_records_forecasters_and_empty_searches(
 @pytest.mark.anyio
 async def test_research_span_records_a_failed_run(
     monkeypatch: pytest.MonkeyPatch,
-    events: list[dict[str, Any]],
+    events: list[object],
     captured_spans: InMemorySpanExporter,
 ) -> None:
     # Arrange

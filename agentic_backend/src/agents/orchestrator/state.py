@@ -9,6 +9,8 @@ from langgraph.graph.message import add_messages
 from pydantic import BaseModel, Field
 from typing_extensions import NotRequired
 
+from models import CleanText, squash_whitespace
+
 Destination = Literal["geopolitical", "deep", "forecast", "other", "report"]
 
 
@@ -32,7 +34,7 @@ class RouteDecision(BaseModel):
             "'other' for anything else."
         )
     )
-    standalone_query: str = Field(
+    standalone_query: CleanText = Field(
         description=(
             "The last user turn rewritten so it stands alone, with pronouns "
             "and elisions resolved from the conversation."
@@ -61,7 +63,7 @@ def build_initial_orchestrator_state(query: str) -> OrchestratorState:
     The `add_messages` reducer appends this to whatever the checkpointer
     already holds for the thread, so a turn never re-sends history.
     """
-    normalized = " ".join((query or "").split())
+    normalized = squash_whitespace(query or "")
     if not normalized:
         raise ValueError("Query must not be empty.")
     return {"messages": [HumanMessage(normalized)]}

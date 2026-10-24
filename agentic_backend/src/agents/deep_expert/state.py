@@ -16,6 +16,7 @@ from langgraph.types import StreamWriter
 
 from agents.deep_expert.config import LIMITS
 from agents.deep_expert.consts.progress import PROGRESS_NODE, REVISION_PROGRESS_LABEL
+from frames import ProgressFrame
 from models import Candidate, Source
 
 
@@ -39,7 +40,7 @@ class ResearchRun:
 
     def progress(self, label: str) -> None:
         """Emit one progress frame; `label` must be code-produced (see consts)."""
-        self.writer({"type": "progress", "node": PROGRESS_NODE, "label": label})
+        self.writer(ProgressFrame(node=PROGRESS_NODE, label=label))
 
     def record_evaluation(self, evaluation: RubricEvaluation) -> None:
         """RubricMiddleware's `on_evaluation`: keep the verdict, announce a revision.

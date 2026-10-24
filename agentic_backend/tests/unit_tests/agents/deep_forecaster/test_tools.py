@@ -37,6 +37,7 @@ from agents.deep_forecaster.tools import (
     build_tools,
 )
 from agents.deep_forecaster.video import VideoUnavailableError
+from frames import ProgressFrame
 from models import Candidate, SearchUnavailableError, Source
 
 
@@ -50,7 +51,7 @@ def _candidate(url: str, domain: str | None = None, title: str = "t") -> Candida
     )
 
 
-def _run(events: list[dict[str, Any]]) -> ResearchRun:
+def _run(events: list[object]) -> ResearchRun:
     return ResearchRun(writer=events.append)
 
 
@@ -65,7 +66,7 @@ def events() -> list[dict[str, Any]]:
 
 
 @pytest.fixture
-def run(events: list[dict[str, Any]]) -> ResearchRun:
+def run(events: list[object]) -> ResearchRun:
     return _run(events)
 
 
@@ -983,7 +984,7 @@ async def test_the_video_cap_is_a_soft_stop(
 @pytest.mark.anyio
 async def test_every_progress_label_is_a_const(
     run: ResearchRun,
-    events: list[dict[str, Any]],
+    events: list[object],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     # Arrange
@@ -1019,7 +1020,8 @@ async def test_every_progress_label_is_a_const(
     # Assert
     assert events, "progress frames must have been emitted"
     for event in events:
-        assert event["node"] == "deep_forecaster"
+        assert isinstance(event, ProgressFrame)
+        assert event.node == "deep_forecaster"
         match = re.fullmatch(
             "(?:"
             + "|".join(
@@ -1030,9 +1032,9 @@ async def test_every_progress_label_is_a_const(
                 for template in templates
             )
             + ")",
-            event["label"],
+            event.label,
         )
-        assert match, event["label"]
+        assert match, event.label
 
 
 @pytest.mark.anyio

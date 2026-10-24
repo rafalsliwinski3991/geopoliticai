@@ -44,7 +44,7 @@ from agents.deep_forecaster.config import (
     MEMBER_MAX_OUTPUT_TOKENS,
     Seat,
 )
-from agents.deep_forecaster.evidence import render_ballot
+from agents.deep_forecaster.evidence import render_ballot, render_numbers
 from agents.deep_forecaster.models import Ballot, Verdict
 from agents.deep_forecaster.prompts import (
     REASK_NO_BALLOT,
@@ -177,7 +177,7 @@ def validate_ballot(
     if voted != list(range(1, claims + 1)):
         return (
             f"it must vote exactly once on each of claims 1 to {claims}; "
-            f"it voted on {_list_numbers(voted) or 'none'}"
+            f"it voted on {render_numbers(voted) or 'none'}"
         )
     for vote in ballot.votes:
         claim = vote.claim
@@ -197,27 +197,19 @@ def validate_ballot(
         repeated = sorted({n for n in vote.evidence if vote.evidence.count(n) > 1})
         if repeated:
             return (
-                f"claim {claim} cites source {_list_numbers(repeated)} more than once"
+                f"claim {claim} cites source {render_numbers(repeated)} more than once"
             )
         own = quoted_by_claim[claim]
         stray = sorted(set(vote.evidence) - own)
         if stray:
             return (
-                f"claim {claim} cites source {_list_numbers(stray)}, which is not "
+                f"claim {claim} cites source {render_numbers(stray)}, which is not "
                 f"among claim {claim}'s passages (it may cite "
-                f"{_list_numbers(sorted(own))})"
+                f"{render_numbers(sorted(own))})"
             )
         if vote.stance != "unsure" and not vote.evidence:
             return f"claim {claim}'s '{vote.stance}' vote cites no source"
     return None
-
-
-def _list_numbers(numbers: Sequence[int]) -> str:
-    """Return numbers as a member reads them: "3", "3 and 5", "3, 5 and 9"."""
-    words = [str(number) for number in numbers]
-    if len(words) < 2:
-        return "".join(words)
-    return f"{', '.join(words[:-1])} and {words[-1]}"
 
 
 def count_votes(claims: int, ballots: Mapping[int, Ballot]) -> list[ClaimTally]:

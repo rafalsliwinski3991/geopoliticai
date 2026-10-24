@@ -9,6 +9,7 @@ import pytest
 from langchain_core.messages import AIMessage
 
 from agents.orchestrator.state import OrchestratorState
+from frames import NoticeEvent
 
 node_module: Any = __import__(
     "agents.orchestrator.nodes.deep_forecaster", fromlist=["deep_forecaster"]
@@ -23,7 +24,7 @@ async def test_the_node_receives_the_query_and_writes_exactly_one_notice(
 ) -> None:
     # Arrange
     received: dict[str, Any] = {}
-    events: list[dict[str, Any]] = []
+    events: list[object] = []
 
     async def fake_forecast(query: str, store: Any = None) -> str:
         received["query"] = query
@@ -44,5 +45,5 @@ async def test_the_node_receives_the_query_and_writes_exactly_one_notice(
     # Assert: the runtime's store reaches forecast() (review thread, #151).
     assert received["query"] == "the rewritten query"
     assert received["store"] is None
-    assert events == [{"type": "notice", "text": FORECAST_ANSWER}]
+    assert events == [NoticeEvent(text=FORECAST_ANSWER)]
     assert result == {"messages": [AIMessage(FORECAST_ANSWER)]}

@@ -52,7 +52,7 @@ async def classify(
         config=config,
         settings=CLASSIFY_LLM_SETTINGS,
     )
-    standalone_query = " ".join(decision.standalone_query.split())
+    standalone_query = decision.standalone_query
     if not standalone_query:
         # An empty rewrite would reach `search_and_fetch` as an empty Brave
         # query and come back as a confusing NoSourcesError. Fail here, where

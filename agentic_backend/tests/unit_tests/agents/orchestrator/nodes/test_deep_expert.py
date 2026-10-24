@@ -9,6 +9,7 @@ import pytest
 from langchain_core.messages import AIMessage
 
 from agents.orchestrator.state import OrchestratorState
+from frames import NoticeEvent
 
 node_module: Any = importlib.import_module("agents.orchestrator.nodes.deep_expert")
 
@@ -21,7 +22,7 @@ async def test_the_node_receives_the_query_and_writes_exactly_one_notice(
 ) -> None:
     # Arrange
     received: dict[str, Any] = {}
-    events: list[dict[str, Any]] = []
+    events: list[object] = []
 
     async def fake_research(query: str, writer: Any) -> str:
         received["query"] = query
@@ -43,5 +44,5 @@ async def test_the_node_receives_the_query_and_writes_exactly_one_notice(
     # Assert
     assert received["query"] == "the rewritten query"
     assert received["writer"] is not None
-    assert events == [{"type": "notice", "text": DEEP_ANSWER}]
+    assert events == [NoticeEvent(text=DEEP_ANSWER)]
     assert result == {"messages": [AIMessage(DEEP_ANSWER)]}

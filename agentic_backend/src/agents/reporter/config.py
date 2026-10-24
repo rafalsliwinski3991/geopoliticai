@@ -61,16 +61,6 @@ INTENT_LLM_SETTINGS = LLMSettings(
 # for one report driven to the revision cap.
 MAX_TRANSCRIPT_CHARS = 400_000
 
-# Ceiling on the report text stored in the conversation. Sized to the delivery
-# layer's own cap deliberately: the browser receives at most `MAX_ANSWER_CHARS`
-# (50,000) and the download is built from that stream, so a longer report is
-# readable by *nobody*. Storing it anyway would only inflate every later
-# `classify` and `chat` prompt, which slice the last 20 messages with no
-# character budget of their own. Kept here rather than imported from `api.py`:
-# an agent must not depend on a delivery-layer constant. If that cap ever
-# changes, this must not be looser than it — asserted in `test_api.py`.
-MAX_REPORT_CHARS = 50_000
-
 # Each revision round costs exactly one outline call (measured), so per-round
 # cost is bounded. Hitting this *ends the run* (see `nodes/outline.py`) rather
 # than merely declining to call the model again — a cap that only stops the

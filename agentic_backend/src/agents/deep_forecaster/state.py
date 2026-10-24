@@ -26,6 +26,7 @@ from typing_extensions import NotRequired, TypedDict
 from agents.deep_forecaster.config import LIMITS
 from agents.deep_forecaster.consts.progress import PROGRESS_NODE
 from agents.deep_forecaster.models import Analysis, Ballot, Claim, Verdict
+from frames import ProgressFrame
 from models import Candidate, Source
 from search import FETCH_CONCURRENCY
 
@@ -74,6 +75,9 @@ class ForecastState(TypedDict):
     # one missing from round 2 keeps its round-1 ballot (`council.final_ballots`).
     ballots_round_1: NotRequired[dict[int, Ballot]]
     ballots_round_2: NotRequired[dict[int, Ballot]]
+    # Written by `tally`: each member's latest ballot (`council.final_ballots`),
+    # which `write_analysis` and `verify` read instead of rebuilding it.
+    final_ballots: NotRequired[dict[int, Ballot]]
     tally: NotRequired[list[ClaimTally]]
     analysis: NotRequired[Analysis]
     # Set by `verify` on the analysis's first defect and read by the writer's
@@ -101,7 +105,7 @@ class ForecastRun:
         """Record the step `label` names, log it, and announce it; `label` is a progress const."""
         self.step = label.removesuffix("...")
         logger.info("forecast step: %s", self.step)
-        writer({"type": "progress", "node": PROGRESS_NODE, "label": label})
+        writer(ProgressFrame(node=PROGRESS_NODE, label=label))
 
 
 @dataclass
@@ -166,4 +170,4 @@ class ResearchRun:
 
     def progress(self, label: str) -> None:
         """Emit one progress frame; `label` must be code-produced (see consts)."""
-        self.writer({"type": "progress", "node": PROGRESS_NODE, "label": label})
+        self.writer(ProgressFrame(node=PROGRESS_NODE, label=label))

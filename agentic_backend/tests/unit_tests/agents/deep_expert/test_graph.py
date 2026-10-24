@@ -12,6 +12,7 @@ import pytest
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
 from agents.deep_expert.state import ResearchRun
+from frames import ProgressFrame
 
 graph_module: Any = importlib.import_module("agents.deep_expert.graph")
 
@@ -449,7 +450,7 @@ async def test_rubric_loop_drives_revision_and_max_completion(
     class ParentState(TypedDict):
         marker: str
 
-    events: list[dict[str, Any]] = []
+    events: list[object] = []
 
     async def parent_node(state: ParentState, writer: StreamWriter) -> dict[str, Any]:
         deep_answer = await research_module.research("q", writer)
@@ -487,7 +488,7 @@ async def test_rubric_loop_drives_revision_and_max_completion(
     assert answer["marker"] == f"Final [a]({URL})."
     inner_run: ResearchRun = captured["run"]
     assert inner_run.verdicts == ["needs_revision", "needs_revision", "satisfied"]
-    labels = [event["label"] for event in events if event.get("type") == "progress"]
+    labels = [event.label for event in events if isinstance(event, ProgressFrame)]
     assert labels.count("Revising the analysis (1 of 2)...") == 1
     assert labels.count("Revising the analysis (2 of 2)...") == 1
 
@@ -643,9 +644,10 @@ async def test_the_wall_cap_ends_a_run_whose_model_call_hangs(
     """A hung model call must not hold the turn past `LIMITS.wall_seconds`.
 
     The forecaster's smoke gate F3 saw a hung deepagents run outlive an
-    in-frame `asyncio.timeout`; the deep expert caps its run with exactly that,
-    so this runs the real agent (and its `task` subagent) inside a
-    checkpointed parent, as the orchestrator does, and hangs one model call.
+    in-frame `asyncio.timeout`; the deep expert caps its run with
+    `capped_run.run_under_time_limits`, so this runs the real agent (and its
+    `task` subagent) inside a checkpointed parent, as the orchestrator does, and
+    hangs one model call.
     """
     # Arrange
     monkeypatch.setenv("OPENAI_API_KEY", "test")
