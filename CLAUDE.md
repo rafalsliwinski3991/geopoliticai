@@ -106,7 +106,8 @@ deep_forecaster  START -> research -> draft_claims -> council_round_1 -> council
   `forecast` only on an explicit forecast or prediction request, never sticky: a new question after
   a forecast is `geopolitical`, a question about the forecast `other`.
 - Expert: exactly three Brave batches (one failing is skipped, all failing is an error), allow-listed
-  pages through trafilatura, and one streamed model call. Its next-step menu takes its costs from
+  pages through trafilatura (HTML) or pypdf (PDF, the first pages, dropped when over the
+  size cap), and one streamed model call. Its next-step menu takes its costs from
   `config.py`, and the reporter's prompts ignore the menu.
 - Deep expert: a `deepagents` agent built per turn, never at import. It searches through
   `search.py` with `EXPERT_SOURCES` and revises under deepagents' `RubricMiddleware`, whose grader
