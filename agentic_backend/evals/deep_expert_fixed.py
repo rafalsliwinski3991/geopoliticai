@@ -7,6 +7,7 @@ from typing import Any
 
 from evals.helpers.run import run
 from evals.judges.deep_expert_fixed import judges
+from frames import ProgressFrame
 
 # 2x the deep agent's wall cap (`ResearchLimits.wall_seconds`, 480 s), which one
 # deep run cannot exceed, leaving the rest for the expert's live `answer`. Judges
@@ -28,8 +29,8 @@ async def run_deep_expert_fixed(input: dict[str, Any]) -> dict[str, Any]:
     progress: list[str] = []
 
     def writer(event: Any) -> None:
-        if isinstance(event, dict) and event.get("type") == "progress":
-            progress.append(str(event.get("label")))
+        if isinstance(event, ProgressFrame):
+            progress.append(event.label)
 
     answer = await research(input["query"], writer)
     baseline = await expert_graph.ainvoke(build_initial_pipeline_state(input["query"]))

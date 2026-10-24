@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 import os
 import time
 from collections import deque
 from contextlib import asynccontextmanager
+from dataclasses import dataclass
 from threading import Lock
 from typing import Annotated, Any, AsyncGenerator
 
@@ -24,7 +24,13 @@ from langgraph.types import Command
 from psycopg import AsyncConnection
 from psycopg.rows import DictRow, dict_row
 from psycopg_pool import AsyncConnectionPool
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    Field,
+    ValidationError,
+    field_validator,
+    model_validator,
+)
 
 from agents.orchestrator import (
     build_graph,
@@ -51,6 +57,16 @@ from db.web.sql import (
     owns_thread,
     quota_used,
     title_from,
+)
+from frames import (
+    NODE_EVENT,
+    ErrorFrame,
+    NoticeEvent,
+    PauseFrame,
+    ProgressFrame,
+    ResultFrame,
+    TokenFrame,
+    encode_frame,
 )
 from models import (
     PipelineError,
@@ -108,13 +124,13 @@ ThreadIdPath = Annotated[
 # ANSWER_PROGRESS fires when the first character is about to reach the
 # browser. Every *node*-scoped label now lives with its node, in that agent's
 # `consts/progress.py`, and arrives here as a forwarded custom event.
-THINKING_PROGRESS = {"node": "classify", "label": "Thinking..."}
-ANSWER_PROGRESS = {"node": "answer", "label": "Writing the answer..."}
+THINKING_PROGRESS = ProgressFrame(node="classify", label="Thinking...")
+ANSWER_PROGRESS = ProgressFrame(node="answer", label="Writing the answer...")
 
 # `write` is the reporter's composing node. Its streamed chunks are the report;
-# without it here the report never reaches the browser, and the `("kind",
-# "report")` event that puts a Download .md button on the answer is derived from
-# the same tag.
+# without it here the report never reaches the browser, and the `_ReportStarted`
+# event that puts a Download .md button on the answer is derived from the same
+# tag.
 #
 # `"reporter"` must NEVER be added to this set. Measured: on the refusal, cancel
 # and revision-cap paths the orchestrator's `reporter` node returns an
@@ -162,6 +178,23 @@ graph: Any = _default_graph
 
 _rate_limit_store: dict[str, deque[float]] = {}
 _rate_limit_lock = Lock()
+
+
+@dataclass(frozen=True)
+class _Counted:
+    """`classify` routed the turn to a research branch."""
+
+    destination: str | None
+
+
+@dataclass(frozen=True)
+class _ReportStarted:
+    """The reporter's `write` node began streaming the report."""
+
+
+StreamEvent = (
+    ProgressFrame | PauseFrame | NoticeEvent | TokenFrame | _Counted | _ReportStarted
+)
 
 
 async def _require_migrated_checkpointer_schema(
@@ -414,11 +447,6 @@ async def healthcheck() -> dict[str, str]:
     return {"status": "ok"}
 
 
-def _sse(payload: dict[str, Any]) -> str:
-    """Serialize one SSE data frame."""
-    return f"data: {json.dumps(payload)}\n\n"
-
-
 async def _pending_pause(thread_id: str) -> dict[str, Any] | None:
     """Return the outline a paused thread is waiting on, or None.
 
@@ -482,8 +510,8 @@ async def _turn_input(payload: RunPipelineRequest) -> Any:
 
 async def _astream_answer(
     graph_input: Any, thread_id: str
-) -> AsyncGenerator[tuple[str, Any], None]:
-    """Run the orchestrator graph, yielding progress, pause, kind and token events.
+) -> AsyncGenerator[StreamEvent, None]:
+    """Run the orchestrator graph, yielding typed stream events.
 
     `graph_input` is either an orchestrator state or a `Command(resume=...)`;
     both are graph inputs on the same thread id and neither changes the call.
@@ -520,25 +548,24 @@ async def _astream_answer(
         subgraphs=True,
     ):
         if mode == "custom":
-            if not isinstance(data, dict):
+            try:
+                event = NODE_EVENT.validate_python(data)
+            except ValidationError:
+                # Not a frame a node writes: a custom event this layer does not
+                # know, or a malformed fake. Dropped here, so `_generate` never
+                # sees it.
                 continue
-            event_type = data.get("type")
-            if event_type == "notice":
-                # A branch that delivers the turn's answer whole instead of
-                # streaming it: the reporter's refusal, cancel and revision-cap
-                # paths, and the deep expert's and the deep forecaster's
-                # finished answers. It goes out as
-                # a token, not as a frame of its own, because it *is* the
-                # answer: it has to
-                # reach `parts`, the `MAX_ANSWER_CHARS` accounting and
-                # `result.output` like any other. It is also the only custom
-                # payload that may contain model-produced text, which is
-                # exactly why it does not take the verbatim-forward path.
-                text = str(data.get("text") or "")
-                if text:
-                    yield ("notice", text)
-            elif isinstance(event_type, str):
-                yield (event_type, data)
+            # A branch that delivers the turn's answer whole instead of
+            # streaming it: the reporter's refusal, cancel and revision-cap
+            # paths, and the deep expert's and the deep forecaster's finished
+            # answers. It goes out as a token, not as a frame of its own, because
+            # it *is* the answer: it has to reach `parts`, the `MAX_ANSWER_CHARS`
+            # accounting and `result.output` like any other. It is also the only
+            # custom payload that may contain model-produced text, which is
+            # exactly why it does not take the verbatim-forward path.
+            if isinstance(event, NoticeEvent) and not event.text:
+                continue
+            yield event
             continue
         if mode == "updates":
             if namespace or not isinstance(data, dict):
@@ -557,10 +584,10 @@ async def _astream_answer(
                 destination = decision.get("destination")
                 if destination in RESEARCH_DESTINATIONS:
                     counted = True
-                    yield ("counted", destination)
+                    yield _Counted(destination=destination)
             interrupts = data.get("__interrupt__")
             if interrupts:
-                yield ("pause", interrupts[0].value)
+                yield PauseFrame.model_validate(interrupts[0].value)
             continue
         message, metadata = data
         node = metadata.get("langgraph_node")
@@ -579,9 +606,9 @@ async def _astream_answer(
             if node == "write" and not streamed_nodes:
                 # Only the reporter's composing node produces a downloadable
                 # report; a refusal or a chat answer must not get the button.
-                yield ("kind", "report")
+                yield _ReportStarted()
             streamed_nodes.add(node)
-            yield ("token", text)
+            yield TokenFrame(content=text)
 
 
 @router.post("/run_pipeline/stream")
@@ -639,7 +666,7 @@ async def run_pipeline_stream_endpoint(
                 await refund_turn(pool, user_id=identity.user_id, charge=charge)
 
         try:
-            yield _sse({"type": "progress", **THINKING_PROGRESS})
+            yield encode_frame(THINKING_PROGRESS)
             # The checkpoint read and the intent call happen here, not in the
             # endpoint, so their failures arrive as SSE `error` frames like
             # every other pipeline failure.
@@ -647,56 +674,49 @@ async def run_pipeline_stream_endpoint(
             # Nothing here inspects `payload.resume`. The nodes emit their own
             # progress, so a revise resume is announced by `outline` and an
             # approve resume by `write`, on the same code path as a first turn.
-            async for kind, value in _astream_answer(graph_input, payload.thread_id):
-                if kind == "progress":
-                    # Forwarded verbatim: the node already wrote the whole
-                    # frame. Every payload that reaches this line is a
-                    # hardcoded literal in an agent's `consts/progress.py`;
-                    # model- and user-produced text never takes this path (§1).
-                    yield _sse(value)
-                    continue
-                if kind == "pause":
-                    paused = True
-                    yield _sse({"type": "pause", **value})
-                    continue
-                if kind == "kind":
-                    is_report = True
-                    continue
-                if kind == "counted":
-                    charge = await charge_turn(
-                        pool, user_id=identity.user_id, destination=value
-                    )
-                    continue
-                if kind not in ("token", "notice"):
-                    # An event kind this layer does not know. Ignoring it is
-                    # what stops a future node's custom event from falling
-                    # through to the slicing below, where `value[:remaining]`
-                    # on a dict would kill the turn with a TypeError inside the
-                    # SSE generator.
-                    continue
-                if kind == "token" and not parts and not is_report:
-                    # ANSWER_PROGRESS is suppressed on two paths. The report
-                    # path already announced itself from the `write` node with
-                    # a better label, and appending "Writing the answer..."
-                    # after it would leave that as the *active* step for the
-                    # whole report — `progressLog` is an accumulating list that
-                    # never dedupes (`frontend/index.html:359-369`). And a
-                    # `notice` arrives whole — a refusal, a cancellation, or a
-                    # finished deep analysis — so nothing is left to announce
-                    # as being written.
-                    yield _sse({"type": "progress", **ANSWER_PROGRESS})
-                remaining = MAX_ANSWER_CHARS - consumed
-                if remaining <= 0:
-                    # Upstream is still drained (this is `continue`, not `break`)
-                    # so checkpoint writes finish — the pre-existing behaviour.
-                    clipped = True
-                    continue
-                chunk = value[:remaining]
-                if len(chunk) < len(value):
-                    clipped = True
-                parts.append(chunk)
-                consumed += len(chunk)
-                yield _sse({"type": "token", "content": chunk})
+            async for event in _astream_answer(graph_input, payload.thread_id):
+                match event:
+                    case ProgressFrame():
+                        # Forwarded as the node wrote it: a literal from an
+                        # agent's `consts/progress.py` (§1).
+                        yield encode_frame(event)
+                    case PauseFrame():
+                        paused = True
+                        yield encode_frame(event)
+                    case _ReportStarted():
+                        is_report = True
+                    case _Counted(destination=destination):
+                        charge = await charge_turn(
+                            pool, user_id=identity.user_id, destination=destination
+                        )
+                    case TokenFrame(content=text) | NoticeEvent(text=text):
+                        if (
+                            isinstance(event, TokenFrame)
+                            and not parts
+                            and not is_report
+                        ):
+                            # ANSWER_PROGRESS is suppressed on two paths. The report
+                            # path already announced itself from the `write` node with
+                            # a better label, and appending "Writing the answer..."
+                            # after it would leave that as the *active* step for the
+                            # whole report — `progressLog` is an accumulating list that
+                            # never dedupes (`frontend/index.html:359-369`). And a
+                            # `notice` arrives whole — a refusal, a cancellation, or a
+                            # finished deep analysis — so nothing is left to announce
+                            # as being written.
+                            yield encode_frame(ANSWER_PROGRESS)
+                        remaining = MAX_ANSWER_CHARS - consumed
+                        if remaining <= 0:
+                            # Upstream is still drained (this is `continue`, not `break`)
+                            # so checkpoint writes finish — the pre-existing behaviour.
+                            clipped = True
+                            continue
+                        chunk = text[:remaining]
+                        if len(chunk) < len(text):
+                            clipped = True
+                        parts.append(chunk)
+                        consumed += len(chunk)
+                        yield encode_frame(TokenFrame(content=chunk))
             output = "".join(parts).strip()
             if not output:
                 if paused:
@@ -704,19 +724,16 @@ async def run_pipeline_stream_endpoint(
                     # purpose and the browser already has the outline.
                     return
                 await refund()
-                yield _sse(
-                    {
-                        "type": "error",
-                        "status": 502,
-                        "message": "The model returned an empty answer.",
-                    }
+                yield encode_frame(
+                    ErrorFrame(
+                        status=502, message="The model returned an empty answer."
+                    )
                 )
                 return
-            yield _sse(
-                {
-                    "type": "result",
-                    "output": output,
-                    "kind": "report" if is_report else "answer",
+            yield encode_frame(
+                ResultFrame(
+                    output=output,
+                    kind="report" if is_report else "answer",
                     # The transport cap is pre-existing and already clips long
                     # expert answers today. What is new is the download button,
                     # which would otherwise write a clipped file to disk under a
@@ -727,26 +744,25 @@ async def run_pipeline_stream_endpoint(
                     # comparison would label it partial and save it to disk as
                     # `report-<date>-partial.md`. This flag is set only where
                     # characters were actually dropped.
-                    "truncated": clipped,
-                }
+                    truncated=clipped,
+                )
             )
         except QuotaExceededError as exc:
             # A refused turn: nothing was charged to the user, nothing to refund,
             # and no warning log (it is not a failure of the pipeline).
-            yield _sse({"type": "error", "status": exc.status, "message": str(exc)})
+            yield encode_frame(ErrorFrame(status=exc.status, message=str(exc)))
         except PipelineError as exc:
             logger.warning("Streaming pipeline failed: %s", exc)
             await refund()
-            yield _sse({"type": "error", "status": exc.status, "message": str(exc)})
+            yield encode_frame(ErrorFrame(status=exc.status, message=str(exc)))
         except Exception:
             logger.exception("Streaming pipeline failed unexpectedly.")
             await refund()
-            yield _sse(
-                {
-                    "type": "error",
-                    "status": 500,
-                    "message": "An unexpected error occurred. Please try again.",
-                }
+            yield encode_frame(
+                ErrorFrame(
+                    status=500,
+                    message="An unexpected error occurred. Please try again.",
+                )
             )
 
     return StreamingResponse(

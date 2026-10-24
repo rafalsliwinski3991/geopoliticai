@@ -27,7 +27,7 @@ async def write(
 
     This node's name is load-bearing twice over: `api.ANSWER_NODES` forwards
     streamed `AIMessage` chunks tagged `langgraph_node == "write"`, and
-    `_astream_answer` uses the same tag to emit the `("kind", "report")` event
+    `_astream_answer` uses the same tag to emit the `_ReportStarted` event
     that puts a Download .md button on the answer. Renaming it would silently
     stop the report reaching the browser. Measured: after a resume, these chunks
     do arrive at the parent tagged `"write"`.

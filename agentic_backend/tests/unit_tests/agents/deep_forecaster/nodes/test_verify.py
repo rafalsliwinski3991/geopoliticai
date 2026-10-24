@@ -256,7 +256,7 @@ def checked(forecast_state: Any, analysis_: Analysis | None = None) -> str:
 
 @pytest.mark.anyio
 async def test_the_answer_renders_the_tally_and_every_vote(
-    events: list[dict[str, Any]],
+    events: list[object],
 ) -> None:
     # Arrange
     # Arrange
@@ -290,7 +290,7 @@ async def test_the_answer_renders_the_tally_and_every_vote(
 
 @pytest.mark.anyio
 async def test_seven_voting_shows_no_unavailable_count(
-    events: list[dict[str, Any]],
+    events: list[object],
 ) -> None:
     # Arrange
     # Arrange
@@ -312,7 +312,7 @@ async def test_seven_voting_shows_no_unavailable_count(
 
 
 @pytest.mark.anyio
-async def test_a_reason_is_flattened_to_one_line(events: list[dict[str, Any]]) -> None:
+async def test_a_reason_is_flattened_to_one_line(events: list[object]) -> None:
     # Arrange
     # Arrange
     one = Ballot(
@@ -342,7 +342,7 @@ async def test_a_reason_is_flattened_to_one_line(events: list[dict[str, Any]]) -
 
 
 @pytest.mark.anyio
-async def test_a_carried_vote_is_marked(events: list[dict[str, Any]]) -> None:
+async def test_a_carried_vote_is_marked(events: list[object]) -> None:
     # Arrange
     # Arrange
     first = six_voters()
@@ -363,7 +363,7 @@ async def test_a_carried_vote_is_marked(events: list[dict[str, Any]]) -> None:
 
 @pytest.mark.anyio
 async def test_the_vote_list_shows_the_final_ballots_the_tally_stored(
-    events: list[dict[str, Any]],
+    events: list[object],
 ) -> None:
     """The vote list reads the ballots `tally` stored, never a rebuild from the rounds."""
     # Arrange
@@ -382,7 +382,7 @@ async def test_the_vote_list_shows_the_final_ballots_the_tally_stored(
 
 @pytest.mark.anyio
 async def test_verify_checks_the_analysis_once(
-    monkeypatch: pytest.MonkeyPatch, events: list[dict[str, Any]]
+    monkeypatch: pytest.MonkeyPatch, events: list[object]
 ) -> None:
     """The defect check runs once, in verify: a second run in the answer builder could drift from it."""
     # Arrange
@@ -573,7 +573,7 @@ def test_a_non_clickable_link_form_is_not_checked(link: str) -> None:
 
 @pytest.mark.anyio
 async def test_an_all_carried_round_two_is_disclosed(
-    events: list[dict[str, Any]],
+    events: list[object],
 ) -> None:
     # Arrange
     # Act
@@ -596,7 +596,7 @@ async def test_an_all_carried_round_two_is_disclosed(
 @pytest.mark.anyio
 @pytest.mark.parametrize(("broken_analysis", "defect"), CHECKED_DEFECTS)
 async def test_a_defect_sends_the_analysis_back_once(
-    broken_analysis: Analysis, defect: str, events: list[dict[str, Any]]
+    broken_analysis: Analysis, defect: str, events: list[object]
 ) -> None:
     """A defect the writer can fix goes back once, with the defect named."""
     # Arrange
@@ -614,7 +614,7 @@ async def test_a_defect_sends_the_analysis_back_once(
 @pytest.mark.anyio
 @pytest.mark.parametrize(("broken_analysis", "defect"), CHECKED_DEFECTS)
 async def test_a_defect_after_the_rewrite_is_a_hard_error(
-    broken_analysis: Analysis, defect: str, events: list[dict[str, Any]]
+    broken_analysis: Analysis, defect: str, events: list[object]
 ) -> None:
     """With the one rewrite spent, a defect is a hard 502 naming it, never a second send-back."""
     # Arrange
@@ -661,7 +661,7 @@ def test_a_defect_never_echoes_the_writers_text(
 
 
 @pytest.mark.anyio
-async def test_a_first_defect_returns_feedback(events: list[dict[str, Any]]) -> None:
+async def test_a_first_defect_returns_feedback(events: list[object]) -> None:
     """On the analysis's first defect, verify sends it back once, named."""
     # Arrange
     first = six_voters()
@@ -677,7 +677,7 @@ async def test_a_first_defect_returns_feedback(events: list[dict[str, Any]]) -> 
 
 
 @pytest.mark.anyio
-async def test_a_second_defect_raises(events: list[dict[str, Any]]) -> None:
+async def test_a_second_defect_raises(events: list[object]) -> None:
     """With the one rewrite spent, a defect is a hard 502 naming the defect."""
     # Arrange
     first = six_voters()

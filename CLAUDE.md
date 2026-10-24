@@ -69,7 +69,7 @@ deep_forecaster  START -> research -> draft_claims -> council_round_1 -> council
 ## agentic_backend
 
 - The shared modules (`config.py`, `models.py`, `search.py`, `llm.py`, `tracing.py`, `api.py`,
-  `auth.py`, `quota.py`, `db/web/sql.py`) import no agent, except `api.py`, the delivery layer, which imports
+  `auth.py`, `quota.py`, `frames.py`, `db/web/sql.py`) import no agent, except `api.py`, the delivery layer, which imports
   the orchestrator's graph and builders and the reporter's resume classifier.
 - Besides the LangGraph checkpointer and store, the only Postgres access is the raw SQL in
   `db/web/sql.py` against Django-owned tables, whose schema only `web_backend`'s migrations change;
@@ -136,8 +136,8 @@ deep_forecaster  START -> research -> draft_claims -> council_round_1 -> council
 - A request carries exactly one of `{query, thread_id}` or `{resume, thread_id}`. Every `/api/*`
   route except `GET /api/health` needs a bearer token minted at Django's `GET /accounts/token/`
   (`accounts_api`); `auth.py` answers a failed check with 401 and a foreign thread with 403.
-- Stream `custom`, `updates`, and `messages` with `subgraphs=True`; nodes emit progress through a
-  `StreamWriter`. Read custom events from every namespace (a subgraph's arrive under the child's)
+- Stream `custom`, `updates`, and `messages` with `subgraphs=True`; nodes emit `frames.ProgressFrame`
+  and `frames.NoticeEvent` through a `StreamWriter`. Read custom events from every namespace (a subgraph's arrive under the child's)
   and `updates` from the root only.
 - Answer text streams from the AI messages of `api.ANSWER_NODES`. The reporter's refusal, cancel,
   and revision-cap paths, the deep expert, and the forecaster deliver their answer whole as a

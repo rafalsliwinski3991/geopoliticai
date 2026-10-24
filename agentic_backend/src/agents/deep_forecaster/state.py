@@ -26,6 +26,7 @@ from typing_extensions import NotRequired, TypedDict
 from agents.deep_forecaster.config import LIMITS
 from agents.deep_forecaster.consts.progress import PROGRESS_NODE
 from agents.deep_forecaster.models import Analysis, Ballot, Claim, Verdict
+from frames import ProgressFrame
 from models import Candidate, Source
 from search import FETCH_CONCURRENCY
 
@@ -104,7 +105,7 @@ class ForecastRun:
         """Record the step `label` names, log it, and announce it; `label` is a progress const."""
         self.step = label.removesuffix("...")
         logger.info("forecast step: %s", self.step)
-        writer({"type": "progress", "node": PROGRESS_NODE, "label": label})
+        writer(ProgressFrame(node=PROGRESS_NODE, label=label))
 
 
 @dataclass
@@ -169,4 +170,4 @@ class ResearchRun:
 
     def progress(self, label: str) -> None:
         """Emit one progress frame; `label` must be code-produced (see consts)."""
-        self.writer({"type": "progress", "node": PROGRESS_NODE, "label": label})
+        self.writer(ProgressFrame(node=PROGRESS_NODE, label=label))

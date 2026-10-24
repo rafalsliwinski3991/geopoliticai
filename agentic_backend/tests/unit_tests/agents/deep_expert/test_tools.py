@@ -10,6 +10,7 @@ import pytest
 from agents.deep_expert.config import LIMITS
 from agents.deep_expert.state import ResearchRun
 from agents.expert.consts.sources import EXPERT_SOURCES
+from frames import ProgressFrame
 from models import Candidate, SearchUnavailableError, Source
 
 tools_module: Any = __import__("importlib").import_module("agents.deep_expert.tools")
@@ -56,7 +57,7 @@ async def test_a_search_returns_lines_and_spends_one_search(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     # Arrange
-    events_list: list[dict[str, Any]] = []
+    events_list: list[ProgressFrame] = []
     run = ResearchRun(writer=events_list.append)
     calls = recorded_search(monkeypatch)
     (search_sources, _) = tools_module.build_tools(run)
@@ -69,11 +70,7 @@ async def test_a_search_returns_lines_and_spends_one_search(
     assert run.searches == 1
     assert URL in run.candidates
     assert events_list == [
-        {
-            "type": "progress",
-            "node": "deep_expert",
-            "label": "Searching sources (1 of 5)...",
-        }
+        ProgressFrame(node="deep_expert", label="Searching sources (1 of 5)...")
     ]
     assert calls == [("EU carbon border tax", EXPERT_SOURCES)]
 
@@ -83,7 +80,7 @@ async def test_a_blank_query_refuses_without_spending_a_search(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     # Arrange
-    events_list: list[dict[str, Any]] = []
+    events_list: list[ProgressFrame] = []
     run = ResearchRun(writer=events_list.append)
     calls = recorded_search(monkeypatch)
     (search_sources, _) = tools_module.build_tools(run)
@@ -117,7 +114,7 @@ async def test_a_noisy_query_is_normalized(monkeypatch: pytest.MonkeyPatch) -> N
 @pytest.mark.anyio
 async def test_the_search_cap_is_a_soft_stop(monkeypatch: pytest.MonkeyPatch) -> None:
     # Arrange
-    events_list: list[dict[str, Any]] = []
+    events_list: list[ProgressFrame] = []
     run = ResearchRun(writer=events_list.append)
     calls = recorded_search(monkeypatch)
     (search_sources, _) = tools_module.build_tools(run)
@@ -131,7 +128,7 @@ async def test_the_search_cap_is_a_soft_stop(monkeypatch: pytest.MonkeyPatch) ->
     assert sixteenth == tools_module.NO_SEARCHES_LEFT_MESSAGE
     assert calls == [("q", EXPERT_SOURCES)] * LIMITS.max_searches
     assert run.searches == LIMITS.max_searches
-    assert events_list[-1]["label"] == "Searching sources (5 of 5)..."
+    assert events_list[-1].label == "Searching sources (5 of 5)..."
 
 
 @pytest.mark.anyio
@@ -140,7 +137,7 @@ async def test_an_empty_search_returns_the_no_results_message(
 ) -> None:
     # Arrange: the search is spent, no candidates are stored, and the footer
     # still reports the remaining budget.
-    events_list: list[dict[str, Any]] = []
+    events_list: list[ProgressFrame] = []
     run = ResearchRun(writer=events_list.append)
     calls: list[str] = []
 
@@ -159,9 +156,7 @@ async def test_an_empty_search_returns_the_no_results_message(
     assert calls == ["nothing matches"]
     assert run.searches == 1
     assert run.candidates == {}
-    assert [event["label"] for event in events_list] == [
-        "Searching sources (1 of 5)..."
-    ]
+    assert [event.label for event in events_list] == ["Searching sources (1 of 5)..."]
 
 
 @pytest.mark.anyio
@@ -258,7 +253,7 @@ async def test_read_source_returns_the_requested_url(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     # Arrange
-    events_list: list[dict[str, Any]] = []
+    events_list: list[ProgressFrame] = []
     run = ResearchRun(writer=events_list.append)
     recorded_search(monkeypatch)
 
@@ -278,7 +273,7 @@ async def test_read_source_returns_the_requested_url(
     # Keyed by the URL the model asked for, even though the fetch redirected.
     assert URL in run.sources
     assert run.sources[URL].url == "https://other.example/redirected"
-    assert events_list[-1]["label"] == "Reading sources (1 so far)..."
+    assert events_list[-1].label == "Reading sources (1 so far)..."
 
 
 @pytest.mark.anyio

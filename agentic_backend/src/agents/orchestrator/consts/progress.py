@@ -5,13 +5,13 @@
 because the delivery layer no longer decides which label a branch deserves — it
 forwards what the node said.
 
-The payload is written whole, `"type"` included, because `api._generate` yields
-it into an SSE frame verbatim. Everything here must therefore stay a hardcoded
-literal: nothing model-produced or user-produced may ever reach this channel.
+The payload is a `ProgressFrame` literal, because `api._generate` encodes it into
+an SSE frame verbatim. Everything here must therefore stay a hardcoded literal:
+nothing model-produced or user-produced may ever reach this channel.
 """
 
-SEARCH_PROGRESS = {
-    "type": "progress",
-    "node": "search_and_fetch",
-    "label": "Searching and reading sources...",
-}
+from frames import ProgressFrame
+
+SEARCH_PROGRESS = ProgressFrame(
+    node="search_and_fetch", label="Searching and reading sources..."
+)

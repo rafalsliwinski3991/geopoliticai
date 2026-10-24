@@ -26,6 +26,7 @@ from agents.deep_forecaster.models import (
     EvidenceRef,
 )
 from agents.deep_forecaster.state import ForecastRun, ResearchRun
+from frames import ProgressFrame
 from models import (
     LLMInvocationError,
     NoSourcesError,
@@ -405,8 +406,8 @@ async def test_a_forecast_runs_every_step_once_inside_a_checkpointed_parent(
         stream_mode="custom",
         subgraphs=True,
     ):
-        if isinstance(chunk[1], dict) and "label" in chunk[1]:
-            labels.append(chunk[1]["label"])
+        if isinstance(chunk[1], ProgressFrame):
+            labels.append(chunk[1].label)
     final = await parent.aget_state({"configurable": {"thread_id": "t"}})
     result = final.values
     answer_text = str(result["answer"])

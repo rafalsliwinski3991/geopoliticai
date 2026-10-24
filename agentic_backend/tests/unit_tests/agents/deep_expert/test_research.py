@@ -97,7 +97,7 @@ async def test_a_satisfied_cited_answer_is_returned(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     # Arrange
-    events: list[dict[str, Any]] = []
+    events: list[object] = []
     spy = _GraphSpy([AIMessage(DEEP_ANSWER)], cited_run())
 
     def _build_graph(run: ResearchRun) -> Any:
