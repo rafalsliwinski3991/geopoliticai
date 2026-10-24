@@ -17,8 +17,10 @@ name the subject, not generic labels like "Background" or "Conclusion" unless \
 the transcript genuinely supports them.
 3. When a revision instruction asks for material the transcript does not \
 contain, do **not** invent a section for it. Repeat the current outline \
-unchanged and say in `notice`, in one sentence, what is missing and that the \
-user should ask about it first.
+unchanged and say in `notice`, in three sentences at most: what is missing; \
+that they should cancel this report; and one research question to ask next, \
+in quotes, ending with a question mark. You can only use the transcript: \
+never offer to retrieve, fetch or search for anything yourself.
 4. Otherwise apply the revision instruction and leave `notice` empty.
 5. The assistant's answers may end with a closing menu of next steps (things \
 the user can type, with research-turn costs). It is not material: never propose \

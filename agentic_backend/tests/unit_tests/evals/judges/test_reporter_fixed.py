@@ -8,11 +8,13 @@ from evals.judges.reporter_fixed import (
     OUTLINE_PROMPT,
     REPORT_PROMPT,
     _normalize_heading,
+    _notice_view,
     _outcome_view,
     _outline_view,
     _reply_actions_view,
     _report_rules_view,
     _report_view,
+    asks_a_question,
     follows_outline,
     urls_from_transcript,
 )
@@ -225,3 +227,83 @@ def test_normalize_heading_strips_noise() -> None:
     # Assert
     assert _normalize_heading("1. **Spending target**: ") == "spending target"
     assert _normalize_heading("Spending Target") == "spending target"
+
+
+def test_a_notice_with_a_quoted_question_passes() -> None:
+    """The user needs a ready question to type, so a quoted one is what the notice must hold."""
+    # Arrange
+    notice = (
+        "The transcript has no budget figures. Cancel this report, then ask "
+        '"What does each member spend on defence?"'
+    )
+
+    # Act
+    passes = asks_a_question({"notice": notice})
+
+    # Assert
+    assert passes
+
+
+def test_a_notice_offering_to_retrieve_fails() -> None:
+    """The reporter reads only the transcript; offering to fetch promises what it cannot do."""
+    # Arrange
+    notice = (
+        'Cancel this report and ask me to retrieve those sources, e.g. "What are the '
+        'figures?"'
+    )
+
+    # Act
+    passes = asks_a_question({"notice": notice})
+
+    # Assert
+    assert not passes
+
+
+def test_a_notice_with_an_unquoted_question_fails() -> None:
+    """An unquoted question gives the user nothing to copy, and reads as the reporter asking."""
+    # Arrange
+    notice = "The figures are missing. Should I add them?"
+
+    # Act
+    passes = asks_a_question({"notice": notice})
+
+    # Assert
+    assert not passes
+
+
+def test_a_quoted_question_may_say_search_for() -> None:
+    """Only the reporter promising to search is banned; the question the user asks may search."""
+    # Arrange
+    notice = 'Cancel this report, then ask "Can you search for each member\'s budget?"'
+
+    # Act
+    passes = asks_a_question({"notice": notice})
+
+    # Assert
+    assert passes
+
+
+def test_an_empty_notice_fails() -> None:
+    """A silent outline hides that the revision was refused, so an empty notice is a failure."""
+    # Arrange
+    notice = ""
+
+    # Act
+    passes = asks_a_question({"notice": notice})
+
+    # Assert
+    assert not passes
+
+
+def test_the_notice_judge_applies_only_when_the_case_expects_it() -> None:
+    """Other cases leave the notice empty on purpose, so they must not be graded on it."""
+    # Arrange
+    output = {"notice": 'Cancel and ask "Why?"'}
+
+    # Act
+    skipped = _notice_view({}, output, {"outcome": "report"})
+    graded = _notice_view({}, output, {"notice_asks_question": True})
+
+    # Assert
+    assert skipped is None
+    assert graded == {"notice": 'Cancel and ask "Why?"'}
