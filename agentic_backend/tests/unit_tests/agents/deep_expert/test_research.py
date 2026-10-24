@@ -410,3 +410,51 @@ async def test_the_agent_receives_the_rubric_and_the_no_checkpoint_config(
     assert state["messages"][0].content == "the question"
     assert state["rubric"] == DEEP_ANSWER_RUBRIC
     assert config == {"configurable": {CONFIG_KEY_CHECKPOINTER: None}}
+
+
+@pytest.mark.anyio
+async def test_the_research_span_records_the_grader_verdicts(
+    monkeypatch: pytest.MonkeyPatch,
+    captured_spans: InMemorySpanExporter,
+) -> None:
+    """A Phoenix trace alone must show how the grader judged each round, not only the last one."""
+
+    # Arrange
+    def revise_then_satisfy(run: ResearchRun) -> None:
+        sources_only()(run)
+        run.verdicts.extend(["needs_revision", "satisfied"])
+
+    spy = _GraphSpy([AIMessage(DEEP_ANSWER)], revise_then_satisfy)
+    monkeypatch.setattr(research_module, "build_graph", lambda run: spy.bind_run(run))
+
+    # Act
+    await research_module.research("q", lambda e: None)
+
+    # Assert
+    attributes = _span_by_name(captured_spans, "deep_research").attributes
+    assert attributes is not None
+    assert attributes["research.grader_verdicts"] == ("needs_revision", "satisfied")
+    assert attributes["research.grader_rounds"] == 2
+
+
+@pytest.mark.anyio
+async def test_the_research_span_records_no_verdicts_when_the_grader_never_ran(
+    monkeypatch: pytest.MonkeyPatch,
+    captured_spans: InMemorySpanExporter,
+) -> None:
+    """A run that ends before the grader speaks must show zero rounds, not a missing attribute."""
+    # Arrange
+    monkeypatch.setattr(research_module, "LIMITS", ResearchLimits(wall_seconds=0.01))
+    spy = _GraphSpy([])
+    spy.sleep_for = 1.0
+    monkeypatch.setattr(research_module, "build_graph", lambda run: spy.bind_run(run))
+
+    # Act
+    with pytest.raises(ResearchLimitError):
+        await research_module.research("q", lambda e: None)
+
+    # Assert
+    attributes = _span_by_name(captured_spans, "deep_research").attributes
+    assert attributes is not None
+    assert attributes["research.grader_verdicts"] == ()
+    assert attributes["research.grader_rounds"] == 0
