@@ -306,6 +306,9 @@ async def _fetch_page(
             )
         except httpx.HTTPError as exc:
             logger.info("Fetch failed url=%s: %s", url, exc)
+            trace.get_current_span().set_attribute(
+                "source.failure", describe_failure(exc)
+            )
             return "fetch_failed", None, None
         if response.is_redirect:
             location = response.headers.get("location")
@@ -322,8 +325,11 @@ async def _fetch_page(
             response.raise_for_status()
         except httpx.HTTPError as exc:
             logger.info("Fetch failed url=%s: %s", url, exc)
-            trace.get_current_span().set_attribute(
-                "source.status_code", response.status_code
+            trace.get_current_span().set_attributes(
+                {
+                    "source.status_code": response.status_code,
+                    "source.failure": describe_failure(exc),
+                }
             )
             return "fetch_failed", None, None
         return await _read_page(response, url, candidate.title, policy)
