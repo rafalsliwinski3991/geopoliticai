@@ -622,7 +622,10 @@ async def test_one_failed_search_with_a_source_read_still_forecasts(
                 )
             ]
             + n_claims(1),
-            "The forecast drafted a claim whose deadline is not in the future.",
+            (
+                "The forecast drafted claim 1 with the deadline 2026-09-30, "
+                "which is not after today (2026-09-30)."
+            ),
             id="a deadline of today",
         ),
         pytest.param(
