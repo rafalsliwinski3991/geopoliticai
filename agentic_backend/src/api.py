@@ -535,8 +535,8 @@ async def _astream_answer(
     * `messages` carries answer tokens, exactly as before.
 
     The `custom` branch must be dispatched **before** the `messages` unpacking
-    below: a custom payload is a plain dict, and `message, metadata = data`
-    would raise on the first one.
+    below: a custom event is a frame model or a dict that `NODE_EVENT` accepts,
+    and `message, metadata = data` would raise on the first one.
     """
     config = build_runtime_config(thread_id=thread_id)
     streamed_nodes: set[str] = set()

@@ -5,7 +5,7 @@ import os
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta, timezone
-from typing import Any, AsyncIterator, cast
+from typing import Any, AsyncIterator, NoReturn, cast
 from unittest.mock import patch
 
 import httpx
@@ -443,6 +443,43 @@ async def test_an_unknown_custom_event_is_skipped(
 
     # Assert
     assert events == [TokenFrame(content="Answer.")]
+
+
+@pytest.mark.anyio
+async def test_an_empty_notice_sends_no_token(
+    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An empty notice is no answer, so it sends no token and no answer progress.
+
+    The guard sits in `_astream_answer`, so this drives the endpoint over a fake
+    graph that yields only the empty notice. Without the guard the browser would
+    see a "Writing the answer..." step and an empty token for a turn with nothing
+    to write.
+    """
+
+    # Arrange
+    class _FakeGraph:
+        async def astream(
+            self, graph_input: Any, config: Any, **kwargs: Any
+        ) -> AsyncIterator[tuple[Any, str, Any]]:
+            yield ((), "custom", NoticeEvent(text=""))
+
+    monkeypatch.setattr(api, "graph", _FakeGraph())
+
+    # Act
+    response = await client.post(
+        "/api/run_pipeline/stream", json={"query": "x", "thread_id": "t-1"}
+    )
+
+    # Assert
+    events = _events(response.text)
+    assert _progress_labels(events) == ["Thinking..."]
+    assert all(event["type"] != "token" for event in events)
+    assert events[-1] == {
+        "type": "error",
+        "status": 502,
+        "message": "The model returned an empty answer.",
+    }
 
 
 @pytest.mark.anyio
@@ -1112,7 +1149,7 @@ async def test_stream_without_a_token_is_401_and_the_graph_is_never_touched(
         transport=httpx.ASGITransport(app=api.app), base_url="http://test"
     )
 
-    async def boom(*args: Any, **kwargs: Any) -> tuple[str, str]:
+    async def boom(*args: Any, **kwargs: Any) -> NoReturn:
         raise AssertionError("the graph must not be reached without a token")
 
     monkeypatch.setattr(api, "claim_thread", boom)
@@ -1136,7 +1173,7 @@ async def test_stream_with_an_expired_token_is_401(
     api.app.state.pool = None
     client = _client_with_token(_mint_token(user_id=1, expired=True))
 
-    async def boom(*args: Any, **kwargs: Any) -> tuple[str, str]:
+    async def boom(*args: Any, **kwargs: Any) -> NoReturn:
         raise AssertionError("the graph must not be reached with an expired token")
 
     monkeypatch.setattr(api, "claim_thread", boom)
@@ -1161,7 +1198,7 @@ async def test_another_users_thread_is_403_and_the_graph_is_never_invoked(
     async def deny(*args: Any, **kwargs: Any) -> bool:
         return False
 
-    async def boom(*args: Any, **kwargs: Any) -> tuple[str, str]:
+    async def boom(*args: Any, **kwargs: Any) -> NoReturn:
         raise AssertionError("the graph must not run for someone else's thread")
 
     monkeypatch.setattr(api, "claim_thread", deny)
@@ -2074,6 +2111,7 @@ async def test_a_geopolitical_turn_skips_the_headroom_read(
     # Assert
     assert response.status_code == 200
     assert reads == []
+    assert _events(response.text)[-1]["type"] == "result"
 
 
 @pytest.mark.anyio
