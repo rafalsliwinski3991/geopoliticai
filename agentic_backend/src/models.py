@@ -69,6 +69,12 @@ class ResearchLimitError(PipelineError):
     status: ClassVar[int] = 504
 
 
+class QuotaExceededError(PipelineError):
+    """A research turn the user's or the site's daily quota cannot pay for."""
+
+    status: ClassVar[int] = 429
+
+
 @dataclass(frozen=True)
 class Candidate:
     """An allow-listed search result, before its page is fetched."""

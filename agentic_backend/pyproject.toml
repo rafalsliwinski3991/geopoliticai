@@ -82,6 +82,7 @@ py-modules = [
     "config",
     "llm",
     "models",
+    "quota",
     "search",
     "tracing",
 ]

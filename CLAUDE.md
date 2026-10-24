@@ -69,7 +69,7 @@ deep_forecaster  START -> research -> draft_claims -> council_round_1 -> council
 ## agentic_backend
 
 - The shared modules (`config.py`, `models.py`, `search.py`, `llm.py`, `tracing.py`, `api.py`,
-  `auth.py`, `db/web/sql.py`) import no agent, except `api.py`, the delivery layer, which imports
+  `auth.py`, `quota.py`, `db/web/sql.py`) import no agent, except `api.py`, the delivery layer, which imports
   the orchestrator's graph and builders and the reporter's resume classifier.
 - Besides the LangGraph checkpointer and store, the only Postgres access is the raw SQL in
   `db/web/sql.py` against Django-owned tables, whose schema only `web_backend`'s migrations change;
@@ -156,6 +156,7 @@ deep_forecaster  START -> research -> draft_claims -> council_round_1 -> council
   the charge day, up to `MAX_DAILY_REFUND_UNITS` per user
   per UTC day (counted in process memory); a disconnect gives nothing back, and site units stay
   spent.
+- `quota.py` holds these rules; `api._generate` only calls `charge_turn` and `refund_turn`.
 - A quota number has copies in `web_backend/templates/pages/landing.html` (the daily limit is
   drift-tested, the forecast's cost is not) and `e2e/test_specs/daily-limit-is-50.md`.
 

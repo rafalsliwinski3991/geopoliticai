@@ -7,10 +7,8 @@ import json
 import logging
 import os
 import time
-from asyncio import Lock as AsyncLock
 from collections import deque
 from contextlib import asynccontextmanager
-from datetime import date
 from threading import Lock
 from typing import Annotated, Any, AsyncGenerator
 
@@ -38,10 +36,6 @@ from agents.reporter import classify_resume_intent
 from auth import Identity, require_identity
 from config import (
     DAILY_RESEARCH_TURNS,
-    DAILY_RESEARCH_TURNS_ALL_USERS,
-    DEEP_RESEARCH_TURN_COST,
-    FORECAST_TURN_COST,
-    MAX_DAILY_REFUND_UNITS,
     bind_log_context,
     init_environment,
     require_env,
@@ -52,17 +46,19 @@ from config import (
 from db.web.sql import (
     MAX_THREAD_ID_LENGTH,
     claim_thread,
-    increment_quota,
-    increment_site_quota,
     is_staff,
     list_threads,
     owns_thread,
-    quota_day,
     quota_used,
-    refund_quota,
     title_from,
 )
-from models import PipelineError, ReportNotPendingError, squash_whitespace
+from models import (
+    PipelineError,
+    QuotaExceededError,
+    ReportNotPendingError,
+    squash_whitespace,
+)
+from quota import Charge, charge_turn, refund_turn
 from tracing import bind_trace_user, init_tracing
 
 logger = logging.getLogger(__name__)
@@ -140,23 +136,9 @@ ANSWER_NODES = frozenset({"answer", "chat", "write"})
 # free. `classify` does not re-run on a resume, so approving or revising a
 # pending report does not count again: one report is one count, taken when it
 # was requested, and the reporter's own revision cap bounds the rounds.
-# `deep` spends DEEP_RESEARCH_TURN_COST units instead of one (brainstorm Q3).
+# `deep` spends DEEP_RESEARCH_TURN_COST units instead of one (brainstorm Q3),
+# and `quota.charge_turn` looks up what each destination costs.
 RESEARCH_DESTINATIONS = frozenset({"geopolitical", "deep", "forecast", "report"})
-# The research destinations that spend more than one unit, each with the
-# refusal the advisory headroom read gives a caller who cannot afford it
-# (brainstorm 2026Sep28 Q3; 2026Sep30 Q22). Every other research destination
-# spends one unit, and `ONE_UNIT`'s empty refusal is never shown.
-COSTLY_DESTINATIONS: dict[str, tuple[int, str]] = {
-    "deep": (
-        DEEP_RESEARCH_TURN_COST,
-        "A deep analysis needs {cost} research turns; you have {left} left today.",
-    ),
-    "forecast": (
-        FORECAST_TURN_COST,
-        "A forecast needs {cost} research turns; you have {left} left today.",
-    ),
-}
-ONE_UNIT: tuple[int, str] = (1, "")
 # The checkpointer names its tables unqualified in both its DDL and its
 # queries, so search_path is the only way to put them anywhere but `public`.
 # `agentic` first means setup() creates there; `public` second means
@@ -180,56 +162,6 @@ graph: Any = _default_graph
 
 _rate_limit_store: dict[str, deque[float]] = {}
 _rate_limit_lock = Lock()
-# One costly-turn commit at a time per user (review thread, #148): the advisory
-# headroom read cannot be raced, but the site upsert can, so a burst of
-# concurrent forecast requests must not each take `cost` site units before the
-# user's own upsert disqualifies all but one (see `_astream_answer`).
-_costly_turn_locks: dict[int, AsyncLock] = {}
-# Units refunded per (user, UTC day), for the daily refund cap. In process
-# memory, like `_rate_limit_store`: a restart forgets it, which allows at most
-# one more capped refund per user per restart (user decision 2026-10-16).
-_refunded_units: dict[tuple[int, date], int] = {}
-
-
-def _costly_turn_lock(user_id: int) -> AsyncLock:
-    """Return the per-user lock serializing a counted turn's quota commit."""
-    return _costly_turn_locks.setdefault(user_id, AsyncLock())
-
-
-async def _refund_turn(
-    pool: AsyncConnectionPool[AsyncConnection[DictRow]],
-    *,
-    user_id: int,
-    day: date,
-    cost: int,
-) -> None:
-    """Give a failed turn's units back, unless the user's daily refund cap is spent.
-
-    The cap is reserved before the await, so two failures finishing at once
-    cannot both pass it. A failed refund is logged and swallowed, and gives
-    its reservation back: the user is about to get the turn's real error, and
-    this must not replace it — nor spend the day's cap for nothing.
-    """
-    for stale in [key for key in _refunded_units if key[1] < day]:
-        del _refunded_units[stale]
-    refunded = _refunded_units.get((user_id, day), 0)
-    if refunded + cost > MAX_DAILY_REFUND_UNITS:
-        logger.info("Refund of %d units refused: the daily refund cap is spent.", cost)
-        return
-    _refunded_units[(user_id, day)] = refunded + cost
-    try:
-        await refund_quota(pool, user_id=user_id, day=day, cost=cost)
-    except Exception:  # noqa: BLE001 - logged; the turn's own error wins
-        logger.exception("Refunding %d research units failed.", cost)
-        # Subtracting, not restoring the value read above: another coroutine
-        # may have reserved since, and each failure removes only its own add.
-        left = _refunded_units.get((user_id, day), 0) - cost
-        if left > 0:
-            _refunded_units[(user_id, day)] = left
-        else:
-            _refunded_units.pop((user_id, day), None)
-        return
-    logger.info("Refunded %d research units to the day %s.", cost, day)
 
 
 async def _require_migrated_checkpointer_schema(
@@ -697,16 +629,14 @@ async def run_pipeline_stream_endpoint(
         paused = False
         is_report = False
         clipped = False
-        # What this turn took from the user's own counter, and from which
-        # quota day; None until `increment_quota` succeeds. Every error frame
-        # below refunds it (brainstorm 2026Oct16 Q1); a disconnect does not.
-        charge: tuple[date, int] | None = None
+        # What this turn took from the user's own counter, and from which quota
+        # day; None until `charge_turn` succeeds. Every error frame below refunds
+        # it (brainstorm 2026Oct16 Q1); a disconnect does not.
+        charge: Charge | None = None
 
         async def refund() -> None:
             if charge is not None:
-                await _refund_turn(
-                    pool, user_id=identity.user_id, day=charge[0], cost=charge[1]
-                )
+                await refund_turn(pool, user_id=identity.user_id, charge=charge)
 
         try:
             yield _sse({"type": "progress", **THINKING_PROGRESS})
@@ -733,83 +663,9 @@ async def run_pipeline_stream_endpoint(
                     is_report = True
                     continue
                 if kind == "counted":
-                    # A value of None (the pre-change shape, still used by test
-                    # fakes) is an ordinary one-unit research turn.
-                    cost, refusal = COSTLY_DESTINATIONS.get(value, ONE_UNIT)
-                    # One commit at a time per user (review thread, #148): the
-                    # advisory headroom read cannot be raced, but the site
-                    # upsert can — a burst of concurrent forecast requests must
-                    # not each take `cost` site units before the user's own
-                    # upsert disqualifies all but one. The later burst members
-                    # re-run the headroom read after the winner commits.
-                    async with _costly_turn_lock(identity.user_id):
-                        if cost > 1:
-                            # Advisory headroom check before the site is
-                            # charged (plan review): without it, a user at
-                            # 17/20 retrying a costly request (deep or
-                            # forecast) spends its cost in site units per
-                            # refused retry, and a few dozen retries exhaust
-                            # the 500-unit site ceiling for everyone. The
-                            # user upsert below still decides; this read only
-                            # stops the obviously unaffordable turn early.
-                            # Refused, not downgraded (Q8A).
-                            left = DAILY_RESEARCH_TURNS - await quota_used(
-                                pool, user_id=identity.user_id
-                            )
-                            if left < cost:
-                                yield _sse(
-                                    {
-                                        "type": "error",
-                                        "status": 429,
-                                        "message": refusal.format(
-                                            cost=cost, left=max(0, left)
-                                        ),
-                                    }
-                                )
-                                return
-                        # The site ceiling is committed before the caller is
-                        # charged: a turn the site refuses must not cost the
-                        # user their own turn, and unlike an advisory pre-read
-                        # the conditional upsert cannot be raced open — the
-                        # database decides, so no concurrent turn can still
-                        # take the last slot between a read and this write.
-                        if not await increment_site_quota(
-                            pool, limit=DAILY_RESEARCH_TURNS_ALL_USERS, cost=cost
-                        ):
-                            # The site-wide ceiling: the operator's bill has a
-                            # second, coarser bound no single account controls.
-                            # Chat turns never reach this branch (Q5b).
-                            yield _sse(
-                                {
-                                    "type": "error",
-                                    "status": 429,
-                                    "message": "The site has used today's research capacity.",
-                                }
-                            )
-                            return
-                        day = quota_day()
-                        if not await increment_quota(
-                            pool,
-                            user_id=identity.user_id,
-                            day=day,
-                            limit=DAILY_RESEARCH_TURNS,
-                            cost=cost,
-                        ):
-                            # A concurrent turn took the last one (for a costly
-                            # turn: took units between the headroom read and here). The
-                            # site slot just taken belongs to this run's own
-                            # refusal: the user is not charged for a turn the
-                            # endpoint ends before it produces an answer, and the
-                            # site count stays honest about the run that did happen.
-                            yield _sse(
-                                {
-                                    "type": "error",
-                                    "status": 429,
-                                    "message": "Daily research limit reached.",
-                                }
-                            )
-                            return
-                        charge = (day, cost)
+                    charge = await charge_turn(
+                        pool, user_id=identity.user_id, destination=value
+                    )
                     continue
                 if kind not in ("token", "notice"):
                     # An event kind this layer does not know. Ignoring it is
@@ -874,6 +730,10 @@ async def run_pipeline_stream_endpoint(
                     "truncated": clipped,
                 }
             )
+        except QuotaExceededError as exc:
+            # A refused turn: nothing was charged to the user, nothing to refund,
+            # and no warning log (it is not a failure of the pipeline).
+            yield _sse({"type": "error", "status": exc.status, "message": str(exc)})
         except PipelineError as exc:
             logger.warning("Streaming pipeline failed: %s", exc)
             await refund()

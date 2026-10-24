@@ -9,6 +9,7 @@ from models import (
     LLMInvocationError,
     NoSourcesError,
     PipelineError,
+    QuotaExceededError,
     ResearchLimitError,
     SearchUnavailableError,
     Source,
@@ -28,6 +29,7 @@ def test_llm_invocation_error_is_a_pipeline_error() -> None:
         (NoSourcesError, 422),
         (SearchUnavailableError, 503),
         (LLMInvocationError, 502),
+        (QuotaExceededError, 429),
     ],
 )
 def test_each_error_carries_its_status(
