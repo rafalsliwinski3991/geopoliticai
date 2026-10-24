@@ -19,6 +19,7 @@ from evals.helpers.graph import (
     load_sources,
     pending_pause,
     record_sources,
+    record_verdicts,
     replay_sources,
 )
 from models import Candidate, Source, SourcePolicy
@@ -343,3 +344,34 @@ def test_dump_sources_writes_what_load_sources_reads() -> None:
 
     # Assert
     assert loaded == pages
+
+
+def test_record_verdicts_collects_the_verdicts_in_order() -> None:
+    """`research()` returns only the answer, so the eval needs the grader's verdicts kept as the run records them."""
+    # Arrange
+    verdicts: list[str] = []
+    research_module: Any = importlib.import_module("agents.deep_expert.research")
+
+    # Act
+    with record_verdicts(verdicts):
+        run = research_module.ResearchRun(writer=lambda event: None)
+        run.verdicts.append("needs_revision")
+        run.verdicts.append("satisfied")
+
+    # Assert
+    assert verdicts == ["needs_revision", "satisfied"]
+
+
+def test_record_verdicts_restores_the_run_class() -> None:
+    """A patch left behind would hand the next test's run to a stale list."""
+    # Arrange
+    research_module: Any = importlib.import_module("agents.deep_expert.research")
+    original = research_module.ResearchRun
+
+    # Act
+    with record_verdicts([]):
+        inside = research_module.ResearchRun
+
+    # Assert
+    assert inside is not original
+    assert research_module.ResearchRun is original

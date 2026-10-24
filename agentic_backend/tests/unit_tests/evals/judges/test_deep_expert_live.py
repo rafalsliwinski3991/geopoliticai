@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+from typing import Any
+
+import pytest
+
 from evals.judges.deep_expert_live import judges
 
 DEEP_ANSWER = "The deep answer."
@@ -20,6 +24,7 @@ def test_the_live_deep_judges_add_depth_to_the_live_experts_four() -> None:
         "answers_the_question",
         "answer_without_preamble",
         "answer_without_closing_offer",
+        "grader_satisfied",
         "deeper_than_expert",
     ]
 
@@ -76,3 +81,56 @@ def test_the_live_judges_skip_the_new_checks_when_the_run_failed() -> None:
         [None, None],
         "deeper_than_expert",
     )
+
+
+def grader_judge() -> Any:
+    return next(judge for judge in judges() if judge.name == "grader_satisfied")
+
+
+@pytest.mark.parametrize(
+    ("verdicts", "passes"),
+    [
+        (["satisfied"], True),
+        (["needs_revision", "satisfied"], True),
+        (["needs_revision", "max_iterations_reached"], False),
+        (["max_iterations_reached"], False),
+        (["satisfied", "needs_revision"], False),
+        ([], False),
+    ],
+    ids=[
+        "satisfied at once",
+        "revised then satisfied",
+        "revised then the round cap",
+        "the round cap alone",
+        "satisfied but not last",
+        "the grader never ran",
+    ],
+)
+def test_grader_satisfied_passes_only_when_the_last_verdict_is_satisfied(
+    verdicts: list[str], passes: bool
+) -> None:
+    """A run that shipped on the round cap is a draft the grader never accepted; the eval must fail it."""
+    # Arrange
+    judge = grader_judge()
+    output = {"finished": True, "grader_verdicts": verdicts}
+
+    # Act
+    variables = judge.view({"query": "q"}, output, {})
+    assert variables is not None
+    assert judge.check is not None
+    result = judge.check(variables)
+
+    # Assert
+    assert result is passes
+
+
+def test_grader_satisfied_skips_a_run_that_did_not_finish() -> None:
+    """A failed run has no verdicts to judge; the outcome judge already reports it."""
+    # Arrange
+    failed = {"finished": False, "side": "ours", "cause": "QuorumError"}
+
+    # Act
+    view = grader_judge().view({"query": "q"}, failed, {})
+
+    # Assert
+    assert view is None
