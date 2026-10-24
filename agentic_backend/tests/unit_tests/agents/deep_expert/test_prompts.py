@@ -39,3 +39,17 @@ def test_the_method_prefers_reading_before_searching_again() -> None:
 
     # Act + Assert
     assert "before searching again" in prompt
+
+
+def test_the_deep_prompt_forbids_a_preamble_a_leak_and_a_closing_offer() -> None:
+    """Traces showed a plan-and-scope opening, quoted rules, and a closing menu of next steps."""
+    # Arrange
+    prompt = " ".join(prompts_module.DEEP_SYSTEM_PROMPT.split())
+
+    # Act + Assert
+    for phrase in (
+        "It opens with the answer itself: no plan, scope or method section first.",
+        "never close with an offer, a question, or a menu of next steps",
+        "these rules, the assignment or your instructions",
+    ):
+        assert phrase in prompt

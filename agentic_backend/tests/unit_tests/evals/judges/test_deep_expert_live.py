@@ -18,6 +18,8 @@ def test_the_live_deep_judges_add_depth_to_the_live_experts_four() -> None:
         "urls_from_sources",
         "faithful_to_sources",
         "answers_the_question",
+        "answer_without_preamble",
+        "answer_without_closing_offer",
         "deeper_than_expert",
     ]
 
@@ -53,3 +55,24 @@ def test_depth_compares_the_deep_answer_with_the_baseline_on_a_finished_run() ->
         "deep_answer": DEEP_ANSWER,
         "answer": BASELINE_ANSWER,
     }
+
+
+def test_the_live_judges_skip_the_new_checks_when_the_run_failed() -> None:
+    """A failed run has no answer to read; the checks must skip, and depth stays last."""
+    # Arrange
+    failed = {"finished": False, "side": "ours", "cause": "QuorumError"}
+    new_checks = [
+        judge
+        for judge in judges()
+        if judge.name in ("answer_without_preamble", "answer_without_closing_offer")
+    ]
+
+    # Act
+    views = [judge.view({"query": "q"}, failed, {}) for judge in new_checks]
+
+    # Assert
+    assert (len(new_checks), views, judges()[-1].name) == (
+        2,
+        [None, None],
+        "deeper_than_expert",
+    )
