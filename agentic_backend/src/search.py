@@ -111,6 +111,27 @@ class ExtractedPage(NamedTuple):
     lang: str
 
 
+class FetchResult(NamedTuple):
+    """How one page fetch ended: why it was dropped or `"ok"`, and what it read."""
+
+    outcome: str
+    source: Source | None = None
+    page: ExtractedPage | None = None
+    failure: str = ""
+
+
+def describe_failure(error: BaseException) -> str:
+    """Name why a request failed: its HTTP status, "timeout", or its exception class.
+
+    Never the error's text: it can carry a URL or a header.
+    """
+    if isinstance(error, httpx.HTTPStatusError):
+        return str(error.response.status_code)
+    if isinstance(error, httpx.TimeoutException):
+        return "timeout"
+    return type(error).__name__
+
+
 async def _brave_batch(
     client: httpx.AsyncClient, query: str, domains: Sequence[str], policy: SourcePolicy
 ) -> list[Candidate]:
@@ -188,8 +209,11 @@ async def _fetch_and_extract(
         span.set_attributes(
             {"source.domain": candidate.domain, "source.url": candidate.url}
         )
-        outcome, source, page = await _fetch_page(client, candidate, policy)
+        result = await _fetch_page(client, candidate, policy)
+        outcome, source, page = result.outcome, result.source, result.page
         span.set_attribute("source.outcome", outcome)
+        if result.failure:
+            span.set_attribute("source.failure", result.failure)
         if source is not None and page is not None and page.text:
             # Outside `_fetch_page`'s extraction `try`: a telemetry failure
             # must never turn an accepted page into `extract_failed`.
@@ -204,53 +228,53 @@ async def _fetch_and_extract(
 
 async def _fetch_page(
     client: httpx.AsyncClient, candidate: Candidate, policy: SourcePolicy
-) -> tuple[str, Source | None, ExtractedPage | None]:
+) -> FetchResult:
     """Return why the page was dropped, or ``"ok"``, its source and its extraction."""
     url = candidate.url
     for redirect in range(MAX_REDIRECTS + 1):
         if allowed_domain(url, policy) is None:
             logger.info("Rejected off-list fetch URL=%s", url)
-            return "off_list", None, None
+            return FetchResult("off_list")
         try:
             response = await client.get(
                 url, timeout=FETCH_TIMEOUT_SECONDS, follow_redirects=False
             )
         except httpx.HTTPError as exc:
             logger.info("Fetch failed url=%s: %s", url, exc)
-            return "fetch_failed", None, None
+            return FetchResult("fetch_failed", failure=describe_failure(exc))
         if response.is_redirect:
             location = response.headers.get("location")
             if not location or redirect >= MAX_REDIRECTS:
                 logger.info("Redirect limit reached url=%s", url)
-                return "redirect_limit", None, None
+                return FetchResult("redirect_limit")
             next_url = urljoin(url, location)
             if allowed_domain(next_url, policy) is None:
                 logger.info("Rejected off-list redirect %s -> %s", url, next_url)
-                return "off_list", None, None
+                return FetchResult("off_list")
             url = next_url
             continue
         try:
             response.raise_for_status()
         except httpx.HTTPError as exc:
             logger.info("Fetch failed url=%s: %s", url, exc)
-            return "fetch_failed", None, None
+            return FetchResult("fetch_failed", failure=describe_failure(exc))
         try:
             if "html" not in response.headers.get("content-type", "").lower():
-                return "not_html", None, None
+                return FetchResult("not_html")
             page = await _extract_page(response.text)
             if not page.text or len(page.text) < policy.min_source_chars:
-                return "too_short", None, None
+                return FetchResult("too_short")
             source = Source(
                 title=candidate.title,
                 url=url,
                 text=page.text[: policy.max_source_chars],
                 author=page.author,
             )
-            return "ok", source, page
+            return FetchResult("ok", source, page)
         except Exception as exc:  # noqa: BLE001 - one bad source must not abort the batch
             logger.info("Extraction failed url=%s: %s", url, exc)
-            return "extract_failed", None, None
-    return "redirect_limit", None, None
+            return FetchResult("extract_failed")
+    return FetchResult("redirect_limit")
 
 
 def _page_attributes(
@@ -437,6 +461,7 @@ async def search_allowlisted(query: str, policy: SourcePolicy) -> list[Candidate
                 return_exceptions=True,
             )
         batches: list[list[Candidate]] = []
+        failures: list[str] = []
         for result in results:
             if isinstance(result, asyncio.CancelledError):
                 # Preserve cancellation: the request was aborted mid-search, and a
@@ -444,6 +469,7 @@ async def search_allowlisted(query: str, policy: SourcePolicy) -> list[Candidate
                 raise result
             if isinstance(result, BaseException):
                 logger.warning("Brave batch failed: %s", result)
+                failures.append(describe_failure(result))
             else:
                 batches.append(result)
         span.set_attributes(
@@ -451,6 +477,7 @@ async def search_allowlisted(query: str, policy: SourcePolicy) -> list[Candidate
                 "search.domains": sorted(policy.allowed_domains),
                 "search.batches": len(policy.batches),
                 "search.failed_batches": len(policy.batches) - len(batches),
+                "search.failures": failures,
                 "search.results_per_batch": [len(batch) for batch in batches],
             }
         )
