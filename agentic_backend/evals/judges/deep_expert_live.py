@@ -26,21 +26,22 @@ def grader_satisfied(variables: dict[str, Any]) -> bool:
     return bool(variables["verdicts"][-1:] == ["satisfied"])
 
 
+def gate_judge(judge: Judge) -> Judge:
+    """Return the judge with its view skipped for a run that did not finish."""
+    return replace(judge, view=skip_unless_finished(judge.view))
+
+
 def judges() -> tuple[Judge, ...]:
     """Return the deep_expert_live eval's judges."""
     by_name = {judge.name: judge for judge in fixed_judges()}
     return (
         *expert_live_judges(),
-        *(_gated(by_name[name]) for name in NAMES_BEFORE_GRADER),
+        *(gate_judge(by_name[name]) for name in NAMES_BEFORE_GRADER),
         Judge(
             "grader_satisfied",
             "binary",
             skip_unless_finished(_verdicts_view),
             check=grader_satisfied,
         ),
-        *(_gated(by_name[name]) for name in NAMES_AFTER_GRADER),
+        *(gate_judge(by_name[name]) for name in NAMES_AFTER_GRADER),
     )
-
-
-def _gated(judge: Judge) -> Judge:
-    return replace(judge, view=skip_unless_finished(judge.view))
