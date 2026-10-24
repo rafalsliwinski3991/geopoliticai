@@ -287,6 +287,8 @@ pydantic-core==2.41.5
     # via pydantic
 pyjwt==2.14.0
     # via agent
+pypdf==6.21.2
+    # via agent
 python-dateutil==2.9.0.post0
     # via
     #   dateparser

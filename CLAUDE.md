@@ -112,7 +112,8 @@ deep_forecaster  START -> research -> draft_claims -> council_round_1 -> council
   offering follow-up options with canonical turn costs from `config.py`, falling back to `STATIC_NEXT_STEPS_MENU`
   on failure, emitted as a notice chunk.
 - Expert: exactly three Brave batches (one failing is skipped, all failing is an error), allow-listed
-  pages through trafilatura, and one streamed model call.
+  pages through trafilatura (HTML) or pypdf (PDF, the first pages, dropped when it declares over the
+  size cap), and one streamed model call.
 - Deep expert: a `deepagents` agent built per turn, never at import. It searches through
   `search.py` with `EXPERT_SOURCES` and revises under deepagents' `RubricMiddleware`, whose grader
   sees only the question and the final draft (`graph.grader_view`). A spent search budget is a
