@@ -108,6 +108,14 @@ vote. Use only numbers shown in the sources.
     + _UNTRUSTED_RULE
 )
 
+# Appended to the drafter's brief on its one redraft (`nodes.draft_claims`).
+# `{defect}` is `checked_claims`' text: written by code, never a model's.
+DRAFT_CLAIMS_RETRY_INSTRUCTIONS = """An automatic check rejected your previous \
+claims: {defect}
+
+Draft the claims again from the material above. Fix that problem and keep every \
+rule."""
+
 # `{today}`, `{max_reason_chars}` and `{max_evidences}` are filled by
 # `nodes.council` from `ForecastRun.today` and `LIMITS`. Identical for every
 # member: the members are neutral (Q2, Q8).

@@ -5,6 +5,7 @@ from agents.deep_forecaster.config import LIMITS
 from agents.deep_forecaster.prompts import (
     _UNTRUSTED_RULE,
     DRAFT_CLAIMS_PROMPT,
+    DRAFT_CLAIMS_RETRY_INSTRUCTIONS,
     LEAD_SYSTEM_PROMPT,
     MEMBER_SYSTEM_PROMPT,
     RETRY_INSTRUCTIONS,
@@ -116,6 +117,19 @@ def test_the_retry_instructions_fill_with_the_defect() -> None:
 
     # Act
     filled = RETRY_INSTRUCTIONS.format(defect=defect)
+
+    # Assert
+    assert defect in filled
+    assert "{" not in filled
+
+
+def test_the_retry_instructions_take_the_defect() -> None:
+    """The redraft text fills with the defect and leaks no template braces."""
+    # Arrange
+    defect = "claim 2 is due in the past"
+
+    # Act
+    filled = DRAFT_CLAIMS_RETRY_INSTRUCTIONS.format(defect=defect)
 
     # Assert
     assert defect in filled
