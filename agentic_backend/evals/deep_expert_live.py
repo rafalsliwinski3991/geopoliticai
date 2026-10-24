@@ -5,7 +5,12 @@ from __future__ import annotations
 import asyncio
 from typing import Any
 
-from evals.helpers.graph import dump_sources, record_sources, replay_sources
+from evals.helpers.graph import (
+    dump_sources,
+    record_sources,
+    record_verdicts,
+    replay_sources,
+)
 from evals.helpers.run import run
 from evals.judges.deep_expert_live import judges
 from models import Source
@@ -29,7 +34,8 @@ async def run_deep_expert_live(input: dict[str, Any]) -> dict[str, Any]:
     from agents.expert import graph as expert_graph
 
     pages: list[Source] = []
-    with record_sources(pages):
+    verdicts: list[str] = []
+    with record_sources(pages), record_verdicts(verdicts):
         answer = await research(input["query"], _drop_progress)
     try:
         with replay_sources(pages):
@@ -44,6 +50,7 @@ async def run_deep_expert_live(input: dict[str, Any]) -> dict[str, Any]:
         "answer": answer,
         "baseline_answer": baseline["answer"],
         "sources": dump_sources(pages),
+        "grader_verdicts": verdicts,
     }
 
 
