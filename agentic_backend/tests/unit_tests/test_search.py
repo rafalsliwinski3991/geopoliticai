@@ -1098,6 +1098,118 @@ async def test_fetch_span_records_each_drop_reason(
 
 
 @pytest.mark.anyio
+@pytest.mark.parametrize(
+    ("status", "error", "expected"),
+    [
+        (403, None, "403"),
+        (404, None, "404"),
+        (None, httpx.ReadTimeout("slow"), "timeout"),
+    ],
+    ids=["http 403", "http 404", "timeout"],
+)
+async def test_a_failed_fetch_records_its_cause_on_the_span(
+    monkeypatch: pytest.MonkeyPatch,
+    captured_spans: InMemorySpanExporter,
+    status: int | None,
+    error: httpx.HTTPError | None,
+    expected: str,
+) -> None:
+    """A blocked page and a slow page both read `fetch_failed`; the cause says which site to give up on."""
+
+    # Arrange
+    async def fake_get(
+        self: httpx.AsyncClient,
+        url: str,
+        *,
+        timeout: object | None = None,
+        follow_redirects: bool = False,
+    ) -> httpx.Response:
+        if error is not None:
+            raise error
+        return _html("", status or 0)
+
+    monkeypatch.setattr(httpx.AsyncClient, "get", fake_get)
+    # Act
+    source = await search._fetch_and_extract(
+        httpx.AsyncClient(),
+        Candidate("t", "https://reuters.com/x", "reuters.com"),
+        EXPERT_SOURCES,
+    )
+    span = _span_by_name(captured_spans, "fetch_source")
+    # Assert
+    assert source is None
+    attributes = _attrs(span)
+    assert attributes["source.outcome"] == "fetch_failed"
+    assert attributes["source.failure"] == expected
+
+
+@pytest.mark.anyio
+async def test_a_page_that_loads_records_no_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    captured_spans: InMemorySpanExporter,
+) -> None:
+    """A kept page has no failure; an empty value would read as a cause."""
+
+    # Arrange
+    async def fake_get(
+        self: httpx.AsyncClient,
+        url: str,
+        *,
+        timeout: object | None = None,
+        follow_redirects: bool = False,
+    ) -> httpx.Response:
+        return _html(_HTML)
+
+    monkeypatch.setattr(httpx.AsyncClient, "get", fake_get)
+    # Act
+    source = await search._fetch_and_extract(
+        httpx.AsyncClient(),
+        Candidate("t", "https://reuters.com/x", "reuters.com"),
+        EXPERT_SOURCES,
+    )
+    span = _span_by_name(captured_spans, "fetch_source")
+    # Assert
+    assert source is not None
+    assert "source.failure" not in _attrs(span)
+
+
+@pytest.mark.anyio
+async def test_an_off_list_redirect_records_no_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    captured_spans: InMemorySpanExporter,
+) -> None:
+    """An off-list redirect is our own gate working, not a site failing."""
+
+    # Arrange
+    async def fake_get(
+        self: httpx.AsyncClient,
+        url: str,
+        *,
+        timeout: object | None = None,
+        follow_redirects: bool = False,
+    ) -> httpx.Response:
+        return _html(
+            "",
+            302,
+            {"location": "https://evil.example/x", "content-type": "text/html"},
+        )
+
+    monkeypatch.setattr(httpx.AsyncClient, "get", fake_get)
+    # Act
+    source = await search._fetch_and_extract(
+        httpx.AsyncClient(),
+        Candidate("t", "https://reuters.com/x", "reuters.com"),
+        EXPERT_SOURCES,
+    )
+    span = _span_by_name(captured_spans, "fetch_source")
+    # Assert
+    assert source is None
+    attributes = _attrs(span)
+    assert attributes["source.outcome"] == "off_list"
+    assert "source.failure" not in attributes
+
+
+@pytest.mark.anyio
 async def test_extract_page_reads_date_and_declared_language(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
