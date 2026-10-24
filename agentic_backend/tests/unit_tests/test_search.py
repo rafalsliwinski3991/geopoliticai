@@ -58,19 +58,20 @@ def test_batch_query_limits() -> None:
 def test_merge_caps_and_defers() -> None:
     # Arrange
     batch = [
-        Candidate("a", "https://reuters.com/1", "reuters.com"),
-        Candidate("b", "https://reuters.com/2", "reuters.com"),
-        Candidate("c", "https://reuters.com/3", "reuters.com"),
+        Candidate("a", "https://bbc.com/1", "bbc.com"),
+        Candidate("b", "https://bbc.com/2", "bbc.com"),
+        Candidate("c", "https://bbc.com/3", "bbc.com"),
     ]
     # Act
     merged = search.merge_candidates(
-        [batch, [Candidate("d", "https://ft.com/1", "ft.com")]], EXPERT_SOURCES
+        [batch, [Candidate("d", "https://bloomberg.com/1", "bloomberg.com")]],
+        EXPERT_SOURCES,
     )
     # Assert
     assert [candidate.url for candidate in merged] == [
-        "https://reuters.com/1",
-        "https://reuters.com/2",
-        "https://ft.com/1",
+        "https://bbc.com/1",
+        "https://bbc.com/2",
+        "https://bloomberg.com/1",
     ]
 
 
@@ -93,7 +94,7 @@ async def test_search_makes_exactly_three_batches_and_gates_urls(
             calls.append(value)
         return _response(
             [
-                {"title": "ok", "url": "https://reuters.com/article"},
+                {"title": "ok", "url": "https://bbc.com/article"},
                 {"url": "https://evil.example/no"},
             ]
         )
@@ -103,7 +104,7 @@ async def test_search_makes_exactly_three_batches_and_gates_urls(
     candidates = await search.search_allowlisted("question", EXPERT_SOURCES)
     # Assert
     assert len(calls) == 3
-    assert all(candidate.domain == "reuters.com" for candidate in candidates)
+    assert all(candidate.domain == "bbc.com" for candidate in candidates)
 
 
 @pytest.mark.anyio
@@ -142,10 +143,10 @@ async def test_brave_items_without_a_usable_url_or_title_are_handled(
     ) -> httpx.Response:
         return _response(
             [
-                {"title": "keep", "url": " https://reuters.com/article "},
+                {"title": "keep", "url": " https://bbc.com/article "},
                 {"title": "no url"},
-                {"url": "https://ft.com/1", "title": "  "},
-                {"url": "https://apnews.com/1", "extra": "ignored"},
+                {"url": "https://dw.com/1", "title": "  "},
+                {"url": "https://bloomberg.com/1", "extra": "ignored"},
             ]
         )
 
@@ -154,9 +155,9 @@ async def test_brave_items_without_a_usable_url_or_title_are_handled(
     candidates = await search.search_allowlisted("question", EXPERT_SOURCES)
     # Assert
     assert {candidate.url: candidate.title for candidate in candidates} == {
-        "https://reuters.com/article": "keep",
-        "https://ft.com/1": "Untitled",
-        "https://apnews.com/1": "Untitled",
+        "https://bbc.com/article": "keep",
+        "https://dw.com/1": "Untitled",
+        "https://bloomberg.com/1": "Untitled",
     }
 
 
@@ -227,13 +228,13 @@ async def test_search_span_counts_results_and_failed_batches(
         domains: Sequence[str],
         policy: SourcePolicy,
     ) -> list[Candidate]:
-        if "reuters.com" in domains:
+        if "bbc.com" in domains:
             return [
-                Candidate("r1", "https://reuters.com/one", "reuters.com"),
-                Candidate("r2", "https://reuters.com/two", "reuters.com"),
+                Candidate("r1", "https://bbc.com/one", "bbc.com"),
+                Candidate("r2", "https://bbc.com/two", "bbc.com"),
             ]
-        if "apnews.com" in domains:
-            return [Candidate("a1", "https://apnews.com/one", "apnews.com")]
+        if "dw.com" in domains:
+            return [Candidate("a1", "https://dw.com/one", "dw.com")]
         raise httpx.ConnectError("batch down")
 
     monkeypatch.setattr(search, "_brave_batch", fake_batch)
@@ -241,7 +242,7 @@ async def test_search_span_counts_results_and_failed_batches(
     candidates = await search.search_allowlisted("question", EXPERT_SOURCES)
     span = _span_by_name(captured_spans, "brave_search")
     # Assert
-    assert len(candidates) == 3  # 2 reuters + 1 apnews survive the merge
+    assert len(candidates) == 3  # 2 bbc + 1 dw survive the merge
     attributes = _attrs(span)
     assert attributes["search.batches"] == 3
     assert attributes["search.failed_batches"] == 1
@@ -264,7 +265,7 @@ async def test_search_span_names_the_policy_domains(
         domains: Sequence[str],
         policy: SourcePolicy,
     ) -> list[Candidate]:
-        return [Candidate("a", "https://reuters.com/one", "reuters.com")]
+        return [Candidate("a", "https://bbc.com/one", "bbc.com")]
 
     monkeypatch.setattr(search, "_brave_batch", fake_batch)
     # Act
@@ -322,9 +323,9 @@ def _fail_one_batch_with(monkeypatch: pytest.MonkeyPatch, error: BaseException) 
         domains: Sequence[str],
         policy: SourcePolicy,
     ) -> list[Candidate]:
-        if "reuters.com" in domains:
+        if "bbc.com" in domains:
             raise error
-        return [Candidate("a1", "https://apnews.com/one", "apnews.com")]
+        return [Candidate("a1", "https://dw.com/one", "dw.com")]
 
     monkeypatch.setattr(search, "_brave_batch", fake_batch)
 
@@ -395,7 +396,7 @@ async def test_a_search_with_no_failed_batch_records_no_failures(
         domains: Sequence[str],
         policy: SourcePolicy,
     ) -> list[Candidate]:
-        return [Candidate("a", "https://reuters.com/one", "reuters.com")]
+        return [Candidate("a", "https://bbc.com/one", "bbc.com")]
 
     monkeypatch.setattr(search, "_brave_batch", fake_batch)
     # Act
@@ -473,7 +474,7 @@ def _html(
         status,
         text=body,
         headers=headers or {"content-type": "text/html"},
-        request=httpx.Request("GET", "https://reuters.com/article"),
+        request=httpx.Request("GET", "https://bbc.com/article"),
     )
 
 
@@ -494,7 +495,7 @@ async def test_fetch_failure_drops_source(monkeypatch: pytest.MonkeyPatch) -> No
     assert (
         await search._fetch_and_extract(
             httpx.AsyncClient(),
-            Candidate("t", "https://reuters.com/x", "reuters.com"),
+            Candidate("t", "https://bbc.com/x", "bbc.com"),
             EXPERT_SOURCES,
         )
         is None
@@ -526,8 +527,8 @@ async def test_mixed_extraction_failure_does_not_abort(
     monkeypatch.setattr(httpx.AsyncClient, "get", fake_get)
     monkeypatch.setattr(search, "_extract_page", fake_extract_page)
     candidates = [
-        Candidate("good", "https://reuters.com/good", "reuters.com"),
-        Candidate("bad", "https://reuters.com/bad", "reuters.com"),
+        Candidate("good", "https://bbc.com/good", "bbc.com"),
+        Candidate("bad", "https://bbc.com/bad", "bbc.com"),
     ]
 
     # Make one body trigger the extraction exception.
@@ -566,7 +567,7 @@ async def test_all_extraction_failures_return_empty(
 
     monkeypatch.setattr(httpx.AsyncClient, "get", fake_get)
     monkeypatch.setattr(search, "_extract_page", extract)
-    candidates = [Candidate("a", "https://reuters.com/a", "reuters.com")]
+    candidates = [Candidate("a", "https://bbc.com/a", "bbc.com")]
     # Act + Assert
     assert await search.fetch_sources(candidates, EXPERT_SOURCES) == []
 
@@ -596,12 +597,12 @@ async def test_off_list_redirect_is_not_requested(
     # Act
     source = await search._fetch_and_extract(
         httpx.AsyncClient(),
-        Candidate("t", "https://reuters.com/start", "reuters.com"),
+        Candidate("t", "https://bbc.com/start", "bbc.com"),
         EXPERT_SOURCES,
     )
     # Assert
     assert source is None
-    assert requested == ["https://reuters.com/start"]
+    assert requested == ["https://bbc.com/start"]
 
 
 @pytest.mark.anyio
@@ -631,12 +632,12 @@ async def test_same_domain_redirect_is_followed(
     # Act
     source = await search._fetch_and_extract(
         httpx.AsyncClient(),
-        Candidate("t", "https://reuters.com/start", "reuters.com"),
+        Candidate("t", "https://bbc.com/start", "bbc.com"),
         EXPERT_SOURCES,
     )
     # Assert
     assert source is not None
-    assert requested == ["https://reuters.com/start", "https://reuters.com/final"]
+    assert requested == ["https://bbc.com/start", "https://bbc.com/final"]
 
 
 @pytest.mark.anyio
@@ -656,7 +657,7 @@ async def test_redirect_limit_is_enforced(monkeypatch: pytest.MonkeyPatch) -> No
             "",
             302,
             {
-                "location": f"https://reuters.com/redirect-{len(requested)}",
+                "location": f"https://bbc.com/redirect-{len(requested)}",
                 "content-type": "text/html",
             },
         )
@@ -665,7 +666,7 @@ async def test_redirect_limit_is_enforced(monkeypatch: pytest.MonkeyPatch) -> No
     # Act
     source = await search._fetch_and_extract(
         httpx.AsyncClient(),
-        Candidate("t", "https://reuters.com/start", "reuters.com"),
+        Candidate("t", "https://bbc.com/start", "bbc.com"),
         EXPERT_SOURCES,
     )
     # Assert
@@ -694,7 +695,7 @@ async def test_fetch_caps_extracted_text(monkeypatch: pytest.MonkeyPatch) -> Non
     # Act
     source = await search._fetch_and_extract(
         httpx.AsyncClient(),
-        Candidate("t", "https://reuters.com/x", "reuters.com"),
+        Candidate("t", "https://bbc.com/x", "bbc.com"),
         EXPERT_SOURCES,
     )
     # Assert
@@ -725,14 +726,14 @@ async def test_a_fetched_page_carries_its_byline(
             200,
             text=page,
             headers={"content-type": "text/html"},
-            request=httpx.Request("GET", "https://reuters.com/x"),
+            request=httpx.Request("GET", "https://bbc.com/x"),
         )
 
     monkeypatch.setattr(httpx.AsyncClient, "get", fake_get)
     # Act
     source = await search._fetch_and_extract(
         httpx.AsyncClient(),
-        Candidate("t", "https://reuters.com/x", "reuters.com"),
+        Candidate("t", "https://bbc.com/x", "bbc.com"),
         EXPERT_SOURCES,
     )
     # Assert
@@ -755,14 +756,14 @@ async def test_a_page_without_a_byline_has_an_empty_author(
             200,
             text=_HTML,
             headers={"content-type": "text/html"},
-            request=httpx.Request("GET", "https://reuters.com/x"),
+            request=httpx.Request("GET", "https://bbc.com/x"),
         )
 
     monkeypatch.setattr(httpx.AsyncClient, "get", fake_get)
     # Act
     source = await search._fetch_and_extract(
         httpx.AsyncClient(),
-        Candidate("t", "https://reuters.com/x", "reuters.com"),
+        Candidate("t", "https://bbc.com/x", "bbc.com"),
         EXPERT_SOURCES,
     )
     # Assert
@@ -867,7 +868,7 @@ async def test_a_byline_failure_keeps_the_page(monkeypatch: pytest.MonkeyPatch) 
             200,
             text=_HTML,
             headers={"content-type": "text/html"},
-            request=httpx.Request("GET", "https://reuters.com/x"),
+            request=httpx.Request("GET", "https://bbc.com/x"),
         )
 
     def broken_feed(self: search._HeadParser, data: str) -> None:
@@ -878,7 +879,7 @@ async def test_a_byline_failure_keeps_the_page(monkeypatch: pytest.MonkeyPatch) 
     # Act
     source = await search._fetch_and_extract(
         httpx.AsyncClient(),
-        Candidate("t", "https://reuters.com/x", "reuters.com"),
+        Candidate("t", "https://bbc.com/x", "bbc.com"),
         EXPERT_SOURCES,
     )
     # Assert
@@ -929,7 +930,7 @@ async def test_fetch_span_records_cut_page(
     # Act
     source = await search._fetch_and_extract(
         httpx.AsyncClient(),
-        Candidate("t", "https://reuters.com/x", "reuters.com"),
+        Candidate("t", "https://bbc.com/x", "bbc.com"),
         policy,
     )
     span = _span_by_name(captured_spans, "fetch_source")
@@ -940,8 +941,8 @@ async def test_fetch_span_records_cut_page(
     assert attributes["source.chars_full"] == 40000
     assert attributes["source.chars_kept"] == 20000
     assert attributes["source.truncated"] is True
-    assert attributes["source.domain"] == "reuters.com"
-    assert attributes["source.url"] == "https://reuters.com/x"
+    assert attributes["source.domain"] == "bbc.com"
+    assert attributes["source.url"] == "https://bbc.com/x"
     assert attributes["source.lang"] == "pl"
     assert attributes["source.published"] == "2025-03-01"
     content_hash = attributes["source.content_hash"]
@@ -984,7 +985,7 @@ async def test_fetch_span_keeps_text_at_the_cap_edges(
     # Act
     source = await search._fetch_and_extract(
         httpx.AsyncClient(),
-        Candidate("t", "https://reuters.com/x", "reuters.com"),
+        Candidate("t", "https://bbc.com/x", "bbc.com"),
         policy,
     )
     span = _span_by_name(captured_spans, "fetch_source")
@@ -1041,7 +1042,7 @@ async def test_fetch_span_records_each_drop_reason(
         return _html(
             "",
             302,
-            {"location": "https://reuters.com/loop", "content-type": "text/html"},
+            {"location": "https://bbc.com/loop", "content-type": "text/html"},
         )
 
     async def off_list_redirect_response(
@@ -1093,10 +1094,10 @@ async def test_fetch_span_records_each_drop_reason(
     ) -> httpx.Response:
         return _html(_HTML)
 
-    candidate = Candidate("t", "https://reuters.com/x", "reuters.com")
+    candidate = Candidate("t", "https://bbc.com/x", "bbc.com")
     if label == "off_list":
         fake_get = slow_response
-        candidate = Candidate("t", "https://evil.example/x", "reuters.com")
+        candidate = Candidate("t", "https://evil.example/x", "bbc.com")
     elif label == "fetch_failed":
         fake_get = slow_response
     elif label == "404_is_a_fetch_failure":
@@ -1191,7 +1192,7 @@ async def test_a_failed_fetch_records_its_cause_on_the_span(
     # Act
     source = await search._fetch_and_extract(
         httpx.AsyncClient(),
-        Candidate("t", "https://reuters.com/x", "reuters.com"),
+        Candidate("t", "https://bbc.com/x", "bbc.com"),
         EXPERT_SOURCES,
     )
     span = _span_by_name(captured_spans, "fetch_source")
@@ -1223,7 +1224,7 @@ async def test_a_page_that_loads_records_no_failure(
     # Act
     source = await search._fetch_and_extract(
         httpx.AsyncClient(),
-        Candidate("t", "https://reuters.com/x", "reuters.com"),
+        Candidate("t", "https://bbc.com/x", "bbc.com"),
         EXPERT_SOURCES,
     )
     span = _span_by_name(captured_spans, "fetch_source")
@@ -1257,7 +1258,7 @@ async def test_an_off_list_redirect_records_no_failure(
     # Act
     source = await search._fetch_and_extract(
         httpx.AsyncClient(),
-        Candidate("t", "https://reuters.com/x", "reuters.com"),
+        Candidate("t", "https://bbc.com/x", "bbc.com"),
         EXPERT_SOURCES,
     )
     span = _span_by_name(captured_spans, "fetch_source")
@@ -1349,7 +1350,7 @@ async def test_a_telemetry_failure_keeps_the_page(
     # Act
     source = await search._fetch_and_extract(
         httpx.AsyncClient(),
-        Candidate("t", "https://reuters.com/x", "reuters.com"),
+        Candidate("t", "https://bbc.com/x", "bbc.com"),
         EXPERT_SOURCES,
     )
     span = _span_by_name(captured_spans, "fetch_source")
