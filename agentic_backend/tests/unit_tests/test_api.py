@@ -1423,6 +1423,27 @@ async def test_get_threads_returns_only_the_callers_rows(
     assert seen_kwargs["user_id"] == 1
 
 
+@pytest.mark.parametrize(
+    ("path", "schema"),
+    [
+        ("/api/threads", "ThreadList"),
+        ("/api/threads/{thread_id}", "ThreadMessages"),
+        ("/api/admin/threads/{thread_id}", "ThreadMessages"),
+    ],
+)
+def test_each_thread_route_publishes_its_response_schema(
+    path: str, schema: str
+) -> None:
+    # Arrange
+    spec = api.app.openapi()
+
+    # Act
+    ok = spec["paths"][path]["get"]["responses"]["200"]["content"]["application/json"]
+
+    # Assert
+    assert ok["schema"]["$ref"].endswith(f"/{schema}")
+
+
 @pytest.mark.anyio
 async def test_get_thread_403_for_a_thread_the_caller_does_not_own(
     client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
@@ -2906,7 +2927,7 @@ async def test_thread_messages_renders_each_message_shape(
     rendered = await api._thread_messages("t-history-1")
 
     # Assert
-    assert rendered == expected
+    assert [message.model_dump() for message in rendered] == expected
 
 
 def _human(text: str) -> Any:
