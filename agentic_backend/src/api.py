@@ -9,8 +9,9 @@ import time
 from collections import deque
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
+from datetime import datetime
 from threading import Lock
-from typing import Annotated, Any, AsyncGenerator
+from typing import Annotated, Any, AsyncGenerator, Literal
 
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, Path, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -26,6 +27,7 @@ from psycopg.rows import DictRow, dict_row
 from psycopg_pool import AsyncConnectionPool
 from pydantic import (
     BaseModel,
+    ConfigDict,
     Field,
     ValidationError,
     field_validator,
@@ -766,7 +768,45 @@ async def run_pipeline_stream_endpoint(
     )
 
 
-async def _thread_messages(thread_id: str) -> list[dict[str, str]]:
+class ThreadSummary(BaseModel):
+    """One conversation in the sidebar list."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    title: str
+    created_at: datetime
+
+
+class QuotaView(BaseModel):
+    """Today's research turns used against the daily limit."""
+
+    used: int
+    limit: int
+
+
+class ThreadList(BaseModel):
+    """The caller's conversations and today's quota."""
+
+    threads: list[ThreadSummary]
+    quota: QuotaView
+
+
+class ChatMessage(BaseModel):
+    """One message of a stored conversation."""
+
+    role: Literal["user", "assistant"]
+    text: str
+
+
+class ThreadMessages(BaseModel):
+    """One stored conversation."""
+
+    thread_id: str
+    messages: list[ChatMessage]
+
+
+async def _thread_messages(thread_id: str) -> list[ChatMessage]:
     """Read one conversation live from the checkpointer (Q6).
 
     The checkpointer's message text lives in msgpack-serialized BYTEA, so the
@@ -776,41 +816,42 @@ async def _thread_messages(thread_id: str) -> list[dict[str, str]]:
     if getattr(graph, "checkpointer", None) is None:
         return []
     snapshot = await graph.aget_state(build_runtime_config(thread_id=thread_id))
-    rendered: list[dict[str, str]] = []
+    rendered: list[ChatMessage] = []
     for msg in snapshot.values.get("messages", []):
         if msg.type == "human":
-            rendered.append({"role": "user", "text": msg.text})
+            rendered.append(ChatMessage(role="user", text=msg.text))
         elif isinstance(msg, ToolMessage):
             text = (
                 msg.artifact.get("text", msg.content)
                 if isinstance(msg.artifact, dict)
                 else msg.content
             )
-            rendered.append({"role": "assistant", "text": str(text)})
+            rendered.append(ChatMessage(role="assistant", text=str(text)))
         elif isinstance(msg, AIMessage) and msg.text and not msg.tool_calls:
             if msg.text.startswith(FOOTER_PREFIX) and rendered:
-                rendered[-1]["text"] += msg.text
+                rendered[-1].text += msg.text
             else:
-                rendered.append({"role": "assistant", "text": msg.text})
+                rendered.append(ChatMessage(role="assistant", text=msg.text))
     return rendered
 
 
 @router.get("/threads")
 async def list_threads_endpoint(
     request: Request, identity: Identity = Depends(require_identity)
-) -> dict[str, Any]:
+) -> ThreadList:
     """Return the caller's conversations and today's quota, for the sidebar."""
     bind_log_context(user_id=identity.user_id)
     pool = request.app.state.pool
-    return {
-        "threads": [
-            row.__dict__ for row in await list_threads(pool, user_id=identity.user_id)
+    return ThreadList(
+        threads=[
+            ThreadSummary.model_validate(row)
+            for row in await list_threads(pool, user_id=identity.user_id)
         ],
-        "quota": {
-            "used": await quota_used(pool, user_id=identity.user_id),
-            "limit": DAILY_RESEARCH_TURNS,
-        },
-    }
+        quota=QuotaView(
+            used=await quota_used(pool, user_id=identity.user_id),
+            limit=DAILY_RESEARCH_TURNS,
+        ),
+    )
 
 
 @router.get("/threads/{thread_id}")
@@ -818,7 +859,7 @@ async def read_thread_endpoint(
     thread_id: ThreadIdPath,
     request: Request,
     identity: Identity = Depends(require_identity),
-) -> dict[str, Any]:
+) -> ThreadMessages:
     """Return one of the caller's own conversations."""
     bind_log_context(thread_id=thread_id, user_id=identity.user_id)
     # Rate-limited like the streaming route: this reads a checkpoint and
@@ -829,7 +870,9 @@ async def read_thread_endpoint(
     pool = request.app.state.pool
     if not await owns_thread(pool, thread_id=thread_id, user_id=identity.user_id):
         raise HTTPException(status_code=403, detail="That conversation is not yours.")
-    return {"thread_id": thread_id, "messages": await _thread_messages(thread_id)}
+    return ThreadMessages(
+        thread_id=thread_id, messages=await _thread_messages(thread_id)
+    )
 
 
 @router.get("/admin/threads/{thread_id}")
@@ -837,7 +880,7 @@ async def admin_read_thread_endpoint(
     thread_id: ThreadIdPath,
     request: Request,
     identity: Identity = Depends(require_identity),
-) -> dict[str, Any]:
+) -> ThreadMessages:
     """Return any conversation, for a staff user (Q6, Q17b)."""
     bind_log_context(thread_id=thread_id, user_id=identity.user_id)
     _enforce_rate_limit(request, identity)
@@ -845,7 +888,9 @@ async def admin_read_thread_endpoint(
     # staff was revoked stays valid for its full 15 minutes otherwise.
     if not await is_staff(request.app.state.pool, user_id=identity.user_id):
         raise HTTPException(status_code=403, detail="Staff only.")
-    return {"thread_id": thread_id, "messages": await _thread_messages(thread_id)}
+    return ThreadMessages(
+        thread_id=thread_id, messages=await _thread_messages(thread_id)
+    )
 
 
 app.include_router(router)
