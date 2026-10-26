@@ -2,7 +2,6 @@
 
 from agents.expert.prompts import (
     ANSWER_SYSTEM_PROMPT,
-    EXPERT_SYSTEM_PROMPT,
 )
 
 
@@ -87,18 +86,3 @@ def test_answer_prompt_has_no_unfilled_braces() -> None:
 
     # Assert
     assert unfilled_braces == []
-
-
-def test_expert_system_prompt_alias_matches_answer_system_prompt() -> None:
-    """Exporting EXPERT_SYSTEM_PROMPT provides a consistent naming convention.
-
-    Different modules may reference either name during migration.
-    """
-    # Arrange
-    canonical_prompt = ANSWER_SYSTEM_PROMPT
-
-    # Act
-    alias_prompt = EXPERT_SYSTEM_PROMPT
-
-    # Assert
-    assert alias_prompt == canonical_prompt

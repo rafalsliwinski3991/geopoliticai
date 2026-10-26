@@ -8,15 +8,22 @@ from __future__ import annotations
 
 from config import LLMSettings
 
+# The supervisor also answers chat turns, so it keeps the 4_096-token ceiling
+# the retired chat branch had: a sourceless answer of sixteen thousand tokens
+# is a bug. Reasoning tokens count against both ceilings on a reasoning model,
+# hence `reasoning_effort`.
 SUPERVISOR_LLM_SETTINGS: LLMSettings = LLMSettings(
     model="gpt-5-mini",
     temperature=0.0,
+    max_output_tokens=4_096,
+    reasoning_effort="low",
 )
 
 FOOTER_LLM_SETTINGS: LLMSettings = LLMSettings(
     model="gpt-5-mini",
     temperature=0.0,
     max_output_tokens=250,
+    reasoning_effort="minimal",
 )
 
 # Routing is a short, cheap, deterministic call: a small token ceiling and a

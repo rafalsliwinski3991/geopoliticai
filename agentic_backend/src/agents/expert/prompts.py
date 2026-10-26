@@ -20,5 +20,3 @@ neutral statement. Where the sources agree, do not manufacture a disagreement.
 establish. Do not fill the gap from your own knowledge.
 4. Write in English, in markdown. Choose whatever structure the question calls \
 for. There is no required template, heading, preamble, or closing section."""
-
-EXPERT_SYSTEM_PROMPT = ANSWER_SYSTEM_PROMPT

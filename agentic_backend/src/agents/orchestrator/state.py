@@ -42,27 +42,22 @@ class RouteDecision(BaseModel):
     )
 
 
-class GeopoliticState(TypedDict):
-    """The multi-agent orchestrator shared workspace state.
+class OrchestratorState(TypedDict):
+    """The orchestrator's conversation state.
 
-    Specialist agent outputs (sources, synthesis, forecast, report draft) accumulate
-    in dedicated channels alongside conversation messages.
+    The specialist tools write their synthesis and forecasts into dedicated
+    channels beside the messages; the reporter reads them to know whether any
+    researched material exists.
     """
 
     messages: Annotated[list[AnyMessage], add_messages]
     destination: NotRequired[Destination]
     standalone_query: NotRequired[str]
-    retrieved_sources: NotRequired[list[dict[str, str]]]
     expert_synthesis: NotRequired[list[str]]
     forecast_data: NotRequired[list[dict[str, Any]]]
-    report_draft: NotRequired[str | None]
 
 
-# Backward compatibility alias
-OrchestratorState = GeopoliticState
-
-
-def build_initial_orchestrator_state(query: str) -> GeopoliticState:
+def build_initial_orchestrator_state(query: str) -> OrchestratorState:
     """Return the input for one turn: exactly one new human message.
 
     The `add_messages` reducer appends this to whatever the checkpointer
