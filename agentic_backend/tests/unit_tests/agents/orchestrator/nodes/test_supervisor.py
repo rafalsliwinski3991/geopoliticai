@@ -16,7 +16,11 @@ from langchain_core.messages import (
 from langchain_core.runnables import RunnableConfig
 from langgraph.constants import TAG_NOSTREAM
 
-from agents.orchestrator.config import HISTORY_WINDOW_MESSAGES
+from agents.orchestrator.config import (
+    FOOTER_LLM_SETTINGS,
+    HISTORY_WINDOW_MESSAGES,
+    SUPERVISOR_LLM_SETTINGS,
+)
 from agents.orchestrator.consts.menu import (
     DYNAMIC_FOOTER_SYSTEM_PROMPT,
     STATIC_NEXT_STEPS_MENU,
@@ -706,3 +710,30 @@ def test_footer_client_is_not_streamed(monkeypatch: pytest.MonkeyPatch) -> None:
     # Assert
     assert recorder.bound_tools == []
     assert recorder.config_kwargs == {"tags": [TAG_NOSTREAM]}
+
+
+@pytest.mark.parametrize(
+    ("build_client", "expected"),
+    [
+        ("_build_supervisor_client", SUPERVISOR_LLM_SETTINGS),
+        ("_build_footer_client", FOOTER_LLM_SETTINGS),
+    ],
+    ids=["supervisor", "footer"],
+)
+def test_each_client_is_built_from_its_own_llm_settings(
+    monkeypatch: pytest.MonkeyPatch, build_client: str, expected: Any
+) -> None:
+    # Arrange
+    received: list[Any] = []
+
+    def record_settings(settings: Any) -> RecordingChatModel:
+        received.append(settings)
+        return RecordingChatModel()
+
+    monkeypatch.setattr(node_module, "build_chat_model", record_settings)
+
+    # Act
+    getattr(node_module, build_client)()
+
+    # Assert
+    assert received == [expected]
