@@ -31,5 +31,8 @@ def test_the_write_call_times_out_with_its_step() -> None:
 
 def test_the_drafter_gets_one_redraft() -> None:
     """Two tries in all: the first draft and one redraft with the defect named."""
+    # Act
+    attempts = LIMITS.draft_attempts
+
     # Assert
-    assert LIMITS.draft_attempts == 2
+    assert attempts == 2
