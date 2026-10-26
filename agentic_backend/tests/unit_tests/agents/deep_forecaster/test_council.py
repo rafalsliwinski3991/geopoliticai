@@ -56,8 +56,8 @@ STRAY_WHY = (
     "(it may cite 1 and 3)"
 )
 SHORT_MEMBER_SECONDS = 0.05
-SLOW_TRY_SECONDS = 0.15
-MEMBER_LIMIT_SECONDS = 0.2
+SLOW_TRY_SECONDS = 0.3
+MEMBER_LIMIT_SECONDS = 0.4
 
 
 def _valid() -> Ballot:
@@ -557,7 +557,7 @@ async def test_the_reask_gets_its_own_member_limit(
     shorten_limit(monkeypatch, "council", member_seconds=MEMBER_LIMIT_SECONDS)
     # Act
     result, attempts = await _cast(1, 3, [], claims=2, quoted_by_claim=QUOTED_BY_CLAIM)
-    # Assert: 0.15 s + 0.15 s = 0.3 s is over the 0.2 s limit, and both try.
+    # Assert: 0.3 s + 0.3 s = 0.6 s is over the 0.4 s limit, and both try.
     assert result == _valid()
     assert attempts == 2
 
