@@ -21,6 +21,7 @@ from agents.reporter.consts.messages import (
     REVISION_CAP_NOTICE,
 )
 from evals.reporter_fixed import read_outcome, run_reporter_fixed
+from models import OutlinePause
 
 RESEARCHED = [
     {"role": "user", "content": "What did NATO agree?"},
@@ -33,6 +34,12 @@ GREETING_ONLY = [
     {"role": "user", "content": "Write me a report on that"},
 ]
 OUTLINE = ["Target", "Funding"]
+_PAUSE = {
+    "outline": OUTLINE,
+    "notice": "",
+    "revisions_used": 0,
+    "revisions_allowed": 3,
+}
 
 
 class ScriptedGraph:
@@ -51,7 +58,7 @@ class ScriptedGraph:
 
     async def aget_state(self, config: Any) -> Any:
         waiting = self.waiting_after_each_call[len(self.inputs) - 1]
-        interrupts = [SimpleNamespace(value={"outline": OUTLINE})] if waiting else []
+        interrupts = [SimpleNamespace(value=_PAUSE)] if waiting else []
         return SimpleNamespace(interrupts=interrupts)
 
     def resumes(self) -> list[Any]:
@@ -65,7 +72,7 @@ class ScriptedIntents:
         self.intents = list(intents)
         self.replies: list[str] = []
 
-    async def __call__(self, reply: str, pause: dict[str, Any]) -> ResumeIntent:
+    async def __call__(self, reply: str, pause: OutlinePause) -> ResumeIntent:
         if not self.intents:
             raise AssertionError(
                 f"reply {reply!r} was classified, but none was scripted"

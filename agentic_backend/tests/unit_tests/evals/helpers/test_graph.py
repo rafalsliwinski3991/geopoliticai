@@ -12,6 +12,7 @@ from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.graph import END, START, StateGraph
 from langgraph.types import Command, interrupt
+from pydantic import ValidationError
 
 from evals.helpers.graph import (
     dump_sources,
@@ -21,7 +22,7 @@ from evals.helpers.graph import (
     record_sources,
     replay_sources,
 )
-from models import Candidate, Source, SourcePolicy
+from models import Candidate, OutlinePause, Source, SourcePolicy
 
 search_node: Any = importlib.import_module("agents.expert.nodes.search_and_fetch")
 tools_module: Any = importlib.import_module("agents.deep_expert.tools")
@@ -34,6 +35,12 @@ POLICY = SourcePolicy(
     min_source_chars=0,
     max_source_chars=0,
 )
+_PAUSE = {
+    "outline": ["A"],
+    "notice": "",
+    "revisions_used": 0,
+    "revisions_allowed": 3,
+}
 
 
 def test_load_sources_builds_source_objects() -> None:
@@ -99,7 +106,7 @@ def _pause_graph(value: Any) -> Any:
 @pytest.mark.anyio
 async def test_pending_pause_returns_dict_interrupt_value() -> None:
     # Arrange
-    graph = _pause_graph({"outline": ["A"]})
+    graph = _pause_graph(_PAUSE)
     config = {"configurable": {"thread_id": "t1"}}
     await graph.ainvoke({}, config)
 
@@ -107,13 +114,13 @@ async def test_pending_pause_returns_dict_interrupt_value() -> None:
     pause = await pending_pause(graph, config)
 
     # Assert
-    assert pause == {"outline": ["A"]}
+    assert pause == OutlinePause.model_validate(_PAUSE)
 
 
 @pytest.mark.anyio
 async def test_pending_pause_returns_none_after_resume() -> None:
     # Arrange
-    graph = _pause_graph({"outline": ["A"]})
+    graph = _pause_graph(_PAUSE)
     config = {"configurable": {"thread_id": "t2"}}
     await graph.ainvoke({}, config)
 
@@ -126,17 +133,15 @@ async def test_pending_pause_returns_none_after_resume() -> None:
 
 
 @pytest.mark.anyio
-async def test_pending_pause_wraps_non_dict_interrupt_value() -> None:
+async def test_pending_pause_rejects_a_value_that_is_not_a_pause() -> None:
     # Arrange
     graph = _pause_graph("paused!")
     config = {"configurable": {"thread_id": "t3"}}
     await graph.ainvoke({}, config)
 
-    # Act
-    pause = await pending_pause(graph, config)
-
-    # Assert
-    assert pause == {"outline": [], "notice": "paused!"}
+    # Act / Assert
+    with pytest.raises(ValidationError):
+        await pending_pause(graph, config)
 
 
 @pytest.mark.anyio

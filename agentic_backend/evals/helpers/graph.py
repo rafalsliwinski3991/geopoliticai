@@ -11,7 +11,7 @@ from unittest.mock import patch
 from langchain_core.messages import AIMessage, AnyMessage, HumanMessage
 
 import search
-from models import Candidate, Source, SourcePolicy
+from models import Candidate, OutlinePause, Source, SourcePolicy
 
 # The node imports both functions by name, so they are patched where it looks them up.
 SEARCH_NODE_MODULE = "agents.expert.nodes.search_and_fetch"
@@ -122,12 +122,9 @@ def dump_sources(sources: Sequence[Source]) -> list[dict[str, str]]:
     return [asdict(source) for source in sources]
 
 
-async def pending_pause(graph: Any, config: dict[str, Any]) -> dict[str, Any] | None:
+async def pending_pause(graph: Any, config: dict[str, Any]) -> OutlinePause | None:
     """Return the value a paused thread waits on, or None (mirrors `api._pending_pause`)."""
     interrupts = (await graph.aget_state(config)).interrupts
     if not interrupts:
         return None
-    value = interrupts[0].value
-    if isinstance(value, dict):
-        return value
-    return {"outline": [], "notice": str(value)}
+    return OutlinePause.model_validate(interrupts[0].value)

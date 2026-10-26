@@ -71,6 +71,7 @@ from frames import (
     encode_frame,
 )
 from models import (
+    OutlinePause,
     PipelineError,
     QuotaExceededError,
     ReportNotPendingError,
@@ -445,7 +446,7 @@ async def healthcheck() -> dict[str, str]:
     return {"status": "ok"}
 
 
-async def _pending_pause(thread_id: str) -> dict[str, Any] | None:
+async def _pending_pause(thread_id: str) -> OutlinePause | None:
     """Return the outline a paused thread is waiting on, or None.
 
     Called only on the resume path (see `_turn_input`).
@@ -464,10 +465,7 @@ async def _pending_pause(thread_id: str) -> dict[str, Any] | None:
     interrupts = snapshot.interrupts
     if not interrupts:
         return None
-    value = interrupts[0].value
-    if isinstance(value, dict):
-        return value
-    return {"outline": [], "notice": str(value)}
+    return OutlinePause.model_validate(interrupts[0].value)
 
 
 async def _turn_input(payload: RunPipelineRequest) -> Any:

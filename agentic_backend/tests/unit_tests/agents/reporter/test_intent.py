@@ -4,8 +4,13 @@ from typing import Any, cast
 import pytest
 
 from agents.reporter.state import ResumeAction, ResumeIntent
+from models import OutlinePause
 
 node_module = importlib.import_module("agents.reporter.intent")
+
+_PAUSE = OutlinePause(
+    outline=["First", "Second"], notice="", revisions_used=0, revisions_allowed=3
+)
 
 
 def _stub_intent(
@@ -41,9 +46,7 @@ async def test_each_action_round_trips_with_a_normalized_instruction(
     _stub_intent(monkeypatch, cast(ResumeAction, action), instruction)
 
     # Act
-    result = await node_module.classify_resume_intent(
-        "some line", {"outline": ["First", "Second"]}
-    )
+    result = await node_module.classify_resume_intent("some line", _PAUSE)
 
     # Assert
     expected_instruction = "drop the Poland section" if action == "revise" else ""
@@ -60,9 +63,7 @@ async def test_a_revise_with_an_empty_instruction_falls_back_to_the_users_text(
     _stub_intent(monkeypatch, "revise", "   ")
 
     # Act
-    result = await node_module.classify_resume_intent(
-        "  Add   Poland  ", {"outline": ["First"]}
-    )
+    result = await node_module.classify_resume_intent("  Add   Poland  ", _PAUSE)
 
     # Assert
     assert result == ResumeIntent(action="revise", instruction="Add Poland")
