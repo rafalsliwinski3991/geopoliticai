@@ -18,6 +18,11 @@ logger = logging.getLogger(__name__)
 # survive the clip (review thread, #143).
 MAX_ANSWER_CHARS = 50_000
 
+# What the supervisor's post-tool message starts with. The footer reaches the
+# browser as a notice, so the delivery layer, the thread rebuild and the
+# reporter's transcript all recognise it by this prefix and skip the copy.
+FOOTER_PREFIX = "\n\n---\n"
+
 REQUIRED_ENV_VARS = (
     "OPENAI_API_KEY",
     "BRAVE_SEARCH_KEY",

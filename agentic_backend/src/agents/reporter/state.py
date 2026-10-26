@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from typing import Literal, TypedDict
+from typing import Any, Literal, TypedDict
 
-from langchain_core.messages import AIMessage, AnyMessage, HumanMessage
+from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, ToolMessage
 from pydantic import BaseModel, Field
 from typing_extensions import NotRequired
 
 from agents.reporter.config import MAX_TRANSCRIPT_CHARS
+from config import FOOTER_PREFIX
 from models import CleanText
 
 GateAction = Literal["approve", "revise", "cancel"]
@@ -80,7 +81,23 @@ def build_transcript(messages: Sequence[AnyMessage]) -> str:
     blocks: list[str] = []
     used = 0
     for message in reversed(list(messages)):
-        text = message.text.strip()
+        if isinstance(message, AIMessage):
+            if message.tool_calls:
+                continue
+            if message.text.startswith(FOOTER_PREFIX):
+                continue
+            text = message.text.strip()
+        elif isinstance(message, ToolMessage):
+            artifact = message.artifact
+            if isinstance(artifact, dict) and "text" in artifact:
+                text = str(artifact["text"]).strip()
+            else:
+                text = str(message.content).strip()
+        elif isinstance(message, HumanMessage):
+            text = message.text.strip()
+        else:
+            text = getattr(message, "text", str(message.content)).strip()
+
         if not text:
             continue
         speaker = "User" if isinstance(message, HumanMessage) else "Assistant"
@@ -93,37 +110,54 @@ def build_transcript(messages: Sequence[AnyMessage]) -> str:
     return "\n\n".join(blocks)
 
 
-def has_researched_material(messages: Sequence[AnyMessage]) -> bool:
+def has_researched_material(
+    messages: Sequence[AnyMessage],
+    workspace_synthesis: Sequence[str] | None = None,
+    workspace_forecasts: Sequence[Any] | None = None,
+) -> bool:
     """Is there anything in this thread a report could be built from?
 
-    (Q5.) A report is made of researched answers, full stop (Q3). The expert's
-    `ANSWER_SYSTEM_PROMPT` rule 1 requires every factual sentence to carry an
-    inline `[anchor](URL)` link, and the orchestrator's `CHAT_SYSTEM_PROMPT`
-    rule 1 forbids the chat branch from citing anything. So "an assistant turn
-    containing a markdown link to http(s)" is a deterministic proxy for "the
-    expert has answered in this thread" — no model call, no coin flip.
+    (Q5.) A report is made of researched answers, full stop (Q3). Material is
+    found three ways: the orchestrator's `expert_synthesis` channel holds an
+    answer, its `forecast_data` channel holds a forecast, or a message in the
+    thread carries a markdown link to http(s). The link is a deterministic
+    proxy for "a specialist answered": the expert's `ANSWER_SYSTEM_PROMPT`
+    rule 1 requires every factual sentence to carry an inline `[anchor](URL)`
+    link, and the supervisor prompt's rule 1 forbids a chat answer from citing
+    anything. For a ToolMessage the link is looked for in its artifact text,
+    or in its content when it has no artifact text.
 
-    It is a *proxy*, not a proof, and the direction it fails in is known: a
-    chat answer that emits a markdown link despite its prompt — echoing a URL
-    the user pasted, say — passes this gate. `CHAT_SYSTEM_PROMPT` rule 1 is a
-    prompt, and prompts are not guarantees. The consequence is bounded: the
-    outline and the report are built only from transcript content, so the worst
-    case is a thin report over chat material, not a fabricated one. Making this
+    The proxy is not a proof, and the direction it fails in is known: a chat
+    answer that emits a markdown link despite its prompt (echoing a URL the
+    user pasted, say) passes this gate. The consequence is bounded: the outline
+    and the report are built only from transcript content, so the worst case
+    is a thin report over chat material, not a fabricated one. Making this
     exact would mean marking each `AIMessage` with the branch that produced it
-    and persisting that through the checkpoint — a change to the expert and chat
-    nodes and to what the thread stores, which is real scope this plan does not
-    have. Recorded as a follow-up (§7 Q-F) and asserted as a known false
-    positive in `test_state.py`, so it is a decision rather than an oversight.
+    and persisting that through the checkpoint, which is real scope this plan
+    does not have. Recorded as a follow-up (§7 Q-F) and asserted as a known
+    false positive in `test_state.py`, so it is a decision rather than an
+    oversight.
 
-    This exists because the obvious check — an empty transcript — is
-    unreachable: by the time the reporter node runs, `add_messages` has already
+    This exists because the obvious check, an empty transcript, is
+    unreachable: by the time the reporter runs, `add_messages` has already
     merged the user's own request into `messages`, so the transcript always
     holds at least that turn.
     """
-    return any(
-        isinstance(message, AIMessage) and "](http" in message.text
-        for message in messages
-    )
+    if workspace_synthesis:
+        return True
+    if workspace_forecasts:
+        return True
+    for message in messages:
+        if isinstance(message, AIMessage) and "](http" in message.text:
+            return True
+        if isinstance(message, ToolMessage):
+            artifact = message.artifact
+            if isinstance(artifact, dict) and "text" in artifact:
+                if "](http" in str(artifact["text"]):
+                    return True
+            elif "](http" in str(message.content):
+                return True
+    return False
 
 
 def build_initial_reporter_state(transcript: str) -> ReporterState:
