@@ -270,7 +270,8 @@ the release images, production nginx or production cookie settings.
 
 Dispatch the `Evals` workflow by hand. Pick `type` when dispatching: `fixed` (the default;
 inputs written in advance, a few minutes), `live` (Brave and today's pages, up to about 90 minutes),
-or `all`. It reports to the production Phoenix at
+or `all`. To run only some evals, fill `evals` with their names, comma-separated and without
+spaces (`expert_fixed,deep_expert_live`); it overrides `type`. It reports to the production Phoenix at
 `https://politicalagent.eu/phoenix/`; each run's datasets and experiments appear there, and each
 experiment's traces sit in that experiment's own project. Besides the OpenAI, OpenRouter, Gemini and
 Brave keys it needs two secrets in the `dev` environment: `PHOENIX_COLLECTOR_ENDPOINT`
