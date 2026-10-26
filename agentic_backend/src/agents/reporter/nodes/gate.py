@@ -9,29 +9,22 @@ from langgraph.types import interrupt
 
 from agents.reporter.config import MAX_REVISION_ROUNDS
 from agents.reporter.consts.messages import CANCELLED_NOTICE
-from agents.reporter.state import GateAction, ReporterState
+from agents.reporter.state import GateReply, ReporterState
 
 logger = logging.getLogger(__name__)
 
 
-def _decode(reply: Any) -> tuple[GateAction, str]:
-    """Read `{action, instruction}` out of whatever the resume carried.
+def _decode(reply: Any) -> GateReply:
+    """Read the `GateReply` out of whatever the resume carried.
 
     The delivery layer always sends the dict form. A bare string is accepted so
     that a human typing into Studio's resume box gets the obvious behaviour —
-    typing at an outline means revise — instead of a crash.
+    typing at an outline means revise — instead of a crash. Any other shape,
+    including an unknown action, raises `ValidationError`.
     """
-    if isinstance(reply, dict):
-        action = reply.get("action")
-        instruction = str(reply.get("instruction") or "")
-    else:
-        action = "revise"
-        instruction = str(reply or "")
-    if action == "approve":
-        return "approve", ""
-    if action == "cancel":
-        return "cancel", ""
-    return "revise", instruction
+    if isinstance(reply, str):
+        return GateReply(action="revise", instruction=reply)
+    return GateReply.model_validate(reply)
 
 
 async def gate(state: ReporterState) -> dict[str, Any]:
@@ -62,15 +55,15 @@ async def gate(state: ReporterState) -> dict[str, Any]:
             "revisions_allowed": MAX_REVISION_ROUNDS,
         }
     )
-    action, instruction = _decode(reply)
-    logger.info("gate: decision=%s", action)
-    if action == "revise":
+    decision = _decode(reply)
+    logger.info("gate: decision=%s", decision.action)
+    if decision.action == "revise":
         return {
             "decision": "revise",
-            "instruction": instruction,
+            "instruction": decision.instruction,
             "revisions": state["revisions"] + 1,
             "notice": "",
         }
-    if action == "cancel":
+    if decision.action == "cancel":
         return {"decision": "cancel", "instruction": "", "notice": CANCELLED_NOTICE}
     return {"decision": "approve", "instruction": "", "notice": ""}
