@@ -9,18 +9,31 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from typing import Literal
 
 import jwt
 from fastapi import HTTPException, Request
+from pydantic import BaseModel, ValidationError
 
 JWT_ALGORITHM = "HS256"
-# simplejwt's own defaults (`USER_ID_CLAIM`, `TOKEN_TYPE_CLAIM`). Both are
-# asserted by a unit test against a token minted with the documented settings,
-# so a change on the Django side fails here rather than in production.
+# simplejwt's own default `USER_ID_CLAIM`, and the field name `AccessClaims`
+# reads it by. A unit test asserts both against a token minted with the
+# documented settings, so a change on the Django side fails here rather than
+# in production.
 USER_ID_CLAIM = "user_id"
-TOKEN_TYPE_CLAIM = "token_type"
-ACCESS_TOKEN_TYPE = "access"
 BEARER_PREFIX = "bearer "
+
+
+class AccessClaims(BaseModel):
+    """The claims of an access token; simplejwt's other claims are ignored."""
+
+    # A refresh token is signed with the same key and would otherwise pass.
+    token_type: Literal["access"]
+    # simplejwt stringifies the id unconditionally in `Token.for_user`
+    # (`user_id = str(user_id)`), whatever `USER_ID_FIELD` is — so this claim is
+    # always a string and the coercion is the normal path, not a defensive one.
+    # It also keeps an unvalidated value out of a SQL parameter.
+    user_id: int
 
 
 @dataclass(frozen=True)
@@ -39,30 +52,19 @@ def decode_token(token: str) -> Identity:
             the caller both mean "fetch a new one".
     """
     try:
-        claims = jwt.decode(
-            token,
-            os.environ["JWT_SIGNING_KEY"],
-            algorithms=[JWT_ALGORITHM],
-            options={"require": ["exp", USER_ID_CLAIM]},
+        claims = AccessClaims.model_validate(
+            jwt.decode(
+                token,
+                os.environ["JWT_SIGNING_KEY"],
+                algorithms=[JWT_ALGORITHM],
+                options={"require": ["exp", USER_ID_CLAIM]},
+            )
         )
-    except jwt.InvalidTokenError as exc:
+    except (jwt.InvalidTokenError, ValidationError) as exc:
         raise HTTPException(
             status_code=401, detail="Invalid or expired token."
         ) from exc
-    # A refresh token is signed with the same key and would otherwise pass.
-    if claims.get(TOKEN_TYPE_CLAIM) != ACCESS_TOKEN_TYPE:
-        raise HTTPException(status_code=401, detail="Invalid or expired token.")
-    try:
-        # simplejwt stringifies the id unconditionally in `Token.for_user`
-        # (`user_id = str(user_id)`), whatever `USER_ID_FIELD` is — so this
-        # claim is always a string and the coercion is the normal path, not a
-        # defensive one. It also keeps an unvalidated value out of a SQL
-        # parameter.
-        return Identity(user_id=int(claims[USER_ID_CLAIM]))
-    except (TypeError, ValueError) as exc:
-        raise HTTPException(
-            status_code=401, detail="Invalid or expired token."
-        ) from exc
+    return Identity(user_id=claims.user_id)
 
 
 async def require_identity(request: Request) -> Identity:
