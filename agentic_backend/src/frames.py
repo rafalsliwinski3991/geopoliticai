@@ -5,7 +5,8 @@ Nodes build `ProgressFrame` and `NoticeEvent` and hand them to their
 `json.dumps(model_dump(exclude_none=True))`, which is byte-identical to the
 hand-built dicts it replaced (brainstorm 2026Oct22 Q5): fields are declared in
 the order those dicts wrote them, and an unset optional field is left out
-rather than written as null. Studio carries these objects too: langgraph_api
+rather than written as null. The one exception is `PauseFrame`, which inherits
+`OutlinePause`'s fields and so writes `type` last. Studio carries these objects too: langgraph_api
 serializes a Pydantic object through `model_dump()`.
 """
 
@@ -15,6 +16,8 @@ import json
 from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
+
+from models import OutlinePause
 
 
 class ProgressFrame(BaseModel):
@@ -43,18 +46,10 @@ class TokenFrame(BaseModel):
     content: str
 
 
-class PauseFrame(BaseModel):
+class PauseFrame(OutlinePause):
     """The outline a paused report waits on; built from the gate's `interrupt()` payload."""
 
-    # Pydantic drops unknown keys by default; the gate may add keys, and today's
-    # `{"type": "pause", **value}` forwards them all, so extras are kept.
-    model_config = ConfigDict(extra="allow")
-
     type: Literal["pause"] = "pause"
-    outline: list[str]
-    notice: str
-    revisions_used: int | None = None
-    revisions_allowed: int | None = None
 
 
 class ResultFrame(BaseModel):

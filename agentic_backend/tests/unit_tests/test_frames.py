@@ -39,15 +39,9 @@ from frames import (
                 revisions_used=0,
                 revisions_allowed=2,
             ),
-            'data: {"type": "pause", "outline": ["Intro", "Analysis"], '
-            '"notice": "", "revisions_used": 0, "revisions_allowed": 2}\n\n',
-            id="pause with the revision keys",
-        ),
-        pytest.param(
-            PauseFrame(outline=["Intro"], notice="Nothing to report."),
-            'data: {"type": "pause", "outline": ["Intro"], '
-            '"notice": "Nothing to report."}\n\n',
-            id="pause without the revision keys",
+            'data: {"outline": ["Intro", "Analysis"], "notice": "", '
+            '"revisions_used": 0, "revisions_allowed": 2, "type": "pause"}\n\n',
+            id="pause",
         ),
         pytest.param(
             ResultFrame(output="Done.", kind="answer", truncated=False),
@@ -75,18 +69,14 @@ def test_each_frame_encodes_to_the_old_bytes(frame: Frame, expected: str) -> Non
     assert encoded == expected
 
 
-def test_an_unset_pause_field_is_left_out() -> None:
-    """A pause without revision counts omits those keys, not writes them as null."""
+def test_a_pause_without_the_revision_counts_is_rejected() -> None:
+    """The gate always sends the counts, so a pause missing them is a producer bug."""
     # Arrange
-    frame = PauseFrame(outline=["Intro"], notice="Nothing to report.")
+    fields = {"outline": ["Intro"], "notice": "Nothing to report."}
 
-    # Act
-    encoded = encode_frame(frame)
-
-    # Assert
-    assert encoded == (
-        'data: {"type": "pause", "outline": ["Intro"], "notice": "Nothing to report."}\n\n'
-    )
+    # Act / Assert
+    with pytest.raises(ValidationError):
+        PauseFrame.model_validate(fields)
 
 
 @pytest.mark.parametrize(

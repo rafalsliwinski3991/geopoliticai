@@ -9,7 +9,6 @@ there is no graph run in flight when it is called.
 from __future__ import annotations
 
 import logging
-from typing import Any
 
 from langchain_core.messages import HumanMessage
 
@@ -17,15 +16,14 @@ from agents.reporter.config import INTENT_LLM_SETTINGS
 from agents.reporter.prompts import RESUME_INTENT_SYSTEM_PROMPT
 from agents.reporter.state import ResumeIntent
 from llm import ainvoke_structured
-from models import squash_whitespace
+from models import OutlinePause, squash_whitespace
 
 logger = logging.getLogger(__name__)
 
 
-async def classify_resume_intent(text: str, pause: dict[str, Any]) -> ResumeIntent:
+async def classify_resume_intent(text: str, pause: OutlinePause) -> ResumeIntent:
     """Sort one line typed at a paused gate into approve/revise/cancel/new_question."""
-    sections = pause.get("outline") or []
-    outline_block = "\n".join(f"{i}. {s}" for i, s in enumerate(sections, 1))
+    outline_block = "\n".join(f"{i}. {s}" for i, s in enumerate(pause.outline, 1))
     human_prompt = (
         f"Outline awaiting a decision:\n\n{outline_block}\n\nUser typed:\n\n{text}"
     )

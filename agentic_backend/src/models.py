@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Annotated, ClassVar
 
-from pydantic import AfterValidator
+from pydantic import AfterValidator, BaseModel, ConfigDict
 
 
 def squash_whitespace(text: str) -> str:
@@ -16,6 +16,19 @@ def squash_whitespace(text: str) -> str:
 # A schema field of this type arrives with its whitespace squashed. Defined after
 # the function it applies, the way `config.DEFAULT_LLM_SETTINGS` follows its class.
 CleanText = Annotated[str, AfterValidator(squash_whitespace)]
+
+
+class OutlinePause(BaseModel):
+    """The outline a paused report waits on: the gate's `interrupt()` payload."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    # Deliberately no "kind" key: `result` frames use it for report/answer, and
+    # the pause frame built from this model is read by the same client handler.
+    outline: list[str]
+    notice: str
+    revisions_used: int
+    revisions_allowed: int
 
 
 class PipelineError(RuntimeError):

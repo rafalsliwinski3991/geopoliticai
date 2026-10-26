@@ -42,6 +42,7 @@ from frames import NoticeEvent, PauseFrame, ProgressFrame, TokenFrame
 from models import (
     LLMInvocationError,
     NoSourcesError,
+    OutlinePause,
     PipelineError,
     ResearchLimitError,
     SearchUnavailableError,
@@ -189,12 +190,14 @@ def _progress_labels(events: list[dict[str, Any]]) -> list[str]:
     return [event["label"] for event in events if event["type"] == "progress"]
 
 
-def _pending_pause_stub(thread_id: str) -> dict[str, Any]:
+def _pending_pause_stub(thread_id: str) -> OutlinePause:
     """The pause frame `_turn_input` must find for a resume to proceed."""
-    return {"outline": ["Section one"], "revisions_used": 0, "revisions_allowed": 3}
+    return OutlinePause(
+        outline=["Section one"], notice="", revisions_used=0, revisions_allowed=3
+    )
 
 
-async def _pending_pause_async(thread_id: str) -> dict[str, Any]:
+async def _pending_pause_async(thread_id: str) -> OutlinePause:
     return _pending_pause_stub(thread_id)
 
 
@@ -530,10 +533,10 @@ async def test_resume_with_no_pending_pause_is_a_409_error_frame(
 
     # Arrange
     # Arrange
-    async def no_pause(thread_id: str) -> dict[str, Any] | None:
+    async def no_pause(thread_id: str) -> OutlinePause | None:
         return None
 
-    async def intent(text: str, pause: dict[str, Any]) -> ResumeIntent:
+    async def intent(text: str, pause: OutlinePause) -> ResumeIntent:
         raise AssertionError("classify_resume_intent must not run without a pause")
 
     monkeypatch.setattr(api, "_pending_pause", no_pause)
@@ -588,15 +591,17 @@ async def test_an_approve_resume_sends_a_resume_command(
 ) -> None:
     # Arrange
     # Arrange
-    async def pending(thread_id: str) -> dict[str, Any] | None:
-        return {
-            "outline": ["Section one"],
-            "notice": "",
-            "revisions_used": 1,
-            "revisions_allowed": 3,
-        }
+    async def pending(thread_id: str) -> OutlinePause | None:
+        return OutlinePause.model_validate(
+            {
+                "outline": ["Section one"],
+                "notice": "",
+                "revisions_used": 1,
+                "revisions_allowed": 3,
+            }
+        )
 
-    async def intent(text: str, pause: dict[str, Any]) -> ResumeIntent:
+    async def intent(text: str, pause: OutlinePause) -> ResumeIntent:
         return ResumeIntent(action="approve", instruction="")
 
     monkeypatch.setattr(api, "_pending_pause", pending)
@@ -629,15 +634,17 @@ async def test_an_approve_resume_proceeds_at_the_cap(
 
     # Arrange
     # Arrange
-    async def pending(thread_id: str) -> dict[str, Any] | None:
-        return {
-            "outline": ["Section one"],
-            "notice": "",
-            "revisions_used": 1,
-            "revisions_allowed": 3,
-        }
+    async def pending(thread_id: str) -> OutlinePause | None:
+        return OutlinePause.model_validate(
+            {
+                "outline": ["Section one"],
+                "notice": "",
+                "revisions_used": 1,
+                "revisions_allowed": 3,
+            }
+        )
 
-    async def intent(text: str, pause: dict[str, Any]) -> ResumeIntent:
+    async def intent(text: str, pause: OutlinePause) -> ResumeIntent:
         return ResumeIntent(action="approve", instruction="")
 
     async def exhausted(pool: Any, *, user_id: int) -> int:
@@ -668,15 +675,17 @@ async def test_a_new_question_resume_starts_a_fresh_turn(
 ) -> None:
     # Arrange
     # Arrange
-    async def pending(thread_id: str) -> dict[str, Any] | None:
-        return {
-            "outline": ["Section one"],
-            "notice": "",
-            "revisions_used": 1,
-            "revisions_allowed": 3,
-        }
+    async def pending(thread_id: str) -> OutlinePause | None:
+        return OutlinePause.model_validate(
+            {
+                "outline": ["Section one"],
+                "notice": "",
+                "revisions_used": 1,
+                "revisions_allowed": 3,
+            }
+        )
 
-    async def intent(text: str, pause: dict[str, Any]) -> ResumeIntent:
+    async def intent(text: str, pause: OutlinePause) -> ResumeIntent:
         return ResumeIntent(action="new_question", instruction="")
 
     monkeypatch.setattr(api, "_pending_pause", pending)
@@ -714,7 +723,7 @@ async def test_a_query_turn_never_reads_the_checkpoint(
 
     # Arrange
     # Arrange
-    async def boom(thread_id: str) -> dict[str, Any] | None:
+    async def boom(thread_id: str) -> OutlinePause | None:
         raise AssertionError("checkpoint read on a plain query turn")
 
     monkeypatch.setattr(api, "_pending_pause", boom)
@@ -1339,7 +1348,7 @@ async def test_a_resume_never_upserts_and_never_mints_a_thread(
     monkeypatch.setattr(api, "owns_thread", own)
     monkeypatch.setattr(api, "_pending_pause", _pending_pause_async)
 
-    async def approve(text: str, pause: dict[str, Any]) -> ResumeIntent:
+    async def approve(text: str, pause: OutlinePause) -> ResumeIntent:
         return ResumeIntent(action="approve", instruction="")
 
     monkeypatch.setattr(api, "classify_resume_intent", approve)
@@ -1840,15 +1849,17 @@ async def test_a_resume_run_counts_nothing_new(
 
     # Arrange
     # Arrange
-    async def pending(thread_id: str) -> dict[str, Any] | None:
-        return {
-            "outline": ["Section one"],
-            "notice": "",
-            "revisions_used": 0,
-            "revisions_allowed": 3,
-        }
+    async def pending(thread_id: str) -> OutlinePause | None:
+        return OutlinePause.model_validate(
+            {
+                "outline": ["Section one"],
+                "notice": "",
+                "revisions_used": 0,
+                "revisions_allowed": 3,
+            }
+        )
 
-    async def intent(text: str, pause: dict[str, Any]) -> ResumeIntent:
+    async def intent(text: str, pause: OutlinePause) -> ResumeIntent:
         return ResumeIntent(action="approve", instruction="")
 
     monkeypatch.setattr(api, "_pending_pause", pending)
@@ -1859,7 +1870,9 @@ async def test_a_resume_run_counts_nothing_new(
     ) -> AsyncIterator[api.StreamEvent]:
         # A resumed report run: the reporter continues from the interrupt; no
         # `classify` update frame ever arrives in this run.
-        yield PauseFrame(outline=["Section one"], notice="")
+        yield PauseFrame(
+            outline=["Section one"], notice="", revisions_used=0, revisions_allowed=3
+        )
         yield TokenFrame(content="The report.")
 
     # Act
@@ -2498,7 +2511,14 @@ async def test_an_empty_answer_gives_the_units_back(
     [
         [TokenFrame(content="The answer.")],
         [TokenFrame(content="x" * (api.MAX_ANSWER_CHARS + 1))],
-        [PauseFrame(outline=["Section one"], notice="")],
+        [
+            PauseFrame(
+                outline=["Section one"],
+                notice="",
+                revisions_used=0,
+                revisions_allowed=3,
+            )
+        ],
     ],
     ids=["answer", "truncated", "pause"],
 )

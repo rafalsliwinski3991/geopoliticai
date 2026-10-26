@@ -10,6 +10,7 @@ from langgraph.types import interrupt
 from agents.reporter.config import MAX_REVISION_ROUNDS
 from agents.reporter.consts.messages import CANCELLED_NOTICE
 from agents.reporter.state import GateReply, ReporterState
+from models import OutlinePause
 
 logger = logging.getLogger(__name__)
 
@@ -43,17 +44,12 @@ async def gate(state: ReporterState) -> dict[str, Any]:
     transient notification.
     """
     reply = interrupt(
-        {
-            # Deliberately no "kind" key. The SSE frame this becomes is already
-            # typed `pause`, and `result` frames use "kind" for report/answer.
-            # One name meaning two things, on frames the same client handler
-            # reads, is a trap. `test_api.py` asserts the frame's shape has no
-            # `kind`, so this stays enforced rather than merely intended.
-            "outline": list(state["outline"]),
-            "notice": state["notice"],
-            "revisions_used": state["revisions"],
-            "revisions_allowed": MAX_REVISION_ROUNDS,
-        }
+        OutlinePause(
+            outline=list(state["outline"]),
+            notice=state["notice"],
+            revisions_used=state["revisions"],
+            revisions_allowed=MAX_REVISION_ROUNDS,
+        ).model_dump()
     )
     decision = _decode(reply)
     logger.info("gate: decision=%s", decision.action)
