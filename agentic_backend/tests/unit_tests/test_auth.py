@@ -101,17 +101,24 @@ def test_a_token_without_a_user_id_claim_is_rejected() -> None:
     "user_id", ["not-a-number", None, [1]], ids=["text", "null", "list"]
 )
 def test_a_user_id_claim_that_is_not_an_integer_is_rejected(user_id: Any) -> None:
+    # Arrange
+    raw = _mint(user_id=user_id)
+
+    # Act + Assert
     with pytest.raises(HTTPException) as exc_info:
-        auth.decode_token(_mint(user_id=user_id))
+        auth.decode_token(raw)
     assert exc_info.value.status_code == 401
 
 
 def test_a_token_without_a_token_type_claim_is_rejected() -> None:
+    # Arrange
     raw = jwt.encode(
         {"user_id": "1", "exp": datetime.now(timezone.utc) + timedelta(minutes=1)},
         _key(),
         algorithm="HS256",
     )
+
+    # Act + Assert
     with pytest.raises(HTTPException) as exc_info:
         auth.decode_token(raw)
     assert exc_info.value.status_code == 401
