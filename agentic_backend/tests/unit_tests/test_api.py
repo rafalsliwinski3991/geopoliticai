@@ -2927,7 +2927,7 @@ async def test_thread_messages_renders_each_message_shape(
     rendered = await api._thread_messages("t-history-1")
 
     # Assert
-    assert rendered == expected
+    assert [message.model_dump() for message in rendered] == expected
 
 
 def _human(text: str) -> Any:
