@@ -35,6 +35,12 @@ POLICY = SourcePolicy(
     min_source_chars=0,
     max_source_chars=0,
 )
+_PAUSE = {
+    "outline": ["A"],
+    "notice": "",
+    "revisions_used": 0,
+    "revisions_allowed": 3,
+}
 
 
 def test_load_sources_builds_source_objects() -> None:
@@ -79,14 +85,6 @@ async def test_replay_sources_raises_when_no_sources_recorded() -> None:
         pytest.raises(RuntimeError, match="no recorded sources"),
     ):
         await search_node.fetch_sources([], POLICY)
-
-
-_PAUSE = {
-    "outline": ["A"],
-    "notice": "",
-    "revisions_used": 0,
-    "revisions_allowed": 3,
-}
 
 
 class _PauseState(TypedDict):
