@@ -1013,6 +1013,7 @@ async def test_fetch_span_keeps_text_at_the_cap_edges(
         ("not_html", "not_html"),
         ("too_short", "too_short"),
         ("extract_failed", "extract_failed"),
+        ("too_large", "too_large"),
         # One trigger per branch label: a status error is a distinct trigger
         # for the `fetch_failed` outcome, an off-list redirect is a distinct
         # trigger for `off_list`, and a missing Location is a distinct trigger
@@ -1091,6 +1092,15 @@ async def test_fetch_span_records_each_drop_reason(
     ) -> httpx.Response:
         return _response([])
 
+    async def oversized_pdf_response(
+        self: httpx.AsyncClient,
+        url: str,
+        *,
+        timeout: object | None = None,
+        follow_redirects: bool = False,
+    ) -> httpx.Response:
+        raise search.PdfTooLargeError("too big")
+
     async def html_response(
         self: httpx.AsyncClient,
         url: str,
@@ -1116,6 +1126,8 @@ async def test_fetch_span_records_each_drop_reason(
         fake_get = off_list_redirect_response
     elif label == "not_html":
         fake_get = json_response
+    elif label == "too_large":
+        fake_get = oversized_pdf_response
     else:
         fake_get = html_response
 
@@ -1633,8 +1645,8 @@ def test_the_fetch_client_installs_the_pdf_size_hook() -> None:
 
 def test_the_fetch_headers_accept_pdf() -> None:
     """Servers choose the representation from Accept; without PDF listed some send HTML."""
+    # Act
+    accept = search.FETCH_HEADERS["Accept"]
+
     # Assert
-    assert (
-        search.FETCH_HEADERS["Accept"]
-        == "text/html,application/xhtml+xml,application/pdf;q=0.9"
-    )
+    assert accept == "text/html,application/xhtml+xml,application/pdf;q=0.9"
