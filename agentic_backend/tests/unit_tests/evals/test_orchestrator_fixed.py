@@ -31,10 +31,10 @@ class RecordingSupervisor:
 
 
 @pytest.mark.anyio
-async def test_the_orchestrator_eval_extracts_destination_and_standalone_query_from_supervisor_tool_call() -> (
+async def test_the_orchestrator_eval_extracts_destination_and_standalone_query_from_the_orchestrator_tool_call() -> (
     None
 ):
-    """When the supervisor emits a specialist tool call, destination and query must be extracted for evaluation."""
+    """When the orchestrator emits a specialist tool call, destination and query must be extracted for evaluation."""
     # Arrange
     ai_msg = AIMessage(
         content="",
@@ -78,7 +78,7 @@ async def test_the_orchestrator_eval_extracts_destination_and_standalone_query_f
 async def test_the_orchestrator_eval_handles_direct_chat_turn_without_tool_calls() -> (
     None
 ):
-    """When the supervisor answers directly without calling a tool, destination defaults to other and query is empty."""
+    """When the orchestrator answers directly without calling a tool, destination defaults to other and query is empty."""
     # Arrange
     ai_msg = AIMessage(content="Hello! How can I help you today?")
     supervisor = RecordingSupervisor({"destination": "other", "messages": [ai_msg]})
@@ -142,7 +142,7 @@ async def test_the_orchestrator_eval_extracts_standalone_query_from_alternate_to
 
 
 @pytest.mark.anyio
-async def test_the_orchestrator_eval_reports_other_when_the_supervisor_names_no_destination() -> (
+async def test_the_orchestrator_eval_reports_other_when_the_orchestrator_names_no_destination() -> (
     None
 ):
     """A chat answer returns no tool call and, from a bare fake, no destination."""

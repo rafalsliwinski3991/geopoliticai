@@ -1,4 +1,4 @@
-"""orchestrator_fixed eval: the supervisor routes and rewrites recorded conversations."""
+"""orchestrator_fixed eval: the orchestrator routes and rewrites recorded conversations."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from evals.judges.orchestrator_fixed import judges
 
 
 async def run_orchestrator_fixed(input: dict[str, Any]) -> dict[str, Any]:
-    """Evaluate supervisor turn: tool selection and standalone rewrite."""
+    """Evaluate the orchestrator's routing turn: tool selection and standalone rewrite."""
     from agents.orchestrator.nodes.supervisor import supervisor
 
     result = await supervisor(
