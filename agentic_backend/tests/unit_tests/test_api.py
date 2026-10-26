@@ -1196,7 +1196,7 @@ async def test_astream_answer_forwards_unstreamed_supervisor_chat_as_token(
     events = [event async for event in api._astream_answer(state, "t-1")]
 
     # Assert
-    tokens = [text for kind, text in events if kind == "token"]
+    tokens = [event.content for event in events if isinstance(event, TokenFrame)]
     assert tokens == [expected_token]
 
 
@@ -1227,7 +1227,10 @@ async def test_astream_answer_does_not_repeat_a_streamed_supervisor_answer(
     ]
 
     # Assert
-    assert [text for kind, text in events if kind == "token"] == ["Good ", "morning."]
+    assert [event.content for event in events if isinstance(event, TokenFrame)] == [
+        "Good ",
+        "morning.",
+    ]
 
 
 @pytest.mark.anyio
