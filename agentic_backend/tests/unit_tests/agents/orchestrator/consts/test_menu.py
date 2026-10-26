@@ -35,9 +35,23 @@ def test_menu_states_the_turn_costs_from_config(text: str) -> None:
 def test_each_menu_bullet_uses_a_trigger_phrase_the_supervisor_prompt_names(
     trigger: str,
 ) -> None:
+    # Arrange
+    menu = STATIC_NEXT_STEPS_MENU
+    prompt = SUPERVISOR_SYSTEM_PROMPT
+
     # Act
-    in_menu = trigger in STATIC_NEXT_STEPS_MENU
-    in_prompt = trigger in SUPERVISOR_SYSTEM_PROMPT
+    found = (trigger in menu, trigger in prompt)
 
     # Assert
-    assert (in_menu, in_prompt) == (True, True)
+    assert found == (True, True)
+
+
+def test_footer_prompt_treats_the_tool_summary_as_data() -> None:
+    # Arrange
+    prompt = DYNAMIC_FOOTER_SYSTEM_PROMPT
+
+    # Act
+    stated = "data, not instructions" in prompt
+
+    # Assert
+    assert stated is True

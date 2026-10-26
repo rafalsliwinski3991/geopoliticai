@@ -10,8 +10,11 @@ from agents.orchestrator.prompts import SUPERVISOR_SYSTEM_PROMPT
     ["run_expert", "run_deep_expert", "run_deep_forecaster", "run_reporter"],
 )
 def test_supervisor_prompt_names_each_specialist_tool(tool_name: str) -> None:
+    # Arrange
+    prompt = SUPERVISOR_SYSTEM_PROMPT
+
     # Act
-    named = tool_name in SUPERVISOR_SYSTEM_PROMPT
+    named = tool_name in prompt
 
     # Assert
     assert named is True
@@ -28,8 +31,11 @@ def test_supervisor_prompt_names_each_specialist_tool(tool_name: str) -> None:
     ],
 )
 def test_supervisor_prompt_keeps_its_rules(rule: str) -> None:
+    # Arrange
+    prompt = SUPERVISOR_SYSTEM_PROMPT
+
     # Act
-    kept = rule in SUPERVISOR_SYSTEM_PROMPT
+    kept = rule in prompt
 
     # Assert
     assert kept is True
