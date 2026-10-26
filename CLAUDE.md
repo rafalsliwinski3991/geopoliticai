@@ -61,7 +61,8 @@ deep_forecaster  START -> research -> draft_claims -> council_round_1 -> council
 - Span names are snake_case (`fetch_source`); span attribute keys are dotted with a domain prefix
   (`source.outcome`).
 - TypeScript functions are camelCase and verb-first (`warnOnStaleTests`); an e2e spec and its
-  generated test share one kebab-case stem.
+  generated test share one kebab-case stem that starts with its group: `agent-`, `ui-`, `auth-`
+  or `site-`.
 - An eval's script, dataset, and judges file share one name: its agent, then `_fixed` when the
   agent's inputs are written in advance or `_live` when it searches and reads today's pages
   (`expert_fixed`, `expert_live`).
@@ -158,7 +159,7 @@ deep_forecaster  START -> research -> draft_claims -> council_round_1 -> council
   spent.
 - `quota.py` holds these rules; `api._generate` only calls `charge_turn` and `refund_turn`.
 - A quota number has copies in `web_backend/templates/pages/landing.html` (the daily limit is
-  drift-tested, the forecast's cost is not) and `e2e/test_specs/daily-limit-is-50.md`.
+  drift-tested, the forecast's cost is not) and `e2e/test_specs/ui-daily-limit-is-50.md`.
 
 ## web_backend
 

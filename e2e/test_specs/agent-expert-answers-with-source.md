@@ -12,3 +12,4 @@
 - The answer text is not empty.
 - The answer contains at least one link.
 - No error message is shown.
+- The streamed progress includes "Searching and reading sources...", so the expert agent ran.

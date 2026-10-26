@@ -1,9 +1,9 @@
 // spec-sha256: aa9a2fef5aaea1064a27b0025dfff4ef80326f57836e08a9e7888dd58849e851
-// Generated from test_specs/logout-requires-login.md by /e2e. Never hand-edit: run /e2e update logout-requires-login.
+// Generated from test_specs/auth-logout-requires-login.md by /e2e. Never hand-edit: run /e2e update auth-logout-requires-login.
 import { test, expect } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 
-const SPEC = readFileSync(`${__dirname}/../test_specs/logout-requires-login.md`, 'utf8');
+const SPEC = readFileSync(`${__dirname}/../test_specs/auth-logout-requires-login.md`, 'utf8');
 
 // Own session: logging out ends the server session, which the shared saved login would lose.
 // No trace or screenshot: a trace of the login records the password.

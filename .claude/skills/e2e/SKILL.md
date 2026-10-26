@@ -50,7 +50,7 @@ Rules that hold in every subcommand:
      is present, for at most `ANSWER_TIMEOUT_MS` (150 s). Past that, close the session and report that the
      turn did not finish; write no test. Send each question once.
    - `npx playwright-cli -s=e2e close`.
-3. Write `tests/<name>.spec.ts`, following `tests/ask-shows-source.spec.ts`:
+3. Write `tests/<name>.spec.ts`, following `tests/agent-expert-answers-with-source.spec.ts`:
    - line 1: `// spec-sha256: ` + the hash from `sha256sum test_specs/<name>.md`;
    - line 2: `// Generated from test_specs/<name>.md by /e2e. Never hand-edit: run /e2e update <name>.`;
    - read the spec into `SPEC` and pass `{ annotation: { type: 'spec', description: SPEC } }` so the HTML

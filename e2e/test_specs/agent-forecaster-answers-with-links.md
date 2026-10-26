@@ -10,3 +10,4 @@
 - Every link in the answer is a real URL, and the analysis's prose contains no "source:".
 - No error bubble is shown.
 - The meter shows 20 more used than in step 1.
+- The streamed progress includes "Council voting, round 1 of 2...", so the forecaster ran.

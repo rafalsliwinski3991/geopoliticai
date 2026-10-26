@@ -13,3 +13,4 @@
 - No error bubble is shown.
 - The daily research meter shows 10 more turns used than before the question: a deep turn's cost (a plain
   answer would add 1).
+- The streamed progress includes "Planning the research...", so the deep expert ran.
