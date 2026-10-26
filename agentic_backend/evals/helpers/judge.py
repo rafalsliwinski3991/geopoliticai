@@ -37,6 +37,7 @@ MIN_AVERAGE: dict[str, float] = {"binary": 1.0, "numeric": 0.75}
 NOT_APPLICABLE = "not_applicable"
 JUDGE_ERROR = "judge_error"
 JUDGE_RETRIES = 3
+FAILED_CHECK_CHARS = 300
 JUDGE_BACKOFF_INITIAL_SECONDS = 1.0
 JUDGE_BACKOFF_MAX_SECONDS = 8.0
 JUDGE_BACKOFF_JITTER_SECONDS = 1.0
@@ -170,7 +171,11 @@ def _prepare(
             return Verdict(NOT_APPLICABLE)
         if judge.check is not None:
             passed = judge.check(variables)
-            return Verdict("pass" if passed else "fail", 1.0 if passed else 0.0)
+            return Verdict(
+                "pass" if passed else "fail",
+                1.0 if passed else 0.0,
+                "" if passed else str(variables)[:FAILED_CHECK_CHARS],
+            )
     except Exception as exc:
         logger.error("%s errored: %s", judge.name, exc)
         return Verdict(JUDGE_ERROR, explanation=f"{type(exc).__name__}: {exc}")

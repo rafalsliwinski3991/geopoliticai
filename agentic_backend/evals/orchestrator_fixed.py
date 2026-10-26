@@ -1,4 +1,4 @@
-"""orchestrator_fixed eval: the classifier alone routes and rewrites recorded conversations."""
+"""orchestrator_fixed eval: the orchestrator routes and rewrites recorded conversations."""
 
 from __future__ import annotations
 
@@ -11,27 +11,30 @@ from evals.judges.orchestrator_fixed import judges
 
 
 async def run_orchestrator_fixed(input: dict[str, Any]) -> dict[str, Any]:
-    """Classify a conversation's last turn: where it goes, and its standalone rewrite.
+    """Evaluate the orchestrator's routing turn: tool selection and standalone rewrite."""
+    from agents.orchestrator.nodes.supervisor import supervisor
 
-    Only the `classify` node runs (brainstorm 2026Oct21 R1.3): no chat answer,
-    no research. Agent imports are function-local: `agents.*.graph` calls
-    `init_tracing()` at import, which must happen after `run` has loaded the
-    environment, and importing agents at module scope would drag the stack
-    into unit tests.
-    """
-    from agents.orchestrator.nodes.classify import classify
-
-    decision = await classify(
+    result = await supervisor(
         {"messages": load_messages(input["messages"])}, _drop_progress
     )
+    destination = result.get("destination", "other")
+    standalone_query = ""
+    messages = result.get("messages", [])
+    if messages and hasattr(messages[0], "tool_calls") and messages[0].tool_calls:
+        tc = messages[0].tool_calls[0]
+        args = tc.get("args", {})
+        standalone_query = (
+            args.get("query") or args.get("question") or args.get("topic") or ""
+        )
+
     return {
-        "destination": decision["destination"],
-        "standalone_query": decision["standalone_query"],
+        "destination": destination,
+        "standalone_query": standalone_query,
     }
 
 
 def _drop_progress(event: Any) -> None:
-    """Ignore the node's progress frame: no browser is listening."""
+    """Ignore progress and notice events during offline eval."""
 
 
 if __name__ == "__main__":

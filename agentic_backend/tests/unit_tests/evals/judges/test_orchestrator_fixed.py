@@ -26,7 +26,11 @@ def test_routing_is_checked_only_when_expected() -> None:
 
     # Assert
     assert unchecked is None
-    assert checked == {"actual": "other", "expected": "other"}
+    assert checked == {
+        "actual": "other",
+        "expected": "other",
+        "last_message": "hello there",
+    }
 
 
 def test_the_rewrite_is_checked_only_when_expected() -> None:

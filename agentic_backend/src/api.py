@@ -179,7 +179,7 @@ _rate_limit_lock = Lock()
 
 @dataclass(frozen=True)
 class _Counted:
-    """`classify` routed the turn to a research branch."""
+    """The supervisor routed the turn to a research branch."""
 
     destination: str | None
 

@@ -124,7 +124,7 @@ async def test_async_score_returns_not_applicable_when_view_returns_none() -> No
 @pytest.mark.anyio
 @pytest.mark.parametrize(
     ("passed", "expected"),
-    [(True, Verdict("pass", 1.0)), (False, Verdict("fail", 0.0))],
+    [(True, Verdict("pass", 1.0)), (False, Verdict("fail", 0.0, "{'x': 'y'}"))],
 )
 async def test_async_score_runs_code_check(passed: bool, expected: Verdict) -> None:
     # Arrange
@@ -154,6 +154,18 @@ async def test_async_score_records_judge_error_when_view_raises() -> None:
     assert verdict.label == JUDGE_ERROR
     assert "ValueError" in verdict.explanation
     assert "boom" in verdict.explanation
+
+
+@pytest.mark.anyio
+async def test_a_failed_code_check_explains_with_the_view_it_judged() -> None:
+    # Arrange
+    judge = Judge("j", "binary", lambda i, o, e: {"actual": "a"}, check=lambda v: False)
+
+    # Act
+    verdict = await async_score(judge, None, {}, {"answer": "x"}, {})
+
+    # Assert
+    assert verdict.explanation == "{'actual': 'a'}"
 
 
 @pytest.mark.anyio
