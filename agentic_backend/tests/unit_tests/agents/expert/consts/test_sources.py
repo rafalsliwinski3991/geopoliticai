@@ -63,11 +63,22 @@ def test_no_batch_holds_more_than_ten_domains() -> None:
     assert max(sizes) <= BRAVE_MAX_DOMAINS_PER_BATCH
 
 
+def test_the_longest_question_is_the_length_the_batch_check_assumes() -> None:
+    """The query-limit test is only as hard as its question is long; a shorter one would pass for the wrong reason."""
+    # Arrange
+    expected_length = 140
+
+    # Act
+    length = len(LONGEST_QUESTION)
+
+    # Assert
+    assert length == expected_length
+
+
 def test_no_batch_loses_a_domain_to_the_query_limit() -> None:
     """A long question plus a long batch can pass Brave's 400 characters, and the builder then drops domains."""
     # Arrange
     question = LONGEST_QUESTION
-    assert len(question) == 140
     # Act
     queries = [build_batch_query(question, batch) for batch in SEARCH_BATCHES]
     # Assert
