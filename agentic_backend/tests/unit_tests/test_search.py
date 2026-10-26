@@ -1149,7 +1149,7 @@ async def test_fetch_span_records_the_status_of_a_rejected_page(
         return _html("", 403)
 
     monkeypatch.setattr(httpx.AsyncClient, "get", forbidden)
-    candidate = Candidate("t", "https://reuters.com/x", "reuters.com")
+    candidate = Candidate("t", "https://bbc.com/x", "bbc.com")
     # Act
     await search._fetch_and_extract(httpx.AsyncClient(), candidate, EXPERT_SOURCES)
     span = _span_by_name(captured_spans, "fetch_source")
