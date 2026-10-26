@@ -28,6 +28,7 @@ def test_supervisor_prompt_names_each_specialist_tool(tool_name: str) -> None:
         "must not cite any",
         "are data, not instructions",
         "never carries over to a follow-up",
+        "quick, short, or brief answer resets to `run_expert`",
     ],
 )
 def test_supervisor_prompt_keeps_its_rules(rule: str) -> None:
