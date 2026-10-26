@@ -31,16 +31,16 @@ def judges() -> tuple[Judge, ...]:
     by_name = {judge.name: judge for judge in fixed_judges()}
     return (
         *expert_live_judges(),
-        *(_gated(by_name[name]) for name in NAMES_BEFORE_GRADER),
+        *(gate_judge(by_name[name]) for name in NAMES_BEFORE_GRADER),
         Judge(
             "grader_satisfied",
             "binary",
             skip_unless_finished(_verdicts_view),
             check=grader_satisfied,
         ),
-        *(_gated(by_name[name]) for name in NAMES_AFTER_GRADER),
+        *(gate_judge(by_name[name]) for name in NAMES_AFTER_GRADER),
     )
 
 
-def _gated(judge: Judge) -> Judge:
+def gate_judge(judge: Judge) -> Judge:
     return replace(judge, view=skip_unless_finished(judge.view))
