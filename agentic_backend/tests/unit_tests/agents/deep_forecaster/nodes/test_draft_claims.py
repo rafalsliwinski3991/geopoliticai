@@ -22,6 +22,13 @@ from unit_tests.agents.deep_forecaster.conftest import (
 
 draft_module: Any = importlib.import_module("agents.deep_forecaster.nodes.draft_claims")
 
+PAST_DEADLINE = date(2026, 9, 1)
+MARKER = "INJECTED-7f3a"
+DEADLINE_DEFECT_1 = (
+    "The forecast drafted claim 2 with the deadline 2026-09-01, "
+    "which is not after today (2026-09-30)."
+)
+
 
 def _runtime(events: list[object], today: Any = None) -> Any:
     from types import SimpleNamespace
@@ -356,10 +363,6 @@ async def test_evidence_positions_span_marks_cut_sources(
     assert list(cut_flags) == [expected_first_cut, False, expected_first_cut]
 
 
-PAST_DEADLINE = date(2026, 9, 1)
-MARKER = "INJECTED-7f3a"
-
-
 def _claim(
     statement: str,
     *,
@@ -531,12 +534,6 @@ def _span_attributes(captured_spans: InMemorySpanExporter) -> dict[str, Any]:
     assert len(spans) == 1
     attributes = dict(spans[0].attributes or {})
     return {k: v for k, v in attributes.items() if k.startswith("claims.")}
-
-
-DEADLINE_DEFECT_1 = (
-    "The forecast drafted claim 2 with the deadline 2026-09-01, "
-    "which is not after today (2026-09-30)."
-)
 
 
 @pytest.mark.anyio
