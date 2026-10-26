@@ -3,6 +3,7 @@ import inspect
 from typing import Any
 
 import pytest
+from pydantic import ValidationError
 
 from agents.reporter.config import MAX_REVISION_ROUNDS
 from agents.reporter.consts.messages import CANCELLED_NOTICE
@@ -97,6 +98,18 @@ async def test_a_bare_string_reply_is_decoded_as_a_revise(
     assert result["decision"] == "revise"
     assert result["instruction"] == "make it shorter"
     assert result["revisions"] == 1
+
+
+@pytest.mark.anyio
+async def test_an_unknown_action_is_an_error_not_a_revise(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Arrange
+    _patch_interrupt(monkeypatch, {"action": "aprove"})
+
+    # Act / Assert
+    with pytest.raises(ValidationError):
+        await node_module.gate(_state())
 
 
 @pytest.mark.anyio

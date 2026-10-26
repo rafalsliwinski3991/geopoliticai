@@ -6,7 +6,7 @@ from collections.abc import Sequence
 from typing import Any, Literal, TypedDict
 
 from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, ToolMessage
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from typing_extensions import NotRequired
 
 from agents.reporter.config import MAX_TRANSCRIPT_CHARS
@@ -56,6 +56,15 @@ class ResumeIntent(BaseModel):
             "Empty string for every other action."
         )
     )
+
+
+class GateReply(BaseModel):
+    """The decision the delivery layer sends back to the paused gate."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    action: GateAction
+    instruction: CleanText = ""
 
 
 class ReporterState(TypedDict):

@@ -39,6 +39,7 @@ from agents.orchestrator import (
 )
 from agents.orchestrator import graph as _default_graph
 from agents.reporter import classify_resume_intent
+from agents.reporter.state import GateReply
 from auth import Identity, require_identity
 from config import (
     DAILY_RESEARCH_TURNS,
@@ -502,7 +503,11 @@ async def _turn_input(payload: RunPipelineRequest) -> Any:
     intent = await classify_resume_intent(payload.resume, pause)
     if intent.action == "new_question":
         return build_initial_orchestrator_state(payload.resume)
-    return Command(resume={"action": intent.action, "instruction": intent.instruction})
+    return Command(
+        resume=GateReply(
+            action=intent.action, instruction=intent.instruction
+        ).model_dump()
+    )
 
 
 async def _astream_answer(
