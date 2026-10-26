@@ -1,63 +1,56 @@
-"""Graph construction for the orchestrator agent."""
+"""Graph construction for the supervisor orchestrator agent."""
 
 from __future__ import annotations
 
 from typing import Any
 
 from langgraph.graph import END, START, StateGraph
+from langgraph.prebuilt import ToolNode, tools_condition
 from langgraph.store.base import BaseStore
 
-from agents.orchestrator.nodes import (
-    chat,
-    classify,
-    deep_expert,
-    deep_forecaster,
-    expert,
-    reporter,
-)
+from agents.orchestrator.nodes.supervisor import supervisor
 from agents.orchestrator.state import OrchestratorState
+from agents.orchestrator.tools import ALL_TOOLS
 from tracing import init_tracing
 
 
-def _route(state: OrchestratorState) -> str:
-    """Read the branch `classify` already decided; decide nothing here."""
-    return state["destination"]
+def _route_after_tools(state: OrchestratorState) -> str:
+    # run_reporter goes straight to END on completion or cancellation
+    if state.get("destination") == "report":
+        return END
+    return "supervisor"
 
 
 def build_graph(checkpointer: Any | None = None, store: BaseStore | None = None) -> Any:
-    """Construct and compile the orchestrator graph.
+    """Construct and compile the supervisor orchestrator graph.
 
     The checkpointer and the store are arguments and are never built here.
     `graph.py` constructs and never runs, `make test` and `langgraph dev` must
     keep working with no database, and the hard `DATABASE_URL` requirement
     belongs to the API lifespan, which is the only caller that passes a real
-    saver and a real store. The store reaches every child graph a node
-    invokes as `runtime.store` (the deep forecaster's video-notes cache).
+    saver and a real store. The store reaches every tool as `runtime.store`
+    (the deep forecaster's video-notes cache).
+
+    `handle_tool_errors=False` lets every tool failure, a malformed tool call
+    included, raise to the API's error frame and its refund. The default would
+    turn a malformed call into an error ToolMessage that nothing retries.
     """
     orchestrator = StateGraph(OrchestratorState)
-    orchestrator.add_node("classify", classify)
-    orchestrator.add_node("expert", expert)
-    orchestrator.add_node("deep_expert", deep_expert)
-    orchestrator.add_node("deep_forecaster", deep_forecaster)
-    orchestrator.add_node("chat", chat)
-    orchestrator.add_node("reporter", reporter)
-    orchestrator.add_edge(START, "classify")
+    orchestrator.add_node("supervisor", supervisor)
+    orchestrator.add_node("tools", ToolNode(ALL_TOOLS, handle_tool_errors=False))
+
+    orchestrator.add_edge(START, "supervisor")
     orchestrator.add_conditional_edges(
-        "classify",
-        _route,
-        {
-            "geopolitical": "expert",
-            "deep": "deep_expert",
-            "forecast": "deep_forecaster",
-            "other": "chat",
-            "report": "reporter",
-        },
+        "supervisor",
+        tools_condition,
+        {"tools": "tools", END: END},
     )
-    orchestrator.add_edge("expert", END)
-    orchestrator.add_edge("deep_expert", END)
-    orchestrator.add_edge("deep_forecaster", END)
-    orchestrator.add_edge("chat", END)
-    orchestrator.add_edge("reporter", END)
+    orchestrator.add_conditional_edges(
+        "tools",
+        _route_after_tools,
+        {"supervisor": "supervisor", END: END},
+    )
+
     return orchestrator.compile(
         name="orchestrator", checkpointer=checkpointer, store=store
     )

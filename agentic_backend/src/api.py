@@ -15,7 +15,7 @@ from typing import Annotated, Any, AsyncGenerator
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, Path, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
-from langchain_core.messages import AIMessage
+from langchain_core.messages import AIMessage, ToolMessage
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
 from langgraph.store.base import TTLConfig
@@ -42,6 +42,7 @@ from agents.reporter import classify_resume_intent
 from auth import Identity, require_identity
 from config import (
     DAILY_RESEARCH_TURNS,
+    FOOTER_PREFIX,
     bind_log_context,
     init_environment,
     require_env,
@@ -124,34 +125,30 @@ ThreadIdPath = Annotated[
 # ANSWER_PROGRESS fires when the first character is about to reach the
 # browser. Every *node*-scoped label now lives with its node, in that agent's
 # `consts/progress.py`, and arrives here as a forwarded custom event.
-THINKING_PROGRESS = ProgressFrame(node="classify", label="Thinking...")
+THINKING_PROGRESS = ProgressFrame(node="supervisor", label="Thinking...")
 ANSWER_PROGRESS = ProgressFrame(node="answer", label="Writing the answer...")
 
+# `supervisor` answers a chat turn: it returns the answer whole as one
+# `AIMessage`. Its other `AIMessage`, the footer after a tool, already reached
+# the browser as a notice and is skipped by its `FOOTER_PREFIX`.
+#
 # `write` is the reporter's composing node. Its streamed chunks are the report;
 # without it here the report never reaches the browser, and the `_ReportStarted`
 # event that puts a Download .md button on the answer is derived from the same
 # tag.
 #
-# `"reporter"` must NEVER be added to this set. Measured: on the refusal, cancel
-# and revision-cap paths the orchestrator's `reporter` node returns an
-# `AIMessage` that *also* arrives in `messages` mode tagged
-# `langgraph_node == "reporter"` — and that same text already reaches the
-# browser through the node's own `notice` custom event. Adding `"reporter"`
-# here would print every refusal and cancellation twice.
-#
-# `"deep_expert"` must never be added either, for the same reason: its node
-# returns an `AIMessage` that also arrives in `messages` mode, and the finished
-# analysis already reached the browser as that node's `notice`.
-#
-# `"deep_forecaster"` must never be added either, and no forecaster node may be
-# named `answer`, `chat` or `write`: the forecast reaches the browser once, as
-# that node's `notice`.
-ANSWER_NODES = frozenset({"answer", "chat", "write"})
+# `"tools"` must NEVER be added to this set, and neither may any node of a
+# specialist: the reporter's refusal, cancel and revision-cap paths, the deep
+# expert and the forecaster deliver their text as a `notice` from inside their
+# tool, so adding their node would print it twice. No forecaster node may be
+# named `answer`, `supervisor` or `write` for the same reason.
+ANSWER_NODES = frozenset({"answer", "supervisor", "write"})
 
-# `other` — the chat branch — is absent on purpose (Q5b): chat turns stay
-# free. `classify` does not re-run on a resume, so approving or revising a
-# pending report does not count again: one report is one count, taken when it
-# was requested, and the reporter's own revision cap bounds the rounds.
+# `other` — a chat answer from the supervisor — is absent on purpose (Q5b):
+# chat turns stay free. The supervisor does not re-run on a resume (the resume
+# re-enters `tools`), so approving or revising a pending report does not count
+# again: one report is one count, taken when it was requested, and the
+# reporter's own revision cap bounds the rounds.
 # `deep` spends DEEP_RESEARCH_TURN_COST units instead of one (brainstorm Q3),
 # and `quota.charge_turn` looks up what each destination costs.
 RESEARCH_DESTINATIONS = frozenset({"geopolitical", "deep", "forecast", "report"})
@@ -477,7 +474,7 @@ async def _turn_input(payload: RunPipelineRequest) -> Any:
 
     A plain turn needs no checkpoint read at all. **Measured on this graph's
     actual shape:** a state input arriving while a report is paused re-enters
-    `classify`, routes normally, and supersedes the stale `reporter` task —
+    `supervisor`, routes normally, and supersedes the stale `tools` task —
     afterwards `next == ()` and `interrupts == ()`, and the new turn is answered
     on the first try. Q11 is therefore the default behaviour and needs no
     mechanism.
@@ -485,7 +482,7 @@ async def _turn_input(payload: RunPipelineRequest) -> Any:
     The brainstorm's probe #5 said the opposite, but it was measured on a
     single top-level node calling `interrupt()`, where the pending task is the
     only task there is. That result does not transfer to
-    `START -> classify -> {expert|chat|reporter}`.
+    `START -> supervisor -> tools`.
 
     An earlier draft of this plan cleared the pause explicitly with
     `aupdate_state(config, None, as_node="reporter")`. That call is deleted: it
@@ -570,16 +567,7 @@ async def _astream_answer(
         if mode == "updates":
             if namespace or not isinstance(data, dict):
                 continue
-            # Counted from `classify`, NOT from `expert`/`reporter`. An
-            # `updates` frame arrives only after its node RETURNS, so counting
-            # on `expert` means the count lands after three Brave batches,
-            # trafilatura, and the whole streamed model call — while tokens
-            # reached the browser much earlier through `messages` mode. A
-            # client that aborts the fetch mid-answer has already spent the
-            # money and never gets counted. `classify` returns in about a
-            # second, before anything expensive starts, and its update already
-            # carries the branch (`agents/orchestrator/nodes/classify.py:68`).
-            decision = data.get("classify")
+            decision = data.get("supervisor")
             if not counted and isinstance(decision, dict):
                 destination = decision.get("destination")
                 if destination in RESEARCH_DESTINATIONS:
@@ -595,11 +583,14 @@ async def _astream_answer(
             continue
         if not isinstance(message, AIMessage):
             continue
-        # Chat nodes emit provider chunks and then the completed message they
-        # return. Once chunks have been forwarded, the completed message would
-        # duplicate the answer; expert's nested completed message is tagged
-        # with the parent node and is filtered above.
-        if message.__class__ is AIMessage and node in streamed_nodes:
+        # A node that streams chunks also returns the completed message, which
+        # would repeat the answer. The supervisor's completed footer already
+        # arrived as a notice event; its completed chat answer is the only
+        # copy, so it is forwarded as tokens.
+        if message.__class__ is AIMessage and (
+            node in streamed_nodes
+            or (node == "supervisor" and message.text.startswith(FOOTER_PREFIX))
+        ):
             continue
         text = message.text
         if text:
@@ -630,7 +621,7 @@ async def run_pipeline_stream_endpoint(
     # an empty title. A query owns the upsert-then-verify path: `ON CONFLICT
     # DO NOTHING` cannot tell the first turn from a later one in one round
     # trip, so the owner is read back.
-    # No pre-routing quota check here: before `classify` runs, the endpoint
+    # No pre-routing quota check here: before the supervisor runs, the endpoint
     # cannot tell a chargeable research turn from a free chat turn or a report
     # resume (§7 S2), and a door check that guesses would 429 turns that cost
     # nothing — stranding a pending report forever. `increment_quota` in the
@@ -782,13 +773,23 @@ async def _thread_messages(thread_id: str) -> list[dict[str, str]]:
     if getattr(graph, "checkpointer", None) is None:
         return []
     snapshot = await graph.aget_state(build_runtime_config(thread_id=thread_id))
-    return [
-        {
-            "role": "user" if message.type == "human" else "assistant",
-            "text": message.text,
-        }
-        for message in snapshot.values.get("messages", [])
-    ]
+    rendered: list[dict[str, str]] = []
+    for msg in snapshot.values.get("messages", []):
+        if msg.type == "human":
+            rendered.append({"role": "user", "text": msg.text})
+        elif isinstance(msg, ToolMessage):
+            text = (
+                msg.artifact.get("text", msg.content)
+                if isinstance(msg.artifact, dict)
+                else msg.content
+            )
+            rendered.append({"role": "assistant", "text": str(text)})
+        elif isinstance(msg, AIMessage) and msg.text and not msg.tool_calls:
+            if msg.text.startswith(FOOTER_PREFIX) and rendered:
+                rendered[-1]["text"] += msg.text
+            else:
+                rendered.append({"role": "assistant", "text": msg.text})
+    return rendered
 
 
 @router.get("/threads")

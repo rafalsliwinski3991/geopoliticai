@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import importlib
-from typing import Any, Optional
+from typing import Any
 
 import pytest
 from langchain_core.messages import (
@@ -13,7 +13,6 @@ from langchain_core.messages import (
     SystemMessage,
     ToolMessage,
 )
-from langchain_core.runnables import RunnableConfig
 from langgraph.constants import TAG_NOSTREAM
 
 from agents.orchestrator.config import (
@@ -30,42 +29,12 @@ from agents.orchestrator.state import OrchestratorState
 from agents.orchestrator.tools import ALL_TOOLS
 from config import FOOTER_PREFIX
 from models import LLMInvocationError
+from unit_tests.agents.orchestrator.conftest import ScriptedChatModel
 
 node_module = importlib.import_module("agents.orchestrator.nodes.supervisor")
 TOOL_DESTINATION_MAP = node_module.TOOL_DESTINATION_MAP
 _sanitize_and_slice_messages = node_module._sanitize_and_slice_messages
 supervisor = node_module.supervisor
-
-
-class ScriptedChatModel:
-    """Scripted model returning pre-programmed responses in order and recording invocations."""
-
-    def __init__(self, responses: list[AnyMessage | Exception]) -> None:
-        self.responses = list(responses)
-        self.invocations: list[list[AnyMessage]] = []
-
-    def bind_tools(self, *args: Any, **kwargs: Any) -> ScriptedChatModel:
-        return self
-
-    def with_config(self, *args: Any, **kwargs: Any) -> ScriptedChatModel:
-        return self
-
-    async def ainvoke(
-        self,
-        messages: list[AnyMessage],
-        *,
-        config: Optional[RunnableConfig] = None,
-        **kwargs: Any,
-    ) -> AnyMessage:
-        self.invocations.append(messages)
-        if not self.responses:
-            raise AssertionError(
-                "ScriptedChatModel exhausted: unexpected model invocation"
-            )
-        response = self.responses.pop(0)
-        if isinstance(response, Exception):
-            raise response
-        return response
 
 
 @pytest.mark.anyio

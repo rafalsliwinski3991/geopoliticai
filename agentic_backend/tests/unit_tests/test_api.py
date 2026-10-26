@@ -32,6 +32,7 @@ from config import (
     DAILY_RESEARCH_TURNS,
     DAILY_RESEARCH_TURNS_ALL_USERS,
     DEEP_RESEARCH_TURN_COST,
+    FOOTER_PREFIX,
     FORECAST_TURN_COST,
     MAX_DAILY_REFUND_UNITS,
     LogContextFilter,
@@ -46,6 +47,7 @@ from models import (
     SearchUnavailableError,
     Source,
 )
+from unit_tests.agents.orchestrator.conftest import ScriptedChatModel
 
 CHARGE_DAY = date(2026, 10, 16)
 
@@ -428,7 +430,7 @@ async def test_an_unknown_custom_event_is_skipped(
             yield (
                 ("",),
                 "messages",
-                (AIMessage("Answer."), {"langgraph_node": "chat"}),
+                (AIMessage("Answer."), {"langgraph_node": "supervisor"}),
             )
 
     monkeypatch.setattr(api, "graph", _FakeGraph())
@@ -1067,12 +1069,11 @@ async def test_astream_answer_streams_the_answer_of_either_branch(
     from langchain_core.language_models.fake_chat_models import FakeListChatModel
     from langchain_core.messages import AIMessage
 
-    from agents.orchestrator.state import Destination, RouteDecision
     from agents.reporter.state import OutlineDraft
     from models import Candidate, Source
 
     search_module = importlib.import_module("agents.expert.nodes.search_and_fetch")
-    classify_module = importlib.import_module("agents.orchestrator.nodes.classify")
+    supervisor_module = importlib.import_module("agents.orchestrator.nodes.supervisor")
     outline_module = importlib.import_module("agents.reporter.nodes.outline")
     llm_module = importlib.import_module("llm")
     graph_module = importlib.import_module("agents.orchestrator.graph")
@@ -1083,22 +1084,42 @@ async def test_astream_answer_streams_the_answer_of_either_branch(
     async def sources(items: list[Candidate], policy: Any) -> list[Source]:
         return [Source("title", "https://reuters.com/x", "body")]
 
-    async def decide(*args: Any, **kwargs: Any) -> RouteDecision:
-        route = cast(Destination, destination)
-        return RouteDecision(destination=route, standalone_query="rewritten")
-
     async def draft(*args: Any, **kwargs: Any) -> OutlineDraft:
         return OutlineDraft(sections=["Section one"], notice="")
 
     monkeypatch.setattr(search_module, "search_allowlisted", candidates)
     monkeypatch.setattr(search_module, "fetch_sources", sources)
-    monkeypatch.setattr(classify_module, "ainvoke_structured", decide)
     monkeypatch.setattr(outline_module, "ainvoke_structured", draft)
     monkeypatch.setattr(
         llm_module,
         "_build_client",
         lambda settings: FakeListChatModel(responses=["Hello world."]),
     )
+
+    calls = {
+        "geopolitical": {
+            "name": "run_expert",
+            "args": {"query": "question"},
+            "id": "call-1",
+        },
+        "report": {
+            "name": "run_reporter",
+            "args": {"topic": "question"},
+            "id": "call-2",
+        },
+    }
+    supervisor_fake = ScriptedChatModel(
+        [
+            AIMessage(content="", tool_calls=[calls[destination]])
+            if destination in calls
+            else AIMessage(content="Hello world.")
+        ]
+    )
+    footer_fake = ScriptedChatModel([AIMessage("1. Next steps")])
+    monkeypatch.setattr(
+        supervisor_module, "_build_supervisor_client", lambda: supervisor_fake
+    )
+    monkeypatch.setattr(supervisor_module, "_build_footer_client", lambda: footer_fake)
 
     state = build_initial_orchestrator_state("question")
     if destination == "report":
@@ -1539,11 +1560,9 @@ async def test_a_research_routed_turn_increments_exactly_once(
     """
     # Arrange
     # Arrange
-    from langchain_core.messages import AIMessage
+    from langchain_core.messages import AIMessageChunk
 
-    classify_update = {
-        "classify": {"destination": destination, "standalone_query": "q"}
-    }
+    supervisor_update = {"supervisor": {"destination": destination}}
     seen_inputs: list[Any] = []
 
     class _FakeGraph:
@@ -1552,12 +1571,12 @@ async def test_a_research_routed_turn_increments_exactly_once(
         ) -> AsyncIterator[tuple[Any, str, Any]]:
             seen_inputs.append(graph_input)
             # updates mode, empty namespace first — as langgraph delivers it
-            yield ("", "updates", classify_update)
-            # the answer arrives via messages mode
+            yield ("", "updates", supervisor_update)
+            # the answer arrives via messages mode as chunks
             yield (
                 ("",),
                 "messages",
-                (AIMessage("Answer."), {"langgraph_node": "chat"}),
+                (AIMessageChunk(content="Answer."), {"langgraph_node": "supervisor"}),
             )
 
     monkeypatch.setattr(api, "graph", _FakeGraph())
@@ -2157,15 +2176,13 @@ async def test_a_deep_turn_reaches_the_browser_once(
     # Arrange
     import importlib
 
+    from langchain_core.messages import AIMessage
+
     from agents.deep_expert.consts.progress import PLANNING_PROGRESS
-    from agents.orchestrator.state import RouteDecision
 
-    classify_module = importlib.import_module("agents.orchestrator.nodes.classify")
-    deep_node = importlib.import_module("agents.orchestrator.nodes.deep_expert")
+    supervisor_module = importlib.import_module("agents.orchestrator.nodes.supervisor")
+    deep_tool_module = importlib.import_module("agents.orchestrator.tools.deep_expert")
     graph_module = importlib.import_module("agents.orchestrator.graph")
-
-    async def decide(*args: Any, **kwargs: Any) -> RouteDecision:
-        return RouteDecision(destination="deep", standalone_query="rewritten")
 
     DEEP_ANSWER = "Deep answer [a](https://reuters.com/x)."
 
@@ -2173,8 +2190,26 @@ async def test_a_deep_turn_reaches_the_browser_once(
         writer(PLANNING_PROGRESS)
         return DEEP_ANSWER
 
-    monkeypatch.setattr(classify_module, "ainvoke_structured", decide)
-    monkeypatch.setattr(deep_node, "research", fake_research)
+    supervisor_fake = ScriptedChatModel(
+        [
+            AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "name": "run_deep_expert",
+                        "args": {"query": "q"},
+                        "id": "call-deep",
+                    }
+                ],
+            )
+        ]
+    )
+    footer_fake = ScriptedChatModel([AIMessage("1. Next steps")])
+    monkeypatch.setattr(
+        supervisor_module, "_build_supervisor_client", lambda: supervisor_fake
+    )
+    monkeypatch.setattr(supervisor_module, "_build_footer_client", lambda: footer_fake)
+    monkeypatch.setattr(deep_tool_module, "research", fake_research)
     monkeypatch.setattr(api, "graph", graph_module.build_graph())
 
     # Act
@@ -2188,7 +2223,8 @@ async def test_a_deep_turn_reaches_the_browser_once(
     assert api._Counted(destination="deep") in events
     assert PLANNING_PROGRESS in events
     assert [event.text for event in events if isinstance(event, NoticeEvent)] == [
-        DEEP_ANSWER
+        DEEP_ANSWER,
+        "\n\n---\n1. Next steps",
     ]
     assert [event for event in events if isinstance(event, TokenFrame)] == []
 
@@ -2203,22 +2239,39 @@ async def test_a_forecast_reaches_the_browser_once(
     # Arrange
     import importlib
 
-    from agents.orchestrator.state import RouteDecision
+    from langchain_core.messages import AIMessage
 
-    classify_module = importlib.import_module("agents.orchestrator.nodes.classify")
-    forecast_node = importlib.import_module("agents.orchestrator.nodes.deep_forecaster")
+    supervisor_module = importlib.import_module("agents.orchestrator.nodes.supervisor")
+    forecast_tool_module = importlib.import_module(
+        "agents.orchestrator.tools.deep_forecaster"
+    )
     graph_module = importlib.import_module("agents.orchestrator.graph")
-
-    async def decide(*args: Any, **kwargs: Any) -> RouteDecision:
-        return RouteDecision(destination="forecast", standalone_query="rewritten")
 
     FORECAST_ANSWER = "Forecast answer [a](https://reuters.com/x)."
 
     async def fake_forecast(query: str, store: Any = None) -> str:
         return FORECAST_ANSWER
 
-    monkeypatch.setattr(classify_module, "ainvoke_structured", decide)
-    monkeypatch.setattr(forecast_node, "forecast", fake_forecast)
+    supervisor_fake = ScriptedChatModel(
+        [
+            AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "name": "run_deep_forecaster",
+                        "args": {"question": "q"},
+                        "id": "call-forecast",
+                    }
+                ],
+            )
+        ]
+    )
+    footer_fake = ScriptedChatModel([AIMessage("1. Next steps")])
+    monkeypatch.setattr(
+        supervisor_module, "_build_supervisor_client", lambda: supervisor_fake
+    )
+    monkeypatch.setattr(supervisor_module, "_build_footer_client", lambda: footer_fake)
+    monkeypatch.setattr(forecast_tool_module, "forecast", fake_forecast)
     monkeypatch.setattr(api, "graph", graph_module.build_graph())
 
     # Act
@@ -2231,7 +2284,8 @@ async def test_a_forecast_reaches_the_browser_once(
     # Assert
     assert api._Counted(destination="forecast") in events
     assert [event.text for event in events if isinstance(event, NoticeEvent)] == [
-        FORECAST_ANSWER
+        FORECAST_ANSWER,
+        "\n\n---\n1. Next steps",
     ]
     assert [event for event in events if isinstance(event, TokenFrame)] == []
 
@@ -2642,3 +2696,131 @@ async def test_the_cap_resets_on_the_next_day(
         quota.site_calls()
         == [("site", DAILY_RESEARCH_TURNS_ALL_USERS, FORECAST_TURN_COST)] * 2
     )
+
+
+def _tool_call(name: str = "run_expert") -> Any:
+    from langchain_core.messages import AIMessage
+
+    return AIMessage(content="", tool_calls=[{"name": name, "args": {}, "id": "tc-1"}])
+
+
+def _tool_result(artifact: Any = None, content: str = "Summary.") -> Any:
+    from langchain_core.messages import ToolMessage
+
+    return ToolMessage(content=content, tool_call_id="tc-1", artifact=artifact)
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    ("build_messages", "expected"),
+    [
+        pytest.param(
+            lambda: [
+                _human("Oil?"),
+                _tool_call(),
+                _tool_result({"text": "Oil analysis."}),
+                _ai(f"{FOOTER_PREFIX}1. Deep dive"),
+            ],
+            [
+                {"role": "user", "text": "Oil?"},
+                {
+                    "role": "assistant",
+                    "text": f"Oil analysis.{FOOTER_PREFIX}1. Deep dive",
+                },
+            ],
+            id="research-turn-with-footer",
+        ),
+        pytest.param(
+            lambda: [
+                _human("Report?"),
+                _tool_call("run_reporter"),
+                _tool_result({"text": "# Report"}),
+            ],
+            [
+                {"role": "user", "text": "Report?"},
+                {"role": "assistant", "text": "# Report"},
+            ],
+            id="report-turn-has-no-footer",
+        ),
+        pytest.param(
+            lambda: [_human("Hi"), _ai("Hello!")],
+            [{"role": "user", "text": "Hi"}, {"role": "assistant", "text": "Hello!"}],
+            id="chat-turn",
+        ),
+        pytest.param(
+            lambda: [_human("Q"), _tool_call(), _tool_result(None, "Plain content.")],
+            [
+                {"role": "user", "text": "Q"},
+                {"role": "assistant", "text": "Plain content."},
+            ],
+            id="tool-message-without-artifact",
+        ),
+        pytest.param(
+            lambda: [
+                _human("Q"),
+                _tool_call(),
+                _tool_result({"other": 1}, "Fallback."),
+            ],
+            [{"role": "user", "text": "Q"}, {"role": "assistant", "text": "Fallback."}],
+            id="artifact-without-text",
+        ),
+        pytest.param(
+            lambda: [
+                _human("A"),
+                _tool_call(),
+                _tool_result({"text": "First."}),
+                _ai(f"{FOOTER_PREFIX}one"),
+                _human("B"),
+                _tool_call(),
+                _tool_result({"text": "Second."}),
+                _ai(f"{FOOTER_PREFIX}two"),
+            ],
+            [
+                {"role": "user", "text": "A"},
+                {"role": "assistant", "text": f"First.{FOOTER_PREFIX}one"},
+                {"role": "user", "text": "B"},
+                {"role": "assistant", "text": f"Second.{FOOTER_PREFIX}two"},
+            ],
+            id="two-turns-in-a-row",
+        ),
+        pytest.param(
+            lambda: [_human("Q"), _tool_call()],
+            [{"role": "user", "text": "Q"}],
+            id="paused-tool-call-renders-nothing",
+        ),
+    ],
+)
+async def test_thread_messages_renders_each_message_shape(
+    monkeypatch: pytest.MonkeyPatch,
+    build_messages: Callable[[], list[Any]],
+    expected: list[dict[str, str]],
+) -> None:
+    # Arrange
+    class _FakeSnapshot:
+        values = {"messages": build_messages()}
+
+    class _FakeCheckpointerGraph:
+        checkpointer = object()
+
+        async def aget_state(self, config: Any) -> Any:
+            return _FakeSnapshot()
+
+    monkeypatch.setattr(api, "graph", _FakeCheckpointerGraph())
+
+    # Act
+    rendered = await api._thread_messages("t-history-1")
+
+    # Assert
+    assert rendered == expected
+
+
+def _human(text: str) -> Any:
+    from langchain_core.messages import HumanMessage
+
+    return HumanMessage(text)
+
+
+def _ai(text: str) -> Any:
+    from langchain_core.messages import AIMessage
+
+    return AIMessage(text)
