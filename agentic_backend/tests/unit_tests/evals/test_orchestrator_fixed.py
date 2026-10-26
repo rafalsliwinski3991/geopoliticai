@@ -98,15 +98,20 @@ async def test_the_orchestrator_eval_handles_direct_chat_turn_without_tool_calls
 
 @pytest.mark.anyio
 @pytest.mark.parametrize(
-    ("arg_key", "arg_value"),
+    ("tool_name", "destination", "arg_key", "arg_value"),
     [
-        ("question", "What was agreed at the summit?"),
-        ("topic", "European energy security"),
+        (
+            "run_deep_forecaster",
+            "forecast",
+            "question",
+            "What was agreed at the summit?",
+        ),
+        ("run_reporter", "report", "topic", "European energy security"),
     ],
-    ids=["question-field", "topic-field"],
+    ids=["forecaster-question", "reporter-topic"],
 )
 async def test_the_orchestrator_eval_extracts_standalone_query_from_alternate_tool_arg_keys(
-    arg_key: str, arg_value: str
+    tool_name: str, destination: str, arg_key: str, arg_value: str
 ) -> None:
     """Specialist tools may receive the rewritten query under query, question, or topic args."""
     # Arrange
@@ -114,14 +119,14 @@ async def test_the_orchestrator_eval_extracts_standalone_query_from_alternate_to
         content="",
         tool_calls=[
             {
-                "name": "run_deep_expert",
+                "name": tool_name,
                 "args": {arg_key: arg_value},
                 "id": "call_456",
                 "type": "tool_call",
             }
         ],
     )
-    supervisor = RecordingSupervisor({"destination": "deep", "messages": [ai_msg]})
+    supervisor = RecordingSupervisor({"destination": destination, "messages": [ai_msg]})
     supervisor_module = importlib.import_module("agents.orchestrator.nodes.supervisor")
 
     # Act
@@ -130,7 +135,24 @@ async def test_the_orchestrator_eval_extracts_standalone_query_from_alternate_to
 
     # Assert
     assert output == {
-        "destination": "deep",
+        "destination": destination,
         "standalone_query": arg_value,
     }
     assert len(supervisor.seen) == 1
+
+
+@pytest.mark.anyio
+async def test_the_orchestrator_eval_reports_other_when_the_supervisor_names_no_destination() -> (
+    None
+):
+    """A chat answer returns no tool call and, from a bare fake, no destination."""
+    # Arrange
+    supervisor = RecordingSupervisor({"messages": [AIMessage("Hello!")]})
+    supervisor_module = importlib.import_module("agents.orchestrator.nodes.supervisor")
+
+    # Act
+    with patch.object(supervisor_module, "supervisor", supervisor):
+        output = await run_orchestrator_fixed({"messages": CONVERSATION})
+
+    # Assert
+    assert output == {"destination": "other", "standalone_query": ""}

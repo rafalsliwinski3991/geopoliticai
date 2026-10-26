@@ -1,5 +1,5 @@
 {
- "description": "The orchestrator's classifier alone, on recorded conversations: 'destination' is where the last turn must go (other, geopolitical, report, deep, or forecast), and on the research routes 'standalone_query' is the rewrite the expert, deep expert, or forecaster would receive. Judges: routing_correct on every case, query_matches_expected where a rewrite is expected.",
+ "description": "The supervisor's routing pass alone, on recorded conversations: 'destination' is where the last turn must go (other, geopolitical, report, deep, or forecast), and on the research routes 'standalone_query' is the rewrite the expert, deep expert, or forecaster would receive. Judges: routing_correct on every case, query_matches_expected where a rewrite is expected.",
  "cases": [
   {
    "name": "orchestrator-greeting",

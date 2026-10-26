@@ -3,12 +3,12 @@
 This application puts an orchestrator in front of the two-node expert agent.
 The orchestrator routes geopolitical turns to a nested expert, report requests
 to a reporter that pauses at an outline the user approves, revises, or cancels
-by typing a reply, and other turns to its own conversational branch:
+by typing a reply, and other turns to its own conversational answer:
 
 ```text
-START -> classify -> expert -> END
-                  \-> chat   -> END
-                  \-> reporter -> END
+START -> supervisor -> END                     (a chat answer)
+                    \-> tools -> supervisor -> END (run_expert, run_deep_expert, run_deep_forecaster)
+                    \-> tools -> END               (run_reporter)
 ```
 
 The expert remains independently available in LangGraph Studio. Its graph is:

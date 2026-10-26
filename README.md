@@ -11,15 +11,13 @@ and one forecaster's public YouTube videos.
 The API runs an orchestrator that routes each turn to one of five branches:
 
 ```text
-START -> classify -> expert -> END
-                  \-> chat   -> END
-                  \-> deep_expert -> END
-                  \-> deep_forecaster -> END
-                  \-> reporter -> END
+START -> supervisor -> END                     (a chat answer)
+                    \-> tools -> supervisor -> END (run_expert, run_deep_expert, run_deep_forecaster)
+                    \-> tools -> END               (run_reporter)
 ```
 
 Geopolitical turns are delegated to the nested expert. Other turns are answered
-by the orchestrator's own general-assistant branch, without source citations.
+by the supervisor itself, without source citations.
 An explicit request for depth goes to the deep expert, a `deepagents` agent
 that plans, searches, and revises its draft against a rubric. An explicit
 request for a forecast goes to the deep forecaster, a fixed workflow that reads

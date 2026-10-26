@@ -43,8 +43,8 @@ this file, so OpenCode, Copilot, and Antigravity read it too: name no tool or pa
   re-export `requirements.txt` (command in its header) whenever `agentic_backend/uv.lock` changes.
 
 ```text
-orchestrator     START -> supervisor -> tools -> supervisor -> END
-                 tools -> END (on reporter)
+orchestrator     START -> supervisor -> tools | END (a chat answer);  tools -> supervisor -> END
+                 tools -> END (on run_reporter)
 expert           START -> search_and_fetch -> answer -> END
 reporter         START -> outline -> gate | END;  gate -> outline | write | END;  write -> END
 deep_forecaster  START -> research -> draft_claims -> council_round_1 -> council_round_2
@@ -85,7 +85,7 @@ deep_forecaster  START -> research -> draft_claims -> council_round_1 -> council
   hazard a database snapshot does not cover: the previous image's `Source(**fields)` raises on the
   unknown field, and JsonPlusSerializer silently reads back `None` in place of each `Source`.
 - The store holds only `ask_video`'s video-notes cache, expiring after `api.STORE_TTL`; the
-  forecaster reaches it through the orchestrator node's `runtime.store`.
+  forecaster reaches it through the orchestrator tool's `runtime.store`.
 - `build_graph()` works without a checkpointer (tests, Studio), and `auth.py` reads
   `JWT_SIGNING_KEY` at call time. API startup requires `config.REQUIRED_ENV_VARS` and `DATABASE_URL`.
 - Record every decision agent code makes (a retry, a drop, a cap reached, a verdict) as attributes
@@ -101,12 +101,13 @@ deep_forecaster  START -> research -> draft_claims -> council_round_1 -> council
   prompts in `prompts.py`, tuning in its config dataclasses (`LIMITS`, the `*_LLM_SETTINGS`). Nodes
   return partial state dicts without mutating state.
 - The orchestrator coordinates specialists via modular tools (`agents/orchestrator/tools/`) executed
-  in a `ToolNode(ALL_TOOLS)` that update shared workspace channels on `GeopoliticState` (`retrieved_sources`,
-  `expert_synthesis`, `forecast_data`, `report_draft`).
+  in a `ToolNode(ALL_TOOLS, handle_tool_errors=False)` that update the `expert_synthesis` and `forecast_data`
+  channels on `OrchestratorState`, so a failing tool raises to the API's error frame.
 - Routing: In supervisor Pass 1, conversational small talk is answered directly without tools. Geopolitical
   queries route to specialist tools: `deep` (`run_deep_expert`) only after an explicit request for depth, and
   same-topic follow-ups stay deep; `forecast` (`run_deep_forecaster`) only on an explicit forecast or prediction
   request, never sticky: a new question after a forecast is `geopolitical`, a question about the forecast `other`.
+  `SUPERVISOR_SYSTEM_PROMPT` states each of these rules.
 - Next-steps footer: After specialist tool execution, supervisor Pass 2 generates a dynamic next-steps footer
   offering follow-up options with canonical turn costs from `config.py`, falling back to `STATIC_NEXT_STEPS_MENU`
   on failure, emitted as a notice chunk.
@@ -143,11 +144,12 @@ deep_forecaster  START -> research -> draft_claims -> council_round_1 -> council
 - Stream `custom`, `updates`, and `messages` with `subgraphs=True`; nodes emit `frames.ProgressFrame`
   and `frames.NoticeEvent` through a `StreamWriter`. Read custom events from every namespace (a subgraph's arrive under the child's)
   and `updates` from the root only.
-- Answer text streams from the AI messages of `api.ANSWER_NODES` (including `supervisor` for chat streaming).
-  The reporter's refusal, cancel, and revision-cap paths, the deep expert, and the forecaster deliver their answer
-  whole as a `notice` event instead. None of these nodes may join `ANSWER_NODES` (the text would print
-  twice), while supervisor footer notices prevent duplication of completed footer messages. No forecaster
-  node may be named `answer`, `chat`, or `write`.
+- Answer text streams from the AI messages of `api.ANSWER_NODES` (`answer`, `supervisor`, `write`); the
+  supervisor returns a chat answer whole. The reporter's refusal, cancel, and revision-cap paths, the deep
+  expert, and the forecaster deliver their answer whole as a `notice` event instead. The reporter's
+  `outline`/`gate`, the deep expert, the forecaster, and `tools` may never join `ANSWER_NODES` (the text
+  would print twice); the supervisor's footer starts with `config.FOOTER_PREFIX` and is skipped. No
+  forecaster node may be named `answer`, `supervisor`, or `write`.
 
 ## Quota
 

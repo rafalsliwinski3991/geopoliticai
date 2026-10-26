@@ -1168,7 +1168,7 @@ async def test_astream_answer_forwards_unstreamed_supervisor_chat_as_token(
     from langchain_core.messages import AIMessage
 
     expected_token = "Good morning! I am GeopoliticAI's supervisor assistant."
-    footer_text = "\n\n---\n**What next?**\n- Ask a follow-up (0 research turns)"
+    footer_text = f"{FOOTER_PREFIX}**What next?**\n- Ask a follow-up (1 research turn)"
 
     class _FakeUnstreamedGraph:
         async def astream(self, *args: Any, **kwargs: Any) -> Any:
@@ -1198,6 +1198,36 @@ async def test_astream_answer_forwards_unstreamed_supervisor_chat_as_token(
     # Assert
     tokens = [text for kind, text in events if kind == "token"]
     assert tokens == [expected_token]
+
+
+@pytest.mark.anyio
+async def test_astream_answer_does_not_repeat_a_streamed_supervisor_answer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Chunks then the completed message from `supervisor` must reach the browser once."""
+    # Arrange
+    from langchain_core.messages import AIMessage, AIMessageChunk
+
+    metadata = {"langgraph_node": "supervisor"}
+
+    class _FakeStreamingGraph:
+        async def astream(self, *args: Any, **kwargs: Any) -> Any:
+            yield ((), "messages", (AIMessageChunk(content="Good "), metadata))
+            yield ((), "messages", (AIMessageChunk(content="morning."), metadata))
+            yield ((), "messages", (AIMessage(content="Good morning."), metadata))
+
+    monkeypatch.setattr(api, "graph", _FakeStreamingGraph())
+
+    # Act
+    events = [
+        event
+        async for event in api._astream_answer(
+            build_initial_orchestrator_state("Hi"), "t-1"
+        )
+    ]
+
+    # Assert
+    assert [text for kind, text in events if kind == "token"] == ["Good ", "morning."]
 
 
 @pytest.mark.anyio

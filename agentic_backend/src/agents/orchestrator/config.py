@@ -28,10 +28,11 @@ FOOTER_LLM_SETTINGS: LLMSettings = LLMSettings(
     reasoning_effort="minimal",
 )
 
-# One turn is one user message plus the assistant reply it drew. Counting
-# turns bounds the number of exchanges, not their size: a single expert answer
+# A chat turn is two messages and a research turn four (the user message, the
+# tool call, the tool result, the footer). Counting turns bounds the number of
+# exchanges, not their size: a single expert answer
 # may run to `ANSWER_LLM_SETTINGS.max_output_tokens`, so ten turns can still be
 # a very large payload. This is a cheap bound, deliberately, not a cost budget
 # (brainstorm Q14 — accepted risk).
 HISTORY_WINDOW_TURNS = 10
-HISTORY_WINDOW_MESSAGES = HISTORY_WINDOW_TURNS * 2
+HISTORY_WINDOW_MESSAGES = HISTORY_WINDOW_TURNS * 4
