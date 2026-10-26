@@ -37,8 +37,6 @@ FETCH_CONCURRENCY = 8
 QUERY_TRIM_CHARS = 140
 QUERY_TRIM_WORDS = 20
 MAX_REDIRECTS = 3
-# A Brave text field arrives with its ends trimmed.
-StripText = Annotated[str, AfterValidator(str.strip)]
 
 # A byline is what the page declares as its author (brainstorm 2026Sep30 Q16):
 # the `author` of any JSON-LD (Schema.org linked-data) object on the page, else
@@ -65,6 +63,8 @@ FetchOutcome = Literal[
     "too_short",
     "extract_failed",
 ]
+# A Brave text field arrives with its ends trimmed.
+StripText = Annotated[str, AfterValidator(str.strip)]
 
 
 # Search: Brave, behind the allow-list.
