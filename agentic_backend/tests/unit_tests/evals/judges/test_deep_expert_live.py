@@ -83,7 +83,7 @@ def test_the_live_judges_skip_the_new_checks_when_the_run_failed() -> None:
     )
 
 
-def grader_judge() -> Any:
+def find_grader_judge() -> Any:
     return next(judge for judge in judges() if judge.name == "grader_satisfied")
 
 
@@ -111,13 +111,13 @@ def test_grader_satisfied_passes_only_when_the_last_verdict_is_satisfied(
 ) -> None:
     """A run that shipped on the round cap is a draft the grader never accepted; the eval must fail it."""
     # Arrange
-    judge = grader_judge()
+    judge = find_grader_judge()
     output = {"finished": True, "grader_verdicts": verdicts}
-
-    # Act
     variables = judge.view({"query": "q"}, output, {})
     assert variables is not None
     assert judge.check is not None
+
+    # Act
     result = judge.check(variables)
 
     # Assert
@@ -130,7 +130,7 @@ def test_grader_satisfied_skips_a_run_that_did_not_finish() -> None:
     failed = {"finished": False, "side": "ours", "cause": "QuorumError"}
 
     # Act
-    view = grader_judge().view({"query": "q"}, failed, {})
+    view = find_grader_judge().view({"query": "q"}, failed, {})
 
     # Assert
     assert view is None
