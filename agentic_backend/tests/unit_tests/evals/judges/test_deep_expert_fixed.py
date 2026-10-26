@@ -132,16 +132,28 @@ def test_an_answer_about_the_rules_based_order_passes() -> None:
     assert passed is True
 
 
-def test_an_empty_answer_fails() -> None:
-    """An empty answer has no opening and no ending, so both checks refuse it."""
+def test_an_empty_answer_fails_the_preamble_check() -> None:
+    """An empty answer has no opening, so the preamble check refuses it."""
+    # Arrange
+    output = {"answer": ""}
+
     # Act
-    results = (
-        answer_without_preamble({"answer": ""}),
-        answer_without_closing_offer({"answer": ""}),
-    )
+    passed = answer_without_preamble(output)
 
     # Assert
-    assert results == (False, False)
+    assert passed is False
+
+
+def test_an_empty_answer_fails_the_closing_offer_check() -> None:
+    """An empty answer has no ending, so the closing-offer check refuses it."""
+    # Arrange
+    output = {"answer": ""}
+
+    # Act
+    passed = answer_without_closing_offer(output)
+
+    # Assert
+    assert passed is False
 
 
 def test_an_answer_that_closes_with_an_offer_fails() -> None:
