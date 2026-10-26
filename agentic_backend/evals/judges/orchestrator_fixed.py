@@ -47,7 +47,12 @@ def _routing_view(
 ) -> dict[str, Any] | None:
     if "destination" not in expected:
         return None
-    return {"actual": output.get("destination"), "expected": expected["destination"]}
+    # `last_message` is unused by the check; it names the failing case in the log.
+    return {
+        "actual": output.get("destination"),
+        "expected": expected["destination"],
+        "last_message": input["messages"][-1]["content"],
+    }
 
 
 def _query_view(

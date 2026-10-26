@@ -19,6 +19,7 @@ from urllib.parse import urljoin, urlparse
 
 import httpx
 import trafilatura
+from opentelemetry import trace
 from trafilatura.settings import Document
 
 from models import Candidate, SearchUnavailableError, Source, SourcePolicy
@@ -291,6 +292,9 @@ async def _fetch_page(
             response.raise_for_status()
         except httpx.HTTPError as exc:
             logger.info("Fetch failed url=%s: %s", url, exc)
+            trace.get_current_span().set_attribute(
+                "source.status_code", response.status_code
+            )
             return "fetch_failed", None, None
         return await _read_page(response, url, candidate.title, policy)
     return "redirect_limit", None, None

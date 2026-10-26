@@ -333,6 +333,37 @@
    "expected": {
     "destination": "other"
    }
+  },
+  {
+   "name": "orchestrator-overview-is-not-chat",
+   "description": "A broad overview of a country's strategy. Must go to 'geopolitical', never be answered from memory, and the question must pass through unchanged.",
+   "input": {
+    "messages": [
+     {
+      "role": "user",
+      "content": "Tell me about Poland's geopolitical strategy."
+     }
+    ]
+   },
+   "expected": {
+    "destination": "geopolitical",
+    "standalone_query": "Tell me about Poland's geopolitical strategy."
+   }
+  },
+  {
+   "name": "orchestrator-capabilities-question-is-chat",
+   "description": "A question about the assistant itself. Must go to 'other' (plain chat), not to a research route.",
+   "input": {
+    "messages": [
+     {
+      "role": "user",
+      "content": "What can you do?"
+     }
+    ]
+   },
+   "expected": {
+    "destination": "other"
+   }
   }
  ]
 }

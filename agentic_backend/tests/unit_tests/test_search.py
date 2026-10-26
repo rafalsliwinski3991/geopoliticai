@@ -940,6 +940,29 @@ async def test_fetch_span_records_each_drop_reason(
 
 
 @pytest.mark.anyio
+async def test_fetch_span_records_the_status_of_a_rejected_page(
+    monkeypatch: pytest.MonkeyPatch, captured_spans: InMemorySpanExporter
+) -> None:
+    # Arrange
+    async def forbidden(
+        self: httpx.AsyncClient,
+        url: str,
+        *,
+        timeout: object | None = None,
+        follow_redirects: bool = False,
+    ) -> httpx.Response:
+        return _html("", 403)
+
+    monkeypatch.setattr(httpx.AsyncClient, "get", forbidden)
+    candidate = Candidate("t", "https://reuters.com/x", "reuters.com")
+    # Act
+    await search._fetch_and_extract(httpx.AsyncClient(), candidate, EXPERT_SOURCES)
+    span = _span_by_name(captured_spans, "fetch_source")
+    # Assert
+    assert _attrs(span)["source.status_code"] == 403
+
+
+@pytest.mark.anyio
 async def test_extract_page_reads_date_and_declared_language(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
