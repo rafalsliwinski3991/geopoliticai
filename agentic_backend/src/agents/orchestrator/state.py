@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Annotated, Literal, TypedDict
+from typing import Annotated, Any, Literal, TypedDict
 
 from langchain_core.messages import AnyMessage, HumanMessage
 from langgraph.graph.message import add_messages
@@ -43,18 +43,18 @@ class RouteDecision(BaseModel):
 
 
 class OrchestratorState(TypedDict):
-    """Conversation state. `messages` is the only accumulating channel.
+    """The orchestrator's conversation state.
 
-    `destination` and `standalone_query` are `NotRequired` because a turn's
-    input carries only the new human message; `classify` writes both before
-    anything reads them. Seeding them with defaults instead would turn a
-    classifier that failed to write `destination` into a silent fall-through
-    to the chat branch.
+    The specialist tools write their synthesis and forecasts into dedicated
+    channels beside the messages; the reporter reads them to know whether any
+    researched material exists.
     """
 
     messages: Annotated[list[AnyMessage], add_messages]
     destination: NotRequired[Destination]
     standalone_query: NotRequired[str]
+    expert_synthesis: NotRequired[list[str]]
+    forecast_data: NotRequired[list[dict[str, Any]]]
 
 
 def build_initial_orchestrator_state(query: str) -> OrchestratorState:
