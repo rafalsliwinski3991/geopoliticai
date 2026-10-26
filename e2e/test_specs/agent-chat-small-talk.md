@@ -16,3 +16,4 @@
 - The second answer is a new article, so the thread now holds two answers.
 - The daily research meter shows the same number of turns used after both answers as before the first:
   chat turns are free (a research turn would add 1).
+- The streamed progress never includes "Searching and reading sources...", so only the chat agent ran.

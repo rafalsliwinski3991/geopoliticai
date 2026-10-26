@@ -13,8 +13,8 @@ as a `notice` (guarded in `tests/unit_tests/test_api.py`).
 Built per call by `forecast()`, as the deep expert builds its agent. Nothing
 here needs a key; one construction path keeps tests and runtime alike. There
 is no checkpointer: `forecast()` also switches the parent's saver off for the
-whole tree (`NO_CHECKPOINTER_CONFIG`), runs the graph under the wall cap, and
-maps its failures to pipeline errors.
+whole tree (`capped_run.NO_CHECKPOINTER_CONFIG`), runs the graph under the
+wall cap, and maps its failures to pipeline errors.
 """
 
 from __future__ import annotations
@@ -25,7 +25,7 @@ from typing import Any
 from langgraph.errors import NodeTimeoutError
 from langgraph.graph import END, START, StateGraph
 
-from agents.deep_expert.graph import NO_CHECKPOINTER_CONFIG
+from agents.capped_run import invoke_capped
 from agents.deep_forecaster.config import LIMITS
 from agents.deep_forecaster.nodes import (
     council_round_1,
@@ -37,8 +37,7 @@ from agents.deep_forecaster.nodes import (
     write_analysis,
 )
 from agents.deep_forecaster.state import ForecastRun, ForecastState
-from agents.deep_forecaster.time_limits import run_under_time_limits
-from models import LLMInvocationError, PipelineError, ResearchLimitError
+from models import ResearchLimitError
 
 # (name, node, LangGraph node timeout). Research carries its own soft time
 # box; each council round is bounded by its members' timeouts; the two single
@@ -86,32 +85,25 @@ async def forecast(query: str, store: Any | None = None) -> str:
     Takes no writer: each step emits its own progress through the graph's
     `runtime.stream_writer`, which reaches the orchestrator's `custom` stream
     under the child namespace (measured, plan §1). The wall cap is a
-    dedicated-task cancel (`time_limits.run_under_time_limits`): in smoke gate
+    dedicated-task cancel (`capped_run.run_under_time_limits`): in smoke gate
     F3, run 1, the frame's `asyncio.timeout` alone did not bound a hung run, and
     the task is cancelled repeatedly, then abandoned, whatever swallows a cancel.
     """
     run = ForecastRun(store=store)
     try:
-        result, capped = await run_under_time_limits(
-            build_graph().ainvoke(
-                {"question": query}, config=NO_CHECKPOINTER_CONFIG, context=run
-            ),
-            LIMITS.wall_seconds,
+        result, capped = await invoke_capped(
+            build_graph(),
+            {"question": query},
+            limit_seconds=LIMITS.wall_seconds,
+            failure="The forecast failed.",
+            context=run,
         )
-    except TimeoutError as exc:
-        raise LLMInvocationError("The forecast failed.") from exc
     except NodeTimeoutError as exc:
         # A step's own node timeout (`STEPS`); not a `TimeoutError`.
         raise ResearchLimitError(
             f"The forecast's step ran past its {exc.timeout:g}-second limit: "
             f"{run.step}."
         ) from exc
-    except PipelineError:
-        # Already the right status: no sources, a search outage, an invalid
-        # claim set, a council below quorum, or a failed check.
-        raise
-    except Exception as exc:  # noqa: BLE001 - one boundary for the whole graph
-        raise LLMInvocationError("The forecast failed.") from exc
     if capped:
         raise ResearchLimitError(
             f"The forecast ran past its {LIMITS.wall_seconds / 60:g}-minute limit "

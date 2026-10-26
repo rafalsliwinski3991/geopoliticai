@@ -14,7 +14,7 @@ import unicodedata
 from collections import Counter
 from collections.abc import Sequence
 from html.parser import HTMLParser
-from typing import NamedTuple
+from typing import Literal, NamedTuple
 from urllib.parse import urljoin, urlparse
 
 import httpx
@@ -52,8 +52,18 @@ FETCH_HEADERS = {
     "Accept": "text/html,application/xhtml+xml",
     "Accept-Language": "en-US,en;q=0.9",
 }
+FetchOutcome = Literal[
+    "ok",
+    "off_list",
+    "fetch_failed",
+    "redirect_limit",
+    "not_html",
+    "too_short",
+    "extract_failed",
+]
 
 
+# Search: Brave, behind the allow-list.
 def _normalize_domain(url: str) -> str:
     """Return the lowercase host of a URL-like string without ``www.``."""
     raw = (url or "").strip()
@@ -100,15 +110,6 @@ def build_batch_query(query: str, domains: Sequence[str]) -> str:
         logger.warning("Brave query over budget; dropping domain=%s", kept[-1])
         kept.pop()
     raise ValueError("Query too long to combine with any site filter.")
-
-
-class ExtractedPage(NamedTuple):
-    """What one worker hop reads from a page body."""
-
-    text: str | None
-    author: str
-    published: str
-    lang: str
 
 
 async def _brave_batch(
@@ -175,6 +176,65 @@ def merge_candidates(
     return merged
 
 
+async def search_allowlisted(query: str, policy: SourcePolicy) -> list[Candidate]:
+    """Run exactly one Brave request per policy batch and merge results.
+
+    One `brave_search` span per call: what each batch returned after the
+    allow-list gate, how many failed, and the domains searched, which for a
+    forecaster search name the forecaster (brainstorm 2026Oct13 Q9).
+    """
+    brave_key = os.getenv("BRAVE_SEARCH_KEY")
+    if not brave_key:
+        raise SearchUnavailableError("Missing BRAVE_SEARCH_KEY for live search.")
+    headers = {
+        "Accept": "application/json",
+        "Accept-Encoding": "gzip",
+        "X-Subscription-Token": brave_key,
+    }
+    with start_span("brave_search") as span:
+        async with httpx.AsyncClient(headers=headers) as client:
+            results = await asyncio.gather(
+                *(
+                    _brave_batch(client, query, batch, policy)
+                    for batch in policy.batches
+                ),
+                return_exceptions=True,
+            )
+        batches: list[list[Candidate]] = []
+        for result in results:
+            if isinstance(result, asyncio.CancelledError):
+                # Preserve cancellation: the request was aborted mid-search, and a
+                # cancelled batch must not be swallowed as a mere "batch failed".
+                raise result
+            if isinstance(result, BaseException):
+                logger.warning("Brave batch failed: %s", result)
+            else:
+                batches.append(result)
+        span.set_attributes(
+            {
+                "search.domains": sorted(policy.allowed_domains),
+                "search.batches": len(policy.batches),
+                "search.failed_batches": len(policy.batches) - len(batches),
+                "search.results_per_batch": [len(batch) for batch in batches],
+            }
+        )
+        if not batches:
+            raise SearchUnavailableError("Every Brave request failed for this run.")
+        merged = merge_candidates(batches, policy)
+        span.set_attribute("search.candidates", len(merged))
+        return merged
+
+
+# Page reading: fetch, extract, and the page's own facts.
+class ExtractedPage(NamedTuple):
+    """What one worker hop reads from a page body."""
+
+    text: str | None
+    author: str
+    published: str
+    lang: str
+
+
 async def _fetch_and_extract(
     client: httpx.AsyncClient, candidate: Candidate, policy: SourcePolicy
 ) -> Source | None:
@@ -191,12 +251,10 @@ async def _fetch_and_extract(
         outcome, source, page = await _fetch_page(client, candidate, policy)
         span.set_attribute("source.outcome", outcome)
         if source is not None and page is not None and page.text:
-            # Outside `_fetch_page`'s extraction `try`: a telemetry failure
+            # Outside `_read_page`'s extraction `try`: a telemetry failure
             # must never turn an accepted page into `extract_failed`.
             try:
-                span.set_attributes(
-                    _page_attributes(source.url, page.text, page, policy)
-                )
+                span.set_attributes(_page_attributes(source.url, page, policy))
             except Exception as exc:  # noqa: BLE001 - tracing never fails a request
                 logger.debug("fetch_source attributes failed: %s", exc)
         return source
@@ -204,7 +262,7 @@ async def _fetch_and_extract(
 
 async def _fetch_page(
     client: httpx.AsyncClient, candidate: Candidate, policy: SourcePolicy
-) -> tuple[str, Source | None, ExtractedPage | None]:
+) -> tuple[FetchOutcome, Source | None, ExtractedPage | None]:
     """Return why the page was dropped, or ``"ok"``, its source and its extraction."""
     url = candidate.url
     for redirect in range(MAX_REDIRECTS + 1):
@@ -234,29 +292,37 @@ async def _fetch_page(
         except httpx.HTTPError as exc:
             logger.info("Fetch failed url=%s: %s", url, exc)
             return "fetch_failed", None, None
-        try:
-            if "html" not in response.headers.get("content-type", "").lower():
-                return "not_html", None, None
-            page = await _extract_page(response.text)
-            if not page.text or len(page.text) < policy.min_source_chars:
-                return "too_short", None, None
-            source = Source(
-                title=candidate.title,
-                url=url,
-                text=page.text[: policy.max_source_chars],
-                author=page.author,
-            )
-            return "ok", source, page
-        except Exception as exc:  # noqa: BLE001 - one bad source must not abort the batch
-            logger.info("Extraction failed url=%s: %s", url, exc)
-            return "extract_failed", None, None
+        return await _read_page(response, url, candidate.title, policy)
     return "redirect_limit", None, None
 
 
+async def _read_page(
+    response: httpx.Response, url: str, title: str, policy: SourcePolicy
+) -> tuple[FetchOutcome, Source | None, ExtractedPage | None]:
+    """Extract one fetched HTML page; drop it when it is not HTML, too short, or unreadable."""
+    try:
+        if "html" not in response.headers.get("content-type", "").lower():
+            return "not_html", None, None
+        page = await _extract_page(response.text)
+        if not page.text or len(page.text) < policy.min_source_chars:
+            return "too_short", None, None
+        source = Source(
+            title=title,
+            url=url,
+            text=page.text[: policy.max_source_chars],
+            author=page.author,
+        )
+        return "ok", source, page
+    except Exception as exc:  # noqa: BLE001 - one bad source must not abort the batch
+        logger.info("Extraction failed url=%s: %s", url, exc)
+        return "extract_failed", None, None
+
+
 def _page_attributes(
-    url: str, text: str, page: ExtractedPage, policy: SourcePolicy
+    url: str, page: ExtractedPage, policy: SourcePolicy
 ) -> dict[str, str | int | bool]:
     """Return a kept page's span attributes: what the cut lost, and its facts."""
+    text = page.text or ""
     return {
         "source.url": url,
         "source.chars_full": len(text),
@@ -313,8 +379,8 @@ async def _extract_page(body: str) -> ExtractedPage:
     return await asyncio.to_thread(_extract_page_sync, body)
 
 
-class _BylineParser(HTMLParser):
-    """Collect a page's `<meta name="author">` values and JSON-LD blocks."""
+class _HeadParser(HTMLParser):
+    """Collect a page's `<html lang>`, `<meta name="author">` values and JSON-LD blocks."""
 
     def __init__(self) -> None:
         super().__init__()
@@ -365,10 +431,10 @@ def _json_ld_authors(node: object) -> list[str]:
     return names
 
 
-def _parse_head(body: str) -> _BylineParser | None:
+def _parse_head(body: str) -> _HeadParser | None:
     """Parse a page's byline sources and `<html lang>` once, or None (worker thread)."""
     try:
-        parser = _BylineParser()
+        parser = _HeadParser()
         parser.feed(body)
         parser.close()
     except Exception:  # noqa: BLE001 - optional facts never cost a source
@@ -376,7 +442,7 @@ def _parse_head(body: str) -> _BylineParser | None:
     return parser
 
 
-def _byline_from(parser: _BylineParser | None) -> str:
+def _byline_from(parser: _HeadParser | None) -> str:
     """Return the page's own byline, or "" (worker thread).
 
     A byline is optional: a malformed page or JSON-LD block must never drop a
@@ -399,66 +465,12 @@ def _byline_from(parser: _BylineParser | None) -> str:
     return byline[:MAX_AUTHOR_CHARS]
 
 
-def _lang_from(parser: _BylineParser | None) -> str:
+def _lang_from(parser: _HeadParser | None) -> str:
     """Return the page's declared primary language subtag ("pl"), or ""."""
     if parser is None:
         return ""
     tag = parser.html_lang.strip().lower().replace("_", "-")
     return tag.split("-")[0][:MAX_LANG_CHARS]
-
-
-def _byline_sync(body: str) -> str:
-    """Return the page's own byline, or "" (worker thread)."""
-    return _byline_from(_parse_head(body))
-
-
-async def search_allowlisted(query: str, policy: SourcePolicy) -> list[Candidate]:
-    """Run exactly one Brave request per policy batch and merge results.
-
-    One `brave_search` span per call: what each batch returned after the
-    allow-list gate, how many failed, and the domains searched, which for a
-    forecaster search name the forecaster (brainstorm 2026Oct13 Q9).
-    """
-    brave_key = os.getenv("BRAVE_SEARCH_KEY")
-    if not brave_key:
-        raise SearchUnavailableError("Missing BRAVE_SEARCH_KEY for live search.")
-    headers = {
-        "Accept": "application/json",
-        "Accept-Encoding": "gzip",
-        "X-Subscription-Token": brave_key,
-    }
-    with start_span("brave_search") as span:
-        async with httpx.AsyncClient(headers=headers) as client:
-            results = await asyncio.gather(
-                *(
-                    _brave_batch(client, query, batch, policy)
-                    for batch in policy.batches
-                ),
-                return_exceptions=True,
-            )
-        batches: list[list[Candidate]] = []
-        for result in results:
-            if isinstance(result, asyncio.CancelledError):
-                # Preserve cancellation: the request was aborted mid-search, and a
-                # cancelled batch must not be swallowed as a mere "batch failed".
-                raise result
-            if isinstance(result, BaseException):
-                logger.warning("Brave batch failed: %s", result)
-            else:
-                batches.append(result)
-        span.set_attributes(
-            {
-                "search.domains": sorted(policy.allowed_domains),
-                "search.batches": len(policy.batches),
-                "search.failed_batches": len(policy.batches) - len(batches),
-                "search.results_per_batch": [len(batch) for batch in batches],
-            }
-        )
-        if not batches:
-            raise SearchUnavailableError("Every Brave request failed for this run.")
-        merged = merge_candidates(batches, policy)
-        span.set_attribute("search.candidates", len(merged))
-        return merged
 
 
 async def fetch_sources(

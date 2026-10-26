@@ -1,7 +1,9 @@
 import pytest
 from langchain_core.messages import AIMessage, AnyMessage, HumanMessage
+from pydantic import Field, create_model
 
 from agents.reporter.state import (
+    OutlineDraft,
     build_initial_reporter_state,
     build_transcript,
     has_researched_material,
@@ -148,3 +150,30 @@ def test_a_chat_answer_with_a_link_passes_the_material_gate() -> None:
 
     # Act + Assert
     assert has_researched_material(messages) is True
+
+
+def test_the_outline_schema_is_a_plain_string_field() -> None:
+    # Arrange
+    # The strict structured-output call sends this schema to the model. A twin
+    # with plain `str` fields must produce the same schema, or the annotation
+    # changed what the model is asked for.
+    plain = create_model(
+        "PlainOutlineDraft",
+        __doc__=OutlineDraft.__doc__,
+        sections=(
+            list[str],
+            Field(description=OutlineDraft.model_fields["sections"].description),
+        ),
+        notice=(
+            str,
+            Field(description=OutlineDraft.model_fields["notice"].description),
+        ),
+    )
+
+    # Act
+    schema = OutlineDraft.model_json_schema()
+    twin = plain.model_json_schema()
+
+    # Assert
+    del schema["title"], twin["title"]
+    assert schema == twin

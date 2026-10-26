@@ -8,8 +8,8 @@ from langchain_core.runnables import RunnableConfig
 from agents.expert.config import ANSWER_LLM_SETTINGS
 from agents.expert.prompts import ANSWER_SYSTEM_PROMPT
 from agents.expert.state import PipelineState
-from llm import astream_text
-from models import LLMInvocationError, NoSourcesError, Source
+from llm import astream_text, collect_text
+from models import NoSourcesError, Source
 
 logger = logging.getLogger(__name__)
 
@@ -33,12 +33,12 @@ async def answer(
         f"Question: {state['query']}\n\nSource documents:\n\n{_sources_block(sources)}"
     )
     logger.info("answer: %d sources, prompt %d chars", len(sources), len(human_prompt))
-    chunks: list[str] = []
-    async for chunk in astream_text(
-        ANSWER_SYSTEM_PROMPT, human_prompt, config=config, settings=ANSWER_LLM_SETTINGS
-    ):
-        chunks.append(chunk)
-    text = "".join(chunks).strip()
-    if not text:
-        raise LLMInvocationError("Model returned an empty answer.")
+    text = await collect_text(
+        astream_text(
+            ANSWER_SYSTEM_PROMPT,
+            human_prompt,
+            config=config,
+            settings=ANSWER_LLM_SETTINGS,
+        )
+    )
     return {"answer": text}

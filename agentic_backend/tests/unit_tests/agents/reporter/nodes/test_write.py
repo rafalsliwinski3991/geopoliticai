@@ -87,7 +87,7 @@ async def test_an_over_long_report_is_clipped_after_the_stream_is_fully_drained(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     # Arrange
-    monkeypatch.setattr(node_module, "MAX_REPORT_CHARS", 10)
+    monkeypatch.setattr(node_module, "MAX_ANSWER_CHARS", 10)
     events: list[Any] = []
     received: dict[str, Any] = {}
     _stub_stream(monkeypatch, events, ["a" * 15, "b" * 10], received)

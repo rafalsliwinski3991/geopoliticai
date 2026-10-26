@@ -8,9 +8,11 @@ from typing import Any
 import pytest
 
 from agents.deep_forecaster.consts.progress import REWRITE_LABEL, WRITE_LABEL
+from agents.deep_forecaster.council import final_ballots
 from agents.deep_forecaster.models import Analysis, ClaimDiscussion
 from agents.deep_forecaster.prompts import RETRY_INSTRUCTIONS
 from agents.deep_forecaster.state import ClaimTally
+from frames import ProgressFrame
 from unit_tests.agents.deep_forecaster.conftest import (
     MISSING_CLAIM_DEFECT,
     ballot,
@@ -39,6 +41,7 @@ def a_tallied_state() -> Any:
     first = {member: ballot(["for", "unsure"]) for member in range(1, 8)}
     second = {member: one for member, one in first.items() if member != 4}
     forecast_state: Any = state(round_1=first, round_2=second)
+    forecast_state["final_ballots"] = final_ballots(first, second)
     forecast_state["tally"] = [
         ClaimTally(
             claim=1, verdict="ACCEPTED", votes_for=7, against=0, unsure=0, voting=7
@@ -72,7 +75,7 @@ def briefing_writer(returned: Analysis) -> tuple[dict[str, Any], Any]:
 
 @pytest.mark.anyio
 async def test_the_writer_reads_verdicts_votes_and_sources(
-    monkeypatch: pytest.MonkeyPatch, events: list[dict[str, Any]]
+    monkeypatch: pytest.MonkeyPatch, events: list[object]
 ) -> None:
     # Arrange
     recorded, a_fake = briefing_writer(a_written_analysis())
@@ -92,14 +95,31 @@ async def test_the_writer_reads_verdicts_votes_and_sources(
     assert "B article" in human and "Beta one." in human and "Beta three." in human
     assert "Today is 30 September 2026." in recorded["system"]
     assert recorded["settings"] is write_analysis_module.WRITE_LLM_SETTINGS
-    assert events == [
-        {"type": "progress", "node": "deep_forecaster", "label": WRITE_LABEL}
-    ]
+    assert events == [ProgressFrame(node="deep_forecaster", label=WRITE_LABEL)]
+
+
+@pytest.mark.anyio
+async def test_the_writer_reads_the_final_ballots_the_tally_stored(
+    monkeypatch: pytest.MonkeyPatch, events: list[object]
+) -> None:
+    """The writer's votes are the ballots `tally` stored, never a rebuild from the rounds."""
+    # Arrange
+    recorded, a_fake = briefing_writer(a_written_analysis())
+    monkeypatch.setattr(write_analysis_module, "ainvoke_structured", a_fake)
+    forecast_state: Any = a_tallied_state()
+    forecast_state["final_ballots"] = {
+        member: ballot(["against", "unsure"]) for member in range(1, 8)
+    }
+    # Act
+    await write_analysis_module.write_analysis(forecast_state, runtime(events))
+    # Assert
+    human = str(recorded["messages"][0].content)
+    assert "Member 1:\nClaim 1: against — Reason 1. (Sources 1)" in human
 
 
 @pytest.mark.anyio
 async def test_a_url_in_the_question_never_reaches_the_writer(
-    monkeypatch: pytest.MonkeyPatch, events: list[dict[str, Any]]
+    monkeypatch: pytest.MonkeyPatch, events: list[object]
 ) -> None:
     """The writer sees no URL anywhere in its brief — the question included:
     a URL there would be copied into the analysis and cost the one rewrite."""
@@ -121,7 +141,7 @@ async def test_a_url_in_the_question_never_reaches_the_writer(
 
 @pytest.mark.anyio
 async def test_the_retry_brief_carries_the_defect(
-    monkeypatch: pytest.MonkeyPatch, events: list[dict[str, Any]]
+    monkeypatch: pytest.MonkeyPatch, events: list[object]
 ) -> None:
     """On the one rewrite, the writer is re-briefed with verify's defect named."""
     # Arrange
@@ -134,14 +154,12 @@ async def test_the_retry_brief_carries_the_defect(
     # Assert
     human = str(recorded["messages"][0].content)
     assert human.endswith(RETRY_INSTRUCTIONS.format(defect=MISSING_CLAIM_DEFECT))
-    assert events == [
-        {"type": "progress", "node": "deep_forecaster", "label": REWRITE_LABEL}
-    ]
+    assert events == [ProgressFrame(node="deep_forecaster", label=REWRITE_LABEL)]
 
 
 @pytest.mark.anyio
 async def test_a_first_brief_has_no_retry_text(
-    monkeypatch: pytest.MonkeyPatch, events: list[dict[str, Any]]
+    monkeypatch: pytest.MonkeyPatch, events: list[object]
 ) -> None:
     """The first write is briefed without verify's retry text and at the write label."""
     # Arrange
@@ -152,6 +170,4 @@ async def test_a_first_brief_has_no_retry_text(
     # Assert
     human = str(recorded["messages"][0].content)
     assert "rejected" not in human
-    assert events == [
-        {"type": "progress", "node": "deep_forecaster", "label": WRITE_LABEL}
-    ]
+    assert events == [ProgressFrame(node="deep_forecaster", label=WRITE_LABEL)]

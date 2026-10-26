@@ -43,6 +43,22 @@ async def test_the_tally_counts_each_members_latest_ballot(
 
 
 @pytest.mark.anyio
+async def test_the_tally_stores_each_members_latest_ballot() -> None:
+    """The final ballots are stored once, so the writer and verify read the same votes."""
+    # Arrange
+    first = {member: ballot(["for", "unsure"]) for member in range(1, 8)}
+    second = {member: ballot(["against", "for"]) for member in range(1, 7)}
+    forecast_state = state(round_1=first, round_2=second)
+    expected = {member: ballot(["against", "for"]) for member in range(1, 7)}
+    # Member 7 did not answer round 2, so its round-1 vote stands.
+    expected[7] = ballot(["for", "unsure"])
+    # Act
+    out = await tally_node.tally(forecast_state)
+    # Assert
+    assert out["final_ballots"] == expected
+
+
+@pytest.mark.anyio
 async def test_the_tally_span_records_verdicts_and_changed_votes(
     captured_spans: InMemorySpanExporter,
 ) -> None:

@@ -8,6 +8,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 
 from agents.deep_forecaster.config import LIMITS
 from agents.deep_forecaster.consts.progress import ROUND_LABEL
+from frames import ProgressFrame
 from unit_tests.agents.deep_forecaster.conftest import ballot, state
 
 council_nodes_module: Any = importlib.import_module(
@@ -16,7 +17,7 @@ council_nodes_module: Any = importlib.import_module(
 council_nodes: Any = council_nodes_module
 
 
-def _runtime(events: list[dict[str, Any]]) -> Any:
+def _runtime(events: list[object]) -> Any:
     from types import SimpleNamespace
 
     from agents.deep_forecaster.state import ForecastRun
@@ -60,7 +61,7 @@ class _RecordedConvene:
 
 @pytest.mark.anyio
 async def test_round_1_convenes_every_member_with_a_quorum(
-    monkeypatch: pytest.MonkeyPatch, events: list[dict[str, Any]]
+    monkeypatch: pytest.MonkeyPatch, events: list[object]
 ) -> None:
     # Arrange
     recorded = _RecordedConvene()
@@ -87,7 +88,7 @@ async def test_round_1_convenes_every_member_with_a_quorum(
 
 @pytest.mark.anyio
 async def test_members_read_the_evidence_not_the_sources(
-    monkeypatch: pytest.MonkeyPatch, events: list[dict[str, Any]]
+    monkeypatch: pytest.MonkeyPatch, events: list[object]
 ) -> None:
     # Arrange
     recorded = _RecordedConvene()
@@ -111,7 +112,7 @@ async def test_members_read_the_evidence_not_the_sources(
 
 @pytest.mark.anyio
 async def test_round_2_convenes_only_round_1_voters_without_a_quorum(
-    monkeypatch: pytest.MonkeyPatch, events: list[dict[str, Any]]
+    monkeypatch: pytest.MonkeyPatch, events: list[object]
 ) -> None:
     # Arrange
     recorded = _RecordedConvene()
@@ -135,7 +136,7 @@ async def test_round_2_convenes_only_round_1_voters_without_a_quorum(
 
 @pytest.mark.anyio
 async def test_each_round_emits_its_own_label(
-    monkeypatch: pytest.MonkeyPatch, events: list[dict[str, Any]]
+    monkeypatch: pytest.MonkeyPatch, events: list[object]
 ) -> None:
     # Arrange
     recorded = _RecordedConvene()
@@ -144,14 +145,10 @@ async def test_each_round_emits_its_own_label(
     forecast_state = state()
     await council_nodes.council_round_1(forecast_state, _runtime(events))
     # Assert
-    assert events[-1] == {
-        "type": "progress",
-        "node": "deep_forecaster",
-        "label": ROUND_LABEL.format(round=1),
-    }
+    assert events[-1] == ProgressFrame(
+        node="deep_forecaster", label=ROUND_LABEL.format(round=1)
+    )
     await council_nodes.council_round_2(forecast_state, _runtime(events))
-    assert events[-1] == {
-        "type": "progress",
-        "node": "deep_forecaster",
-        "label": ROUND_LABEL.format(round=2),
-    }
+    assert events[-1] == ProgressFrame(
+        node="deep_forecaster", label=ROUND_LABEL.format(round=2)
+    )

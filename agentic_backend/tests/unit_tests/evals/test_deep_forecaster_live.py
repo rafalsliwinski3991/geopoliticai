@@ -220,7 +220,7 @@ async def test_step_times_add_the_writers_rewrite() -> None:
         # Extra ticks (asyncio housekeeping) hold the last value, so an
         # unexpected call cannot shift the gaps; the 4 scripted ticks give
         # started=8 s and step ends at 10, 12 and 17 s.
-        patch("agents.deep_forecaster.time_limits.run_under_time_limits", immediate),
+        patch("agents.capped_run.run_under_time_limits", immediate),
         patch(
             "evals.deep_forecaster_live.time.monotonic",
             side_effect=lambda: clock.pop(0) if len(clock) > 1 else clock[0],

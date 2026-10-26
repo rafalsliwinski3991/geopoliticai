@@ -1,13 +1,7 @@
 """Progress copy the reporter's nodes emit. Same rules as the orchestrator's."""
 
-OUTLINE_PROGRESS = {
-    "type": "progress",
-    "node": "outline",
-    "label": "Reading the conversation...",
-}
+from frames import ProgressFrame
 
-REPORT_PROGRESS = {
-    "type": "progress",
-    "node": "write",
-    "label": "Writing the report...",
-}
+OUTLINE_PROGRESS = ProgressFrame(node="outline", label="Reading the conversation...")
+
+REPORT_PROGRESS = ProgressFrame(node="write", label="Writing the report...")

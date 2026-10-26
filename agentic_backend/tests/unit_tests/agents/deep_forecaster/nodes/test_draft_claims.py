@@ -11,13 +11,14 @@ from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
 
 from agents.deep_forecaster.consts.forecasters import FORECASTER_SOURCES
 from agents.deep_forecaster.models import Claim, EvidenceRef
+from frames import ProgressFrame
 from models import LLMInvocationError, Source
 from unit_tests.agents.deep_forecaster.conftest import TODAY, claims, sources
 
 draft_module: Any = importlib.import_module("agents.deep_forecaster.nodes.draft_claims")
 
 
-def _runtime(events: list[dict[str, Any]], today: Any = None) -> Any:
+def _runtime(events: list[object], today: Any = None) -> Any:
     from types import SimpleNamespace
 
     from agents.deep_forecaster.state import ForecastRun
@@ -144,7 +145,7 @@ class TestCheckedClaims:
 @pytest.mark.anyio
 async def test_evidence_are_tidied_not_refused(
     monkeypatch: pytest.MonkeyPatch,
-    events: list[dict[str, Any]],
+    events: list[object],
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     """A repeat comes back once; dead numbers drop; at most 6 kept; each tidy logged."""
@@ -205,7 +206,7 @@ async def test_eight_real_evidence_are_cut_to_six(
 
 @pytest.mark.anyio
 async def test_the_node_emits_the_claims_label_and_checks(
-    monkeypatch: pytest.MonkeyPatch, events: list[dict[str, Any]]
+    monkeypatch: pytest.MonkeyPatch, events: list[object]
 ) -> None:
     # Arrange
     from agents.deep_forecaster.consts.progress import CLAIMS_LABEL
@@ -226,17 +227,13 @@ async def test_the_node_emits_the_claims_label_and_checks(
     # Act
     out = await draft_module.draft_claims(state, _runtime(events))
     # Assert
-    assert events[0] == {
-        "type": "progress",
-        "node": "deep_forecaster",
-        "label": CLAIMS_LABEL,
-    }
+    assert events[0] == ProgressFrame(node="deep_forecaster", label=CLAIMS_LABEL)
     assert len(out["claims"]) == 2
 
 
 @pytest.mark.anyio
 async def test_the_prompts_carry_today_and_every_number(
-    monkeypatch: pytest.MonkeyPatch, events: list[dict[str, Any]]
+    monkeypatch: pytest.MonkeyPatch, events: list[object]
 ) -> None:
     # Arrange
     from agents.deep_forecaster.models import DraftedClaims as _Drafted
@@ -306,7 +303,7 @@ async def test_a_statement_with_a_link_or_a_line_break_is_refused() -> None:
 )
 async def test_evidence_positions_span_marks_cut_sources(
     monkeypatch: pytest.MonkeyPatch,
-    events: list[dict[str, Any]],
+    events: list[object],
     captured_spans: InMemorySpanExporter,
     source_len: int,
     expected_first_cut: bool,

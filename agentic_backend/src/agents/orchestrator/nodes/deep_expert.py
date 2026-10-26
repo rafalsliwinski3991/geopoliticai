@@ -10,6 +10,7 @@ from langgraph.types import StreamWriter
 
 from agents.deep_expert import research
 from agents.orchestrator.state import OrchestratorState
+from frames import NoticeEvent
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +31,6 @@ async def deep_expert(state: OrchestratorState, writer: StreamWriter) -> dict[st
     `writer` must be annotated exactly `StreamWriter` (see `classify`).
     """
     deep_answer = await research(state["standalone_query"], writer)
-    writer({"type": "notice", "text": deep_answer})
+    writer(NoticeEvent(text=deep_answer))
     logger.info("deep_expert: %d answer chars", len(deep_answer))
     return {"messages": [AIMessage(deep_answer)]}

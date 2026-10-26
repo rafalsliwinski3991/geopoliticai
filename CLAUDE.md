@@ -61,7 +61,8 @@ deep_forecaster  START -> research -> draft_claims -> council_round_1 -> council
 - Span names are snake_case (`fetch_source`); span attribute keys are dotted with a domain prefix
   (`source.outcome`).
 - TypeScript functions are camelCase and verb-first (`warnOnStaleTests`); an e2e spec and its
-  generated test share one kebab-case stem.
+  generated test share one kebab-case stem that starts with its group: `agent-`, `ui-`, `auth-`
+  or `site-`.
 - An eval's script, dataset, and judges file share one name: its agent, then `_fixed` when the
   agent's inputs are written in advance or `_live` when it searches and reads today's pages
   (`expert_fixed`, `expert_live`).
@@ -69,7 +70,7 @@ deep_forecaster  START -> research -> draft_claims -> council_round_1 -> council
 ## agentic_backend
 
 - The shared modules (`config.py`, `models.py`, `search.py`, `llm.py`, `tracing.py`, `api.py`,
-  `auth.py`, `db/web/sql.py`) import no agent, except `api.py`, the delivery layer, which imports
+  `auth.py`, `quota.py`, `frames.py`, `db/web/sql.py`) import no agent, except `api.py`, the delivery layer, which imports
   the orchestrator's graph and builders and the reporter's resume classifier.
 - Besides the LangGraph checkpointer and store, the only Postgres access is the raw SQL in
   `db/web/sql.py` against Django-owned tables, whose schema only `web_backend`'s migrations change;
@@ -111,9 +112,10 @@ deep_forecaster  START -> research -> draft_claims -> council_round_1 -> council
 - Deep expert: a `deepagents` agent built per turn, never at import. It searches through
   `search.py` with `EXPERT_SOURCES` and revises under deepagents' `RubricMiddleware`, whose grader
   sees only the question and the final draft (`graph.grader_view`). A spent search budget is a
-  message to the model; the wall cap is a 504; an unsatisfied grader ships the last draft; a grader
-  crash, no source read, or no cited source is an error. `NO_CHECKPOINTER_CONFIG` sets LangGraph's
-  private `__pregel_checkpointer` key: re-check it on every langgraph upgrade.
+  message to the model; the wall cap is a 504 (`capped_run.run_under_time_limits`, the same
+  dedicated-task cancel as the forecaster's); an unsatisfied grader ships the last draft; a grader
+  crash, no source read, or no cited source is an error. `capped_run.NO_CHECKPOINTER_CONFIG` sets
+  LangGraph's private `__pregel_checkpointer` key: re-check it on every langgraph upgrade.
 - Deep forecaster: a fixed workflow with one backward edge. Only `research` is autonomous (a
   deepagents lead and scouts over the forecasters' sites, plus `ask_video`), and it returns what
   the scouts' tools recorded, never the lead's text. The council, one paid model per vendor through
@@ -124,7 +126,7 @@ deep_forecaster  START -> research -> draft_claims -> council_round_1 -> council
   counts every verdict; the writer sees no URL and cites sources by number (`[anchor](source:N)`),
   and `verify` puts in the URLs. `verify` sends an analysis with a defect back to the writer once,
   with the defect named; a second defect, or an answer over the delivery cap, is a hard error. The wall
-  cap runs the forecast in its own task (`time_limits.run_under_time_limits`) and cancels it
+  cap runs the forecast in its own task (`capped_run.run_under_time_limits`) and cancels it
   repeatedly, because smoke gate F3 saw a hung run outlive an in-frame `asyncio.timeout`.
   `nodes.research` registers a deepagents harness profile that switches the default
   `general-purpose` helper off for gpt-5-mini, process-wide; another agent on that model that
@@ -135,8 +137,8 @@ deep_forecaster  START -> research -> draft_claims -> council_round_1 -> council
 - A request carries exactly one of `{query, thread_id}` or `{resume, thread_id}`. Every `/api/*`
   route except `GET /api/health` needs a bearer token minted at Django's `GET /accounts/token/`
   (`accounts_api`); `auth.py` answers a failed check with 401 and a foreign thread with 403.
-- Stream `custom`, `updates`, and `messages` with `subgraphs=True`; nodes emit progress through a
-  `StreamWriter`. Read custom events from every namespace (a subgraph's arrive under the child's)
+- Stream `custom`, `updates`, and `messages` with `subgraphs=True`; nodes emit `frames.ProgressFrame`
+  and `frames.NoticeEvent` through a `StreamWriter`. Read custom events from every namespace (a subgraph's arrive under the child's)
   and `updates` from the root only.
 - Answer text streams from the AI messages of `api.ANSWER_NODES`. The reporter's refusal, cancel,
   and revision-cap paths, the deep expert, and the forecaster deliver their answer whole as a
@@ -155,8 +157,9 @@ deep_forecaster  START -> research -> draft_claims -> council_round_1 -> council
   the charge day, up to `MAX_DAILY_REFUND_UNITS` per user
   per UTC day (counted in process memory); a disconnect gives nothing back, and site units stay
   spent.
+- `quota.py` holds these rules; `api._generate` only calls `charge_turn` and `refund_turn`.
 - A quota number has copies in `web_backend/templates/pages/landing.html` (the daily limit is
-  drift-tested, the forecast's cost is not) and `e2e/test_specs/daily-limit-is-50.md`.
+  drift-tested, the forecast's cost is not) and `e2e/test_specs/ui-daily-limit-is-50.md`.
 
 ## web_backend
 

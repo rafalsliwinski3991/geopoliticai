@@ -12,6 +12,7 @@ from agents.deep_forecaster import state as state_module
 from agents.deep_forecaster.config import LIMITS
 from agents.deep_forecaster.consts.progress import RESEARCH_LABEL
 from agents.deep_forecaster.state import ForecastRun, ResearchRun
+from frames import ProgressFrame
 from models import Candidate, Source
 
 
@@ -50,7 +51,7 @@ def test_lock_for_returns_one_lock_per_url() -> None:
 
 def test_enter_records_logs_and_announces_the_step(
     caplog: pytest.LogCaptureFixture,
-    events: list[dict[str, object]],
+    events: list[object],
 ) -> None:
     # Act
     run = ForecastRun()
@@ -61,9 +62,7 @@ def test_enter_records_logs_and_announces_the_step(
     assert any(
         "forecast step: Planning the research" in r.message for r in caplog.records
     )
-    assert events == [
-        {"type": "progress", "node": "deep_forecaster", "label": RESEARCH_LABEL}
-    ]
+    assert events == [ProgressFrame(node="deep_forecaster", label=RESEARCH_LABEL)]
 
 
 def test_search_gate_is_built_from_the_concurrency_cap() -> None:

@@ -10,6 +10,7 @@ from langgraph.runtime import Runtime
 
 from agents.deep_forecaster import forecast
 from agents.orchestrator.state import OrchestratorState
+from frames import NoticeEvent
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +38,6 @@ async def deep_forecaster(
     # runtime injection (thread, #151): without it `ask_video` would always
     # bypass the 30-day cache and every forecast would call Gemini.
     answer = await forecast(state["standalone_query"], runtime.store)
-    runtime.stream_writer({"type": "notice", "text": answer})
+    runtime.stream_writer(NoticeEvent(text=answer))
     logger.info("deep_forecaster: %d answer chars", len(answer))
     return {"messages": [AIMessage(answer)]}

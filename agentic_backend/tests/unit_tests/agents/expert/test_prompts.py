@@ -1,6 +1,5 @@
 """The expert's answer prompt ends with a fixed next-step menu."""
 
-import api
 from agents.expert.prompts import (
     ANSWER_SYSTEM_PROMPT,
     NEXT_STEPS_MENU,
@@ -8,6 +7,7 @@ from agents.expert.prompts import (
 )
 from agents.orchestrator.prompts import CLASSIFY_SYSTEM_PROMPT
 from config import DAILY_RESEARCH_TURNS, DEEP_RESEARCH_TURN_COST, FORECAST_TURN_COST
+from quota import ONE_UNIT
 
 
 def test_answer_prompt_states_costs_from_config() -> None:
@@ -98,12 +98,12 @@ def test_answer_prompt_ends_with_rule_5_directive_then_menu() -> None:
     assert directive_index < menu_index
 
 
-def test_report_turn_cost_matches_api_one_unit() -> None:
+def test_report_turn_cost_matches_quota_one_unit() -> None:
     # Arrange
     stated_cost = REPORT_TURN_COST
 
     # Act
-    api_cost = api.ONE_UNIT[0]
+    api_cost = ONE_UNIT[0]
 
     # Assert
     assert api_cost == stated_cost

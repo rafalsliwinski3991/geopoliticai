@@ -3,14 +3,12 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 import os
 import time
-from asyncio import Lock as AsyncLock
 from collections import deque
 from contextlib import asynccontextmanager
-from datetime import date
+from dataclasses import dataclass
 from threading import Lock
 from typing import Annotated, Any, AsyncGenerator
 
@@ -26,7 +24,13 @@ from langgraph.types import Command
 from psycopg import AsyncConnection
 from psycopg.rows import DictRow, dict_row
 from psycopg_pool import AsyncConnectionPool
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    Field,
+    ValidationError,
+    field_validator,
+    model_validator,
+)
 
 from agents.orchestrator import (
     build_graph,
@@ -38,10 +42,6 @@ from agents.reporter import classify_resume_intent
 from auth import Identity, require_identity
 from config import (
     DAILY_RESEARCH_TURNS,
-    DAILY_RESEARCH_TURNS_ALL_USERS,
-    DEEP_RESEARCH_TURN_COST,
-    FORECAST_TURN_COST,
-    MAX_DAILY_REFUND_UNITS,
     bind_log_context,
     init_environment,
     require_env,
@@ -52,17 +52,29 @@ from config import (
 from db.web.sql import (
     MAX_THREAD_ID_LENGTH,
     claim_thread,
-    increment_quota,
-    increment_site_quota,
     is_staff,
     list_threads,
     owns_thread,
-    quota_day,
     quota_used,
-    refund_quota,
     title_from,
 )
-from models import PipelineError, ReportNotPendingError
+from frames import (
+    NODE_EVENT,
+    ErrorFrame,
+    NoticeEvent,
+    PauseFrame,
+    ProgressFrame,
+    ResultFrame,
+    TokenFrame,
+    encode_frame,
+)
+from models import (
+    PipelineError,
+    QuotaExceededError,
+    ReportNotPendingError,
+    squash_whitespace,
+)
+from quota import Charge, charge_turn, refund_turn
 from tracing import bind_trace_user, init_tracing
 
 logger = logging.getLogger(__name__)
@@ -112,13 +124,13 @@ ThreadIdPath = Annotated[
 # ANSWER_PROGRESS fires when the first character is about to reach the
 # browser. Every *node*-scoped label now lives with its node, in that agent's
 # `consts/progress.py`, and arrives here as a forwarded custom event.
-THINKING_PROGRESS = {"node": "classify", "label": "Thinking..."}
-ANSWER_PROGRESS = {"node": "answer", "label": "Writing the answer..."}
+THINKING_PROGRESS = ProgressFrame(node="classify", label="Thinking...")
+ANSWER_PROGRESS = ProgressFrame(node="answer", label="Writing the answer...")
 
 # `write` is the reporter's composing node. Its streamed chunks are the report;
-# without it here the report never reaches the browser, and the `("kind",
-# "report")` event that puts a Download .md button on the answer is derived from
-# the same tag.
+# without it here the report never reaches the browser, and the `_ReportStarted`
+# event that puts a Download .md button on the answer is derived from the same
+# tag.
 #
 # `"reporter"` must NEVER be added to this set. Measured: on the refusal, cancel
 # and revision-cap paths the orchestrator's `reporter` node returns an
@@ -140,23 +152,9 @@ ANSWER_NODES = frozenset({"answer", "chat", "write"})
 # free. `classify` does not re-run on a resume, so approving or revising a
 # pending report does not count again: one report is one count, taken when it
 # was requested, and the reporter's own revision cap bounds the rounds.
-# `deep` spends DEEP_RESEARCH_TURN_COST units instead of one (brainstorm Q3).
+# `deep` spends DEEP_RESEARCH_TURN_COST units instead of one (brainstorm Q3),
+# and `quota.charge_turn` looks up what each destination costs.
 RESEARCH_DESTINATIONS = frozenset({"geopolitical", "deep", "forecast", "report"})
-# The research destinations that spend more than one unit, each with the
-# refusal the advisory headroom read gives a caller who cannot afford it
-# (brainstorm 2026Sep28 Q3; 2026Sep30 Q22). Every other research destination
-# spends one unit, and `ONE_UNIT`'s empty refusal is never shown.
-COSTLY_DESTINATIONS: dict[str, tuple[int, str]] = {
-    "deep": (
-        DEEP_RESEARCH_TURN_COST,
-        "A deep analysis needs {cost} research turns; you have {left} left today.",
-    ),
-    "forecast": (
-        FORECAST_TURN_COST,
-        "A forecast needs {cost} research turns; you have {left} left today.",
-    ),
-}
-ONE_UNIT: tuple[int, str] = (1, "")
 # The checkpointer names its tables unqualified in both its DDL and its
 # queries, so search_path is the only way to put them anywhere but `public`.
 # `agentic` first means setup() creates there; `public` second means
@@ -180,56 +178,23 @@ graph: Any = _default_graph
 
 _rate_limit_store: dict[str, deque[float]] = {}
 _rate_limit_lock = Lock()
-# One costly-turn commit at a time per user (review thread, #148): the advisory
-# headroom read cannot be raced, but the site upsert can, so a burst of
-# concurrent forecast requests must not each take `cost` site units before the
-# user's own upsert disqualifies all but one (see `_astream_answer`).
-_costly_turn_locks: dict[int, AsyncLock] = {}
-# Units refunded per (user, UTC day), for the daily refund cap. In process
-# memory, like `_rate_limit_store`: a restart forgets it, which allows at most
-# one more capped refund per user per restart (user decision 2026-10-16).
-_refunded_units: dict[tuple[int, date], int] = {}
 
 
-def _costly_turn_lock(user_id: int) -> AsyncLock:
-    """Return the per-user lock serializing a counted turn's quota commit."""
-    return _costly_turn_locks.setdefault(user_id, AsyncLock())
+@dataclass(frozen=True)
+class _Counted:
+    """`classify` routed the turn to a research branch."""
+
+    destination: str | None
 
 
-async def _refund_turn(
-    pool: AsyncConnectionPool[AsyncConnection[DictRow]],
-    *,
-    user_id: int,
-    day: date,
-    cost: int,
-) -> None:
-    """Give a failed turn's units back, unless the user's daily refund cap is spent.
+@dataclass(frozen=True)
+class _ReportStarted:
+    """The reporter's `write` node began streaming the report."""
 
-    The cap is reserved before the await, so two failures finishing at once
-    cannot both pass it. A failed refund is logged and swallowed, and gives
-    its reservation back: the user is about to get the turn's real error, and
-    this must not replace it — nor spend the day's cap for nothing.
-    """
-    for stale in [key for key in _refunded_units if key[1] < day]:
-        del _refunded_units[stale]
-    refunded = _refunded_units.get((user_id, day), 0)
-    if refunded + cost > MAX_DAILY_REFUND_UNITS:
-        logger.info("Refund of %d units refused: the daily refund cap is spent.", cost)
-        return
-    _refunded_units[(user_id, day)] = refunded + cost
-    try:
-        await refund_quota(pool, user_id=user_id, day=day, cost=cost)
-    except Exception:  # noqa: BLE001 - logged; the turn's own error wins
-        logger.exception("Refunding %d research units failed.", cost)
-        # Subtracting, not restoring the value read above: another coroutine
-        # may have reserved since, and each failure removes only its own add.
-        left = _refunded_units.get((user_id, day), 0) - cost
-        if left > 0:
-            _refunded_units[(user_id, day)] = left
-        else:
-            _refunded_units.pop((user_id, day), None)
-        return
-    logger.info("Refunded %d research units to the day %s.", cost, day)
+
+StreamEvent = (
+    ProgressFrame | PauseFrame | NoticeEvent | TokenFrame | _Counted | _ReportStarted
+)
 
 
 async def _require_migrated_checkpointer_schema(
@@ -399,7 +364,7 @@ class RunPipelineRequest(BaseModel):
     def _normalize(cls, value: str | None) -> str | None:
         if value is None:
             return None
-        cleaned = " ".join(value.split())
+        cleaned = squash_whitespace(value)
         if not cleaned:
             raise ValueError("Must not be empty.")
         return cleaned
@@ -482,11 +447,6 @@ async def healthcheck() -> dict[str, str]:
     return {"status": "ok"}
 
 
-def _sse(payload: dict[str, Any]) -> str:
-    """Serialize one SSE data frame."""
-    return f"data: {json.dumps(payload)}\n\n"
-
-
 async def _pending_pause(thread_id: str) -> dict[str, Any] | None:
     """Return the outline a paused thread is waiting on, or None.
 
@@ -550,8 +510,8 @@ async def _turn_input(payload: RunPipelineRequest) -> Any:
 
 async def _astream_answer(
     graph_input: Any, thread_id: str
-) -> AsyncGenerator[tuple[str, Any], None]:
-    """Run the orchestrator graph, yielding progress, pause, kind and token events.
+) -> AsyncGenerator[StreamEvent, None]:
+    """Run the orchestrator graph, yielding typed stream events.
 
     `graph_input` is either an orchestrator state or a `Command(resume=...)`;
     both are graph inputs on the same thread id and neither changes the call.
@@ -575,8 +535,8 @@ async def _astream_answer(
     * `messages` carries answer tokens, exactly as before.
 
     The `custom` branch must be dispatched **before** the `messages` unpacking
-    below: a custom payload is a plain dict, and `message, metadata = data`
-    would raise on the first one.
+    below: a custom event is a frame model or a dict that `NODE_EVENT` accepts,
+    and `message, metadata = data` would raise on the first one.
     """
     config = build_runtime_config(thread_id=thread_id)
     streamed_nodes: set[str] = set()
@@ -588,25 +548,24 @@ async def _astream_answer(
         subgraphs=True,
     ):
         if mode == "custom":
-            if not isinstance(data, dict):
+            try:
+                event = NODE_EVENT.validate_python(data)
+            except ValidationError:
+                # Not a frame a node writes: a custom event this layer does not
+                # know, or a malformed fake. Dropped here, so `_generate` never
+                # sees it.
                 continue
-            event_type = data.get("type")
-            if event_type == "notice":
-                # A branch that delivers the turn's answer whole instead of
-                # streaming it: the reporter's refusal, cancel and revision-cap
-                # paths, and the deep expert's and the deep forecaster's
-                # finished answers. It goes out as
-                # a token, not as a frame of its own, because it *is* the
-                # answer: it has to
-                # reach `parts`, the `MAX_ANSWER_CHARS` accounting and
-                # `result.output` like any other. It is also the only custom
-                # payload that may contain model-produced text, which is
-                # exactly why it does not take the verbatim-forward path.
-                text = str(data.get("text") or "")
-                if text:
-                    yield ("notice", text)
-            elif isinstance(event_type, str):
-                yield (event_type, data)
+            # A branch that delivers the turn's answer whole instead of
+            # streaming it: the reporter's refusal, cancel and revision-cap
+            # paths, and the deep expert's and the deep forecaster's finished
+            # answers. It goes out as a token, not as a frame of its own, because
+            # it *is* the answer: it has to reach `parts`, the `MAX_ANSWER_CHARS`
+            # accounting and `result.output` like any other. It is also the only
+            # custom payload that may contain model-produced text, which is
+            # exactly why it does not take the verbatim-forward path.
+            if isinstance(event, NoticeEvent) and not event.text:
+                continue
+            yield event
             continue
         if mode == "updates":
             if namespace or not isinstance(data, dict):
@@ -625,10 +584,10 @@ async def _astream_answer(
                 destination = decision.get("destination")
                 if destination in RESEARCH_DESTINATIONS:
                     counted = True
-                    yield ("counted", destination)
+                    yield _Counted(destination=destination)
             interrupts = data.get("__interrupt__")
             if interrupts:
-                yield ("pause", interrupts[0].value)
+                yield PauseFrame.model_validate(interrupts[0].value)
             continue
         message, metadata = data
         node = metadata.get("langgraph_node")
@@ -647,9 +606,9 @@ async def _astream_answer(
             if node == "write" and not streamed_nodes:
                 # Only the reporter's composing node produces a downloadable
                 # report; a refusal or a chat answer must not get the button.
-                yield ("kind", "report")
+                yield _ReportStarted()
             streamed_nodes.add(node)
-            yield ("token", text)
+            yield TokenFrame(content=text)
 
 
 @router.post("/run_pipeline/stream")
@@ -697,19 +656,17 @@ async def run_pipeline_stream_endpoint(
         paused = False
         is_report = False
         clipped = False
-        # What this turn took from the user's own counter, and from which
-        # quota day; None until `increment_quota` succeeds. Every error frame
-        # below refunds it (brainstorm 2026Oct16 Q1); a disconnect does not.
-        charge: tuple[date, int] | None = None
+        # What this turn took from the user's own counter, and from which quota
+        # day; None until `charge_turn` succeeds. Every error frame below refunds
+        # it (brainstorm 2026Oct16 Q1); a disconnect does not.
+        charge: Charge | None = None
 
         async def refund() -> None:
             if charge is not None:
-                await _refund_turn(
-                    pool, user_id=identity.user_id, day=charge[0], cost=charge[1]
-                )
+                await refund_turn(pool, user_id=identity.user_id, charge=charge)
 
         try:
-            yield _sse({"type": "progress", **THINKING_PROGRESS})
+            yield encode_frame(THINKING_PROGRESS)
             # The checkpoint read and the intent call happen here, not in the
             # endpoint, so their failures arrive as SSE `error` frames like
             # every other pipeline failure.
@@ -717,130 +674,49 @@ async def run_pipeline_stream_endpoint(
             # Nothing here inspects `payload.resume`. The nodes emit their own
             # progress, so a revise resume is announced by `outline` and an
             # approve resume by `write`, on the same code path as a first turn.
-            async for kind, value in _astream_answer(graph_input, payload.thread_id):
-                if kind == "progress":
-                    # Forwarded verbatim: the node already wrote the whole
-                    # frame. Every payload that reaches this line is a
-                    # hardcoded literal in an agent's `consts/progress.py`;
-                    # model- and user-produced text never takes this path (§1).
-                    yield _sse(value)
-                    continue
-                if kind == "pause":
-                    paused = True
-                    yield _sse({"type": "pause", **value})
-                    continue
-                if kind == "kind":
-                    is_report = True
-                    continue
-                if kind == "counted":
-                    # A value of None (the pre-change shape, still used by test
-                    # fakes) is an ordinary one-unit research turn.
-                    cost, refusal = COSTLY_DESTINATIONS.get(value, ONE_UNIT)
-                    # One commit at a time per user (review thread, #148): the
-                    # advisory headroom read cannot be raced, but the site
-                    # upsert can — a burst of concurrent forecast requests must
-                    # not each take `cost` site units before the user's own
-                    # upsert disqualifies all but one. The later burst members
-                    # re-run the headroom read after the winner commits.
-                    async with _costly_turn_lock(identity.user_id):
-                        if cost > 1:
-                            # Advisory headroom check before the site is
-                            # charged (plan review): without it, a user at
-                            # 17/20 retrying a costly request (deep or
-                            # forecast) spends its cost in site units per
-                            # refused retry, and a few dozen retries exhaust
-                            # the 500-unit site ceiling for everyone. The
-                            # user upsert below still decides; this read only
-                            # stops the obviously unaffordable turn early.
-                            # Refused, not downgraded (Q8A).
-                            left = DAILY_RESEARCH_TURNS - await quota_used(
-                                pool, user_id=identity.user_id
-                            )
-                            if left < cost:
-                                yield _sse(
-                                    {
-                                        "type": "error",
-                                        "status": 429,
-                                        "message": refusal.format(
-                                            cost=cost, left=max(0, left)
-                                        ),
-                                    }
-                                )
-                                return
-                        # The site ceiling is committed before the caller is
-                        # charged: a turn the site refuses must not cost the
-                        # user their own turn, and unlike an advisory pre-read
-                        # the conditional upsert cannot be raced open — the
-                        # database decides, so no concurrent turn can still
-                        # take the last slot between a read and this write.
-                        if not await increment_site_quota(
-                            pool, limit=DAILY_RESEARCH_TURNS_ALL_USERS, cost=cost
+            async for event in _astream_answer(graph_input, payload.thread_id):
+                match event:
+                    case ProgressFrame():
+                        # Forwarded as the node wrote it: a literal from an
+                        # agent's `consts/progress.py` (§1).
+                        yield encode_frame(event)
+                    case PauseFrame():
+                        paused = True
+                        yield encode_frame(event)
+                    case _ReportStarted():
+                        is_report = True
+                    case _Counted(destination=destination):
+                        charge = await charge_turn(
+                            pool, user_id=identity.user_id, destination=destination
+                        )
+                    case TokenFrame(content=text) | NoticeEvent(text=text):
+                        if (
+                            isinstance(event, TokenFrame)
+                            and not parts
+                            and not is_report
                         ):
-                            # The site-wide ceiling: the operator's bill has a
-                            # second, coarser bound no single account controls.
-                            # Chat turns never reach this branch (Q5b).
-                            yield _sse(
-                                {
-                                    "type": "error",
-                                    "status": 429,
-                                    "message": "The site has used today's research capacity.",
-                                }
-                            )
-                            return
-                        day = quota_day()
-                        if not await increment_quota(
-                            pool,
-                            user_id=identity.user_id,
-                            day=day,
-                            limit=DAILY_RESEARCH_TURNS,
-                            cost=cost,
-                        ):
-                            # A concurrent turn took the last one (for a costly
-                            # turn: took units between the headroom read and here). The
-                            # site slot just taken belongs to this run's own
-                            # refusal: the user is not charged for a turn the
-                            # endpoint ends before it produces an answer, and the
-                            # site count stays honest about the run that did happen.
-                            yield _sse(
-                                {
-                                    "type": "error",
-                                    "status": 429,
-                                    "message": "Daily research limit reached.",
-                                }
-                            )
-                            return
-                        charge = (day, cost)
-                    continue
-                if kind not in ("token", "notice"):
-                    # An event kind this layer does not know. Ignoring it is
-                    # what stops a future node's custom event from falling
-                    # through to the slicing below, where `value[:remaining]`
-                    # on a dict would kill the turn with a TypeError inside the
-                    # SSE generator.
-                    continue
-                if kind == "token" and not parts and not is_report:
-                    # ANSWER_PROGRESS is suppressed on two paths. The report
-                    # path already announced itself from the `write` node with
-                    # a better label, and appending "Writing the answer..."
-                    # after it would leave that as the *active* step for the
-                    # whole report — `progressLog` is an accumulating list that
-                    # never dedupes (`frontend/index.html:359-369`). And a
-                    # `notice` arrives whole — a refusal, a cancellation, or a
-                    # finished deep analysis — so nothing is left to announce
-                    # as being written.
-                    yield _sse({"type": "progress", **ANSWER_PROGRESS})
-                remaining = MAX_ANSWER_CHARS - consumed
-                if remaining <= 0:
-                    # Upstream is still drained (this is `continue`, not `break`)
-                    # so checkpoint writes finish — the pre-existing behaviour.
-                    clipped = True
-                    continue
-                chunk = value[:remaining]
-                if len(chunk) < len(value):
-                    clipped = True
-                parts.append(chunk)
-                consumed += len(chunk)
-                yield _sse({"type": "token", "content": chunk})
+                            # ANSWER_PROGRESS is suppressed on two paths. The report
+                            # path already announced itself from the `write` node with
+                            # a better label, and appending "Writing the answer..."
+                            # after it would leave that as the *active* step for the
+                            # whole report — `progressLog` is an accumulating list that
+                            # never dedupes (`frontend/index.html:359-369`). And a
+                            # `notice` arrives whole — a refusal, a cancellation, or a
+                            # finished deep analysis — so nothing is left to announce
+                            # as being written.
+                            yield encode_frame(ANSWER_PROGRESS)
+                        remaining = MAX_ANSWER_CHARS - consumed
+                        if remaining <= 0:
+                            # Upstream is still drained (this is `continue`, not `break`)
+                            # so checkpoint writes finish — the pre-existing behaviour.
+                            clipped = True
+                            continue
+                        chunk = text[:remaining]
+                        if len(chunk) < len(text):
+                            clipped = True
+                        parts.append(chunk)
+                        consumed += len(chunk)
+                        yield encode_frame(TokenFrame(content=chunk))
             output = "".join(parts).strip()
             if not output:
                 if paused:
@@ -848,19 +724,16 @@ async def run_pipeline_stream_endpoint(
                     # purpose and the browser already has the outline.
                     return
                 await refund()
-                yield _sse(
-                    {
-                        "type": "error",
-                        "status": 502,
-                        "message": "The model returned an empty answer.",
-                    }
+                yield encode_frame(
+                    ErrorFrame(
+                        status=502, message="The model returned an empty answer."
+                    )
                 )
                 return
-            yield _sse(
-                {
-                    "type": "result",
-                    "output": output,
-                    "kind": "report" if is_report else "answer",
+            yield encode_frame(
+                ResultFrame(
+                    output=output,
+                    kind="report" if is_report else "answer",
                     # The transport cap is pre-existing and already clips long
                     # expert answers today. What is new is the download button,
                     # which would otherwise write a clipped file to disk under a
@@ -871,22 +744,25 @@ async def run_pipeline_stream_endpoint(
                     # comparison would label it partial and save it to disk as
                     # `report-<date>-partial.md`. This flag is set only where
                     # characters were actually dropped.
-                    "truncated": clipped,
-                }
+                    truncated=clipped,
+                )
             )
+        except QuotaExceededError as exc:
+            # A refused turn: nothing was charged to the user, nothing to refund,
+            # and no warning log (it is not a failure of the pipeline).
+            yield encode_frame(ErrorFrame(status=exc.status, message=str(exc)))
         except PipelineError as exc:
             logger.warning("Streaming pipeline failed: %s", exc)
             await refund()
-            yield _sse({"type": "error", "status": exc.status, "message": str(exc)})
+            yield encode_frame(ErrorFrame(status=exc.status, message=str(exc)))
         except Exception:
             logger.exception("Streaming pipeline failed unexpectedly.")
             await refund()
-            yield _sse(
-                {
-                    "type": "error",
-                    "status": 500,
-                    "message": "An unexpected error occurred. Please try again.",
-                }
+            yield encode_frame(
+                ErrorFrame(
+                    status=500,
+                    message="An unexpected error occurred. Please try again.",
+                )
             )
 
     return StreamingResponse(

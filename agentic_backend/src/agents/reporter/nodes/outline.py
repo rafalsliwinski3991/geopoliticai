@@ -78,8 +78,8 @@ async def outline(
         config=config,
         settings=OUTLINE_LLM_SETTINGS,
     )
-    sections = [" ".join(s.split()) for s in draft.sections if s.strip()]
-    notice = " ".join(draft.notice.split())
+    sections = [s for s in draft.sections if s]
+    notice = draft.notice
     if not sections:
         # An empty list on a revision means the model declined it; keep what the
         # user already approved of rather than dropping the run to the refusal

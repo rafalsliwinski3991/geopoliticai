@@ -2,7 +2,7 @@
 
 from config import DAILY_RESEARCH_TURNS, DEEP_RESEARCH_TURN_COST, FORECAST_TURN_COST
 
-# The report's cost is `api.ONE_UNIT`; the expert never imports the delivery
+# The report's cost is `quota.ONE_UNIT`; the expert never imports the delivery
 # layer, so the number is stated here.
 REPORT_TURN_COST = 1
 

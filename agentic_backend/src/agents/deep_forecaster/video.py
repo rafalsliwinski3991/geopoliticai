@@ -35,17 +35,16 @@ logger = logging.getLogger(__name__)
 # Items expire with the API store's TTL (`api.STORE_TTL`, 30 days).
 NOTES_NAMESPACE = ("forecast_video_notes",)
 
-
-class VideoUnavailableError(Exception):
-    """Gemini refused, rate-limited, failed or timed out on one video (F2)."""
-
-
 # Per-key request coalescing (review thread, #151): `aget` then call then
 # `aput` is not atomic across requests, so two forecasts asking the same
 # video and question at once would both miss and both pay Gemini. The
 # second caller waits, then re-checks the cache and either finds the first
 # caller's notes or becomes the owner that calls Gemini.
 _CACHE_LOCKS: dict[str, asyncio.Lock] = {}
+
+
+class VideoUnavailableError(Exception):
+    """Gemini refused, rate-limited, failed or timed out on one video (F2)."""
 
 
 def _cache_lock(key: str) -> asyncio.Lock:

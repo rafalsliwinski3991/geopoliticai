@@ -1,4 +1,4 @@
-from collections.abc import Sequence
+from collections.abc import AsyncIterator, Sequence
 from typing import Any, cast
 
 import pytest
@@ -23,6 +23,11 @@ class _Result(BaseModel):
 
 class _State(TypedDict):
     value: str
+
+
+async def _text_stream(chunks: Sequence[str]) -> AsyncIterator[str]:
+    for chunk in chunks:
+        yield chunk
 
 
 class _StreamingFake:
@@ -85,6 +90,38 @@ async def test_astream_messages_wraps_provider_failure(
     # Act + Assert
     with pytest.raises(LLMInvocationError, match="Model call failed\\."):
         [chunk async for chunk in llm.astream_messages("system", [])]
+
+
+@pytest.mark.anyio
+async def test_collected_chunks_are_joined_and_stripped() -> None:
+    # Arrange
+    chunks = _text_stream(["  Padded ", "answer \n"])
+
+    # Act
+    text = await llm.collect_text(chunks)
+
+    # Assert
+    assert text == "Padded answer"
+
+
+@pytest.mark.anyio
+async def test_a_blank_stream_raises_the_default_empty_answer_message() -> None:
+    # Arrange
+    chunks = _text_stream(["  ", "\n"])
+
+    # Act + Assert
+    with pytest.raises(LLMInvocationError, match="Model returned an empty answer\\."):
+        await llm.collect_text(chunks)
+
+
+@pytest.mark.anyio
+async def test_a_blank_stream_raises_the_caller_empty_message() -> None:
+    # Arrange
+    chunks = _text_stream([])
+
+    # Act + Assert
+    with pytest.raises(LLMInvocationError, match="Model returned an empty report\\."):
+        await llm.collect_text(chunks, empty_message="Model returned an empty report.")
 
 
 @pytest.mark.anyio

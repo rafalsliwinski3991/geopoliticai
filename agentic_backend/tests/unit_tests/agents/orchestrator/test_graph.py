@@ -17,6 +17,7 @@ from agents.orchestrator.state import (
 from agents.reporter.consts.messages import NO_MATERIAL_NOTICE
 from agents.reporter.consts.progress import OUTLINE_PROGRESS, REPORT_PROGRESS
 from agents.reporter.state import OutlineDraft
+from frames import NoticeEvent
 from models import Candidate, Source
 
 orchestrator = importlib.import_module("agents.orchestrator")
@@ -449,8 +450,7 @@ async def test_every_writer_node_actually_emits_through_the_graph(
         _config("report-writers-2"),
     )
     assert any(
-        event[2] == {"type": "notice", "text": NO_MATERIAL_NOTICE}
-        for event in refusal_events
+        event[2] == NoticeEvent(text=NO_MATERIAL_NOTICE) for event in refusal_events
     )
 
 

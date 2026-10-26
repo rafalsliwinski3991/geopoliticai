@@ -17,6 +17,7 @@ from agents.reporter.config import INTENT_LLM_SETTINGS
 from agents.reporter.prompts import RESUME_INTENT_SYSTEM_PROMPT
 from agents.reporter.state import ResumeIntent
 from llm import ainvoke_structured
+from models import squash_whitespace
 
 logger = logging.getLogger(__name__)
 
@@ -34,10 +35,10 @@ async def classify_resume_intent(text: str, pause: dict[str, Any]) -> ResumeInte
         ResumeIntent,
         settings=INTENT_LLM_SETTINGS,
     )
-    instruction = " ".join(decision.instruction.split())
+    instruction = decision.instruction
     if decision.action == "revise" and not instruction:
         # A revise with nothing to apply would redraw the same outline and burn
         # a round. The user's own words are the honest fallback instruction.
-        instruction = " ".join(text.split())
+        instruction = squash_whitespace(text)
     logger.info("resume intent: %s", decision.action)
     return ResumeIntent(action=decision.action, instruction=instruction)

@@ -11,8 +11,7 @@ from langchain_core.runnables import RunnableConfig
 from agents.orchestrator.config import CHAT_LLM_SETTINGS, HISTORY_WINDOW_MESSAGES
 from agents.orchestrator.prompts import CHAT_SYSTEM_PROMPT
 from agents.orchestrator.state import OrchestratorState
-from llm import astream_messages
-from models import LLMInvocationError
+from llm import astream_messages, collect_text
 
 logger = logging.getLogger(__name__)
 
@@ -22,13 +21,10 @@ async def chat(
 ) -> dict[str, Any]:
     """Answer from the model's own knowledge, with no sources and no citations."""
     history = list(state["messages"])[-HISTORY_WINDOW_MESSAGES:]
-    chunks: list[str] = []
-    async for chunk in astream_messages(
-        CHAT_SYSTEM_PROMPT, history, config=config, settings=CHAT_LLM_SETTINGS
-    ):
-        chunks.append(chunk)
-    text = "".join(chunks).strip()
-    if not text:
-        raise LLMInvocationError("Model returned an empty answer.")
+    text = await collect_text(
+        astream_messages(
+            CHAT_SYSTEM_PROMPT, history, config=config, settings=CHAT_LLM_SETTINGS
+        )
+    )
     logger.info("chat: %d answer chars", len(text))
     return {"messages": [AIMessage(text)]}
