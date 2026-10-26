@@ -127,10 +127,10 @@ async def test_all_search_batches_failing_raises(
 
 
 @pytest.mark.anyio
-async def test_malformed_brave_items_are_skipped(
+async def test_brave_items_without_a_usable_url_or_title_are_handled(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """One malformed Brave result must not abort a batch or reach the prompt."""
+    """A result with no url is skipped and one with no title reads "Untitled"."""
 
     # Arrange
     async def fake_get(
@@ -142,11 +142,10 @@ async def test_malformed_brave_items_are_skipped(
     ) -> httpx.Response:
         return _response(
             [
-                {"title": "keep", "url": "https://reuters.com/article"},
-                {"title": "bad url", "url": {"not": "a string"}},
-                {"title": ["not", "a", "string"], "url": "https://apnews.com/1"},
-                {"url": "https://ft.com/1"},
-                "not-a-dict",
+                {"title": "keep", "url": " https://reuters.com/article "},
+                {"title": "no url"},
+                {"url": "https://ft.com/1", "title": "  "},
+                {"url": "https://apnews.com/1", "extra": "ignored"},
             ]
         )
 
@@ -154,13 +153,48 @@ async def test_malformed_brave_items_are_skipped(
     # Act
     candidates = await search.search_allowlisted("question", EXPERT_SOURCES)
     # Assert
-    assert [candidate.url for candidate in candidates] == [
-        "https://reuters.com/article",
-        "https://apnews.com/1",
-        "https://ft.com/1",
-    ]
-    # The array-typed title falls back to "Untitled" rather than crashing.
-    assert candidates[1].title == "Untitled"
+    assert {candidate.url: candidate.title for candidate in candidates} == {
+        "https://reuters.com/article": "keep",
+        "https://ft.com/1": "Untitled",
+        "https://apnews.com/1": "Untitled",
+    }
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    "body",
+    [
+        pytest.param([], id="the body is a list"),
+        pytest.param({"web": "nope"}, id="web is not an object"),
+        pytest.param({"web": {"results": {"a": 1}}}, id="results is not a list"),
+        pytest.param(
+            {"web": {"results": ["not-a-dict"]}}, id="a result is not an object"
+        ),
+        pytest.param(
+            {"web": {"results": [{"url": {"not": "a string"}}]}},
+            id="a url is not a string",
+        ),
+    ],
+)
+async def test_a_brave_body_of_the_wrong_shape_fails_the_batch(
+    monkeypatch: pytest.MonkeyPatch, body: object
+) -> None:
+    # Arrange
+    async def fake_get(
+        self: httpx.AsyncClient,
+        url: str,
+        *,
+        params: dict[str, object] | None = None,
+        timeout: object | None = None,
+    ) -> httpx.Response:
+        return httpx.Response(
+            200, json=body, request=httpx.Request("GET", search.BRAVE_SEARCH_URL)
+        )
+
+    monkeypatch.setattr(httpx.AsyncClient, "get", fake_get)
+    # Act + Assert
+    with pytest.raises(SearchUnavailableError):
+        await search.search_allowlisted("question", EXPERT_SOURCES)
 
 
 @pytest.mark.anyio

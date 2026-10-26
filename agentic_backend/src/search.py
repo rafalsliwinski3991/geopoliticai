@@ -14,12 +14,13 @@ import unicodedata
 from collections import Counter
 from collections.abc import Sequence
 from html.parser import HTMLParser
-from typing import Literal, NamedTuple
+from typing import Annotated, Literal, NamedTuple
 from urllib.parse import urljoin, urlparse
 
 import httpx
 import trafilatura
 from opentelemetry import trace
+from pydantic import AfterValidator, BaseModel, ValidationError
 from trafilatura.settings import Document
 
 from models import Candidate, SearchUnavailableError, Source, SourcePolicy
@@ -36,6 +37,8 @@ FETCH_CONCURRENCY = 8
 QUERY_TRIM_CHARS = 140
 QUERY_TRIM_WORDS = 20
 MAX_REDIRECTS = 3
+# A Brave text field arrives with its ends trimmed.
+StripText = Annotated[str, AfterValidator(str.strip)]
 
 # A byline is what the page declares as its author (brainstorm 2026Sep30 Q16):
 # the `author` of any JSON-LD (Schema.org linked-data) object on the page, else
@@ -113,6 +116,25 @@ def build_batch_query(query: str, domains: Sequence[str]) -> str:
     raise ValueError("Query too long to combine with any site filter.")
 
 
+class BraveResult(BaseModel):
+    """The two fields of one Brave web result that the search reads."""
+
+    url: StripText = ""
+    title: StripText = ""
+
+
+class BraveWeb(BaseModel):
+    """The `web` section of Brave's body."""
+
+    results: list[BraveResult] = []
+
+
+class BraveResponse(BaseModel):
+    """Brave's search body; the rest of its fields are ignored."""
+
+    web: BraveWeb = BraveWeb()
+
+
 async def _brave_batch(
     client: httpx.AsyncClient, query: str, domains: Sequence[str], policy: SourcePolicy
 ) -> list[Candidate]:
@@ -126,15 +148,13 @@ async def _brave_batch(
         timeout=BRAVE_TIMEOUT_SECONDS,
     )
     response.raise_for_status()
-    payload = response.json()
-    web = payload.get("web", {}) if isinstance(payload, dict) else {}
-    results = web.get("results", []) if isinstance(web, dict) else []
+    try:
+        payload = BraveResponse.model_validate_json(response.content)
+    except ValidationError as exc:
+        raise SearchUnavailableError("Brave returned an unexpected shape.") from exc
     candidates: list[Candidate] = []
-    for item in results if isinstance(results, list) else []:
-        if not isinstance(item, dict):
-            continue
-        raw_url = item.get("url")
-        url = raw_url.strip() if isinstance(raw_url, str) else ""
+    for item in payload.web.results:
+        url = item.url
         if not url:
             logger.debug("Skipped Brave result with no usable url: %r", item)
             continue
@@ -142,12 +162,7 @@ async def _brave_batch(
         if domain is None:
             logger.debug("Dropped out-of-allowlist URL: %s", url)
             continue
-        raw_title = item.get("title")
-        title = (
-            raw_title.strip()
-            if isinstance(raw_title, str) and raw_title.strip()
-            else "Untitled"
-        )
+        title = item.title or "Untitled"
         candidates.append(Candidate(title=title, url=url, domain=domain))
     return candidates
 
