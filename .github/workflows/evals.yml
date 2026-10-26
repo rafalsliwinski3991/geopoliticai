@@ -8,6 +8,10 @@ on:
         type: choice
         options: [fixed, live, all]
         default: fixed
+      evals:
+        description: "Only these evals, comma-separated without spaces (e.g. expert_fixed,deep_expert_live); overrides type"
+        type: string
+        default: ""
 
 jobs:
   evals:
@@ -42,7 +46,7 @@ jobs:
         run: uv sync --locked --dev
 
       - name: Run orchestrator_fixed
-        if: ${{ !cancelled() && steps.sync.outcome == 'success' && inputs.type != 'live' }}
+        if: ${{ !cancelled() && steps.sync.outcome == 'success' && (inputs.evals == '' && inputs.type != 'live' || inputs.evals != '' && contains(format(',{0},', inputs.evals), ',orchestrator_fixed,')) }}
         working-directory: agentic_backend
         env:
           # nginx Basic Auth in front of the VPS Phoenix, in W3C header format
@@ -52,42 +56,42 @@ jobs:
         run: uv run python -m evals.orchestrator_fixed
 
       - name: Run reporter_fixed
-        if: ${{ !cancelled() && steps.sync.outcome == 'success' && inputs.type != 'live' }}
+        if: ${{ !cancelled() && steps.sync.outcome == 'success' && (inputs.evals == '' && inputs.type != 'live' || inputs.evals != '' && contains(format(',{0},', inputs.evals), ',reporter_fixed,')) }}
         working-directory: agentic_backend
         env:
           PHOENIX_CLIENT_HEADERS: ${{ secrets.PHOENIX_CLIENT_HEADERS }}
         run: uv run python -m evals.reporter_fixed
 
       - name: Run expert_fixed
-        if: ${{ !cancelled() && steps.sync.outcome == 'success' && inputs.type != 'live' }}
+        if: ${{ !cancelled() && steps.sync.outcome == 'success' && (inputs.evals == '' && inputs.type != 'live' || inputs.evals != '' && contains(format(',{0},', inputs.evals), ',expert_fixed,')) }}
         working-directory: agentic_backend
         env:
           PHOENIX_CLIENT_HEADERS: ${{ secrets.PHOENIX_CLIENT_HEADERS }}
         run: uv run python -m evals.expert_fixed
 
       - name: Run deep_expert_fixed
-        if: ${{ !cancelled() && steps.sync.outcome == 'success' && inputs.type != 'live' }}
+        if: ${{ !cancelled() && steps.sync.outcome == 'success' && (inputs.evals == '' && inputs.type != 'live' || inputs.evals != '' && contains(format(',{0},', inputs.evals), ',deep_expert_fixed,')) }}
         working-directory: agentic_backend
         env:
           PHOENIX_CLIENT_HEADERS: ${{ secrets.PHOENIX_CLIENT_HEADERS }}
         run: uv run python -m evals.deep_expert_fixed
 
       - name: Run expert_live
-        if: ${{ !cancelled() && steps.sync.outcome == 'success' && inputs.type != 'fixed' }}
+        if: ${{ !cancelled() && steps.sync.outcome == 'success' && (inputs.evals == '' && inputs.type != 'fixed' || inputs.evals != '' && contains(format(',{0},', inputs.evals), ',expert_live,')) }}
         working-directory: agentic_backend
         env:
           PHOENIX_CLIENT_HEADERS: ${{ secrets.PHOENIX_CLIENT_HEADERS }}
         run: uv run python -m evals.expert_live
 
       - name: Run deep_expert_live
-        if: ${{ !cancelled() && steps.sync.outcome == 'success' && inputs.type != 'fixed' }}
+        if: ${{ !cancelled() && steps.sync.outcome == 'success' && (inputs.evals == '' && inputs.type != 'fixed' || inputs.evals != '' && contains(format(',{0},', inputs.evals), ',deep_expert_live,')) }}
         working-directory: agentic_backend
         env:
           PHOENIX_CLIENT_HEADERS: ${{ secrets.PHOENIX_CLIENT_HEADERS }}
         run: uv run python -m evals.deep_expert_live
 
       - name: Run deep_forecaster_live
-        if: ${{ !cancelled() && steps.sync.outcome == 'success' && inputs.type != 'fixed' }}
+        if: ${{ !cancelled() && steps.sync.outcome == 'success' && (inputs.evals == '' && inputs.type != 'fixed' || inputs.evals != '' && contains(format(',{0},', inputs.evals), ',deep_forecaster_live,')) }}
         working-directory: agentic_backend
         env:
           PHOENIX_CLIENT_HEADERS: ${{ secrets.PHOENIX_CLIENT_HEADERS }}
