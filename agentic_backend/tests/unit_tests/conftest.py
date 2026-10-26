@@ -48,7 +48,7 @@ def jwt_signing_key() -> None:
     )
 
 
-def _pdf_string(text: str) -> str:
+def _escape_pdf_string(text: str) -> str:
     """Escape text for a PDF literal string; control characters become octal escapes."""
     out = []
     for char in text:
@@ -80,7 +80,7 @@ def _build_pdf(texts: list[str], size: int = 0, padding: int = 0) -> bytes:
     objects.append(f"<< /Type /Pages /Kids [{kids}] /Count {len(texts)} >>".encode())
     objects.append(b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>")
     for index, text in enumerate(texts):
-        stream = f"BT /F1 12 Tf 72 700 Td ({_pdf_string(text)}) Tj ET".encode()
+        stream = f"BT /F1 12 Tf 72 700 Td ({_escape_pdf_string(text)}) Tj ET".encode()
         objects.append(
             f"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] "
             f"/Resources << /Font << /F1 3 0 R >> >> /Contents {page_ids[index] + 1} 0 R >>".encode()
