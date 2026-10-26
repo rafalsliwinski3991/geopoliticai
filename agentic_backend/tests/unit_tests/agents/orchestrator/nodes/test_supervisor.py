@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import importlib
-from typing import Any, AsyncIterator, Optional
+from typing import Any, Optional
 
 import pytest
 from langchain_core.messages import (
@@ -14,10 +14,17 @@ from langchain_core.messages import (
     ToolMessage,
 )
 from langchain_core.runnables import RunnableConfig
+from langgraph.constants import TAG_NOSTREAM
 
-from agents.orchestrator.consts.menu import DYNAMIC_FOOTER_SYSTEM_PROMPT
+from agents.orchestrator.config import HISTORY_WINDOW_MESSAGES
+from agents.orchestrator.consts.menu import (
+    DYNAMIC_FOOTER_SYSTEM_PROMPT,
+    STATIC_NEXT_STEPS_MENU,
+)
 from agents.orchestrator.prompts import SUPERVISOR_SYSTEM_PROMPT
-from agents.orchestrator.state import GeopoliticState
+from agents.orchestrator.state import OrchestratorState
+from agents.orchestrator.tools import ALL_TOOLS
+from config import FOOTER_PREFIX
 from models import LLMInvocationError
 
 node_module = importlib.import_module("agents.orchestrator.nodes.supervisor")
@@ -57,65 +64,37 @@ class ScriptedChatModel:
         return response
 
 
-class ScriptedStreamer:
-    """Scripted stream returning chunks for astream_messages."""
-
-    def __init__(self, chunks: list[str]) -> None:
-        self.chunks = list(chunks)
-        self.invocations: list[dict[str, Any]] = []
-
-    async def __call__(
-        self,
-        system_prompt: str,
-        messages: list[AnyMessage],
-        *,
-        config: Optional[RunnableConfig] = None,
-        settings: Any = None,
-    ) -> AsyncIterator[str]:
-        self.invocations.append({"prompt": system_prompt, "messages": list(messages)})
-        for chunk in self.chunks:
-            yield chunk
-
-
 @pytest.mark.anyio
-async def test_supervisor_answers_small_talk_directly_without_tools(
+async def test_supervisor_answers_small_talk_in_the_routing_call(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """When the user message is conversational small talk, the supervisor must stream the
-    answer directly without tool calls, and route to destination 'other'.
+    """When the user message is small talk, the one routing call already holds the answer:
+    the supervisor returns it whole, with destination 'other', and calls the model once.
     """
     # Arrange
     user_message = "Good morning! Who are you?"
     expected_chat_reply = "Good morning! I am GeopoliticAI's supervisor assistant."
-    state: GeopoliticState = {"messages": [HumanMessage(user_message)]}
-
+    state: OrchestratorState = {"messages": [HumanMessage(user_message)]}
     supervisor_fake = ScriptedChatModel(
-        [AIMessage(content=expected_chat_reply, tool_calls=[])]
-    )
-    streamer_fake = ScriptedStreamer(
-        ["Good morning! ", "I am GeopoliticAI's ", "supervisor assistant."]
+        [AIMessage(content=f"  {expected_chat_reply}\n", tool_calls=[])]
     )
     events: list[dict[str, Any]] = []
-
     monkeypatch.setattr(
         node_module, "_build_supervisor_client", lambda: supervisor_fake
     )
-    monkeypatch.setattr(node_module, "astream_messages", streamer_fake)
 
     # Act
     result = await supervisor(state, writer=events.append)
 
     # Assert
     assert result == {
-        "messages": [
-            AIMessage("Good morning! I am GeopoliticAI's supervisor assistant.")
-        ],
+        "messages": [AIMessage(expected_chat_reply)],
         "destination": "other",
     }
     assert events == []
-    assert len(streamer_fake.invocations) == 1
-    assert streamer_fake.invocations[0]["prompt"] == SUPERVISOR_SYSTEM_PROMPT
-    assert streamer_fake.invocations[0]["messages"] == [HumanMessage(user_message)]
+    assert supervisor_fake.invocations == [
+        [SystemMessage(SUPERVISOR_SYSTEM_PROMPT), HumanMessage(user_message)]
+    ]
 
 
 @pytest.mark.anyio
@@ -128,7 +107,7 @@ async def test_supervisor_picks_expert_tool_with_rewritten_query(
     # Arrange
     user_message = "What is the Montreux Convention?"
     rewritten_query = "What are the rules and background of the 1936 Montreux Convention regarding the Turkish Straits?"
-    state: GeopoliticState = {"messages": [HumanMessage(user_message)]}
+    state: OrchestratorState = {"messages": [HumanMessage(user_message)]}
 
     expected_tool_call = {
         "name": "run_expert",
@@ -189,17 +168,15 @@ async def test_supervisor_sanitizes_unanswered_tool_calls_with_synthetic_tool_me
         ),
         HumanMessage("Wait, stop that. What is the capital of Turkey?"),
     ]
-    state: GeopoliticState = {"messages": messages}
+    state: OrchestratorState = {"messages": messages}
 
     chat_reply = "The capital of Turkey is Ankara."
     supervisor_fake = ScriptedChatModel([AIMessage(content=chat_reply, tool_calls=[])])
-    streamer_fake = ScriptedStreamer([chat_reply])
     events: list[dict[str, Any]] = []
 
     monkeypatch.setattr(
         node_module, "_build_supervisor_client", lambda: supervisor_fake
     )
-    monkeypatch.setattr(node_module, "astream_messages", streamer_fake)
 
     # Act
     result = await supervisor(state, writer=events.append)
@@ -224,18 +201,9 @@ async def test_supervisor_sanitizes_unanswered_tool_calls_with_synthetic_tool_me
     assert payload[4] == HumanMessage("Wait, stop that. What is the capital of Turkey?")
 
 
-def test_supervisor_history_window_drops_orphaned_leading_tool_message() -> None:
-    """When history window slicing begins on a ToolMessage mid-turn, the orphan guard must
-    drop leading ToolMessages until reaching a HumanMessage or AIMessage to avoid API protocol errors.
-    """
-    # Arrange
-    # Build 25 messages.
-    # We want message at index -20 (index 5) to be a ToolMessage whose parent AIMessage was sliced out.
-    messages: list[AnyMessage] = [
-        HumanMessage("Early turn 0"),
-        AIMessage("Early reply 0"),
-        HumanMessage("Early turn 1"),
-        AIMessage("Early reply 1"),
+def _orphaned_tool_result_history(replies_after: int) -> list[AnyMessage]:
+    """A tool call, its result, a human turn, then `replies_after` assistant replies."""
+    return [
         AIMessage(
             content="",
             tool_calls=[
@@ -247,23 +215,88 @@ def test_supervisor_history_window_drops_orphaned_leading_tool_message() -> None
                 }
             ],
         ),
-        # Index 5 in raw history (which will be index 0 of the 20-message slice):
         ToolMessage(content="Orphaned tool result", tool_call_id="call_orphan"),
-        # Index 6:
         HumanMessage("Clean user question"),
+        *[AIMessage(f"Reply {idx}") for idx in range(replies_after)],
     ]
-    # Add 18 more messages so total is 25:
-    for idx in range(18):
-        messages.append(AIMessage(f"Reply {idx}"))
+
+
+def test_supervisor_history_window_drops_orphaned_leading_tool_message() -> None:
+    """When the window starts on a ToolMessage whose AI parent was sliced out, the orphan
+    guard drops it so the provider never sees a tool result without its call.
+    """
+    # Arrange
+    # The window keeps the last HISTORY_WINDOW_MESSAGES messages, so the tool
+    # result sits first in the window when the human turn and the replies after
+    # it fill all but one slot.
+    messages = _orphaned_tool_result_history(replies_after=HISTORY_WINDOW_MESSAGES - 2)
 
     # Act
     sanitized = _sanitize_and_slice_messages(messages)
 
     # Assert
-    # Without the orphan guard, sanitized[0] would be the ToolMessage at index 5.
-    # With the guard, that orphaned ToolMessage is dropped, and sanitized starts with HumanMessage("Clean user question").
-    assert not isinstance(sanitized[0], ToolMessage)
     assert sanitized[0] == HumanMessage("Clean user question")
+    assert len(sanitized) == HISTORY_WINDOW_MESSAGES - 1
+
+
+@pytest.mark.parametrize(
+    ("replies_after", "expected_first"),
+    [
+        pytest.param(HISTORY_WINDOW_MESSAGES - 3, "call", id="at-limit-keeps-the-pair"),
+        pytest.param(
+            HISTORY_WINDOW_MESSAGES - 2, "human", id="one-past-drops-the-call"
+        ),
+    ],
+)
+def test_supervisor_history_window_boundary(
+    replies_after: int, expected_first: str
+) -> None:
+    """At the limit the tool call and result both fit; one more message pushes the call out
+    and the result with it.
+    """
+    # Arrange
+    messages = _orphaned_tool_result_history(replies_after)
+
+    # Act
+    sanitized = _sanitize_and_slice_messages(messages)
+
+    # Assert
+    first = sanitized[0]
+    assert ("call" if isinstance(first, AIMessage) else "human") == expected_first
+    assert len(sanitized) <= HISTORY_WINDOW_MESSAGES
+
+
+def test_supervisor_sanitizer_does_not_cancel_a_tool_call_that_was_answered() -> None:
+    """A call answered by its ToolMessage gets no synthetic cancellation beside it."""
+    # Arrange
+    messages: list[AnyMessage] = [
+        HumanMessage("Question"),
+        AIMessage(
+            content="",
+            tool_calls=[
+                {
+                    "name": "run_expert",
+                    "args": {"query": "q"},
+                    "id": "c1",
+                    "type": "tool_call",
+                }
+            ],
+        ),
+        ToolMessage(content="Summary", tool_call_id="c1", artifact={"text": "Full"}),
+        HumanMessage("Follow-up"),
+    ]
+
+    # Act
+    sanitized = _sanitize_and_slice_messages(messages)
+
+    # Assert
+    assert [type(m).__name__ for m in sanitized] == [
+        "HumanMessage",
+        "AIMessage",
+        "ToolMessage",
+        "HumanMessage",
+    ]
+    assert sanitized[2].content == "Full"
 
 
 @pytest.mark.anyio
@@ -277,7 +310,7 @@ async def test_supervisor_pass_two_generates_dynamic_footer(
     tool_summary = (
         "Synthesized verified research on 'Baltic defense posture' from 3 sources."
     )
-    state: GeopoliticState = {
+    state: OrchestratorState = {
         "messages": [
             HumanMessage("What is the Baltic defense posture?"),
             ToolMessage(
@@ -322,14 +355,14 @@ async def test_supervisor_pass_two_generates_dynamic_footer(
 
 
 @pytest.mark.anyio
-async def test_supervisor_pass_two_falls_back_to_static_menu_on_failure(
+async def test_supervisor_pass_two_falls_back_to_static_menu_on_provider_failure(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """When the dynamic footer model call raises an exception, Pass 2 must fall back to
     STATIC_NEXT_STEPS_MENU, emit it as a notice, and return an AIMessage.
     """
     # Arrange
-    state: GeopoliticState = {
+    state: OrchestratorState = {
         "messages": [
             ToolMessage(
                 content="Research summary.",
@@ -338,14 +371,7 @@ async def test_supervisor_pass_two_falls_back_to_static_menu_on_failure(
         ]
     }
 
-    expected_static_chunk = (
-        "\n\n---\n"
-        "**What next?**\n"
-        "- Ask a follow-up (0 research turns)\n"
-        "- Explore in depth with the deep research agent (4 research turns)\n"
-        "- Generate a Delphi forecast (8 research turns)\n"
-        "- Generate a comprehensive report (1 research turn)"
-    )
+    expected_static_chunk = f"{FOOTER_PREFIX}{STATIC_NEXT_STEPS_MENU}"
 
     failing_fake = ScriptedChatModel([RuntimeError("OpenAI API rate limit exceeded")])
     events: list[dict[str, Any]] = []
@@ -400,26 +426,22 @@ def test_sanitize_and_slice_messages_replaces_tool_message_content_with_artifact
 
 
 @pytest.mark.anyio
-async def test_supervisor_rejects_empty_chat_stream(
+async def test_supervisor_rejects_an_empty_chat_answer(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """When the supervisor produces neither tool calls nor any streamable chat tokens,
-    it must raise LLMInvocationError rather than returning an empty message.
+    """When the supervisor returns neither tool calls nor text, it must raise
+    LLMInvocationError rather than returning an empty message.
     """
     # Arrange
-    state: GeopoliticState = {"messages": [HumanMessage("Hello?")]}
-    supervisor_fake = ScriptedChatModel([AIMessage(content="", tool_calls=[])])
-    empty_streamer = ScriptedStreamer([])
-    events: list[dict[str, Any]] = []
-
+    state: OrchestratorState = {"messages": [HumanMessage("Hello?")]}
+    supervisor_fake = ScriptedChatModel([AIMessage(content="  ", tool_calls=[])])
     monkeypatch.setattr(
         node_module, "_build_supervisor_client", lambda: supervisor_fake
     )
-    monkeypatch.setattr(node_module, "astream_messages", empty_streamer)
 
     # Act + Assert
     with pytest.raises(LLMInvocationError, match="Model returned an empty answer."):
-        await supervisor(state, writer=events.append)
+        await supervisor(state, writer=lambda _: None)
 
 
 @pytest.mark.parametrize(
@@ -445,7 +467,7 @@ async def test_supervisor_maps_all_specialist_tools_to_destinations(
         "id": f"call_{tool_name}",
         "type": "tool_call",
     }
-    state: GeopoliticState = {"messages": [HumanMessage("Sample query")]}
+    state: OrchestratorState = {"messages": [HumanMessage("Sample query")]}
     supervisor_fake = ScriptedChatModel([AIMessage(content="", tool_calls=[tool_call])])
     events: list[dict[str, Any]] = []
 
@@ -492,3 +514,195 @@ def test_supervisor_sanitizes_unanswered_tool_calls_at_end_of_history() -> None:
     assert isinstance(synthetic_msg, ToolMessage)
     assert synthetic_msg.content == "Tool execution for run_expert was cancelled."
     assert synthetic_msg.tool_call_id == "call_end_dangling"
+
+
+@pytest.mark.anyio
+async def test_supervisor_keeps_only_the_first_of_two_tool_calls(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Arrange
+    first = {
+        "name": "run_expert",
+        "args": {"query": "a"},
+        "id": "c1",
+        "type": "tool_call",
+    }
+    second = {
+        "name": "run_deep_expert",
+        "args": {"query": "b"},
+        "id": "c2",
+        "type": "tool_call",
+    }
+    fake = ScriptedChatModel([AIMessage(content="", tool_calls=[first, second])])
+    monkeypatch.setattr(node_module, "_build_supervisor_client", lambda: fake)
+
+    # Act
+    result = await supervisor(
+        {"messages": [HumanMessage("Question")]}, writer=lambda _: None
+    )
+
+    # Assert
+    assert result["messages"] == [AIMessage(content="", tool_calls=[first])]
+    assert result["destination"] == "geopolitical"
+
+
+def test_tool_destination_map_covers_exactly_the_bound_tools() -> None:
+    # Act
+    mapped = set(TOOL_DESTINATION_MAP)
+
+    # Assert
+    assert mapped == {t.name for t in ALL_TOOLS}
+
+
+@pytest.mark.anyio
+async def test_supervisor_rejects_an_unknown_tool_name(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Arrange
+    call = {
+        "name": "run_unknown",
+        "args": {"query": "q"},
+        "id": "c1",
+        "type": "tool_call",
+    }
+    fake = ScriptedChatModel([AIMessage(content="", tool_calls=[call])])
+    monkeypatch.setattr(node_module, "_build_supervisor_client", lambda: fake)
+
+    # Act + Assert
+    with pytest.raises(LLMInvocationError, match="unknown tool"):
+        await supervisor({"messages": [HumanMessage("Q")]}, writer=lambda _: None)
+
+
+@pytest.mark.anyio
+async def test_supervisor_rejects_a_tool_call_with_a_blank_query(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Arrange
+    call = {
+        "name": "run_expert",
+        "args": {"query": "  "},
+        "id": "c1",
+        "type": "tool_call",
+    }
+    fake = ScriptedChatModel([AIMessage(content="", tool_calls=[call])])
+    monkeypatch.setattr(node_module, "_build_supervisor_client", lambda: fake)
+
+    # Act + Assert
+    with pytest.raises(LLMInvocationError, match="no query"):
+        await supervisor({"messages": [HumanMessage("Q")]}, writer=lambda _: None)
+
+
+@pytest.mark.anyio
+async def test_supervisor_rejects_a_tool_call_the_model_could_not_parse(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Arrange
+    reply = AIMessage(
+        content="",
+        invalid_tool_calls=[
+            {
+                "name": "run_expert",
+                "args": "{not json",
+                "id": "c1",
+                "error": "bad args",
+                "type": "invalid_tool_call",
+            }
+        ],
+    )
+    fake = ScriptedChatModel([reply])
+    monkeypatch.setattr(node_module, "_build_supervisor_client", lambda: fake)
+
+    # Act + Assert
+    with pytest.raises(LLMInvocationError, match="could not parse"):
+        await supervisor({"messages": [HumanMessage("Q")]}, writer=lambda _: None)
+
+
+@pytest.mark.anyio
+async def test_supervisor_turns_a_provider_failure_into_an_llm_invocation_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Arrange
+    fake = ScriptedChatModel([TimeoutError("provider timed out")])
+    monkeypatch.setattr(node_module, "_build_supervisor_client", lambda: fake)
+
+    # Act + Assert
+    with pytest.raises(LLMInvocationError, match="Model call failed."):
+        await supervisor({"messages": [HumanMessage("Q")]}, writer=lambda _: None)
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    ("content", "expected_body"),
+    [
+        pytest.param("", STATIC_NEXT_STEPS_MENU, id="empty"),
+        pytest.param("  \n ", STATIC_NEXT_STEPS_MENU, id="whitespace"),
+        pytest.param([], STATIC_NEXT_STEPS_MENU, id="empty-block-list"),
+        pytest.param(
+            "  **What next?**\n- Ask  \n", "**What next?**\n- Ask", id="padded"
+        ),
+    ],
+)
+async def test_supervisor_footer_uses_the_static_menu_only_when_the_reply_is_blank(
+    monkeypatch: pytest.MonkeyPatch,
+    content: Any,
+    expected_body: str,
+) -> None:
+    # Arrange
+    state: OrchestratorState = {
+        "messages": [ToolMessage(content="Summary.", tool_call_id="c1")]
+    }
+    fake = ScriptedChatModel([AIMessage(content=content)])
+    monkeypatch.setattr(node_module, "_build_footer_client", lambda: fake)
+
+    # Act
+    result = await supervisor(state, writer=lambda _: None)
+
+    # Assert
+    assert result == {"messages": [AIMessage(f"{FOOTER_PREFIX}{expected_body}")]}
+
+
+class RecordingChatModel:
+    """Records how the supervisor's builders configure the model they get."""
+
+    def __init__(self) -> None:
+        self.bound_tools: list[Any] = []
+        self.bind_kwargs: dict[str, Any] = {}
+        self.config_kwargs: dict[str, Any] = {}
+
+    def bind_tools(self, tools: list[Any], **kwargs: Any) -> RecordingChatModel:
+        self.bound_tools = tools
+        self.bind_kwargs = kwargs
+        return self
+
+    def with_config(self, **kwargs: Any) -> RecordingChatModel:
+        self.config_kwargs = kwargs
+        return self
+
+
+def test_supervisor_client_binds_every_tool_one_at_a_time_and_is_not_streamed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Arrange
+    recorder = RecordingChatModel()
+    monkeypatch.setattr(node_module, "build_chat_model", lambda settings: recorder)
+
+    # Act
+    node_module._build_supervisor_client()
+
+    # Assert
+    assert recorder.bound_tools == ALL_TOOLS
+    assert recorder.bind_kwargs == {"parallel_tool_calls": False}
+    assert recorder.config_kwargs == {"tags": [TAG_NOSTREAM]}
+
+
+def test_footer_client_is_not_streamed(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Arrange
+    recorder = RecordingChatModel()
+    monkeypatch.setattr(node_module, "build_chat_model", lambda settings: recorder)
+
+    # Act
+    node_module._build_footer_client()
+
+    # Assert
+    assert recorder.bound_tools == []
+    assert recorder.config_kwargs == {"tags": [TAG_NOSTREAM]}
