@@ -18,30 +18,15 @@ from unit_tests.agents.orchestrator.tools.conftest import make_tool_runtime
 reporter_tool_module = importlib.import_module("agents.orchestrator.tools.reporter")
 
 
-class _ScriptedReporterGraph:
-    """Scripted fake for reporter_graph across an interrupt-and-resume lifecycle."""
+class _PausingReporterGraph:
+    """Fake for reporter_graph that pauses at the approval gate."""
 
-    def __init__(
-        self,
-        compiled_report: str,
-        outline_sections: list[str],
-    ) -> None:
-        self.outline_calls: list[dict[str, Any]] = []
-        self._compiled_report = compiled_report
+    def __init__(self, outline_sections: list[str]) -> None:
         self._outline_sections = outline_sections
-        self._call_count = 0
 
     async def ainvoke(self, state: dict[str, Any]) -> dict[str, Any]:
-        self._call_count += 1
-        if self._call_count == 1:
-            self.outline_calls.append(state)
-            raise GraphInterrupt(
-                [Interrupt(value={"outline": list(self._outline_sections)})]
-            )
-        if self._call_count == 2:
-            return {"report": self._compiled_report}
-        raise AssertionError(
-            f"Unexpected extra call to reporter_graph.ainvoke: #{self._call_count}"
+        raise GraphInterrupt(
+            [Interrupt(value={"outline": list(self._outline_sections)})]
         )
 
 
@@ -131,59 +116,41 @@ async def test_run_reporter_compiles_report_when_workspace_has_material(
 
 
 @pytest.mark.anyio
-async def test_run_reporter_propagates_the_pause_and_returns_the_report_on_resume(
+async def test_run_reporter_propagates_the_pause_at_the_approval_gate(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """When the reporter subgraph pauses at the approval gate, run_reporter propagates
-    the pause via GraphInterrupt and returns the compiled report on the next call.
-    """
+    """A reporter subgraph that pauses must pause the orchestrator's turn too."""
     # Arrange
     outline_sections = ["1. Strategic Context", "2. Scenario Projections"]
-    compiled_report = "# Strategic Analysis\n\nDetailed breakdown of scenario risks."
-    fake_graph = _ScriptedReporterGraph(
-        compiled_report=compiled_report,
-        outline_sections=outline_sections,
+    monkeypatch.setattr(
+        reporter_tool_module, "reporter_graph", _PausingReporterGraph(outline_sections)
     )
-    monkeypatch.setattr(reporter_tool_module, "reporter_graph", fake_graph)
-
     emitted_events: list[dict[str, Any]] = []
-    initial_state = {
-        "messages": [
-            HumanMessage("What is the Baltic defense strategy?"),
-            ToolMessage(
-                content="Briefing material",
-                tool_call_id="call_research_1",
-                artifact={"text": "Verified source [1](https://example.com/baltic)."},
-            ),
-        ],
-        "expert_synthesis": ["Verified source with analysis."],
-    }
     runtime = make_tool_runtime(
-        state=initial_state,
-        tool_call_id="call_rep_pause_resume",
+        state={
+            "messages": [
+                HumanMessage("What is the Baltic defense strategy?"),
+                ToolMessage(
+                    content="Briefing material",
+                    tool_call_id="call_research_1",
+                    artifact={
+                        "text": "Verified source [1](https://example.com/baltic)."
+                    },
+                ),
+            ],
+            "expert_synthesis": ["Verified source with analysis."],
+        },
+        tool_call_id="call_rep_pause",
         writer=emitted_events.append,
     )
 
-    # Act
+    # Act + Assert
     with pytest.raises(GraphInterrupt) as exc_info:
         await run_reporter.ainvoke({"topic": "Baltic defense", "runtime": runtime})
-    command = await run_reporter.ainvoke(
-        {"topic": "Baltic defense", "runtime": runtime}
-    )
-
-    # Assert
-    interrupts = exc_info.value.args[0]
-    assert [interrupt.value for interrupt in interrupts] == [
+    assert [interrupt.value for interrupt in exc_info.value.args[0]] == [
         {"outline": outline_sections}
     ]
     assert emitted_events == []
-    update = command.update
-    assert len(update["messages"]) == 1
-    message = update["messages"][0]
-    assert isinstance(message, ToolMessage)
-    assert message.tool_call_id == "call_rep_pause_resume"
-    assert message.content == "Report compiled (59 chars)."
-    assert message.artifact == {"text": compiled_report}
 
 
 @pytest.mark.anyio

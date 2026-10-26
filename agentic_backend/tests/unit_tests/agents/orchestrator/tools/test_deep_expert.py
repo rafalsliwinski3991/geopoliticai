@@ -57,6 +57,24 @@ async def test_run_deep_expert_appends_synthesis_and_emits_the_answer_as_a_notic
 
 
 @pytest.mark.anyio
+async def test_run_deep_expert_starts_the_synthesis_list_when_the_thread_has_none(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Arrange
+    async def fake_research(query: str, writer: Any) -> str:
+        return "First deep answer."
+
+    monkeypatch.setattr(deep_expert_tool_module, "research", fake_research)
+    runtime = make_tool_runtime(state={"messages": []})
+
+    # Act
+    command = await run_deep_expert.ainvoke({"query": "Any topic", "runtime": runtime})
+
+    # Assert
+    assert command.update["expert_synthesis"] == ["First deep answer."]
+
+
+@pytest.mark.anyio
 async def test_run_deep_expert_lets_a_pipeline_error_propagate(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
