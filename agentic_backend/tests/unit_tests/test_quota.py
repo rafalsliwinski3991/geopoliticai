@@ -140,11 +140,9 @@ async def test_a_costly_turn_without_headroom_touches_no_counter(
     # Arrange
     quota.used = DAILY_RESEARCH_TURNS - DEEP_RESEARCH_TURN_COST + 1
 
-    # Act
+    # Act + Assert
     with pytest.raises(QuotaExceededError) as refused:
         await charge_turn(POOL, user_id=1, destination="deep")
-
-    # Assert
     assert str(refused.value) == (
         "A deep analysis needs 10 research turns; you have 9 left today."
     )
@@ -177,11 +175,9 @@ async def test_a_costly_refusal_names_its_own_cost(
     # Arrange
     quota.used = used
 
-    # Act
+    # Act + Assert
     with pytest.raises(QuotaExceededError) as refused:
         await charge_turn(POOL, user_id=1, destination=destination)
-
-    # Assert
     assert str(refused.value) == refusal
 
 
@@ -214,11 +210,9 @@ async def test_a_refused_site_charge_leaves_the_user_counter_untouched(
     # Arrange
     quota.site_has_room = False
 
-    # Act
+    # Act + Assert
     with pytest.raises(QuotaExceededError) as refused:
         await charge_turn(POOL, user_id=1, destination="geopolitical")
-
-    # Assert
     assert str(refused.value) == "The site has used today's research capacity."
     assert quota.calls == [("site", DAILY_RESEARCH_TURNS_ALL_USERS, 1)]
 
@@ -233,11 +227,9 @@ async def test_a_lost_user_race_keeps_the_site_units_spent(
     # Arrange
     quota.user_has_room = False
 
-    # Act
+    # Act + Assert
     with pytest.raises(QuotaExceededError) as refused:
         await charge_turn(POOL, user_id=1, destination="forecast")
-
-    # Assert
     assert str(refused.value) == "Daily research limit reached."
     assert quota.calls == [
         ("site", DAILY_RESEARCH_TURNS_ALL_USERS, FORECAST_TURN_COST),
@@ -323,6 +315,25 @@ async def test_a_failed_refund_gives_the_cap_back(quota: RecordingQuota) -> None
     # Assert
     assert quota.refunds() == [("refund", 1, CHARGE_DAY, 1)]
     assert quota_module._refunded_units == {}
+
+
+@pytest.mark.anyio
+async def test_a_failed_refund_keeps_the_units_already_refunded(
+    quota: RecordingQuota,
+) -> None:
+    """A failed refund gives back only its own reservation: units an earlier refund
+    really returned stay counted against the day's cap."""
+
+    # Arrange
+    charge = Charge(day=CHARGE_DAY, cost=1)
+    await refund_turn(POOL, user_id=1, charge=charge)
+    quota.refund_error = OperationalError("db down")
+
+    # Act
+    await refund_turn(POOL, user_id=1, charge=charge)
+
+    # Assert
+    assert quota_module._refunded_units == {(1, CHARGE_DAY): 1}
 
 
 @pytest.mark.anyio

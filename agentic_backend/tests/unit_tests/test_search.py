@@ -642,7 +642,9 @@ async def test_a_page_without_a_byline_has_an_empty_author(
         ),
     ],
 )
-def test_byline_from_parsed_head(page: str, expected: str) -> None:
+def test_a_parsed_head_yields_its_byline_or_an_empty_string(
+    page: str, expected: str
+) -> None:
     # Act + Assert
     assert search._byline_from(search._parse_head(page)) == expected
 

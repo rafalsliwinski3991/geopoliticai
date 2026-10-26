@@ -59,7 +59,7 @@ async def test_a_refused_user_charge_keeps_the_site_charge(
             )
             await pool.open()
             try:
-                # Act
+                # Act + Assert
                 with pytest.raises(QuotaExceededError):
                     await quota_module.charge_turn(
                         pool, user_id=user_id, destination=None
