@@ -9,6 +9,7 @@ import pytest
 from langchain_core.messages import ToolMessage
 
 from agents.orchestrator.tools.deep_forecaster import run_deep_forecaster
+from models import LLMInvocationError
 from unit_tests.agents.orchestrator.tools.conftest import make_tool_runtime
 
 deep_forecaster_tool_module = importlib.import_module(
@@ -110,3 +111,21 @@ async def test_run_deep_forecaster_handles_empty_initial_state(
         {"question": "Will event happen?", "summary": forecast_verdict}
     ]
     assert update["messages"][0].artifact == {"text": forecast_verdict}
+
+
+@pytest.mark.anyio
+async def test_run_deep_forecaster_lets_a_pipeline_error_propagate(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A failed forecast must reach the API's error frame, not become a tool result."""
+
+    # Arrange
+    async def failing_forecast(question: str, store: Any) -> str:
+        raise LLMInvocationError("Model call failed.")
+
+    monkeypatch.setattr(deep_forecaster_tool_module, "forecast", failing_forecast)
+    runtime = make_tool_runtime(state={"messages": []})
+
+    # Act + Assert
+    with pytest.raises(LLMInvocationError):
+        await run_deep_forecaster.ainvoke({"question": "Any?", "runtime": runtime})

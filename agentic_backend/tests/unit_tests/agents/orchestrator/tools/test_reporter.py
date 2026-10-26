@@ -12,6 +12,7 @@ from langgraph.types import Interrupt
 
 from agents.orchestrator.tools.reporter import run_reporter
 from agents.reporter.consts.messages import CANCELLED_NOTICE, NO_MATERIAL_NOTICE
+from models import LLMInvocationError
 from unit_tests.agents.orchestrator.tools.conftest import make_tool_runtime
 
 reporter_tool_module = importlib.import_module("agents.orchestrator.tools.reporter")
@@ -68,7 +69,6 @@ async def test_run_reporter_refuses_when_workspace_has_no_researched_material() 
     # Assert
     assert emitted_events == [{"type": "notice", "text": NO_MATERIAL_NOTICE}]
     update = command.update
-    assert update["report_draft"] == NO_MATERIAL_NOTICE
     assert len(update["messages"]) == 1
     message = update["messages"][0]
     assert isinstance(message, ToolMessage)
@@ -122,7 +122,6 @@ async def test_run_reporter_compiles_report_when_workspace_has_material(
         emitted_events == []
     )  # On successful report compilation, report is not emitted as notice
     update = command.update
-    assert update["report_draft"] == compiled_report
     assert len(update["messages"]) == 1
     message = update["messages"][0]
     assert isinstance(message, ToolMessage)
@@ -132,12 +131,11 @@ async def test_run_reporter_compiles_report_when_workspace_has_material(
 
 
 @pytest.mark.anyio
-async def test_run_reporter_pauses_and_resumes_without_rerunning_outline(
+async def test_run_reporter_propagates_the_pause_and_returns_the_report_on_resume(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """When the reporter subgraph pauses at the approval gate and resumes on approval,
-    run_reporter must propagate the pause via GraphInterrupt and subsequently return
-    the compiled report without re-executing the outline stage.
+    """When the reporter subgraph pauses at the approval gate, run_reporter propagates
+    the pause via GraphInterrupt and returns the compiled report on the next call.
     """
     # Arrange
     outline_sections = ["1. Strategic Context", "2. Scenario Projections"]
@@ -166,22 +164,20 @@ async def test_run_reporter_pauses_and_resumes_without_rerunning_outline(
         writer=emitted_events.append,
     )
 
+    # Act
     with pytest.raises(GraphInterrupt) as exc_info:
         await run_reporter.ainvoke({"topic": "Baltic defense", "runtime": runtime})
-    interrupts = exc_info.value.args[0]
-    assert len(interrupts) == 1
-    assert interrupts[0].value == {"outline": outline_sections}
-
-    # Act
     command = await run_reporter.ainvoke(
         {"topic": "Baltic defense", "runtime": runtime}
     )
 
     # Assert
-    assert len(fake_graph.outline_calls) == 1
+    interrupts = exc_info.value.args[0]
+    assert [interrupt.value for interrupt in interrupts] == [
+        {"outline": outline_sections}
+    ]
     assert emitted_events == []
     update = command.update
-    assert update["report_draft"] == compiled_report
     assert len(update["messages"]) == 1
     message = update["messages"][0]
     assert isinstance(message, ToolMessage)
@@ -195,7 +191,7 @@ async def test_run_reporter_emits_notice_when_report_is_cancelled_or_declined(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """When the reporter subgraph returns no report (e.g. user cancelled or revision cap hit),
-    the notice text must be emitted to stream_writer and saved as report_draft.
+    the notice text must be emitted to stream_writer and saved as the ToolMessage artifact.
     """
     # Arrange
     emitted_events: list[dict[str, Any]] = []
@@ -221,5 +217,95 @@ async def test_run_reporter_emits_notice_when_report_is_cancelled_or_declined(
     # Assert
     assert emitted_events == [{"type": "notice", "text": CANCELLED_NOTICE}]
     update = command.update
-    assert update["report_draft"] == CANCELLED_NOTICE
     assert update["messages"][0].artifact == {"text": CANCELLED_NOTICE}
+
+
+@pytest.mark.anyio
+async def test_run_reporter_hands_the_reporter_the_thread_transcript(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The reporter writes from the thread, so the prior answer's artifact text must reach it."""
+    # Arrange
+    received: list[dict[str, Any]] = []
+
+    async def fake_ainvoke(input_state: dict[str, Any]) -> dict[str, Any]:
+        received.append(input_state)
+        return {"report": "# Report"}
+
+    monkeypatch.setattr(reporter_tool_module.reporter_graph, "ainvoke", fake_ainvoke)
+    runtime = make_tool_runtime(
+        state={
+            "messages": [
+                HumanMessage("What is the Baltic posture?"),
+                ToolMessage(
+                    content="Briefing summary",
+                    tool_call_id="call_prev",
+                    artifact={"text": "Baltic briefing [1](https://example.com/b)."},
+                ),
+            ],
+        },
+    )
+
+    # Act
+    await run_reporter.ainvoke({"topic": "Baltic", "runtime": runtime})
+
+    # Assert
+    assert "Baltic briefing [1](https://example.com/b)." in received[0]["transcript"]
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    ("graph_result", "expected_text"),
+    [
+        pytest.param(
+            {"report": "", "notice": "Revision cap reached."},
+            "Revision cap reached.",
+            id="graph-notice-wins",
+        ),
+        pytest.param({"report": ""}, CANCELLED_NOTICE, id="cancelled-fallback"),
+    ],
+)
+async def test_run_reporter_without_a_report_emits_the_graph_notice_or_the_cancelled_notice(
+    monkeypatch: pytest.MonkeyPatch,
+    graph_result: dict[str, Any],
+    expected_text: str,
+) -> None:
+    """A run with no report shows the graph's own notice, and CANCELLED_NOTICE only without one."""
+    # Arrange
+    emitted_events: list[dict[str, Any]] = []
+
+    async def fake_ainvoke(input_state: dict[str, Any]) -> dict[str, Any]:
+        return graph_result
+
+    monkeypatch.setattr(reporter_tool_module.reporter_graph, "ainvoke", fake_ainvoke)
+    runtime = make_tool_runtime(
+        state={"messages": [HumanMessage("Topic")], "expert_synthesis": ["Material."]},
+        writer=emitted_events.append,
+    )
+
+    # Act
+    command = await run_reporter.ainvoke({"topic": "Topic", "runtime": runtime})
+
+    # Assert
+    assert emitted_events == [{"type": "notice", "text": expected_text}]
+    assert command.update["messages"][0].artifact == {"text": expected_text}
+
+
+@pytest.mark.anyio
+async def test_run_reporter_lets_a_pipeline_error_propagate(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A failed report run must reach the API's error frame, not become a tool result."""
+
+    # Arrange
+    async def failing_ainvoke(input_state: dict[str, Any]) -> dict[str, Any]:
+        raise LLMInvocationError("Model call failed.")
+
+    monkeypatch.setattr(reporter_tool_module.reporter_graph, "ainvoke", failing_ainvoke)
+    runtime = make_tool_runtime(
+        state={"messages": [HumanMessage("Topic")], "expert_synthesis": ["Material."]}
+    )
+
+    # Act + Assert
+    with pytest.raises(LLMInvocationError):
+        await run_reporter.ainvoke({"topic": "Topic", "runtime": runtime})

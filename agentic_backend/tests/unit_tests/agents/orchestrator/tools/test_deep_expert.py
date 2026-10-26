@@ -9,6 +9,7 @@ import pytest
 from langchain_core.messages import ToolMessage
 
 from agents.orchestrator.tools.deep_expert import run_deep_expert
+from models import LLMInvocationError
 from unit_tests.agents.orchestrator.tools.conftest import make_tool_runtime
 
 deep_expert_tool_module = importlib.import_module(
@@ -17,36 +18,22 @@ deep_expert_tool_module = importlib.import_module(
 
 
 @pytest.mark.anyio
-async def test_run_deep_expert_parses_markdown_citations_and_updates_workspace(
+async def test_run_deep_expert_appends_synthesis_and_emits_the_answer_as_a_notice(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Deep expert research returns an unstructured answer with markdown links; the tool
-    must parse these into structured retrieved sources, append to synthesis, and emit a notice.
-    """
+    """The deep answer reaches the browser once, as a notice, and joins expert synthesis."""
     # Arrange
     emitted_events: list[dict[str, Any]] = []
     research_calls: list[tuple[str, Any]] = []
-    deep_answer = (
-        "Comprehensive analysis of deterrence. "
-        "See [IISS Military Balance](https://iiss.org/mb) and "
-        "[SIPRI Database](https://sipri.org/db)."
-    )
+    deep_answer = "Comprehensive analysis of deterrence [IISS](https://iiss.org/mb)."
 
     async def fake_research(query: str, writer: Any) -> str:
         research_calls.append((query, writer))
         return deep_answer
 
     monkeypatch.setattr(deep_expert_tool_module, "research", fake_research)
-
-    initial_state = {
-        "messages": [],
-        "retrieved_sources": [
-            {"title": "Existing", "url": "https://iiss.org/mb"},
-        ],
-        "expert_synthesis": ["Prior synthesis."],
-    }
     runtime = make_tool_runtime(
-        state=initial_state,
+        state={"messages": [], "expert_synthesis": ["Prior synthesis."]},
         tool_call_id="call_deep_456",
         writer=emitted_events.append,
     )
@@ -57,19 +44,10 @@ async def test_run_deep_expert_parses_markdown_citations_and_updates_workspace(
     )
 
     # Assert
-    assert len(research_calls) == 1
-    assert research_calls[0][0] == "Baltic deterrence"
+    assert [call[0] for call in research_calls] == ["Baltic deterrence"]
     assert emitted_events == [{"type": "notice", "text": deep_answer}]
-
     update = command.update
-    assert update["retrieved_sources"] == [
-        {"title": "Existing", "url": "https://iiss.org/mb"},
-        {"title": "SIPRI Database", "url": "https://sipri.org/db"},
-    ]
-    assert update["expert_synthesis"] == [
-        "Prior synthesis.",
-        deep_answer,
-    ]
+    assert update["expert_synthesis"] == ["Prior synthesis.", deep_answer]
     assert len(update["messages"]) == 1
     message = update["messages"][0]
     assert isinstance(message, ToolMessage)
@@ -79,34 +57,18 @@ async def test_run_deep_expert_parses_markdown_citations_and_updates_workspace(
 
 
 @pytest.mark.anyio
-async def test_run_deep_expert_handles_answer_without_citations(
+async def test_run_deep_expert_lets_a_pipeline_error_propagate(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """When deep research generates an answer without markdown links, the tool
-    appends synthesis without error and leaves retrieved_sources unaffected.
-    """
+    """A failed deep run must reach the API's error frame, not become a tool result."""
+
     # Arrange
-    emitted_events: list[dict[str, Any]] = []
-    plain_answer = "Analysis without any citations."
+    async def failing_research(query: str, writer: Any) -> str:
+        raise LLMInvocationError("Model call failed.")
 
-    async def fake_research(query: str, writer: Any) -> str:
-        return plain_answer
+    monkeypatch.setattr(deep_expert_tool_module, "research", failing_research)
+    runtime = make_tool_runtime(state={"messages": []})
 
-    monkeypatch.setattr(deep_expert_tool_module, "research", fake_research)
-
-    runtime = make_tool_runtime(
-        state={"messages": []},
-        tool_call_id="call_plain",
-        writer=emitted_events.append,
-    )
-
-    # Act
-    command = await run_deep_expert.ainvoke(
-        {"query": "Uncited topic", "runtime": runtime}
-    )
-
-    # Assert
-    update = command.update
-    assert update["retrieved_sources"] == []
-    assert update["expert_synthesis"] == [plain_answer]
-    assert update["messages"][0].artifact == {"text": plain_answer}
+    # Act + Assert
+    with pytest.raises(LLMInvocationError):
+        await run_deep_expert.ainvoke({"query": "Any topic", "runtime": runtime})

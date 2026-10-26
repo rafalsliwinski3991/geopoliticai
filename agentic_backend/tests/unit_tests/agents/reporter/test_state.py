@@ -140,7 +140,7 @@ def test_a_chat_answer_with_a_link_passes_the_material_gate() -> None:
     # Arrange
     # Known false positive (plan §7 Q-F): `has_researched_material` is a
     # proxy, not a proof. A chat answer that emits a markdown link despite
-    # CHAT_SYSTEM_PROMPT rule 1 — echoing a URL the user pasted, say —
+    # the supervisor prompt's rule 1 (echoing a URL the user pasted, say)
     # passes this gate. Asserted here so the trade-off stays a recorded
     # decision rather than an apparent bug.
     messages: list[AnyMessage] = [
@@ -321,3 +321,32 @@ def test_has_researched_material_finds_citations_in_tool_message_artifact() -> N
 
     # Act + Assert
     assert has_researched_material(messages) is True
+
+
+def test_a_tool_message_without_an_artifact_counts_when_its_content_has_a_link() -> (
+    None
+):
+    # Arrange
+    messages: list[AnyMessage] = [
+        ToolMessage(
+            content="Briefing [source](https://example.com/b).",
+            tool_call_id="call_1",
+        )
+    ]
+
+    # Act + Assert
+    assert has_researched_material(messages) is True
+
+
+def test_a_tool_message_whose_artifact_has_no_link_is_not_material() -> None:
+    # Arrange
+    messages: list[AnyMessage] = [
+        ToolMessage(
+            content="Briefing [source](https://example.com/b).",
+            tool_call_id="call_1",
+            artifact={"text": "No sources were found."},
+        )
+    ]
+
+    # Act + Assert
+    assert has_researched_material(messages) is False

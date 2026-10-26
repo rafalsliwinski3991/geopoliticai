@@ -10,21 +10,21 @@ from langgraph.prebuilt import ToolRuntime
 from langgraph.types import Command
 
 from agents.deep_forecaster import forecast
-from agents.orchestrator.state import GeopoliticState
+from agents.orchestrator.state import OrchestratorState
 
 
 @tool
 async def run_deep_forecaster(
-    question: str, runtime: ToolRuntime[Any, GeopoliticState]
+    question: str, runtime: ToolRuntime[Any, OrchestratorState]
 ) -> Command[Any]:
     """Generate a probabilistic Delphi forecast and analysis on a future event question."""
     answer = await forecast(question, runtime.store)
     runtime.stream_writer({"type": "notice", "text": answer})
 
-    existing_forecasts: list[dict[str, Any]] = (
-        list(runtime.state.get("forecast_data") or []) if runtime.state else []
-    )
-    updated_forecasts = [*existing_forecasts, {"question": question, "summary": answer}]
+    updated_forecasts = [
+        *(runtime.state.get("forecast_data") or []),
+        {"question": question, "summary": answer},
+    ]
 
     return Command(
         update={

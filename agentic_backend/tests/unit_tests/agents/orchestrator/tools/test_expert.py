@@ -10,18 +10,18 @@ from langchain_core.messages import ToolMessage
 
 from agents.orchestrator.consts.progress import SEARCH_PROGRESS
 from agents.orchestrator.tools.expert import run_expert
-from models import Source
+from models import LLMInvocationError, Source
 from unit_tests.agents.orchestrator.tools.conftest import make_tool_runtime
 
 expert_tool_module = importlib.import_module("agents.orchestrator.tools.expert")
 
 
 @pytest.mark.anyio
-async def test_run_expert_updates_sources_synthesis_and_returns_tool_message_with_artifact(
+async def test_run_expert_appends_synthesis_and_returns_tool_message_with_artifact(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """When expert research finishes, verified sources must be added to the shared workspace,
-    the answer appended to expert synthesis, and a ToolMessage returned containing the full answer in its artifact.
+    """When expert research finishes, the answer is appended to expert synthesis and a
+    ToolMessage returns the full answer in its artifact.
     """
     # Arrange
     emitted_events: list[dict[str, Any]] = []
@@ -43,9 +43,6 @@ async def test_run_expert_updates_sources_synthesis_and_returns_tool_message_wit
 
     initial_state = {
         "messages": [],
-        "retrieved_sources": [
-            {"title": "Old Source", "url": "https://example.com/initial"}
-        ],
         "expert_synthesis": ["Initial overview."],
     }
     runtime = make_tool_runtime(
@@ -65,10 +62,6 @@ async def test_run_expert_updates_sources_synthesis_and_returns_tool_message_wit
     assert invoked_inputs[0]["query"] == "NATO flank update"
 
     update = command.update
-    assert update["retrieved_sources"] == [
-        {"title": "Old Source", "url": "https://example.com/initial"},
-        {"title": "NATO Flank", "url": "https://nato.int/flank"},
-    ]
     assert update["expert_synthesis"] == [
         "Initial overview.",
         "Verified NATO briefing [1](https://nato.int).",
@@ -110,8 +103,23 @@ async def test_run_expert_handles_empty_initial_workspace_state(
 
     # Assert
     update = command.update
-    assert update["retrieved_sources"] == [
-        {"title": "Source One", "url": "https://example.com/1"}
-    ]
     assert update["expert_synthesis"] == ["Fresh answer."]
     assert update["messages"][0].artifact == {"text": "Fresh answer."}
+
+
+@pytest.mark.anyio
+async def test_run_expert_lets_a_pipeline_error_propagate(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A failed expert run must reach the API's error frame, not become a tool result."""
+
+    # Arrange
+    async def failing_ainvoke(input_state: dict[str, Any]) -> dict[str, Any]:
+        raise LLMInvocationError("Model call failed.")
+
+    monkeypatch.setattr(expert_tool_module.expert_graph, "ainvoke", failing_ainvoke)
+    runtime = make_tool_runtime(state={"messages": []})
+
+    # Act + Assert
+    with pytest.raises(LLMInvocationError):
+        await run_expert.ainvoke({"query": "Any topic", "runtime": runtime})
