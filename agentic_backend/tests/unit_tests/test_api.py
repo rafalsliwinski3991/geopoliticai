@@ -32,6 +32,7 @@ from config import (
     DAILY_RESEARCH_TURNS,
     DAILY_RESEARCH_TURNS_ALL_USERS,
     DEEP_RESEARCH_TURN_COST,
+    FOOTER_PREFIX,
     FORECAST_TURN_COST,
     MAX_DAILY_REFUND_UNITS,
     LogContextFilter,
@@ -46,6 +47,7 @@ from models import (
     SearchUnavailableError,
     Source,
 )
+from unit_tests.agents.orchestrator.conftest import ScriptedChatModel
 
 CHARGE_DAY = date(2026, 10, 16)
 
@@ -428,7 +430,7 @@ async def test_an_unknown_custom_event_is_skipped(
             yield (
                 ("",),
                 "messages",
-                (AIMessage("Answer."), {"langgraph_node": "chat"}),
+                (AIMessage("Answer."), {"langgraph_node": "supervisor"}),
             )
 
     monkeypatch.setattr(api, "graph", _FakeGraph())
@@ -1094,45 +1096,30 @@ async def test_astream_answer_streams_the_answer_of_either_branch(
         lambda settings: FakeListChatModel(responses=["Hello world."]),
     )
 
-    class _SupervisorFake:
-        def bind_tools(self, *args: Any, **kwargs: Any) -> Any:
-            return self
-
-        def with_config(self, *args: Any, **kwargs: Any) -> Any:
-            return self
-
-        async def ainvoke(self, messages: Any, *args: Any, **kwargs: Any) -> Any:
-            if destination == "geopolitical":
-                return AIMessage(
-                    content="",
-                    tool_calls=[
-                        {
-                            "name": "run_expert",
-                            "args": {"query": "question"},
-                            "id": "call-1",
-                        }
-                    ],
-                )
-            elif destination == "report":
-                return AIMessage(
-                    content="",
-                    tool_calls=[
-                        {
-                            "name": "run_reporter",
-                            "args": {"topic": "question"},
-                            "id": "call-2",
-                        }
-                    ],
-                )
-            else:
-                return AIMessage(content="Hello world.", tool_calls=[])
-
-    monkeypatch.setattr(
-        supervisor_module, "_build_supervisor_client", lambda: _SupervisorFake()
+    calls = {
+        "geopolitical": {
+            "name": "run_expert",
+            "args": {"query": "question"},
+            "id": "call-1",
+        },
+        "report": {
+            "name": "run_reporter",
+            "args": {"topic": "question"},
+            "id": "call-2",
+        },
+    }
+    supervisor_fake = ScriptedChatModel(
+        [
+            AIMessage(content="", tool_calls=[calls[destination]])
+            if destination in calls
+            else AIMessage(content="Hello world.")
+        ]
     )
+    footer_fake = ScriptedChatModel([AIMessage("1. Next steps")])
     monkeypatch.setattr(
-        supervisor_module, "_build_footer_client", lambda: _SupervisorFake()
+        supervisor_module, "_build_supervisor_client", lambda: supervisor_fake
     )
+    monkeypatch.setattr(supervisor_module, "_build_footer_client", lambda: footer_fake)
 
     state = build_initial_orchestrator_state("question")
     if destination == "report":
@@ -2203,15 +2190,9 @@ async def test_a_deep_turn_reaches_the_browser_once(
         writer(PLANNING_PROGRESS)
         return DEEP_ANSWER
 
-    class _SupervisorDeepFake:
-        def bind_tools(self, *args: Any, **kwargs: Any) -> Any:
-            return self
-
-        def with_config(self, *args: Any, **kwargs: Any) -> Any:
-            return self
-
-        async def ainvoke(self, messages: Any, *args: Any, **kwargs: Any) -> Any:
-            return AIMessage(
+    supervisor_fake = ScriptedChatModel(
+        [
+            AIMessage(
                 content="",
                 tool_calls=[
                     {
@@ -2221,20 +2202,13 @@ async def test_a_deep_turn_reaches_the_browser_once(
                     }
                 ],
             )
-
-    class _FooterDeepFake:
-        def with_config(self, *args: Any, **kwargs: Any) -> Any:
-            return self
-
-        async def ainvoke(self, messages: Any, *args: Any, **kwargs: Any) -> Any:
-            return AIMessage("1. Next steps")
-
-    monkeypatch.setattr(
-        supervisor_module, "_build_supervisor_client", lambda: _SupervisorDeepFake()
+        ]
     )
+    footer_fake = ScriptedChatModel([AIMessage("1. Next steps")])
     monkeypatch.setattr(
-        supervisor_module, "_build_footer_client", lambda: _FooterDeepFake()
+        supervisor_module, "_build_supervisor_client", lambda: supervisor_fake
     )
+    monkeypatch.setattr(supervisor_module, "_build_footer_client", lambda: footer_fake)
     monkeypatch.setattr(deep_tool_module, "research", fake_research)
     monkeypatch.setattr(api, "graph", graph_module.build_graph())
 
@@ -2249,7 +2223,8 @@ async def test_a_deep_turn_reaches_the_browser_once(
     assert api._Counted(destination="deep") in events
     assert PLANNING_PROGRESS in events
     assert [event.text for event in events if isinstance(event, NoticeEvent)] == [
-        DEEP_ANSWER
+        DEEP_ANSWER,
+        "\n\n---\n1. Next steps",
     ]
     assert [event for event in events if isinstance(event, TokenFrame)] == []
 
@@ -2277,15 +2252,9 @@ async def test_a_forecast_reaches_the_browser_once(
     async def fake_forecast(query: str, store: Any = None) -> str:
         return FORECAST_ANSWER
 
-    class _SupervisorForecastFake:
-        def bind_tools(self, *args: Any, **kwargs: Any) -> Any:
-            return self
-
-        def with_config(self, *args: Any, **kwargs: Any) -> Any:
-            return self
-
-        async def ainvoke(self, messages: Any, *args: Any, **kwargs: Any) -> Any:
-            return AIMessage(
+    supervisor_fake = ScriptedChatModel(
+        [
+            AIMessage(
                 content="",
                 tool_calls=[
                     {
@@ -2295,20 +2264,13 @@ async def test_a_forecast_reaches_the_browser_once(
                     }
                 ],
             )
-
-    class _FooterForecastFake:
-        def with_config(self, *args: Any, **kwargs: Any) -> Any:
-            return self
-
-        async def ainvoke(self, messages: Any, *args: Any, **kwargs: Any) -> Any:
-            return AIMessage("1. Next steps")
-
-    monkeypatch.setattr(
-        supervisor_module, "_build_supervisor_client", lambda: _SupervisorForecastFake()
+        ]
     )
+    footer_fake = ScriptedChatModel([AIMessage("1. Next steps")])
     monkeypatch.setattr(
-        supervisor_module, "_build_footer_client", lambda: _FooterForecastFake()
+        supervisor_module, "_build_supervisor_client", lambda: supervisor_fake
     )
+    monkeypatch.setattr(supervisor_module, "_build_footer_client", lambda: footer_fake)
     monkeypatch.setattr(forecast_tool_module, "forecast", fake_forecast)
     monkeypatch.setattr(api, "graph", graph_module.build_graph())
 
@@ -2322,7 +2284,8 @@ async def test_a_forecast_reaches_the_browser_once(
     # Assert
     assert api._Counted(destination="forecast") in events
     assert [event.text for event in events if isinstance(event, NoticeEvent)] == [
-        FORECAST_ANSWER
+        FORECAST_ANSWER,
+        "\n\n---\n1. Next steps",
     ]
     assert [event for event in events if isinstance(event, TokenFrame)] == []
 
@@ -2735,71 +2698,106 @@ async def test_the_cap_resets_on_the_next_day(
     )
 
 
-@pytest.mark.anyio
-async def test_quota_charged_from_supervisor_updates_frame(
-    client: httpx.AsyncClient,
-    monkeypatch: pytest.MonkeyPatch,
-    quota: RecordingQuota,
-) -> None:
-    """A research turn charges quota when the supervisor updates frame arrives."""
-    # Arrange
+def _tool_call(name: str = "run_expert") -> Any:
     from langchain_core.messages import AIMessage
 
-    RESEARCH_DESTINATION = "geopolitical"
-    supervisor_update = {"supervisor": {"destination": RESEARCH_DESTINATION}}
+    return AIMessage(content="", tool_calls=[{"name": name, "args": {}, "id": "tc-1"}])
 
-    class _FakeGraph:
-        async def astream(
-            self, graph_input: Any, config: Any, **kwargs: Any
-        ) -> AsyncIterator[tuple[Any, str, Any]]:
-            yield ("", "updates", supervisor_update)
-            yield (
-                ("",),
-                "messages",
-                (AIMessage("Answer."), {"langgraph_node": "supervisor"}),
-            )
 
-    monkeypatch.setattr(api, "graph", _FakeGraph())
+def _tool_result(artifact: Any = None, content: str = "Summary.") -> Any:
+    from langchain_core.messages import ToolMessage
 
-    # Act
-    response = await client.post(
-        "/api/run_pipeline/stream", json={"query": "x", "thread_id": "t-1"}
-    )
-
-    # Assert
-    assert response.status_code == 200
-    assert quota.charged() == [("user", 1, CHARGE_DAY, DAILY_RESEARCH_TURNS, 1)]
+    return ToolMessage(content=content, tool_call_id="tc-1", artifact=artifact)
 
 
 @pytest.mark.anyio
-async def test_thread_messages_reconstructs_assistant_turn_with_footer(
+@pytest.mark.parametrize(
+    ("build_messages", "expected"),
+    [
+        pytest.param(
+            lambda: [
+                _human("Oil?"),
+                _tool_call(),
+                _tool_result({"text": "Oil analysis."}),
+                _ai(f"{FOOTER_PREFIX}1. Deep dive"),
+            ],
+            [
+                {"role": "user", "text": "Oil?"},
+                {
+                    "role": "assistant",
+                    "text": f"Oil analysis.{FOOTER_PREFIX}1. Deep dive",
+                },
+            ],
+            id="research-turn-with-footer",
+        ),
+        pytest.param(
+            lambda: [
+                _human("Report?"),
+                _tool_call("run_reporter"),
+                _tool_result({"text": "# Report"}),
+            ],
+            [
+                {"role": "user", "text": "Report?"},
+                {"role": "assistant", "text": "# Report"},
+            ],
+            id="report-turn-has-no-footer",
+        ),
+        pytest.param(
+            lambda: [_human("Hi"), _ai("Hello!")],
+            [{"role": "user", "text": "Hi"}, {"role": "assistant", "text": "Hello!"}],
+            id="chat-turn",
+        ),
+        pytest.param(
+            lambda: [_human("Q"), _tool_call(), _tool_result(None, "Plain content.")],
+            [
+                {"role": "user", "text": "Q"},
+                {"role": "assistant", "text": "Plain content."},
+            ],
+            id="tool-message-without-artifact",
+        ),
+        pytest.param(
+            lambda: [
+                _human("Q"),
+                _tool_call(),
+                _tool_result({"other": 1}, "Fallback."),
+            ],
+            [{"role": "user", "text": "Q"}, {"role": "assistant", "text": "Fallback."}],
+            id="artifact-without-text",
+        ),
+        pytest.param(
+            lambda: [
+                _human("A"),
+                _tool_call(),
+                _tool_result({"text": "First."}),
+                _ai(f"{FOOTER_PREFIX}one"),
+                _human("B"),
+                _tool_call(),
+                _tool_result({"text": "Second."}),
+                _ai(f"{FOOTER_PREFIX}two"),
+            ],
+            [
+                {"role": "user", "text": "A"},
+                {"role": "assistant", "text": f"First.{FOOTER_PREFIX}one"},
+                {"role": "user", "text": "B"},
+                {"role": "assistant", "text": f"Second.{FOOTER_PREFIX}two"},
+            ],
+            id="two-turns-in-a-row",
+        ),
+        pytest.param(
+            lambda: [_human("Q"), _tool_call()],
+            [{"role": "user", "text": "Q"}],
+            id="paused-tool-call-renders-nothing",
+        ),
+    ],
+)
+async def test_thread_messages_renders_each_message_shape(
     monkeypatch: pytest.MonkeyPatch,
+    build_messages: Callable[[], list[Any]],
+    expected: list[dict[str, str]],
 ) -> None:
-    """Tool message artifact and supervisor footer are merged into one assistant message."""
     # Arrange
-    from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
-
-    THREAD_ID = "t-history-1"
-    TOOL_TEXT = "Synthesized expert analysis on oil markets."
-    FOOTER_TEXT = "\n\n---\n1. Deep dive\n2. Forecast"
-    EXPECTED_COMBINED = f"{TOOL_TEXT}{FOOTER_TEXT}"
-
-    messages = [
-        HumanMessage("What is happening with oil?"),
-        AIMessage(
-            content="",
-            tool_calls=[{"name": "run_expert", "args": {}, "id": "tc-1"}],
-        ),
-        ToolMessage(
-            content="Summary from 3 sources.",
-            tool_call_id="tc-1",
-            artifact={"text": TOOL_TEXT},
-        ),
-        AIMessage(FOOTER_TEXT),
-    ]
-
     class _FakeSnapshot:
-        values = {"messages": messages}
+        values = {"messages": build_messages()}
 
     class _FakeCheckpointerGraph:
         checkpointer = object()
@@ -2810,10 +2808,19 @@ async def test_thread_messages_reconstructs_assistant_turn_with_footer(
     monkeypatch.setattr(api, "graph", _FakeCheckpointerGraph())
 
     # Act
-    rendered = await api._thread_messages(THREAD_ID)
+    rendered = await api._thread_messages("t-history-1")
 
     # Assert
-    assert rendered == [
-        {"role": "user", "text": "What is happening with oil?"},
-        {"role": "assistant", "text": EXPECTED_COMBINED},
-    ]
+    assert rendered == expected
+
+
+def _human(text: str) -> Any:
+    from langchain_core.messages import HumanMessage
+
+    return HumanMessage(text)
+
+
+def _ai(text: str) -> Any:
+    from langchain_core.messages import AIMessage
+
+    return AIMessage(text)

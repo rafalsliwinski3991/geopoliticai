@@ -138,7 +138,7 @@ def test_an_unknown_node_event_is_refused() -> None:
     [
         pytest.param(
             api.THINKING_PROGRESS,
-            'data: {"type": "progress", "node": "classify", '
+            'data: {"type": "progress", "node": "supervisor", '
             '"label": "Thinking..."}\n\n',
             id="api thinking",
         ),
