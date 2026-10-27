@@ -184,7 +184,7 @@ def build_tools(run: ResearchRun) -> list[BaseTool]:
         profile = FORECASTERS_BY_ID.get(forecaster.strip().lower())
         if profile is None:
             return UNKNOWN_FORECASTER_MESSAGE.format(ids=", ".join(FORECASTERS_BY_ID))
-        # Model output: a blank query would fail `search.build_batch_query`
+        # Model output: a blank query would fail `services.web_search.build_batch_query`
         # and surface as a 503 blaming Brave (deep expert, plan v2 row 3), and
         # a repeated one would spend a search on results the scout has.
         asked = [query for query in dict.fromkeys(map(_clean_query, queries)) if query]
@@ -352,7 +352,7 @@ def build_tools(run: ResearchRun) -> list[BaseTool]:
             run.reserved += 1
             try:
                 # One gate for every scout's page fetches: `fetch_sources`
-                # bounds a call's own candidates only (services/web_search.py), so
+                # bounds a call's own candidates only (services/page_reader.py), so
                 # parallel batches would otherwise multiply the GETs one
                 # forecaster's site takes at once (review thread).
                 async with run.read_gate:

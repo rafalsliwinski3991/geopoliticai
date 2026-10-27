@@ -17,7 +17,7 @@ async def run_reporter_fixed(input: dict[str, Any]) -> dict[str, Any]:
     """Build a report from a conversation, reading each typed reply the way the app does.
 
     Mirrors the orchestrator's reporter node (`has_researched_material`, then
-    `build_transcript`) and `api._turn_input` (a reply is classified, then
+    `build_transcript`) and `api.stream._turn_input` (a reply is classified, then
     resumes the gate). A reply read as `new_question`, or typed when the
     outline no longer waits, stops the replies there.
     """

@@ -150,7 +150,7 @@ class ForecastLimits:
     points at, at most `max_passages` per claim (user decision 2026-10-01,
     overriding Q20's "every member reads everything"): about 10k tokens.
     `claims_seconds` and `write_seconds` are LangGraph node
-    timeouts (`graph.STEPS`): `llm.ainvoke_structured` retries, so the
+    timeouts (`graph.STEPS`): `services.llm.ainvoke_structured` retries, so the
     per-attempt `timeout_seconds` alone would not bound a step. Each equals
     its call's per-attempt timeout, so a slow attempt ends as the node's 504
     and only a fast failure (a quick 429) is retried inside the budget.

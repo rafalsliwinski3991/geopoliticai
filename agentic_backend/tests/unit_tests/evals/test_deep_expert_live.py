@@ -23,7 +23,7 @@ PAGE_B = Source(title="B", url="https://news.example/b", text="b text")
 async def live_fetch(
     candidates: Sequence[Candidate], policy: SourcePolicy
 ) -> list[Source]:
-    """Stand in for `search.fetch_sources`: return the page scripted for each URL."""
+    """Stand in for `services.page_reader.fetch_sources`: return the page scripted for each URL."""
     pages = {PAGE_A.url: PAGE_A, PAGE_B.url: PAGE_B}
     return [pages[candidate.url] for candidate in candidates]
 

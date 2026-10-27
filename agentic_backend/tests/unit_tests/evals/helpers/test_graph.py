@@ -224,7 +224,7 @@ def test_an_unknown_message_role_is_refused() -> None:
 
 
 class ScriptedFetch:
-    """A stand-in for `search.fetch_sources`: returns the page scripted for a URL, raises for any other."""
+    """A stand-in for `services.page_reader.fetch_sources`: returns the page scripted for a URL, raises for any other."""
 
     def __init__(self, pages: dict[str, Source]) -> None:
         self.pages = pages

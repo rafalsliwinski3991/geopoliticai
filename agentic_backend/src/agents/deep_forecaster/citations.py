@@ -63,7 +63,7 @@ def paragraphs(text: str) -> list[str]:
     """Return a source's paragraphs: its non-blank lines, each on one line.
 
     trafilatura puts each extracted paragraph, heading and list item on its
-    own line (`search._extract_sync`), and Gemini's notes are one point per
+    own line (`services.page_reader._extract_page_sync`), and Gemini's notes are one point per
     line, so a line is the unit the drafter can point at. A line longer than
     `max_passage_chars` is split at the last space before the limit, so a
     page extracted as one block still offers every part of itself and no

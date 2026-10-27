@@ -5,7 +5,7 @@ may send the analysis back to `write_analysis` once, with typed state
 between steps. Only `research` is autonomous. The council runs exactly once
 because the edges say so, not because a prompt asks.
 
-No node may be named `answer`, `chat` or `write`: `api.ANSWER_NODES` streams
+No node may be named `answer`, `chat` or `write`: `api.stream.ANSWER_NODES` streams
 model text from nodes with those names, and this graph runs inside the
 orchestrator's `deep_forecaster` node, whose answer reaches the browser once,
 as a `notice` (guarded in `tests/unit_tests/test_api.py`).
@@ -41,7 +41,7 @@ from shared.errors import ResearchLimitError
 
 # (name, node, LangGraph node timeout). Research carries its own soft time
 # box; each council round is bounded by its members' timeouts; the two single
-# model calls get a hard node timeout, because `llm.ainvoke_structured`
+# model calls get a hard node timeout, because `services.llm.ainvoke_structured`
 # retries and its per-attempt timeout alone would not bound the step.
 STEPS: tuple[tuple[str, Any, float | None], ...] = (
     ("research", research, None),

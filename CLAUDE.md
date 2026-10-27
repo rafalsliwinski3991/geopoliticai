@@ -97,7 +97,7 @@ deep_forecaster  START -> research -> draft_claims -> council_round_1 -> council
 
 - Each agent lives in `agentic_backend/src/agents/<name>/`: fixed editorial data in `consts/`,
   prompts in `prompts.py`, tuning in its config dataclasses (`LIMITS`, the `*_LLM_SETTINGS`). Nodes
-  return partial state dicts without mutating state. Each `graph.py` ends with one verb-named entry
+  return partial state dicts without mutating state. Each `graph.py` has one verb-named entry
   function the orchestrator's tool calls (`ask_expert`, `research`, `forecast`, `report`).
 - The orchestrator coordinates specialists via modular tools (`agents/orchestrator/tools/`) executed
   in a `ToolNode(ALL_TOOLS, handle_tool_errors=False)` that update the `expert_synthesis` and `forecast_data`

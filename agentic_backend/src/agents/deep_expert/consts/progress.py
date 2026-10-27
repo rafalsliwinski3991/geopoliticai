@@ -1,6 +1,6 @@
 """Progress copy the deep expert emits.
 
-Same rule as `agents/orchestrator/consts/progress.py`: `api._generate` forwards
+Same rule as `agents/orchestrator/consts/progress.py`: `api.stream._generate` forwards
 these verbatim, so nothing model- or user-produced may reach them. The templates
 are filled with integers only, never with a query, title, or URL.
 """

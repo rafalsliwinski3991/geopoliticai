@@ -50,7 +50,7 @@ def build_tools(run: ResearchRun) -> list[BaseTool]:
         with `read_source`. Each call spends one search from a fixed budget.
         """
         # The argument is model output. A blank query would fail every batch in
-        # `search.build_batch_query` and surface as a 503 blaming Brave, so it
+        # `services.web_search.build_batch_query` and surface as a 503 blaming Brave, so it
         # is refused here, before it spends anything.
         query = " ".join(query.split())
         if not query:

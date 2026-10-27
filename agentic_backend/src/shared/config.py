@@ -14,7 +14,7 @@ from dotenv import load_dotenv
 logger = logging.getLogger(__name__)
 
 # The delivery layer's transport cap: at most this much text reaches the browser
-# (api._generate clips at it). `nodes.verify` refuses an answer that would not
+# (api.stream._generate clips at it). `nodes.verify` refuses an answer that would not
 # survive the clip (review thread, #143).
 MAX_ANSWER_CHARS = 50_000
 

@@ -149,7 +149,7 @@ class ResearchRun:
         default_factory=lambda: asyncio.Semaphore(LIMITS.max_search_concurrency)
     )
     # Page fetches bound the same way: `fetch_sources` builds its per-call
-    # semaphore (services/web_search.py) around a call's own candidates, so without this
+    # semaphore (services/page_reader.py) around a call's own candidates, so without this
     # gate a batch read would put `max_batch` GETs on a forecaster's site at
     # once and parallel scouts would multiply that (review thread).
     read_gate: asyncio.Semaphore = field(

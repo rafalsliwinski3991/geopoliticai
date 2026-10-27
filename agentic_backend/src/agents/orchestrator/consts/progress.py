@@ -5,7 +5,7 @@
 because the delivery layer no longer decides which label a branch deserves — it
 forwards what the node said.
 
-The payload is a `ProgressFrame` literal, because `api._generate` encodes it into
+The payload is a `ProgressFrame` literal, because `api.stream._generate` encodes it into
 an SSE frame verbatim. Everything here must therefore stay a hardcoded literal:
 nothing model-produced or user-produced may ever reach this channel.
 """

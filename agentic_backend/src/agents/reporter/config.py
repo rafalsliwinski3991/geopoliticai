@@ -19,7 +19,7 @@ OUTLINE_LLM_SETTINGS = LLMSettings(
     # 1.0, not 0.0. `gpt-5*` non-chat models accept only temperature 1, and
     # langchain-openai 0.3.35 *silently drops* any other value before the
     # request is built (`chat_models/base.py:720-744`, `validate_temperature`).
-    # Measured through this repo's own `llm._build_client`: gpt-5-mini at 0.0
+    # Measured through this repo's own `services.llm._build_client`: gpt-5-mini at 0.0
     # yields `temperature=None` and no temperature in the payload, while
     # gpt-4o-mini keeps 0.0. Writing 1.0 makes the code say what actually
     # happens. Outline generation is therefore NOT deterministic.

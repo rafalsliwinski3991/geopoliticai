@@ -2,7 +2,7 @@
 
 The rules CLAUDE.md's Quota section states, in one module: one commit at a time
 per user, the advisory headroom read for a costly turn, the site charged before
-the user, and the capped refund of a failed turn. `api._generate` calls
+the user, and the capped refund of a failed turn. `api.stream._generate` calls
 `charge_turn` once the classifier picks a research branch and `refund_turn` on
 every error frame.
 """
@@ -59,7 +59,7 @@ USER_LIMIT_MESSAGE = "Daily research limit reached."
 # user's own upsert disqualifies all but one (see `charge_turn`).
 _turn_locks: dict[int, Lock] = {}
 # Units refunded per (user, UTC day), for the daily refund cap. In process
-# memory, like `api._rate_limit_store`: a restart forgets it, which allows at
+# memory, like `api.rate_limit._rate_limit_store`: a restart forgets it, which allows at
 # most one more capped refund per user per restart (user decision 2026-10-16).
 _refunded_units: dict[tuple[int, date], int] = {}
 

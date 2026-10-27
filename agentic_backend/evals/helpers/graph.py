@@ -143,7 +143,7 @@ def dump_sources(sources: Sequence[Source]) -> list[dict[str, str]]:
 
 
 async def pending_pause(graph: Any, config: dict[str, Any]) -> OutlinePause | None:
-    """Return the value a paused thread waits on, or None (mirrors `api._pending_pause`)."""
+    """Return the value a paused thread waits on, or None (mirrors `api.stream._pending_pause`)."""
     interrupts = (await graph.aget_state(config)).interrupts
     if not interrupts:
         return None

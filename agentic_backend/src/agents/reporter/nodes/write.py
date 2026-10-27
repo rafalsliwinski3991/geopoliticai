@@ -25,7 +25,7 @@ async def write(
 ) -> dict[str, Any]:
     """Write the approved report in one streamed call.
 
-    This node's name is load-bearing twice over: `api.ANSWER_NODES` forwards
+    This node's name is load-bearing twice over: `api.stream.ANSWER_NODES` forwards
     streamed `AIMessage` chunks tagged `langgraph_node == "write"`, and
     `_astream_answer` uses the same tag to emit the `_ReportStarted` event
     that puts a Download .md button on the answer. Renaming it would silently

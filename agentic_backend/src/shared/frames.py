@@ -71,7 +71,7 @@ class ErrorFrame(BaseModel):
 
 Frame = ProgressFrame | TokenFrame | PauseFrame | ResultFrame | ErrorFrame
 # A node's custom stream event. Validates a frame object or the plain dict a
-# test fake writes; anything else is not a node event (`api._astream_answer`).
+# test fake writes; anything else is not a node event (`api.stream._astream_answer`).
 NODE_EVENT: TypeAdapter[ProgressFrame | NoticeEvent] = TypeAdapter(
     Annotated[ProgressFrame | NoticeEvent, Field(discriminator="type")]
 )
