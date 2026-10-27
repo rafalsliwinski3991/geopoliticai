@@ -135,6 +135,18 @@ class BraveResponse(BaseModel):
     web: BraveWeb = BraveWeb()
 
 
+def describe_failure(error: BaseException) -> str:
+    """Name why a request failed: its HTTP status, "timeout", or its exception class.
+
+    Never the error's text: it can carry a URL or a header.
+    """
+    if isinstance(error, httpx.HTTPStatusError):
+        return str(error.response.status_code)
+    if isinstance(error, httpx.TimeoutException):
+        return "timeout"
+    return type(error).__name__
+
+
 async def _brave_batch(
     client: httpx.AsyncClient, query: str, domains: Sequence[str], policy: SourcePolicy
 ) -> list[Candidate]:
@@ -217,6 +229,7 @@ async def search_allowlisted(query: str, policy: SourcePolicy) -> list[Candidate
                 return_exceptions=True,
             )
         batches: list[list[Candidate]] = []
+        failures: list[str] = []
         for result in results:
             if isinstance(result, asyncio.CancelledError):
                 # Preserve cancellation: the request was aborted mid-search, and a
@@ -224,6 +237,7 @@ async def search_allowlisted(query: str, policy: SourcePolicy) -> list[Candidate
                 raise result
             if isinstance(result, BaseException):
                 logger.warning("Brave batch failed: %s", result)
+                failures.append(describe_failure(result))
             else:
                 batches.append(result)
         span.set_attributes(
@@ -231,6 +245,7 @@ async def search_allowlisted(query: str, policy: SourcePolicy) -> list[Candidate
                 "search.domains": sorted(policy.allowed_domains),
                 "search.batches": len(policy.batches),
                 "search.failed_batches": len(policy.batches) - len(batches),
+                "search.failures": failures,
                 "search.results_per_batch": [len(batch) for batch in batches],
             }
         )
@@ -291,6 +306,9 @@ async def _fetch_page(
             )
         except httpx.HTTPError as exc:
             logger.info("Fetch failed url=%s: %s", url, exc)
+            trace.get_current_span().set_attribute(
+                "source.failure", describe_failure(exc)
+            )
             return "fetch_failed", None, None
         if response.is_redirect:
             location = response.headers.get("location")
@@ -307,8 +325,11 @@ async def _fetch_page(
             response.raise_for_status()
         except httpx.HTTPError as exc:
             logger.info("Fetch failed url=%s: %s", url, exc)
-            trace.get_current_span().set_attribute(
-                "source.status_code", response.status_code
+            trace.get_current_span().set_attributes(
+                {
+                    "source.status_code": response.status_code,
+                    "source.failure": describe_failure(exc),
+                }
             )
             return "fetch_failed", None, None
         return await _read_page(response, url, candidate.title, policy)

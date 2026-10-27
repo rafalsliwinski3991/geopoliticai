@@ -306,6 +306,166 @@ async def test_the_search_span_records_every_batch_failing(
     assert "search.candidates" not in attributes
 
 
+def _status_error(status: int) -> httpx.HTTPStatusError:
+    """The error `raise_for_status` raises for a response with this status."""
+    request = httpx.Request("GET", search.BRAVE_SEARCH_URL)
+    response = httpx.Response(status, request=request)
+    return httpx.HTTPStatusError("refused", request=request, response=response)
+
+
+def _fail_one_batch_with(monkeypatch: pytest.MonkeyPatch, error: BaseException) -> None:
+    """Make the first Brave batch raise `error` and the others return a result."""
+
+    async def fake_batch(
+        client: httpx.AsyncClient,
+        query: str,
+        domains: Sequence[str],
+        policy: SourcePolicy,
+    ) -> list[Candidate]:
+        if "reuters.com" in domains:
+            raise error
+        return [Candidate("a1", "https://apnews.com/one", "apnews.com")]
+
+    monkeypatch.setattr(search, "_brave_batch", fake_batch)
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    ("status", "expected"),
+    [(429, "429"), (402, "402"), (500, "500")],
+    ids=["rate limit 429", "quota 402", "server 500"],
+)
+async def test_a_failed_brave_batch_records_its_http_status_on_the_span(
+    monkeypatch: pytest.MonkeyPatch,
+    captured_spans: InMemorySpanExporter,
+    status: int,
+    expected: str,
+) -> None:
+    """A rate limit, an exhausted quota, and an outage need different fixes, so the trace names the status."""
+    # Arrange
+    _fail_one_batch_with(monkeypatch, _status_error(status))
+    # Act
+    await search.search_allowlisted("question", EXPERT_SOURCES)
+    span = _span_by_name(captured_spans, "brave_search")
+    # Assert
+    assert _attrs(span)["search.failures"] == (expected,)
+
+
+@pytest.mark.anyio
+async def test_a_timed_out_brave_batch_records_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+    captured_spans: InMemorySpanExporter,
+) -> None:
+    """A slow Brave is not a refusing Brave; the trace must tell them apart."""
+    # Arrange
+    _fail_one_batch_with(monkeypatch, httpx.ReadTimeout("slow"))
+    # Act
+    await search.search_allowlisted("question", EXPERT_SOURCES)
+    span = _span_by_name(captured_spans, "brave_search")
+    # Assert
+    assert _attrs(span)["search.failures"] == ("timeout",)
+
+
+@pytest.mark.anyio
+async def test_any_other_brave_failure_records_its_exception_class(
+    monkeypatch: pytest.MonkeyPatch,
+    captured_spans: InMemorySpanExporter,
+) -> None:
+    """A dropped connection has no status, so the trace falls back to the error's class."""
+    # Arrange
+    _fail_one_batch_with(monkeypatch, httpx.ConnectError("boom"))
+    # Act
+    await search.search_allowlisted("question", EXPERT_SOURCES)
+    span = _span_by_name(captured_spans, "brave_search")
+    # Assert
+    assert _attrs(span)["search.failures"] == ("ConnectError",)
+
+
+@pytest.mark.anyio
+async def test_a_search_with_no_failed_batch_records_no_failures(
+    monkeypatch: pytest.MonkeyPatch,
+    captured_spans: InMemorySpanExporter,
+) -> None:
+    """An empty list tells a reader the batches were checked and all answered."""
+
+    # Arrange
+    async def fake_batch(
+        client: httpx.AsyncClient,
+        query: str,
+        domains: Sequence[str],
+        policy: SourcePolicy,
+    ) -> list[Candidate]:
+        return [Candidate("a", "https://reuters.com/one", "reuters.com")]
+
+    monkeypatch.setattr(search, "_brave_batch", fake_batch)
+    # Act
+    await search.search_allowlisted("question", EXPERT_SOURCES)
+    span = _span_by_name(captured_spans, "brave_search")
+    # Assert
+    assert _attrs(span)["search.failures"] == ()
+
+
+@pytest.mark.anyio
+async def test_every_batch_failing_still_records_the_causes(
+    monkeypatch: pytest.MonkeyPatch,
+    captured_spans: InMemorySpanExporter,
+) -> None:
+    """The run that dies of Brave is the one whose causes matter most."""
+
+    # Arrange
+    async def failing_batch(
+        client: httpx.AsyncClient,
+        query: str,
+        domains: Sequence[str],
+        policy: SourcePolicy,
+    ) -> list[Candidate]:
+        raise _status_error(429)
+
+    monkeypatch.setattr(search, "_brave_batch", failing_batch)
+    # Act
+    with pytest.raises(SearchUnavailableError):
+        await search.search_allowlisted("question", EXPERT_SOURCES)
+    span = _span_by_name(captured_spans, "brave_search")
+    # Assert
+    assert _attrs(span)["search.failures"] == ("429",) * len(EXPERT_SOURCES.batches)
+
+
+@pytest.mark.anyio
+async def test_the_recorded_failure_never_carries_the_error_message(
+    monkeypatch: pytest.MonkeyPatch,
+    captured_spans: InMemorySpanExporter,
+) -> None:
+    """An error's text can hold a URL or a header, and a span is exported."""
+    # Arrange
+    secret = "X-Subscription-Token: secret-token-123"
+    _fail_one_batch_with(monkeypatch, RuntimeError(secret))
+    # Act
+    await search.search_allowlisted("question", EXPERT_SOURCES)
+    span = _span_by_name(captured_spans, "brave_search")
+    # Assert
+    assert _attrs(span)["search.failures"] == ("RuntimeError",)
+
+
+@pytest.mark.parametrize(
+    ("error", "expected"),
+    [
+        (_status_error(403), "403"),
+        (httpx.ConnectTimeout("slow"), "timeout"),
+        (httpx.ConnectError("boom"), "ConnectError"),
+        (ValueError("bad"), "ValueError"),
+    ],
+    ids=["http status", "timeout", "transport error", "non-http error"],
+)
+def test_describe_failure_names_status_timeout_or_class(
+    error: BaseException, expected: str
+) -> None:
+    """One short label per cause keeps spans comparable and free of error text."""
+    # Act
+    label = search.describe_failure(error)
+    # Assert
+    assert label == expected
+
+
 def _html(
     body: str, status: int = 200, headers: dict[str, str] | None = None
 ) -> httpx.Response:
@@ -994,6 +1154,118 @@ async def test_fetch_span_records_the_status_of_a_rejected_page(
     span = _span_by_name(captured_spans, "fetch_source")
     # Assert
     assert _attrs(span)["source.status_code"] == 403
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    ("status", "error", "expected"),
+    [
+        (403, None, "403"),
+        (404, None, "404"),
+        (None, httpx.ReadTimeout("slow"), "timeout"),
+    ],
+    ids=["http 403", "http 404", "timeout"],
+)
+async def test_a_failed_fetch_records_its_cause_on_the_span(
+    monkeypatch: pytest.MonkeyPatch,
+    captured_spans: InMemorySpanExporter,
+    status: int | None,
+    error: httpx.HTTPError | None,
+    expected: str,
+) -> None:
+    """A blocked page and a slow page both read `fetch_failed`; the cause says which site to give up on."""
+
+    # Arrange
+    async def fake_get(
+        self: httpx.AsyncClient,
+        url: str,
+        *,
+        timeout: object | None = None,
+        follow_redirects: bool = False,
+    ) -> httpx.Response:
+        if error is not None:
+            raise error
+        return _html("", status or 0)
+
+    monkeypatch.setattr(httpx.AsyncClient, "get", fake_get)
+    # Act
+    source = await search._fetch_and_extract(
+        httpx.AsyncClient(),
+        Candidate("t", "https://reuters.com/x", "reuters.com"),
+        EXPERT_SOURCES,
+    )
+    span = _span_by_name(captured_spans, "fetch_source")
+    # Assert
+    assert source is None
+    attributes = _attrs(span)
+    assert attributes["source.outcome"] == "fetch_failed"
+    assert attributes["source.failure"] == expected
+
+
+@pytest.mark.anyio
+async def test_a_page_that_loads_records_no_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    captured_spans: InMemorySpanExporter,
+) -> None:
+    """A kept page has no failure; an empty value would read as a cause."""
+
+    # Arrange
+    async def fake_get(
+        self: httpx.AsyncClient,
+        url: str,
+        *,
+        timeout: object | None = None,
+        follow_redirects: bool = False,
+    ) -> httpx.Response:
+        return _html(_HTML)
+
+    monkeypatch.setattr(httpx.AsyncClient, "get", fake_get)
+    # Act
+    source = await search._fetch_and_extract(
+        httpx.AsyncClient(),
+        Candidate("t", "https://reuters.com/x", "reuters.com"),
+        EXPERT_SOURCES,
+    )
+    span = _span_by_name(captured_spans, "fetch_source")
+    # Assert
+    assert source is not None
+    assert "source.failure" not in _attrs(span)
+
+
+@pytest.mark.anyio
+async def test_an_off_list_redirect_records_no_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    captured_spans: InMemorySpanExporter,
+) -> None:
+    """An off-list redirect is our own gate working, not a site failing."""
+
+    # Arrange
+    async def fake_get(
+        self: httpx.AsyncClient,
+        url: str,
+        *,
+        timeout: object | None = None,
+        follow_redirects: bool = False,
+    ) -> httpx.Response:
+        return _html(
+            "",
+            302,
+            {"location": "https://evil.example/x", "content-type": "text/html"},
+        )
+
+    monkeypatch.setattr(httpx.AsyncClient, "get", fake_get)
+    # Act
+    source = await search._fetch_and_extract(
+        httpx.AsyncClient(),
+        Candidate("t", "https://reuters.com/x", "reuters.com"),
+        EXPERT_SOURCES,
+    )
+    span = _span_by_name(captured_spans, "fetch_source")
+    # Assert
+    assert source is None
+    attributes = _attrs(span)
+    assert attributes["source.outcome"] == "off_list"
+    assert "source.failure" not in attributes
 
 
 @pytest.mark.anyio
