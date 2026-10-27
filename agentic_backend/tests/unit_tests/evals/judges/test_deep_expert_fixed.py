@@ -6,7 +6,13 @@ from typing import Any
 
 import pytest
 
-from evals.judges.deep_expert_fixed import DEPTH_PROMPT, _depth_view, judges
+from evals.judges.deep_expert_fixed import (
+    DEPTH_PROMPT,
+    _depth_view,
+    answer_without_closing_offer,
+    answer_without_preamble,
+    judges,
+)
 
 SOURCES = [{"title": "t", "url": "https://news.example/a", "text": "x"}]
 
@@ -20,6 +26,8 @@ def test_judges_names_are_the_experts_three_plus_depth() -> None:
         "urls_from_sources",
         "answer_matches_expected",
         "faithful_to_sources",
+        "answer_without_preamble",
+        "answer_without_closing_offer",
         "deeper_than_expert",
     ]
 
@@ -69,3 +77,107 @@ def test_every_prompt_field_is_supplied() -> None:
 
     # Act + Assert: str.format raises KeyError on a field the view leaves out.
     DEPTH_PROMPT.format(**variables)
+
+
+def test_an_answer_that_opens_with_a_plan_fails() -> None:
+    """A trace shipped an answer that opened with its own plan before any finding."""
+    # Arrange
+    answer = "## Plan and scope \u2014 what this note will (and will not) do\n\nThe deal sets 5%."
+
+    # Act
+    passed = answer_without_preamble({"answer": answer})
+
+    # Assert
+    assert passed is False
+
+
+@pytest.mark.parametrize(
+    "answer",
+    [
+        "Scope of the deal: members aim for 5% by 2035.",
+        "Plan B failed because the vote slipped.",
+    ],
+    ids=["scope as a noun phrase", "plan as part of the story"],
+)
+def test_an_answer_that_opens_with_the_word_scope_or_plan_passes(answer: str) -> None:
+    """The check targets a preamble heading, not any answer that starts with these words."""
+    # Act
+    passed = answer_without_preamble({"answer": answer})
+
+    # Assert
+    assert passed is True
+
+
+def test_an_answer_that_quotes_the_assignment_fails() -> None:
+    """Quoting the model's own instructions in the answer leaks the prompt to the reader."""
+    # Arrange
+    answer = "The deal sets 5%.\n\nThe assignment's rules require a second outlet."
+
+    # Act
+    passed = answer_without_preamble({"answer": answer})
+
+    # Assert
+    assert passed is False
+
+
+def test_an_answer_about_the_rules_based_order_passes() -> None:
+    """Ordinary geopolitics vocabulary must not be mistaken for a leaked instruction."""
+    # Arrange
+    answer = "The deal protects the rules-based international order."
+
+    # Act
+    passed = answer_without_preamble({"answer": answer})
+
+    # Assert
+    assert passed is True
+
+
+def test_an_empty_answer_fails_the_preamble_check() -> None:
+    """An empty answer has no opening, so the preamble check refuses it."""
+    # Arrange
+    output = {"answer": ""}
+
+    # Act
+    passed = answer_without_preamble(output)
+
+    # Assert
+    assert passed is False
+
+
+def test_an_empty_answer_fails_the_closing_offer_check() -> None:
+    """An empty answer has no ending, so the closing-offer check refuses it."""
+    # Arrange
+    output = {"answer": ""}
+
+    # Act
+    passed = answer_without_closing_offer(output)
+
+    # Assert
+    assert passed is False
+
+
+def test_an_answer_that_closes_with_an_offer_fails() -> None:
+    """A closing menu of next steps is a chat habit the analysis must not carry."""
+    # Arrange
+    answer = "The deal sets 5%.\n\nWhich next step would you like me to take?"
+
+    # Act
+    passed = answer_without_closing_offer({"answer": answer})
+
+    # Assert
+    assert passed is False
+
+
+def test_an_answer_that_closes_with_analysis_passes() -> None:
+    """An offer-like phrase earlier is not judged; only the last paragraph is."""
+    # Arrange
+    answer = (
+        "Would you like the short version? No.\n\n"
+        "The review of national plans is the only check on the 2035 target."
+    )
+
+    # Act
+    passed = answer_without_closing_offer({"answer": answer})
+
+    # Assert
+    assert passed is True
