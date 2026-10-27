@@ -6,7 +6,7 @@ explicitly into node calls, never read from the environment.
 
 from __future__ import annotations
 
-from config import LLMSettings
+from shared.config import LLMSettings
 
 # gpt-5* accepts only temperature 1.0; langchain-openai drops any other value
 # (see `agents/reporter/config.py`), so both settings say 1.0.

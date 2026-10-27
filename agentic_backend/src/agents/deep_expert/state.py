@@ -16,8 +16,8 @@ from langgraph.types import StreamWriter
 
 from agents.deep_expert.config import LIMITS
 from agents.deep_expert.consts.progress import PROGRESS_NODE, REVISION_PROGRESS_LABEL
-from frames import ProgressFrame
 from models import Candidate, Source
+from shared.frames import ProgressFrame
 
 
 @dataclass

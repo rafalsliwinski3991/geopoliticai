@@ -75,7 +75,7 @@ jobs:
         id: deploy
         run: ssh "$SSH_TARGET" "python3 $RELEASE/vps.py deploy $SHA"
 
-      # /api/health is static (api.py), so also fetch Django's landing page:
+      # /api/health is static (api/routes.py), so also fetch Django's landing page:
       # a broken Django migration shows up there, not in the agentic check.
       - name: Public health check
         id: health

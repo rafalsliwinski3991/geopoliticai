@@ -7,7 +7,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 BASE_DIR = Path(__file__).resolve().parent.parent
-# One repo-root .env, exactly as `agentic_backend/src/config.py` resolves it. Django does
+# One repo-root .env, exactly as `agentic_backend/src/shared/config.py` resolves it. Django does
 # not read a .env on its own, so this must actually be loaded, not merely
 # named: under Compose the values arrive through `env_file` and this is a
 # no-op, but `manage.py migrate` run from a shell has nothing else.

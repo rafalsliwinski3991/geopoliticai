@@ -249,7 +249,7 @@ async def test_record_sources_keeps_each_page_the_deep_tools_read_once() -> None
     kept: list[Source] = []
 
     # Act
-    with patch("search.fetch_sources", fake), record_sources(kept):
+    with patch("services.page_reader.fetch_sources", fake), record_sources(kept):
         returned = [
             await tools_module.fetch_sources([_candidate(url)], POLICY)
             for url in (page_a.url, page_b.url, page_a.url)
@@ -270,7 +270,7 @@ async def test_record_sources_keeps_a_redirected_page_under_the_url_asked_for() 
     kept: list[Source] = []
 
     # Act
-    with patch("search.fetch_sources", fake), record_sources(kept):
+    with patch("services.page_reader.fetch_sources", fake), record_sources(kept):
         await tools_module.fetch_sources([_candidate(asked)], POLICY)
 
     # Assert
@@ -290,7 +290,10 @@ async def test_record_sources_keeps_nothing_from_a_read_that_returned_no_page() 
     kept: list[Source] = []
 
     # Act
-    with patch("search.fetch_sources", fetch_nothing), record_sources(kept):
+    with (
+        patch("services.page_reader.fetch_sources", fetch_nothing),
+        record_sources(kept),
+    ):
         returned = await tools_module.fetch_sources(
             [_candidate("https://x.example/a")], POLICY
         )
@@ -310,7 +313,7 @@ async def test_record_sources_keeps_nothing_from_a_fetch_of_several_urls() -> No
     kept: list[Source] = []
 
     # Act
-    with patch("search.fetch_sources", fake), record_sources(kept):
+    with patch("services.page_reader.fetch_sources", fake), record_sources(kept):
         returned = await tools_module.fetch_sources(
             [_candidate(page_a.url), _candidate(page_b.url)], POLICY
         )
@@ -355,7 +358,7 @@ def test_record_verdicts_collects_the_verdicts_in_order() -> None:
     """`research()` returns only the answer, so the eval needs the grader's verdicts kept as the run records them."""
     # Arrange
     verdicts: list[str] = []
-    research_module: Any = importlib.import_module("agents.deep_expert.research")
+    research_module: Any = importlib.import_module("agents.deep_expert.graph")
 
     # Act
     with record_verdicts(verdicts):
@@ -370,7 +373,7 @@ def test_record_verdicts_collects_the_verdicts_in_order() -> None:
 def test_record_verdicts_restores_the_run_class() -> None:
     """A patch left behind would hand the next test's run to a stale list."""
     # Arrange
-    research_module: Any = importlib.import_module("agents.deep_expert.research")
+    research_module: Any = importlib.import_module("agents.deep_expert.graph")
     original = research_module.ResearchRun
 
     # Act

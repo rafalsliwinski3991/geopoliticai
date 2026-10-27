@@ -11,7 +11,7 @@ from langgraph.store.base import BaseStore
 from agents.orchestrator.nodes.supervisor import supervisor
 from agents.orchestrator.state import OrchestratorState
 from agents.orchestrator.tools import ALL_TOOLS
-from tracing import init_tracing
+from shared.tracing import init_tracing
 
 
 def _route_after_tools(state: OrchestratorState) -> str:

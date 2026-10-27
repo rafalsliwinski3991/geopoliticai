@@ -8,21 +8,28 @@ a turn that takes minutes.
 
 The other agents keep the entity the orchestrator-facing entry point needs on
 `graph.py`, so the shared shape lives here too: `SHIPPABLE_VERDICTS` (the
-grader outcomes that ship, which `research._checked_deep_answer` acts on). The
+grader outcomes that ship, which `_checked_deep_answer` acts on). The
 invocation config that runs the whole tree without the parent's saver is
 `agents.capped_run.NO_CHECKPOINTER_CONFIG`.
 """
 
 from __future__ import annotations
 
+import logging
+import re
 from typing import Any
 
 from deepagents import RubricMiddleware, create_deep_agent
 from langchain.agents.middleware import TodoListMiddleware
 from langchain_core.messages import AIMessage, AnyMessage, HumanMessage
+from langgraph.errors import NodeTimeoutError
+from langgraph.types import StreamWriter
 
+from agents.capped_run import invoke_capped
 from agents.deep_expert.config import AGENT_LLM_SETTINGS, GRADER_LLM_SETTINGS, LIMITS
+from agents.deep_expert.consts.progress import PLANNING_PROGRESS
 from agents.deep_expert.prompts import (
+    DEEP_ANSWER_RUBRIC,
     DEEP_SUBAGENT_DESCRIPTION,
     DEEP_SUBAGENT_PROMPT,
     DEEP_SYSTEM_PROMPT,
@@ -30,7 +37,11 @@ from agents.deep_expert.prompts import (
 )
 from agents.deep_expert.state import ResearchRun
 from agents.deep_expert.tools import build_tools
-from llm import build_chat_model
+from services.llm import build_chat_model
+from shared.errors import LLMInvocationError, NoSourcesError, ResearchLimitError
+from shared.tracing import start_span
+
+logger = logging.getLogger(__name__)
 
 # deepagents' own name for the auto-added subagent; supplying a spec under this
 # name replaces the default, whose generic prompt lacks our rule 0 and budget.
@@ -44,6 +55,8 @@ GRADER_PART_CHARS = 3_900
 # `max_iterations_reached` ships the last draft (brainstorm Q7A); `failed` and
 # `grader_error` are hard errors; no verdict at all means the grader never ran.
 SHIPPABLE_VERDICTS = frozenset({"satisfied", "max_iterations_reached"})
+# Same pattern as `evals/helpers/judge.py::MARKDOWN_LINK_URL`; src never imports evals.
+MARKDOWN_LINK_URL = re.compile(r"\]\((https?://[^)\s]+)\)")
 
 
 def grader_view(messages: list[AnyMessage]) -> list[AnyMessage]:
@@ -55,7 +68,7 @@ def grader_view(messages: list[AnyMessage]) -> list[AnyMessage]:
     sent back for revision on every round. The draft is handed over in
     labelled parts that each survive the cut. Tool traffic is dropped: the
     rubric grades the answer, and which sources it cites is checked in code
-    (`research._checked_deep_answer`).
+    (`_checked_deep_answer`).
     """
     question = next((m for m in messages if isinstance(m, HumanMessage)), None)
     draft = next((m for m in reversed(messages) if isinstance(m, AIMessage)), None)
@@ -119,3 +132,86 @@ def build_graph(run: ResearchRun) -> Any:
         checkpointer=False,
         name="deep_expert",
     )
+
+
+async def research(query: str, writer: StreamWriter) -> str:
+    """Research `query` in depth and return the finished, checked answer.
+
+    A `deep_research` span records whether the turn ran out of searches or
+    time (brainstorm 2026Oct13 Q9), including when the wall cap ends it.
+    """
+    run = ResearchRun(writer=writer)
+    writer(PLANNING_PROGRESS)
+    time_limit_hit = False
+    with start_span("deep_research") as span:
+        try:
+            result = await _invoke(build_graph(run), query)
+        except ResearchLimitError:
+            time_limit_hit = True
+            raise
+        finally:
+            span.set_attributes(
+                {
+                    "research.searches_used": run.searches,
+                    "research.search_cap": LIMITS.max_searches,
+                    "research.sources_read": len(run.sources),
+                    "research.search_budget_hit": run.searches >= LIMITS.max_searches,
+                    "research.time_limit_hit": time_limit_hit,
+                    "research.grader_verdicts": run.verdicts,
+                    "research.grader_rounds": len(run.verdicts),
+                }
+            )
+    return _checked_deep_answer(result, run)
+
+
+async def _invoke(graph: Any, query: str) -> dict[str, Any]:
+    """Run the agent under the wall-time cap, mapping failures to pipeline errors."""
+    try:
+        result, capped = await invoke_capped(
+            graph,
+            {"messages": [HumanMessage(query)], "rubric": DEEP_ANSWER_RUBRIC},
+            limit_seconds=LIMITS.wall_seconds,
+            failure="Deep research failed.",
+        )
+    except NodeTimeoutError as exc:
+        raise LLMInvocationError("Deep research failed.") from exc
+    if capped:
+        raise ResearchLimitError(
+            f"The deep analysis ran past its {LIMITS.wall_seconds:g}-second limit."
+        )
+    answer: dict[str, Any] = result
+    return answer
+
+
+def _final_deep_answer(result: dict[str, Any]) -> str:
+    """Return the last AI message's text; the rubric loop injects human turns."""
+    for message in reversed(result.get("messages") or []):
+        if isinstance(message, AIMessage):
+            return message.text.strip()
+    return ""
+
+
+def _checked_deep_answer(result: dict[str, Any], run: ResearchRun) -> str:
+    """Refuse an answer that breaks the expert's rules; never degrade it."""
+    if not run.sources:
+        raise NoSourcesError(
+            "The deep analysis could not read any approved source for this question."
+        )
+    verdict = run.verdicts[-1] if run.verdicts else None
+    if verdict not in SHIPPABLE_VERDICTS:
+        raise LLMInvocationError(f"The deep analysis grader ended with {verdict!r}.")
+    deep_answer = _final_deep_answer(result)
+    if not deep_answer:
+        raise LLMInvocationError("The deep analysis returned an empty answer.")
+    if not set(MARKDOWN_LINK_URL.findall(deep_answer)) & run.sources.keys():
+        raise LLMInvocationError("The deep analysis cited none of the sources it read.")
+    if verdict == "max_iterations_reached":
+        logger.warning("deep_expert: shipping last draft; grader never satisfied")
+    logger.info(
+        "deep_expert: %d searches, %d sources read, verdicts=%s, %d answer chars",
+        run.searches,
+        len(run.sources),
+        run.verdicts,
+        len(deep_answer),
+    )
+    return deep_answer

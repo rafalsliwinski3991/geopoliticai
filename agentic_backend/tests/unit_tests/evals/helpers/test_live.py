@@ -8,9 +8,9 @@ import httpx
 import openai
 import pytest
 
-from agents.deep_forecaster.council import QuorumError
+from agents.deep_forecaster.council.members import QuorumError
 from evals.helpers.live import build_failure_row, classify_failure, print_row
-from models import LLMInvocationError, ResearchLimitError, SearchUnavailableError
+from shared.errors import LLMInvocationError, ResearchLimitError, SearchUnavailableError
 
 _ROUTER_REQUEST = httpx.Request("POST", "https://router.example/v1")
 

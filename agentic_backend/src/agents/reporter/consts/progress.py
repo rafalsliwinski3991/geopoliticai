@@ -1,6 +1,6 @@
 """Progress copy the reporter's nodes emit. Same rules as the orchestrator's."""
 
-from frames import ProgressFrame
+from shared.frames import ProgressFrame
 
 OUTLINE_PROGRESS = ProgressFrame(node="outline", label="Reading the conversation...")
 

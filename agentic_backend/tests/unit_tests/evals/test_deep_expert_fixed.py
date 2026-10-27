@@ -8,7 +8,7 @@ from typing import Any
 import pytest
 
 from evals.deep_expert_fixed import run_deep_expert_fixed
-from frames import NoticeEvent, ProgressFrame
+from shared.frames import NoticeEvent, ProgressFrame
 
 PROGRESS_LABEL = "Searching sources (1 of 5)..."
 

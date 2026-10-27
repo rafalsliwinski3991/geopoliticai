@@ -38,7 +38,7 @@ async def deep_research(query: str, writer: Any) -> str:
 
 async def graded_deep_research(query: str, writer: Any) -> str:
     """Stand in for the deep run: read page A, then let the grader revise once and be satisfied."""
-    research_module: Any = importlib.import_module("agents.deep_expert.research")
+    research_module: Any = importlib.import_module("agents.deep_expert.graph")
     candidate = Candidate(title=PAGE_A.title, url=PAGE_A.url, domain="news.example")
     await tools_module.fetch_sources([candidate], EXPERT_SOURCES)
     run = research_module.ResearchRun(writer=writer)
@@ -67,7 +67,7 @@ async def test_the_baseline_expert_reads_exactly_the_pages_the_deep_run_read() -
 
     # Act
     with (
-        patch("search.fetch_sources", live_fetch),
+        patch("services.page_reader.fetch_sources", live_fetch),
         patch("agents.deep_expert.research", deep_research),
         patch("agents.expert.graph", expert_graph),
     ):
@@ -95,7 +95,7 @@ async def test_a_failed_baseline_names_its_step_and_keeps_the_cause() -> None:
 
     # Act + Assert
     with (
-        patch("search.fetch_sources", live_fetch),
+        patch("services.page_reader.fetch_sources", live_fetch),
         patch("agents.deep_expert.research", deep_research),
         patch("agents.expert.graph", expert_graph),
         pytest.raises(
@@ -114,7 +114,7 @@ async def test_the_live_eval_returns_the_grader_verdicts() -> None:
 
     # Act
     with (
-        patch("search.fetch_sources", live_fetch),
+        patch("services.page_reader.fetch_sources", live_fetch),
         patch("agents.deep_expert.research", graded_deep_research),
         patch("agents.expert.graph", expert_graph),
     ):

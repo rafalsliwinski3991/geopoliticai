@@ -3,7 +3,8 @@ from typing import Any, AsyncIterator
 
 import pytest
 
-from models import NoSourcesError, Source
+from models import Source
+from shared.errors import NoSourcesError
 
 answer_module = importlib.import_module("agents.expert.nodes.answer")
 

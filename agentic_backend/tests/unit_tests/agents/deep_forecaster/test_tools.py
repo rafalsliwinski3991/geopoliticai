@@ -37,8 +37,9 @@ from agents.deep_forecaster.tools import (
     build_tools,
 )
 from agents.deep_forecaster.video import VideoUnavailableError
-from frames import ProgressFrame
-from models import Candidate, SearchUnavailableError, Source
+from models import Candidate, Source
+from shared.errors import SearchUnavailableError
+from shared.frames import ProgressFrame
 
 
 def _candidate(url: str, domain: str | None = None, title: str = "t") -> Candidate:

@@ -37,7 +37,7 @@ from agents.deep_forecaster.nodes import (
     write_analysis,
 )
 from agents.deep_forecaster.state import ForecastRun, ForecastState
-from models import ResearchLimitError
+from shared.errors import ResearchLimitError
 
 # (name, node, LangGraph node timeout). Research carries its own soft time
 # box; each council round is bounded by its members' timeouts; the two single

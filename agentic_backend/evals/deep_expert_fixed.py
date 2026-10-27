@@ -7,7 +7,7 @@ from typing import Any
 
 from evals.helpers.run import run
 from evals.judges.deep_expert_fixed import judges
-from frames import ProgressFrame
+from shared.frames import ProgressFrame
 
 # 2x the deep agent's wall cap (`ResearchLimits.wall_seconds`, 480 s), which one
 # deep run cannot exceed, leaving the rest for the expert's live `answer`. Judges

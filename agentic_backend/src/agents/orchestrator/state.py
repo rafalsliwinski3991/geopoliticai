@@ -8,7 +8,7 @@ from langchain_core.messages import AnyMessage, HumanMessage
 from langgraph.graph.message import add_messages
 from typing_extensions import NotRequired, TypedDict
 
-from models import squash_whitespace
+from shared.text import squash_whitespace
 
 Destination = Literal["geopolitical", "deep", "forecast", "other", "report"]
 

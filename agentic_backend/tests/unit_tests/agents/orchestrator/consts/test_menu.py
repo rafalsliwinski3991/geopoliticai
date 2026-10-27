@@ -7,7 +7,7 @@ from agents.orchestrator.consts.menu import (
     STATIC_NEXT_STEPS_MENU,
 )
 from agents.orchestrator.prompts import SUPERVISOR_SYSTEM_PROMPT
-from config import DEEP_RESEARCH_TURN_COST, FORECAST_TURN_COST
+from shared.config import DEEP_RESEARCH_TURN_COST, FORECAST_TURN_COST
 
 
 @pytest.mark.parametrize(

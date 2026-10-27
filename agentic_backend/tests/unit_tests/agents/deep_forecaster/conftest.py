@@ -42,7 +42,7 @@ draft_claims_module: Any = importlib.import_module(
 write_analysis_module: Any = importlib.import_module(
     "agents.deep_forecaster.nodes.write_analysis"
 )
-council_module: Any = importlib.import_module("agents.deep_forecaster.council")
+council_module: Any = importlib.import_module("agents.deep_forecaster.council.members")
 
 TODAY = date(2026, 9, 30)
 
@@ -160,7 +160,7 @@ class ScriptedCouncil:
         self.sent: dict[int, list[list[Any]]] = {}
 
     def install(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        council = importlib.import_module("agents.deep_forecaster.council")
+        council = importlib.import_module("agents.deep_forecaster.council.members")
         monkeypatch.setattr(council, "member_model", self._member)
 
     def calls(self, member: int) -> int:

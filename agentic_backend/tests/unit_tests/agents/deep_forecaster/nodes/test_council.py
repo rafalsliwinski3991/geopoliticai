@@ -8,7 +8,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 
 from agents.deep_forecaster.config import LIMITS
 from agents.deep_forecaster.consts.progress import ROUND_LABEL
-from frames import ProgressFrame
+from shared.frames import ProgressFrame
 from unit_tests.agents.deep_forecaster.conftest import ballot, state
 
 council_nodes_module: Any = importlib.import_module(

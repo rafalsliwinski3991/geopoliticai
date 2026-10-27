@@ -16,8 +16,10 @@ from psycopg_pool import AsyncConnectionPool
 
 MAX_TITLE_LENGTH = 60
 # The thread id Django's `chat_threads.id` column holds, and therefore the cap
-# `api.RunPipelineRequest` validates against.
+# `api.stream.RunPipelineRequest` validates against.
 MAX_THREAD_ID_LENGTH = 100
+# The characters a thread id may hold, shared by the stream and thread routes.
+THREAD_ID_PATTERN = r"^[A-Za-z0-9_-]+$"
 
 UPSERT_THREAD = """
 INSERT INTO chat_threads (id, user_id, title, created_at)

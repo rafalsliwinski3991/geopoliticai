@@ -10,7 +10,7 @@ import pytest
 from langgraph.constants import CONFIG_KEY_CHECKPOINTER
 from langgraph.errors import NodeTimeoutError
 
-from models import LLMInvocationError, SearchUnavailableError
+from shared.errors import LLMInvocationError, SearchUnavailableError
 
 limits_module: Any = importlib.import_module("agents.capped_run")
 

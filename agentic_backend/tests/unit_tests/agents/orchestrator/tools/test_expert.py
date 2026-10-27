@@ -10,7 +10,8 @@ from langchain_core.messages import ToolMessage
 
 from agents.orchestrator.consts.progress import SEARCH_PROGRESS
 from agents.orchestrator.tools.expert import run_expert
-from models import LLMInvocationError, Source
+from models import Source
+from shared.errors import LLMInvocationError
 from unit_tests.agents.orchestrator.tools.conftest import make_tool_runtime
 
 expert_tool_module = importlib.import_module("agents.orchestrator.tools.expert")
@@ -24,11 +25,11 @@ async def test_run_expert_appends_synthesis_and_returns_tool_message_with_artifa
     ToolMessage returns the full answer in its artifact.
     """
     # Arrange
-    emitted_events: list[dict[str, Any]] = []
-    invoked_inputs: list[dict[str, Any]] = []
+    emitted_events: list[Any] = []
+    asked_queries: list[str] = []
 
-    async def fake_ainvoke(input_state: dict[str, Any]) -> dict[str, Any]:
-        invoked_inputs.append(input_state)
+    async def fake_ask_expert(query: str) -> dict[str, Any]:
+        asked_queries.append(query)
         return {
             "answer": "Verified NATO briefing [1](https://nato.int).",
             "sources": [
@@ -39,7 +40,7 @@ async def test_run_expert_appends_synthesis_and_returns_tool_message_with_artifa
             ],
         }
 
-    monkeypatch.setattr(expert_tool_module.expert_graph, "ainvoke", fake_ainvoke)
+    monkeypatch.setattr(expert_tool_module, "ask_expert", fake_ask_expert)
 
     initial_state = {
         "messages": [],
@@ -58,8 +59,7 @@ async def test_run_expert_appends_synthesis_and_returns_tool_message_with_artifa
 
     # Assert
     assert emitted_events == [SEARCH_PROGRESS]
-    assert len(invoked_inputs) == 1
-    assert invoked_inputs[0]["query"] == "NATO flank update"
+    assert asked_queries == ["NATO flank update"]
 
     update = command.update
     assert update["expert_synthesis"] == [
@@ -86,7 +86,7 @@ async def test_run_expert_handles_empty_initial_workspace_state(
     """
 
     # Arrange
-    async def fake_ainvoke(input_state: dict[str, Any]) -> dict[str, Any]:
+    async def fake_ask_expert(query: str) -> dict[str, Any]:
         return {
             "answer": "Fresh answer.",
             "sources": [
@@ -94,7 +94,7 @@ async def test_run_expert_handles_empty_initial_workspace_state(
             ],
         }
 
-    monkeypatch.setattr(expert_tool_module.expert_graph, "ainvoke", fake_ainvoke)
+    monkeypatch.setattr(expert_tool_module, "ask_expert", fake_ask_expert)
 
     runtime = make_tool_runtime(state={"messages": []}, tool_call_id="call_fresh")
 
@@ -114,10 +114,10 @@ async def test_run_expert_lets_a_pipeline_error_propagate(
     """A failed expert run must reach the API's error frame, not become a tool result."""
 
     # Arrange
-    async def failing_ainvoke(input_state: dict[str, Any]) -> dict[str, Any]:
+    async def failing_ask_expert(query: str) -> dict[str, Any]:
         raise LLMInvocationError("Model call failed.")
 
-    monkeypatch.setattr(expert_tool_module.expert_graph, "ainvoke", failing_ainvoke)
+    monkeypatch.setattr(expert_tool_module, "ask_expert", failing_ask_expert)
     runtime = make_tool_runtime(state={"messages": []})
 
     # Act + Assert

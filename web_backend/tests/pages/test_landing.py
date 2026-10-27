@@ -67,7 +67,7 @@ def canonical_forecasters() -> tuple[tuple[str, str, tuple[str, ...]], ...]:
 
 def advertised_daily_research_turns() -> int:
     """The DAILY_RESEARCH_TURNS literal, read by AST the same way."""
-    path = _REPO_ROOT / "agentic_backend" / "src" / "config.py"
+    path = _REPO_ROOT / "agentic_backend" / "src" / "shared" / "config.py"
     tree = ast.parse(path.read_text())
     for node in ast.walk(tree):
         if isinstance(node, ast.Assign) and any(

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from config import LLMSettings
+from shared.config import LLMSettings
 
 # The research lead and its scouts: the deep expert's model and effort, for its
 # reason (a self-driven tool loop, where per-turn latency is the budget; see

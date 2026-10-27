@@ -1,4 +1,4 @@
-"""The deep expert's two research tools, over the shared `search.py` boundary.
+"""The deep expert's two research tools, over the shared `services/web_search.py` and `services/page_reader.py` boundary.
 
 Two tools, not one: a search returns only titles and URLs, and the model reads
 the pages it chooses. One combined tool would put up to eight 20,000-character
@@ -25,7 +25,8 @@ from agents.deep_expert.consts.progress import (
 )
 from agents.deep_expert.state import ResearchRun
 from agents.expert.consts.sources import EXPERT_SOURCES
-from search import fetch_sources, search_allowlisted
+from services.page_reader import fetch_sources
+from services.web_search import search_allowlisted
 
 EMPTY_QUERY_MESSAGE = "The query was empty. Search again with a focused query."
 UNKNOWN_URL_MESSAGE = (

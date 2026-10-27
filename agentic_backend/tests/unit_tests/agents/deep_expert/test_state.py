@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any, cast
 
 from agents.deep_expert.state import ResearchRun
-from frames import ProgressFrame
+from shared.frames import ProgressFrame
 
 
 def _evaluation(result: str, iteration: int) -> Any:

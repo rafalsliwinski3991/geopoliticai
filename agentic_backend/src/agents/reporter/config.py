@@ -7,11 +7,11 @@ environment.
 
 from __future__ import annotations
 
-from config import LLMSettings
+from shared.config import LLMSettings
 
 # The outline reads the whole thread (brainstorm Q15), so it needs the large
 # window. `gpt-5-mini` supports `with_structured_output(..., method="json_schema",
-# strict=True)`, verified through this repo's own `llm.py` boundary. Its context
+# strict=True)`, verified through this repo's own `services/llm.py` boundary. Its context
 # window (~400k tokens) is an OpenAI-published figure, not something measurable
 # from any installed package — see §1's "unverified provider claims".
 OUTLINE_LLM_SETTINGS = LLMSettings(

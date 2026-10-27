@@ -3,7 +3,8 @@ from typing import Any
 
 import pytest
 
-from models import Candidate, NoSourcesError, Source
+from models import Candidate, Source
+from shared.errors import NoSourcesError
 
 node_module = importlib.import_module("agents.expert.nodes.search_and_fetch")
 _STATE = {"query": "x", "sources": [], "answer": ""}

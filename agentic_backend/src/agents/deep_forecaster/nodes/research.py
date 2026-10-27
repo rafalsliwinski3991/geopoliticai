@@ -44,13 +44,9 @@ from agents.deep_forecaster.state import (
     ResearchRun,
 )
 from agents.deep_forecaster.tools import build_tools
-from llm import build_chat_model
-from models import (
-    LLMInvocationError,
-    NoSourcesError,
-    SearchUnavailableError,
-)
-from tracing import start_span
+from services.llm import build_chat_model
+from shared.errors import LLMInvocationError, NoSourcesError, SearchUnavailableError
+from shared.tracing import start_span
 
 # The word the lead's prompt uses. The scout was registered as deepagents'
 # reserved `general-purpose` until this change (2026-10-19 traces) and was

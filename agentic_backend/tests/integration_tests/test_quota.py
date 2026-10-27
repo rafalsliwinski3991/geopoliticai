@@ -8,10 +8,10 @@ from psycopg import AsyncConnection, connect
 from psycopg.rows import DictRow, dict_row
 from psycopg_pool import AsyncConnectionPool
 
-import quota as quota_module
-from config import DAILY_RESEARCH_TURNS
+from api import quota as quota_module
 from db.web import sql
-from models import QuotaExceededError
+from shared.config import DAILY_RESEARCH_TURNS
+from shared.errors import QuotaExceededError
 
 # A fixed past day: the real counters for today are never touched.
 DAY = date(1971, 1, 4)
