@@ -11,7 +11,8 @@ from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanE
 
 import search
 from agents.expert.consts.sources import EXPERT_SOURCES
-from models import Candidate, SearchUnavailableError, Source, SourcePolicy
+from models import Candidate, Source, SourcePolicy
+from shared.errors import SearchUnavailableError
 
 _HTML = (
     "<html><body><article><p>"
@@ -1493,7 +1494,7 @@ async def test_only_the_first_pages_of_a_long_pdf_are_read(
 
 @pytest.mark.anyio
 @pytest.mark.parametrize(
-    ("padding_to", "outcome"),
+    ("padding_to", "expected_outcome"),
     [
         (search.PDF_MAX_BYTES, "ok"),
         (search.PDF_MAX_BYTES + 1, "too_large"),
@@ -1504,7 +1505,7 @@ async def test_a_pdf_over_the_byte_cap_is_dropped(
     monkeypatch: pytest.MonkeyPatch,
     build_pdf: Callable[..., bytes],
     padding_to: int,
-    outcome: str,
+    expected_outcome: str,
 ) -> None:
     """A huge scan would be read whole into memory and parsed; the cap refuses it."""
     # Arrange
@@ -1513,7 +1514,7 @@ async def test_a_pdf_over_the_byte_cap_is_dropped(
     outcome, source, _ = await _fetch_pdf(monkeypatch, body)
     # Assert
     assert len(body) == padding_to
-    assert outcome == outcome
+    assert outcome == expected_outcome
 
 
 @pytest.mark.anyio

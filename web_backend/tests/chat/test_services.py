@@ -71,6 +71,9 @@ class ResetQuotaTests(TestCase):
 
     def test_reset_quota_for_a_user_with_no_row_returns_zero_and_adds_none(self):
         """A user who spent nothing that day has no row; the reset must not invent one."""
+        # Arrange
+        # setUp creates no quota row for self.user.
+
         # Act
         given_back = reset_quota([self.user], RESET_DAY)
 
