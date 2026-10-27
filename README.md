@@ -284,6 +284,43 @@ after a deploy that carries nginx's 50 MB limit on `/phoenix/`: before that, lar
 with 413. Locally, run `make evals-fixed`, `make evals-live`, or `make evals` from `agentic_backend/`;
 it reads `PHOENIX_COLLECTOR_ENDPOINT` (and `PHOENIX_CLIENT_HEADERS`, for the VPS) from the root `.env`.
 
+### Load tests
+
+`agentic_backend/loadtests/` load-tests the API over real HTTP without spending anything: the FastAPI
+app, auth, the rate limit, the quota charge, the orchestrator and expert graphs, LangGraph streaming
+and checkpointing, and trafilatura's page extraction all run as in production, while the OpenAI
+models, Brave, the page fetches and the Django tables are faked in process
+(`loadtests/fakes.py`), with an in-memory checkpointer. No key, database or Docker is needed.
+
+Each virtual user owns one thread and repeats a round of four requests: a chat turn, a research turn
+(the expert: three Brave batches, ten pages fetched and extracted, a streamed answer, the footer),
+the sidebar list, and the thread's history. Users start spread over the ramp-up.
+
+Run from `agentic_backend/`:
+
+- `make loadtest` runs 50 users for 3 rounds with the `realistic` profile (each faked call waits
+  about as long as production's providers) and prints, per request kind, the count, errors, p50, p95,
+  p99, max and the p95 time to the first answer token.
+- `make loadtest LOADTEST_ARGS="--users 100 --rounds 2 --ramp-up 10 --max-p95 12"` passes flags;
+  `uv run python -m loadtests.run --help` lists them. `--profile instant` drops every fake delay, so
+  the numbers measure this service's own CPU; `--json-out results.json` keeps the summaries.
+- The run exits 1 when any kind's error rate is over `--max-error-rate` (default 0) or its p95 is
+  over `--max-p95`, and names the kind.
+
+The runner starts `loadtests.server` on a free local port with a random signing key and stops it
+afterwards. To profile the server or run it separately, start it yourself with a key and point the
+runner at it:
+
+```bash
+export JWT_SIGNING_KEY=$(python -c 'import secrets; print(secrets.token_urlsafe(48))')
+uv run python -m loadtests.server --port 8765 --profile realistic &
+uv run python -m loadtests.run --base-url http://127.0.0.1:8765
+```
+
+The API's own limits still apply: each round sends three requests the per-user rate limit counts (20
+a minute), so more than six rounds a minute show up as `http 429`, and each research turn spends one
+of the user's 50 daily units and one of the site's 2,500.
+
 ### After the SEO launch (one-time, then upkeep)
 
 User actions after the `seo-blog` deploy:
