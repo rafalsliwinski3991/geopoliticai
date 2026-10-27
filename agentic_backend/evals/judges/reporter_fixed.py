@@ -13,7 +13,11 @@ from typing import Any
 from evals.helpers.judge import Judge, markdown_link_urls
 from evals.judges.shared import matches_expected
 
-EXPECTED_KEYS = frozenset({"reply_actions", "outcome"})
+EXPECTED_KEYS = frozenset({"reply_actions", "outcome", "notice_asks_question"})
+QUOTED_QUESTION = re.compile(r"[\"“'‘][^\"”'’]*\?[\"”'’]")
+OFFER_TO_FETCH = re.compile(
+    r"\b(ask me to|i can|i will|i'll|let me) (retriev|fetch|search)", re.IGNORECASE
+)
 HEADING_NOISE = re.compile(r"^(?:\d+[.)]\s*)?[*_]*(.*?)[*_]*:?$")
 OUTLINE_PROMPT = """
 You grade a report outline proposed from a conversation transcript.
@@ -103,6 +107,14 @@ def _outcome_view(
     return {"actual": output.get("outcome"), "expected": expected["outcome"]}
 
 
+def _notice_view(
+    input: dict[str, Any], output: dict[str, Any], expected: dict[str, Any]
+) -> dict[str, Any] | None:
+    if "notice_asks_question" not in expected:
+        return None
+    return {"notice": output.get("notice") or ""}
+
+
 def _report_view(
     input: dict[str, Any], output: dict[str, Any], expected: dict[str, Any]
 ) -> dict[str, Any] | None:
@@ -156,6 +168,12 @@ def follows_outline(variables: dict[str, Any]) -> bool:
     )
 
 
+def asks_a_question(variables: dict[str, Any]) -> bool:
+    """Pass when the notice quotes a question to ask and offers no fetching (rule 3)."""
+    notice = variables["notice"]
+    return bool(QUOTED_QUESTION.search(notice)) and not OFFER_TO_FETCH.search(notice)
+
+
 def urls_from_transcript(variables: dict[str, Any]) -> bool:
     """Pass when the report preserves the transcript's citations (report rule 2).
 
@@ -177,6 +195,7 @@ def judges() -> tuple[Judge, ...]:
             "reply_actions_match", "binary", _reply_actions_view, check=matches_expected
         ),
         Judge("outcome_matches", "binary", _outcome_view, check=matches_expected),
+        Judge("notice_asks_question", "binary", _notice_view, check=asks_a_question),
         Judge("follows_outline", "binary", _report_view, check=follows_outline),
         Judge(
             "urls_from_transcript", "binary", _report_view, check=urls_from_transcript

@@ -85,6 +85,36 @@
     "reply_actions": [],
     "outcome": "refused"
    }
+  },
+  {
+   "name": "reporter-revise-for-missing-figures",
+   "description": "At the outline the user asks for a table of each member's exact defence budget in dollars; the conversation holds no such figures, so the outline stays as it was and the notice tells the user to cancel and quotes a question to ask, with no offer to retrieve.",
+   "input": {
+    "messages": [
+     {
+      "role": "user",
+      "content": "What did the Northern Alliance summit decide?"
+     },
+     {
+      "role": "assistant",
+      "content": "The Northern Alliance summit was held on 12 June 2026 in Karsholm, and its leaders agreed a joint goal for defence spending [Northern Alliance leaders adopt spending goal](https://news.example/2026/06/alliance-summit-spending-goal)."
+     },
+     {
+      "role": "user",
+      "content": "Write me a report on that"
+     }
+    ],
+    "replies": [
+     "Add a table with each member's exact defence budget in dollars, from SIPRI"
+    ]
+   },
+   "expected": {
+    "reply_actions": [
+     "revise"
+    ],
+    "outcome": "open",
+    "notice_asks_question": true
+   }
   }
  ]
 }
