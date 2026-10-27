@@ -348,7 +348,8 @@ async def test_a_failed_search_is_a_message(
     # Act
     result = await tools["search"].ainvoke({"forecaster": "gabuev", "queries": ["q"]})
     # Assert
-    assert result == f"Query: q\n{SEARCH_FAILED_MESSAGE}\n\nSearches left: 47."
+    left = LIMITS.max_searches - 1
+    assert result == f"Query: q\n{SEARCH_FAILED_MESSAGE}\n\nSearches left: {left}."
     assert run.searches == 1 and run.failed_searches == 1
 
 
@@ -1221,7 +1222,7 @@ async def test_a_mixed_batch_renders_each_querys_own_block(
         "Query: hit\nA title | https://carnegieendowment.org/a\n\n"
         f"Query: empty\n{NO_RESULTS_MESSAGE}\n\n"
         f"Query: down\n{SEARCH_FAILED_MESSAGE}\n\n"
-        "Searches left: 45."
+        f"Searches left: {LIMITS.max_searches - 3}."
     )
 
 
