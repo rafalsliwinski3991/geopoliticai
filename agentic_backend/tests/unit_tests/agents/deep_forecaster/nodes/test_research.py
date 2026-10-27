@@ -350,7 +350,7 @@ async def test_build_research_agent_wires_the_recorded_shape(
     # Act
     for forecaster_id in FORECASTER_IDS:
         assert forecaster_id in system_prompt
-    assert "48 searches" in system_prompt
+    assert "10 searches" in system_prompt
     assert "at least one" in system_prompt
     assert "Delegate with the `task` tool" in system_prompt
     # The prompt names the type the agent registers scouts under, not a

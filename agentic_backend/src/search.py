@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import io
 import json
 import logging
 import os
@@ -21,6 +22,7 @@ import httpx
 import trafilatura
 from opentelemetry import trace
 from pydantic import AfterValidator, BaseModel, ValidationError
+from pypdf import PdfReader
 from trafilatura.settings import Document
 
 from models import Candidate, SearchUnavailableError, Source, SourcePolicy
@@ -37,6 +39,8 @@ FETCH_CONCURRENCY = 8
 QUERY_TRIM_CHARS = 140
 QUERY_TRIM_WORDS = 20
 MAX_REDIRECTS = 3
+PDF_MAX_BYTES = 5_000_000
+PDF_MAX_PAGES = 40
 
 # A byline is what the page declares as its author (brainstorm 2026Sep30 Q16):
 # the `author` of any JSON-LD (Schema.org linked-data) object on the page, else
@@ -51,7 +55,7 @@ MAX_LANG_CHARS = 35
 DATE_EXTRACTION_PARAMS = {"extensive_search": False, "original_date": True}
 FETCH_HEADERS = {
     "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/124.0.0.0 Safari/537.36",
-    "Accept": "text/html,application/xhtml+xml",
+    "Accept": "text/html,application/xhtml+xml,application/pdf;q=0.9",
     "Accept-Language": "en-US,en;q=0.9",
 }
 FetchOutcome = Literal[
@@ -60,6 +64,7 @@ FetchOutcome = Literal[
     "fetch_failed",
     "redirect_limit",
     "not_html",
+    "too_large",
     "too_short",
     "extract_failed",
 ]
@@ -257,6 +262,30 @@ async def search_allowlisted(query: str, policy: SourcePolicy) -> list[Candidate
 
 
 # Page reading: fetch, extract, and the page's own facts.
+class PdfTooLargeError(httpx.TransportError):
+    """A PDF declared more than `PDF_MAX_BYTES`; raised before its body downloads."""
+
+
+async def refuse_oversized_pdf(response: httpx.Response) -> None:
+    """Abort a PDF whose declared length is over the cap, before the body is read.
+
+    A server that sends no `content-length`, or compresses the body, is not
+    bounded by this: `fetch_sources` reads the whole response (accepted;
+    every host is on the editorial allow-list).
+    """
+    declared = response.headers.get("content-length", "")
+    is_pdf = "pdf" in response.headers.get("content-type", "").lower()
+    if is_pdf and declared.isdigit() and int(declared) > PDF_MAX_BYTES:
+        raise PdfTooLargeError("PDF over the size cap")
+
+
+def build_fetch_client() -> httpx.AsyncClient:
+    """Return the client page fetches use, with the PDF size hook installed."""
+    return httpx.AsyncClient(
+        headers=FETCH_HEADERS, event_hooks={"response": [refuse_oversized_pdf]}
+    )
+
+
 class ExtractedPage(NamedTuple):
     """What one worker hop reads from a page body."""
 
@@ -304,6 +333,8 @@ async def _fetch_page(
             response = await client.get(
                 url, timeout=FETCH_TIMEOUT_SECONDS, follow_redirects=False
             )
+        except PdfTooLargeError:
+            return "too_large", None, None
         except httpx.HTTPError as exc:
             logger.info("Fetch failed url=%s: %s", url, exc)
             trace.get_current_span().set_attribute(
@@ -339,11 +370,17 @@ async def _fetch_page(
 async def _read_page(
     response: httpx.Response, url: str, title: str, policy: SourcePolicy
 ) -> tuple[FetchOutcome, Source | None, ExtractedPage | None]:
-    """Extract one fetched HTML page; drop it when it is not HTML, too short, or unreadable."""
+    """Extract one fetched HTML or PDF page; drop it when it is another type, too large or short, or unreadable."""
     try:
-        if "html" not in response.headers.get("content-type", "").lower():
+        content_type = response.headers.get("content-type", "").lower()
+        if "pdf" in content_type:
+            if len(response.content) > PDF_MAX_BYTES:
+                return "too_large", None, None
+            page = await _extract_pdf(response.content, policy.max_source_chars)
+        elif "html" in content_type:
+            page = await _extract_page(response.text)
+        else:
             return "not_html", None, None
-        page = await _extract_page(response.text)
         if not page.text or len(page.text) < policy.min_source_chars:
             return "too_short", None, None
         source = Source(
@@ -417,6 +454,37 @@ def _extract_page_sync(body: str) -> ExtractedPage:
 async def _extract_page(body: str) -> ExtractedPage:
     """Run the synchronous extractor without blocking the event loop."""
     return await asyncio.to_thread(_extract_page_sync, body)
+
+
+def _extract_pdf_sync(body: bytes, max_chars: int) -> ExtractedPage:
+    """Read pages until `max_chars` of text or `PDF_MAX_PAGES`; one paragraph per page.
+
+    pypdf wraps text at the printed line ends; each page's lines are joined so
+    the forecaster, which counts a line as a paragraph (`evidence.paragraphs`),
+    does not cite mid-sentence fragments. An owner-password-only file opens
+    with the empty password; one that needs a real password raises, and the
+    caller records `extract_failed`. No author, date or language: a PDF's
+    metadata is a tool name as often as a byline.
+    """
+    reader = PdfReader(io.BytesIO(body))
+    if reader.is_encrypted and not reader.decrypt(""):
+        raise ValueError("PDF needs a password")
+    pages: list[str] = []
+    length = 0
+    for page in reader.pages[:PDF_MAX_PAGES]:
+        text = " ".join((page.extract_text() or "").replace("\x00", "").split())
+        if text:
+            pages.append(text)
+            length += len(text)
+        if length >= max_chars:
+            break
+    joined = unicodedata.normalize("NFC", "\n\n".join(pages))
+    return ExtractedPage(text=joined or None, author="", published="", lang="")
+
+
+async def _extract_pdf(body: bytes, max_chars: int) -> ExtractedPage:
+    """Run the synchronous PDF reader without blocking the event loop."""
+    return await asyncio.to_thread(_extract_pdf_sync, body, max_chars)
 
 
 class _HeadParser(HTMLParser):
@@ -517,7 +585,7 @@ async def fetch_sources(
     candidates: Sequence[Candidate], policy: SourcePolicy
 ) -> list[Source]:
     """Fetch and extract candidates concurrently, bounding parallel fetches."""
-    async with httpx.AsyncClient(headers=FETCH_HEADERS) as client:
+    async with build_fetch_client() as client:
         semaphore = asyncio.Semaphore(FETCH_CONCURRENCY)
 
         async def bounded(candidate: Candidate) -> Source | None:

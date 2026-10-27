@@ -112,7 +112,8 @@ deep_forecaster  START -> research -> draft_claims -> council_round_1 -> council
   offering follow-up options with canonical turn costs from `config.py`, falling back to `STATIC_NEXT_STEPS_MENU`
   on failure, emitted as a notice chunk.
 - Expert: exactly three Brave batches (one failing is skipped, all failing is an error), allow-listed
-  pages through trafilatura, and one streamed model call.
+  pages through trafilatura (HTML) or pypdf (PDF, the first pages, dropped when over the
+  size cap), and one streamed model call.
 - Deep expert: a `deepagents` agent built per turn, never at import. It searches through
   `search.py` with `EXPERT_SOURCES` and revises under deepagents' `RubricMiddleware`, whose grader
   sees only the question and the final draft (`graph.grader_view`). A spent search budget is a
@@ -199,8 +200,8 @@ deep_forecaster  START -> research -> draft_claims -> council_round_1 -> council
 
 - `agentic_backend/evals/` holds one script per eval, run from `agentic_backend/` as
   `uv run python -m evals.<name>`; `make evals-fixed`, `make evals-live`, and `make evals` (both) run
-  them by kind. A new eval joins `FIXED_EVALS` or `LIVE_EVALS` in `agentic_backend/Makefile` and gets
-  a step in `evals.yml` under its kind.
+  them by kind. A new eval joins `FIXED_EVALS` or `LIVE_EVALS` in `agentic_backend/Makefile`;
+  `evals.yml` reads those lists and runs each eval as its own parallel job.
 - The runner reads an eval's kind from its name. A fixed eval (`*_fixed`) feeds the agent inputs
   written in advance: conversations, typed replies, and recorded, synthetic pages that
   `replay_sources` puts in place of the expert's and the deep expert's retrieval, never fetched

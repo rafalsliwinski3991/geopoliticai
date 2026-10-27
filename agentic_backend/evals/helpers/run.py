@@ -8,7 +8,6 @@ dataset is `datasets/<name>.json`.
 
 from __future__ import annotations
 
-import hashlib
 import json
 import logging
 import subprocess
@@ -151,12 +150,6 @@ def load_examples(path: Path) -> list[dict[str, Any]]:
     ]
 
 
-def dataset_name(eval_name: str, path: Path) -> str:
-    """Name the platform dataset after the file's content, so an edit makes a new one."""
-    digest = hashlib.sha256(path.read_bytes()).hexdigest()[:8]
-    return f"geopoliticai-{eval_name}-{digest}"
-
-
 def experiment_name(eval_name: str) -> str:
     """Name the experiment after the commit and time it ran at."""
     try:
@@ -238,7 +231,7 @@ async def run(
     if not init_tracing():
         raise RuntimeError("Phoenix tracing could not be initialized")
     results = await phoenix.run(
-        dataset_name=dataset_name(eval_name, dataset_path),
+        dataset_name=f"geopoliticai-{eval_name}",
         experiment_name=experiment_name(eval_name),
         examples=examples,
         task=_wrap_live_task(task) if kind == "live" else _wrap_fixed_task(task),

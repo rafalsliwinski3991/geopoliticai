@@ -140,9 +140,12 @@ class ForecastLimits:
     token; a denser language at ~3 characters per token reaches ~267k, still
     under gpt-5-mini's 272,000-token input limit (OpenAI, "Introducing GPT-5
     for developers").
-    Both caps were doubled so the forecast shows its full potential (user
-    decision 2026-10-19); production had used all 24 searches and 15-20 of 20
-    pages in every run. Gemini's video notes count as sources. Council
+    `max_sources` was doubled so the forecast shows its full potential (user
+    decision 2026-10-19); production had used 15-20 of 20 pages in every run.
+    `max_searches` was doubled with it, then cut to 10 to spend fewer Brave
+    requests (user decision 2026-10-27); the four runs on 2026-10-22 had used
+    42-48 of 48, two of them on searches that all failed (Phoenix). Gemini's
+    video notes count as sources. Council
     members read only the paragraphs the drafter
     points at, at most `max_passages` per claim (user decision 2026-10-01,
     overriding Q20's "every member reads everything"): about 10k tokens.
@@ -177,7 +180,7 @@ class ForecastLimits:
     28 x (600 + 5 links of ~100) is ~31,000.
     """
 
-    max_searches: int = 48
+    max_searches: int = 10
     max_sources: int = 40
     max_videos: int = 2
     max_search_concurrency: int = 8

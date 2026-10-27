@@ -35,8 +35,8 @@ START -> search_and_fetch -> answer -> END
 ```
 
 `search_and_fetch` runs three batched Brave queries restricted to a curated set
-of domains, fetches up to ten of those pages, and extracts article text with
-trafilatura. `answer` sends the retrieved text to one streamed plain-text OpenAI
+of domains, fetches up to ten of those pages, and reads them with
+trafilatura (HTML) or pypdf (PDF). `answer` sends the retrieved text to one streamed plain-text OpenAI
 call. Search, extraction, and model failures are surfaced to the client; the
 expert has no degraded or fabricated fallback.
 

@@ -14,9 +14,60 @@ on:
         default: ""
 
 jobs:
+  # The eval names come from FIXED_EVALS and LIVE_EVALS in agentic_backend/Makefile
+  # (a unit test keeps them equal to the datasets), so a new eval needs no edit here.
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      evals: ${{ steps.pick.outputs.evals }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: agentic_backend/Makefile
+          sparse-checkout-cone-mode: false
+
+      - name: Pick the evals to run
+        id: pick
+        env:
+          EVAL_TYPE: ${{ inputs.type }}
+          ONLY_EVALS: ${{ inputs.evals }}
+        run: |
+          fixed="$(sed -n 's/^FIXED_EVALS = //p' agentic_backend/Makefile)"
+          live="$(sed -n 's/^LIVE_EVALS = //p' agentic_backend/Makefile)"
+          case "$EVAL_TYPE" in
+            fixed) names="$fixed" ;;
+            live) names="$live" ;;
+            *) names="$fixed $live" ;;
+          esac
+          if [ -n "$ONLY_EVALS" ]; then
+            picked=""
+            for name in $fixed $live; do
+              case ",$ONLY_EVALS," in
+                *",$name,"*) picked="$picked $name" ;;
+              esac
+            done
+            names="$picked"
+          fi
+          if [ -z "${names// /}" ]; then
+            echo "::error::No eval matches type '$EVAL_TYPE' and evals '$ONLY_EVALS'."
+            exit 1
+          fi
+          quoted="$(printf '"%s",' $names)"
+          echo "evals=[${quoted%,}]" >> "$GITHUB_OUTPUT"
+
+  # One job per eval, all at once: the run takes as long as the slowest eval,
+  # and one red eval does not cancel the others.
   evals:
+    name: ${{ matrix.eval }}
+    needs: plan
     runs-on: ubuntu-latest
     environment: dev
+    strategy:
+      fail-fast: false
+      matrix:
+        eval: ${{ fromJson(needs.plan.outputs.evals) }}
     env:
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
@@ -41,58 +92,14 @@ jobs:
           enable-cache: true
 
       - name: Install dependencies
-        id: sync
         working-directory: agentic_backend
         run: uv sync --locked --dev
 
-      - name: Run orchestrator_fixed
-        if: ${{ !cancelled() && steps.sync.outcome == 'success' && (inputs.evals == '' && inputs.type != 'live' || inputs.evals != '' && contains(format(',{0},', inputs.evals), ',orchestrator_fixed,')) }}
+      - name: Run ${{ matrix.eval }}
         working-directory: agentic_backend
         env:
-          # nginx Basic Auth in front of the VPS Phoenix, in W3C header format
-          # (every eval step below sends the same header):
+          EVAL: ${{ matrix.eval }}
+          # nginx Basic Auth in front of the VPS Phoenix, in W3C header format:
           # Authorization=Basic%20<base64 of AUTH_USER:AUTH_PASSWORD>
           PHOENIX_CLIENT_HEADERS: ${{ secrets.PHOENIX_CLIENT_HEADERS }}
-        run: uv run python -m evals.orchestrator_fixed
-
-      - name: Run reporter_fixed
-        if: ${{ !cancelled() && steps.sync.outcome == 'success' && (inputs.evals == '' && inputs.type != 'live' || inputs.evals != '' && contains(format(',{0},', inputs.evals), ',reporter_fixed,')) }}
-        working-directory: agentic_backend
-        env:
-          PHOENIX_CLIENT_HEADERS: ${{ secrets.PHOENIX_CLIENT_HEADERS }}
-        run: uv run python -m evals.reporter_fixed
-
-      - name: Run expert_fixed
-        if: ${{ !cancelled() && steps.sync.outcome == 'success' && (inputs.evals == '' && inputs.type != 'live' || inputs.evals != '' && contains(format(',{0},', inputs.evals), ',expert_fixed,')) }}
-        working-directory: agentic_backend
-        env:
-          PHOENIX_CLIENT_HEADERS: ${{ secrets.PHOENIX_CLIENT_HEADERS }}
-        run: uv run python -m evals.expert_fixed
-
-      - name: Run deep_expert_fixed
-        if: ${{ !cancelled() && steps.sync.outcome == 'success' && (inputs.evals == '' && inputs.type != 'live' || inputs.evals != '' && contains(format(',{0},', inputs.evals), ',deep_expert_fixed,')) }}
-        working-directory: agentic_backend
-        env:
-          PHOENIX_CLIENT_HEADERS: ${{ secrets.PHOENIX_CLIENT_HEADERS }}
-        run: uv run python -m evals.deep_expert_fixed
-
-      - name: Run expert_live
-        if: ${{ !cancelled() && steps.sync.outcome == 'success' && (inputs.evals == '' && inputs.type != 'fixed' || inputs.evals != '' && contains(format(',{0},', inputs.evals), ',expert_live,')) }}
-        working-directory: agentic_backend
-        env:
-          PHOENIX_CLIENT_HEADERS: ${{ secrets.PHOENIX_CLIENT_HEADERS }}
-        run: uv run python -m evals.expert_live
-
-      - name: Run deep_expert_live
-        if: ${{ !cancelled() && steps.sync.outcome == 'success' && (inputs.evals == '' && inputs.type != 'fixed' || inputs.evals != '' && contains(format(',{0},', inputs.evals), ',deep_expert_live,')) }}
-        working-directory: agentic_backend
-        env:
-          PHOENIX_CLIENT_HEADERS: ${{ secrets.PHOENIX_CLIENT_HEADERS }}
-        run: uv run python -m evals.deep_expert_live
-
-      - name: Run deep_forecaster_live
-        if: ${{ !cancelled() && steps.sync.outcome == 'success' && (inputs.evals == '' && inputs.type != 'fixed' || inputs.evals != '' && contains(format(',{0},', inputs.evals), ',deep_forecaster_live,')) }}
-        working-directory: agentic_backend
-        env:
-          PHOENIX_CLIENT_HEADERS: ${{ secrets.PHOENIX_CLIENT_HEADERS }}
-        run: uv run python -m evals.deep_forecaster_live
+        run: uv run python -m "evals.$EVAL"

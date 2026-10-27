@@ -60,6 +60,7 @@ dependencies = [
     # `alembic upgrade head` inside this image (deploy/vps.py); development
     # still runs it from the host (`make migrate-agentic`).
     "alembic>=1.14,<2.0",
+    "pypdf>=6.21.2,<7.0",
 ]
 
 

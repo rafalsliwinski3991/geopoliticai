@@ -20,8 +20,6 @@ from evals.helpers.run import DATASETS_DIR, eval_kind, load_examples
 DATASETS = sorted(DATASETS_DIR.glob("*.json"))
 MAKEFILE = DATASETS_DIR.parents[1] / "Makefile"
 WORKFLOW = DATASETS_DIR.parents[2] / ".github" / "workflows" / "evals.yml"
-# The `type` input each kind's workflow step skips on.
-SKIPPED_TYPE = {"fixed": "live", "live": "fixed"}
 
 
 def _judges_module(path: Path) -> object:
@@ -114,13 +112,13 @@ def test_the_makefile_lists_every_eval_under_its_kind() -> None:
         }
 
 
-@pytest.mark.parametrize("path", DATASETS, ids=lambda path: path.stem)
-def test_the_workflow_runs_every_eval_only_for_its_kind(path: Path) -> None:
-    """Each eval has one `evals.yml` step, skipped when the dispatch asks for the other kind."""
+def test_the_workflow_takes_its_evals_from_the_makefile_lists() -> None:
+    """`evals.yml` runs what `FIXED_EVALS` and `LIVE_EVALS` list, so it names no eval itself."""
     # Arrange
-    steps = WORKFLOW.read_text(encoding="utf-8").split("- name:")
+    text = WORKFLOW.read_text(encoding="utf-8")
     # Act
-    own = [step for step in steps if f"python -m evals.{path.stem}\n" in step]
+    named = [path.stem for path in DATASETS if f"evals.{path.stem}" in text]
     # Assert
-    assert len(own) == 1
-    assert f"inputs.type != '{SKIPPED_TYPE[eval_kind(path.stem)]}'" in own[0]
+    assert "s/^FIXED_EVALS = //p" in text
+    assert "s/^LIVE_EVALS = //p" in text
+    assert named == []
