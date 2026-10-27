@@ -1,5 +1,5 @@
 {
- "description": "The whole deep forecaster, live; the only forecaster eval (brainstorm 2026Oct19 Q5-Q8). Five questions users asked, from the Phoenix traces, typed as they typed them and covering different forecasters and regions. Each runs once under the production wall cap: Brave, page reading, Gemini's video reading and the seven council seats are all live, so no two runs read the same pages and no reference answer exists. A forecast that fails is a report row; finished_or_outside fails the run only on a failure of our own rules. The other judges check links, the analysis against the pages it cites, checkable claims, prose against the tally, and verdicts against the passages the council read.",
+ "description": "The whole deep forecaster, live; the only forecaster eval (brainstorm 2026Oct19 Q5-Q8). Six questions users asked, from the Phoenix traces, typed as they typed them and covering different forecasters and regions. Each runs once under the production wall cap: Brave, page reading, Gemini's video reading and the seven council seats are all live, so no two runs read the same pages and no reference answer exists. A forecast that fails is a report row; finished_or_outside fails the run only on a failure of our own rules. The other judges check links, the analysis against the pages it cites, checkable claims, prose against the tally, and verdicts against the passages the council read.",
  "cases": [
   {
    "name": "e2e-russia-poland",
@@ -35,6 +35,13 @@
     "query": "forecast if germany will attack poland"
    },
    "description": "An unlikely event: the council must be able to reject a claim."
+  },
+  {
+   "name": "e2e-ukraine-truce",
+   "input": {
+    "query": "Forecast when will be truce between ukraine and russia"
+   },
+   "description": "A when-question: on 2026-10-22 the drafter wrote a deadline in the past (trace 9ae098) and the whole forecast failed; the drafter now gets one redraft."
   }
  ]
 }

@@ -13,9 +13,21 @@ from agents.deep_forecaster.consts.forecasters import FORECASTER_SOURCES
 from agents.deep_forecaster.models import Claim, EvidenceRef
 from frames import ProgressFrame
 from models import LLMInvocationError, Source
-from unit_tests.agents.deep_forecaster.conftest import TODAY, claims, sources
+from unit_tests.agents.deep_forecaster.conftest import (
+    TODAY,
+    ScriptedDrafter,
+    claims,
+    sources,
+)
 
 draft_module: Any = importlib.import_module("agents.deep_forecaster.nodes.draft_claims")
+
+PAST_DEADLINE = date(2026, 9, 1)
+MARKER = "INJECTED-7f3a"
+DEADLINE_DEFECT_1 = (
+    "The forecast drafted claim 2 with the deadline 2026-09-01, "
+    "which is not after today (2026-09-30)."
+)
 
 
 def _runtime(events: list[object], today: Any = None) -> Any:
@@ -86,7 +98,7 @@ class TestCheckedClaims:
                 evidence=[EvidenceRef(source=1, paragraph=2)],
             ),
         ]
-        with pytest.raises(LLMInvocationError):
+        with pytest.raises(LLMInvocationError, match="not after today"):
             draft_module.checked_claims(claims_list, today=TODAY, sources=sources())
 
     def test_an_empty_statement_is_refused(self) -> None:
@@ -349,3 +361,236 @@ async def test_evidence_positions_span_marks_cut_sources(
     assert list(positions) == [1 / 3, 2 / 3, 3 / 3]
     # Refs 1 and 3 both read source 1; ref 2 reads source 2, which stays short.
     assert list(cut_flags) == [expected_first_cut, False, expected_first_cut]
+
+
+def _claim(
+    statement: str,
+    *,
+    deadline: date = date(2027, 6, 1),
+    evidence: list[EvidenceRef] | None = None,
+) -> Claim:
+    refs = [EvidenceRef(source=1, paragraph=1)] if evidence is None else evidence
+    return Claim(statement=statement, deadline=deadline, evidence=refs)
+
+
+def _past_deadline_claims() -> list[Claim]:
+    """Two claims; the second, which quotes the marker, is due in the past."""
+    return [
+        _claim("Alpha happens by 2027."),
+        _claim(f"Beta {MARKER} happens.", deadline=PAST_DEADLINE),
+    ]
+
+
+def _run_node(monkeypatch: pytest.MonkeyPatch, drafter: ScriptedDrafter) -> Any:
+    monkeypatch.setattr(draft_module, "ainvoke_structured", drafter)
+    state = {"question": "q", "sources": sources()}
+    return draft_module.draft_claims(state, _runtime([]))
+
+
+@pytest.mark.anyio
+async def test_a_past_deadline_is_redrafted_once_with_the_defect_named(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The 2026-10-22 trace lost a whole forecast to one past deadline the drafter could fix."""
+    # Arrange
+    drafter = ScriptedDrafter(_past_deadline_claims(), claims())
+    # Act
+    await _run_node(monkeypatch, drafter)
+    # Assert
+    assert drafter.calls == 2
+    assert "An automatic check rejected your previous claims:" in drafter.briefs[1]
+    assert "claim 2 with the deadline 2026-09-01" in drafter.briefs[1]
+
+
+@pytest.mark.anyio
+async def test_the_redrafted_claims_are_returned(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The node answers with the second draft, not the rejected first."""
+    # Arrange
+    drafter = ScriptedDrafter(_past_deadline_claims(), claims())
+    # Act
+    out = await _run_node(monkeypatch, drafter)
+    # Assert
+    assert [claim.statement for claim in out["claims"]] == [
+        "Alpha happens by 2027.",
+        "Beta happens by 2028.",
+    ]
+
+
+@pytest.mark.anyio
+async def test_a_second_defective_draft_raises_and_makes_no_third_call(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A drafter that repeats its mistake is a hard error, not a loop."""
+    # Arrange
+    drafter = ScriptedDrafter(_past_deadline_claims(), _past_deadline_claims())
+    # Act + Assert
+    with pytest.raises(LLMInvocationError, match="claim 2 with the deadline"):
+        await _run_node(monkeypatch, drafter)
+    assert drafter.calls == 2
+
+
+@pytest.mark.anyio
+async def test_a_first_draft_that_passes_makes_one_call(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A good first draft costs nothing extra and carries no retry text."""
+    # Arrange
+    drafter = ScriptedDrafter(claims())
+    # Act
+    out = await _run_node(monkeypatch, drafter)
+    # Assert
+    assert drafter.calls == 1
+    assert "automatic check" not in drafter.briefs[0]
+    assert len(out["claims"]) == 2
+
+
+def _five_claims() -> list[Claim]:
+    return [_claim(f"Claim number {n} is distinct.") for n in range(1, 6)]
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    "bad_draft",
+    [
+        [_claim("Only one claim.")],
+        _five_claims(),
+        [_claim("Alpha happens."), _claim("  ALPHA   happens. ")],
+        [_claim("  "), _claim("Beta happens.")],
+        [_claim("See [x](https://reuters.com/y)."), _claim("Beta happens.")],
+        [_claim("Alpha happens.", evidence=[]), _claim("Beta happens.")],
+        [_claim("Alpha happens.", deadline=TODAY), _claim("Beta happens.")],
+    ],
+    ids=[
+        "too few",
+        "too many",
+        "duplicate",
+        "empty",
+        "link",
+        "no passage",
+        "past deadline",
+    ],
+)
+async def test_every_claim_defect_is_redrafted(
+    monkeypatch: pytest.MonkeyPatch, bad_draft: list[Claim]
+) -> None:
+    """Every rule `checked_claims` enforces is one a second draft can fix."""
+    # Arrange
+    drafter = ScriptedDrafter(bad_draft, claims())
+    # Act
+    out = await _run_node(monkeypatch, drafter)
+    # Assert
+    assert drafter.calls == 2
+    assert len(out["claims"]) == 2
+
+
+@pytest.mark.anyio
+async def test_a_failed_model_call_is_not_redrafted(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A provider failure says nothing about the claims; asking again is the model layer's job."""
+    # Arrange
+    drafter = ScriptedDrafter(LLMInvocationError("provider down"), claims())
+    # Act + Assert
+    with pytest.raises(LLMInvocationError, match="provider down"):
+        await _run_node(monkeypatch, drafter)
+    assert drafter.calls == 1
+
+
+def test_the_deadline_defect_names_the_claim_and_both_dates() -> None:
+    """The defect is built from numbers and dates code validated, so it can go to the model."""
+    # Arrange
+    drafted = _past_deadline_claims()
+    # Act + Assert
+    with pytest.raises(LLMInvocationError) as raised:
+        draft_module.checked_claims(drafted, today=TODAY, sources=sources())
+    assert str(raised.value) == (
+        "The forecast drafted claim 2 with the deadline 2026-09-01, "
+        "which is not after today (2026-09-30)."
+    )
+
+
+@pytest.mark.anyio
+async def test_the_redraft_brief_quotes_no_model_text(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The rejected statements are model output; echoing them back would hand a prompt-injected claim a second turn."""
+    # Arrange
+    drafter = ScriptedDrafter(_past_deadline_claims(), claims())
+    # Act
+    await _run_node(monkeypatch, drafter)
+    # Assert
+    assert MARKER in str(_past_deadline_claims()[1].statement)
+    assert MARKER not in drafter.briefs[1]
+
+
+def _span_attributes(captured_spans: InMemorySpanExporter) -> dict[str, Any]:
+    spans = [
+        span
+        for span in captured_spans.get_finished_spans()
+        if span.name == "claim_draft"
+    ]
+    assert len(spans) == 1
+    attributes = dict(spans[0].attributes or {})
+    return {k: v for k, v in attributes.items() if k.startswith("claims.")}
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    ("script", "expected"),
+    [
+        (
+            [_past_deadline_claims(), claims()],
+            {
+                "claims.attempts": 2,
+                "claims.first_defect": DEADLINE_DEFECT_1,
+                "claims.last_defect": DEADLINE_DEFECT_1,
+                "claims.redraft_fixed": True,
+                "claims.kept": 2,
+            },
+        ),
+        (
+            [claims()],
+            {
+                "claims.attempts": 1,
+                "claims.first_defect": "",
+                "claims.last_defect": "",
+                "claims.redraft_fixed": False,
+                "claims.kept": 2,
+            },
+        ),
+        (
+            [
+                _past_deadline_claims(),
+                [_claim("Only one claim.")],
+            ],
+            {
+                "claims.attempts": 2,
+                "claims.first_defect": DEADLINE_DEFECT_1,
+                "claims.last_defect": (
+                    "The forecast drafted 1 claims; it needs 2 to 4."
+                ),
+                "claims.redraft_fixed": False,
+                "claims.kept": 0,
+            },
+        ),
+    ],
+    ids=["redrafted", "first pass", "both defective"],
+)
+async def test_the_claim_draft_span_records_the_redraft(
+    monkeypatch: pytest.MonkeyPatch,
+    captured_spans: InMemorySpanExporter,
+    script: list[list[Claim]],
+    expected: dict[str, Any],
+) -> None:
+    """A Phoenix trace alone must say whether the drafter needed its redraft and what it got wrong."""
+    # Arrange
+    drafter = ScriptedDrafter(*script)
+    # Act
+    try:
+        await _run_node(monkeypatch, drafter)
+    except LLMInvocationError:
+        pass
+    # Assert
+    assert _span_attributes(captured_spans) == expected

@@ -27,3 +27,12 @@ def test_the_write_call_times_out_with_its_step() -> None:
 
     assert WRITE_LLM_SETTINGS.timeout_seconds == LIMITS.write_seconds
     assert WRITE_LLM_SETTINGS.model == "gpt-5-mini"
+
+
+def test_the_drafter_gets_one_redraft() -> None:
+    """Two tries in all: the first draft and one redraft with the defect named."""
+    # Act
+    attempts = LIMITS.draft_attempts
+
+    # Assert
+    assert attempts == 2

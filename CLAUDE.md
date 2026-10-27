@@ -129,7 +129,8 @@ deep_forecaster  START -> research -> draft_claims -> council_round_1 -> council
   drop was a provider outage; a refused 4xx request is ours); code
   counts every verdict; the writer sees no URL and cites sources by number (`[anchor](source:N)`),
   and `verify` puts in the URLs. `verify` sends an analysis with a defect back to the writer once,
-  with the defect named; a second defect, or an answer over the delivery cap, is a hard error. The wall
+  with the defect named; a second defect, or an answer over the delivery cap, is a hard error. `draft_claims` re-drafts once
+  the same way, inside the node, when a claim breaks a rule. The wall
   cap runs the forecast in its own task (`capped_run.run_under_time_limits`) and cancels it
   repeatedly, because smoke gate F3 saw a hung run outlive an in-frame `asyncio.timeout`.
   `nodes.research` registers a deepagents harness profile that switches the default
