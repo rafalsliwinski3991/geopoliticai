@@ -290,34 +290,6 @@ def test_load_examples_rejects_malformed_files(
         run_mod.load_examples(path)
 
 
-def test_dataset_name_hashes_file_content(tmp_path: Path) -> None:
-    # Arrange
-    path = tmp_path / "x.json"
-    path.write_text("one", encoding="utf-8")
-    first = run_mod.dataset_name("test-eval", path)
-
-    # Act
-    path.write_text("one!", encoding="utf-8")
-    second = run_mod.dataset_name("test-eval", path)
-
-    # Assert
-    assert first.startswith("geopoliticai-test-eval-")
-    assert first != second
-
-
-def test_dataset_name_is_stable_for_unchanged_content(tmp_path: Path) -> None:
-    # Arrange
-    path = tmp_path / "x.json"
-    path.write_text("same", encoding="utf-8")
-
-    # Act
-    first = run_mod.dataset_name("test-eval", path)
-    second = run_mod.dataset_name("test-eval", path)
-
-    # Assert
-    assert first == second
-
-
 def test_experiment_name_matches_commit_and_time() -> None:
     # Act
     name = run_mod.experiment_name("test-eval")
@@ -485,7 +457,7 @@ async def test_run_passes_a_fixed_eval_without_a_brave_key(
     await run_mod.run(eval_name="orchestrator_fixed", task=_task, judges=[judge])
 
     # Assert
-    assert received["dataset_name"].startswith("geopoliticai-orchestrator_fixed-")
+    assert received["dataset_name"] == "geopoliticai-orchestrator_fixed"
     assert received["judges"] == [judge]
 
 
