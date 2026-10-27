@@ -17,6 +17,8 @@ from models import Candidate, OutlinePause, Source, SourcePolicy
 SEARCH_NODE_MODULE = "agents.expert.nodes.search_and_fetch"
 # The deep expert's tools import the same two names; patched the same way.
 DEEP_TOOLS_MODULE = "agents.deep_expert.tools"
+# `research()` builds its `ResearchRun` by name here; patched where it looks it up.
+DEEP_EXPERT_RESEARCH_MODULE = "agents.deep_expert.research"
 # The two roles a dataset conversation may hold, and the message each becomes.
 MESSAGE_TYPES: dict[str, type[HumanMessage] | type[AIMessage]] = {
     "user": HumanMessage,
@@ -114,6 +116,24 @@ def record_sources(pages: list[Source]) -> Iterator[None]:
         return fetched
 
     with patch(f"{DEEP_TOOLS_MODULE}.fetch_sources", fetch_and_keep):
+        yield
+
+
+@contextmanager
+def record_verdicts(verdicts: list[str]) -> Iterator[None]:
+    """Keep the grader's verdicts of the deep run inside the block, in order.
+
+    `research()` builds its `ResearchRun` itself and returns only the answer;
+    the run is built with the caller's list as its `verdicts`.
+    """
+    from agents.deep_expert.state import ResearchRun
+
+    def build_run(*args: Any, **kwargs: Any) -> ResearchRun:
+        run = ResearchRun(*args, **kwargs)
+        run.verdicts = verdicts
+        return run
+
+    with patch(f"{DEEP_EXPERT_RESEARCH_MODULE}.ResearchRun", build_run):
         yield
 
 

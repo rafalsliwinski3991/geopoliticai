@@ -51,6 +51,8 @@ async def research(query: str, writer: StreamWriter) -> str:
                     "research.sources_read": len(run.sources),
                     "research.search_budget_hit": run.searches >= LIMITS.max_searches,
                     "research.time_limit_hit": time_limit_hit,
+                    "research.grader_verdicts": run.verdicts,
+                    "research.grader_rounds": len(run.verdicts),
                 }
             )
     return _checked_deep_answer(result, run)

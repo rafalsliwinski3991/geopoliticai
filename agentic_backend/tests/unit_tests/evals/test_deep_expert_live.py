@@ -36,6 +36,16 @@ async def deep_research(query: str, writer: Any) -> str:
     return "The deep answer."
 
 
+async def graded_deep_research(query: str, writer: Any) -> str:
+    """Stand in for the deep run: read page A, then let the grader revise once and be satisfied."""
+    research_module: Any = importlib.import_module("agents.deep_expert.research")
+    candidate = Candidate(title=PAGE_A.title, url=PAGE_A.url, domain="news.example")
+    await tools_module.fetch_sources([candidate], EXPERT_SOURCES)
+    run = research_module.ResearchRun(writer=writer)
+    run.verdicts.extend(["needs_revision", "satisfied"])
+    return "The deep answer."
+
+
 class RecordingExpertGraph:
     """A stand-in for the expert's graph: searches and fetches as the real node does, and records the URLs."""
 
@@ -94,3 +104,21 @@ async def test_a_failed_baseline_names_its_step_and_keeps_the_cause() -> None:
     ):
         await run_deep_expert_live({"query": "q"})
     assert isinstance(raised.value.__cause__, ValueError)
+
+
+@pytest.mark.anyio
+async def test_the_live_eval_returns_the_grader_verdicts() -> None:
+    """The grader_satisfied judge reads the verdicts from the row; without them it cannot tell a cap from a pass."""
+    # Arrange
+    expert_graph = RecordingExpertGraph()
+
+    # Act
+    with (
+        patch("search.fetch_sources", live_fetch),
+        patch("agents.deep_expert.research", graded_deep_research),
+        patch("agents.expert.graph", expert_graph),
+    ):
+        output = await run_deep_expert_live({"query": "q"})
+
+    # Assert
+    assert output["grader_verdicts"] == ["needs_revision", "satisfied"]
