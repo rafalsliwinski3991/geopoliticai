@@ -3,18 +3,23 @@
  "cases": [
   {
    "name": "expert-live-hague-summit-spending",
-   "description": "NATO's June 2025 Hague summit: the 5% target and its split are settled and covered by apnews.com, bbc.com, and dw.com.",
+   "description": "NATO's June 2025 Hague summit: the 5% target and its split are settled and covered by bbc.com, dw.com, and npr.org.",
    "input": {"query": "What did NATO leaders agree on defence spending at the June 2025 summit in The Hague?"}
   },
   {
    "name": "expert-live-g7-frozen-russian-assets",
-   "description": "The June 2024 G7 deal on a loan backed by profits from frozen Russian assets; covered by apnews.com, bbc.com, and dw.com.",
+   "description": "The June 2024 G7 deal on a loan backed by profits from frozen Russian assets; covered by bbc.com, dw.com, and npr.org.",
    "input": {"query": "What did G7 leaders agree in June 2024 about using frozen Russian assets to support Ukraine?"}
   },
   {
    "name": "expert-live-vilnius-summit-ukraine",
-   "description": "NATO's July 2023 Vilnius summit on Ukraine's path to membership: one named summit, no later event with the same name, covered by apnews.com, bbc.com, and aljazeera.com.",
+   "description": "NATO's July 2023 Vilnius summit on Ukraine's path to membership: one named summit, no later event with the same name, covered by bbc.com, aljazeera.com, and dw.com.",
    "input": {"query": "What did NATO leaders agree about Ukraine's path to membership at the July 2023 Vilnius summit?"}
+  },
+  {
+   "name": "expert-live-sipri-russia-poland-spending",
+   "description": "A settled 2024 figure that only a think tank on the list publishes first-hand: SIPRI's military expenditure data.",
+   "input": {"query": "How much did Russia and Poland each spend on their militaries in 2024, according to SIPRI?"}
   }
  ]
 }

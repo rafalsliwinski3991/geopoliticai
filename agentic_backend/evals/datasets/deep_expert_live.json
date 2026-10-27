@@ -10,6 +10,11 @@
    "name": "deep-live-g7-frozen-russian-assets",
    "description": "A deal with legal, financial, and political angles for the deep answer to cover.",
    "input": {"query": "Give me an in-depth analysis of the June 2024 G7 agreement on using frozen Russian assets for Ukraine."}
+  },
+  {
+   "name": "deep-live-sipri-russia-poland-spending",
+   "description": "A settled 2024 figure published first-hand by a think tank on the list, with enough context for depth.",
+   "input": {"query": "Give me an in-depth analysis of how Russia's and Poland's 2024 military spending compare, according to SIPRI's April 2025 figures."}
   }
  ]
 }
