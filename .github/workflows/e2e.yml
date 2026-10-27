@@ -56,8 +56,13 @@ jobs:
             echo "E2E_PASSWORD=$e2e_password"
           } > .env
 
-      - name: Build the stack
-        run: docker compose build
+      # Playwright's install does not need the stack, so it runs while the images build.
+      - name: Build the stack and install Playwright
+        run: |
+          (cd e2e && npm ci && npx playwright install --with-deps chromium) &
+          playwright=$!
+          docker compose build
+          wait "$playwright"
 
       # deploy/vps.py's order: agentic-backend refuses to start until Django
       # and then Alembic have migrated.
@@ -76,12 +81,6 @@ jobs:
 
       - name: Create the test user
         run: docker compose exec -T web-backend .venv/bin/python manage.py create_e2e_user
-
-      - name: Install Playwright
-        working-directory: e2e
-        run: |
-          npm ci
-          npx playwright install --with-deps chromium
 
       - name: Run the suite
         working-directory: e2e
