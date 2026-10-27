@@ -17,7 +17,6 @@ async def test_lifespan_requires_database_url(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     # Arrange
-    # Arrange
     monkeypatch.setattr(app_module, "init_environment", lambda: None)
     monkeypatch.setattr(app_module, "init_tracing", lambda: None)
     monkeypatch.setattr(app_module, "require_env", lambda: None)
@@ -89,11 +88,10 @@ async def test_require_migrated_checkpointer_schema_refuses_a_public_target() ->
     # Arrange: no `agentic` schema yet, or search_path never reached the
     # connection — setup() would build its tables in `public`.
     pool: Any = _FakeGuardPool({"stray": None, "target": "public"})
-    # Act
+
+    # Act + Assert
     with pytest.raises(RuntimeError, match="make migrate-agentic") as refusal:
-        # Arrange
         await app_module._require_migrated_checkpointer_schema(pool)
-    # Assert
     assert refusal.type is RuntimeError
 
 
@@ -101,11 +99,10 @@ async def test_require_migrated_checkpointer_schema_refuses_a_public_target() ->
 async def test_require_migrated_checkpointer_schema_refuses_a_stray_table() -> None:
     # Arrange: the pre-migration state — public.checkpoints still exists.
     pool: Any = _FakeGuardPool({"stray": {"oid": 16384}})
-    # Act
+
+    # Act + Assert
     with pytest.raises(RuntimeError, match="make migrate-agentic") as refusal:
-        # Arrange
         await app_module._require_migrated_checkpointer_schema(pool)
-    # Assert
     assert refusal.type is RuntimeError
 
 
@@ -131,10 +128,9 @@ async def test_assert_agentic_schema_refuses_a_missing_table(
 ) -> None:
     # Arrange: the pool's options did not reach the connection.
     pool: Any = _FakeGuardPool(row)
-    # Act
+
+    # Act + Assert: the raise is the assertion
     with pytest.raises(RuntimeError, match="search_path") as refusal:
-        # Act
-        # Assert: the raise is the assertion
         await app_module._assert_agentic_schema(pool)
     assert refusal.type is RuntimeError
 
@@ -235,7 +231,6 @@ class _Stranger:
 def test_checkpoint_serde_allows_source_and_blocks_other_types(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    # Arrange
     # Arrange
     source = Source(title="T", url="https://example.org/a", text="body")
     stranger = _Stranger(value="x")

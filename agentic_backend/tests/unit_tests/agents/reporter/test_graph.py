@@ -282,7 +282,16 @@ async def test_report_returns_what_the_graph_returns(
     result = await report(TRANSCRIPT)
 
     # Assert
-    assert fake_graph.inputs == [build_initial_reporter_state(TRANSCRIPT)]
+    assert fake_graph.inputs == [
+        {
+            "transcript": TRANSCRIPT,
+            "outline": [],
+            "notice": "",
+            "instruction": "",
+            "revisions": 0,
+            "report": "",
+        }
+    ]
     assert result == final_state
 
 

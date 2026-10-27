@@ -176,7 +176,7 @@ class ForecastLimits:
     near 10k tokens (4 claims x 6 passages x 1,200 characters). Up to 7
     members x 4 claims of reasons, each with its source links, are printed in
     the answer, which the delivery layer clips at 50,000 characters
-    (`api.MAX_ANSWER_CHARS`): with `max_reason_chars` and `max_evidences`,
+    (`shared.config.MAX_ANSWER_CHARS`): with `max_reason_chars` and `max_evidences`,
     28 x (600 + 5 links of ~100) is ~31,000.
     """
 

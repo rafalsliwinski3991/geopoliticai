@@ -164,11 +164,3 @@ def _pending_pause_stub(graph: Any, thread_id: str) -> OutlinePause:
 
 async def _pending_pause_async(graph: Any, thread_id: str) -> OutlinePause:
     return _pending_pause_stub(graph, thread_id)
-
-
-def _owning_thread(monkeypatch: pytest.MonkeyPatch) -> None:
-    async def own(*args: Any, **kwargs: Any) -> bool:
-        return True
-
-    monkeypatch.setattr(routes, "owns_thread", own)
-    monkeypatch.setattr(stream, "owns_thread", own)

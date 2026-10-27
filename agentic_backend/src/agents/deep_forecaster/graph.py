@@ -8,7 +8,7 @@ because the edges say so, not because a prompt asks.
 No node may be named `answer`, `chat` or `write`: `api.stream.ANSWER_NODES` streams
 model text from nodes with those names, and this graph runs inside the
 orchestrator's `deep_forecaster` node, whose answer reaches the browser once,
-as a `notice` (guarded in `tests/unit_tests/test_api.py`).
+as a `notice` (guarded in `tests/unit_tests/api/test_stream.py`).
 
 Built per call by `forecast()`, as the deep expert builds its agent. Nothing
 here needs a key; one construction path keeps tests and runtime alike. There
