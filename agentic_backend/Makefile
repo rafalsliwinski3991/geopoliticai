@@ -63,9 +63,9 @@ spell_fix:
 # EVALS
 ######################
 
-# Mirrors .github/workflows/evals.yml: sync dependencies, then run each eval of
-# the chosen kind in order, keep going after a failure, and exit non-zero when
-# any failed. Keys and the Phoenix collector endpoint come from the root .env
+# The lists .github/workflows/evals.yml reads, which runs them as parallel jobs.
+# Here: sync dependencies, then run each eval of the chosen kind in order, keep
+# going after a failure, and exit non-zero when any failed. Keys and the Phoenix collector endpoint come from the root .env
 # (loaded by `config.init_environment`); point a run at local Phoenix with
 # `docker compose up -d phoenix`.
 FIXED_EVALS = orchestrator_fixed reporter_fixed expert_fixed deep_expert_fixed
