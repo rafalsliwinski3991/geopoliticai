@@ -11,8 +11,7 @@ from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanE
 
 import search
 from agents.expert.consts.sources import EXPERT_SOURCES
-from models import Candidate, Source, SourcePolicy
-from shared.errors import SearchUnavailableError
+from models import Candidate, SearchUnavailableError, Source, SourcePolicy
 
 _HTML = (
     "<html><body><article><p>"
