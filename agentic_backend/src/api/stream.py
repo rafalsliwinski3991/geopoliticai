@@ -89,7 +89,7 @@ ANSWER_NODES = frozenset({"answer", "supervisor", "write"})
 # again: one report is one count, taken when it was requested, and the
 # reporter's own revision cap bounds the rounds.
 # `deep` spends DEEP_RESEARCH_TURN_COST units instead of one (brainstorm Q3),
-# and `quota.charge_turn` looks up what each destination costs.
+# and `charge_turn` looks up what each destination costs.
 RESEARCH_DESTINATIONS = frozenset({"geopolitical", "deep", "forecast", "report"})
 
 

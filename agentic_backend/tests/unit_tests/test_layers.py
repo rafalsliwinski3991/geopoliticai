@@ -96,6 +96,7 @@ def test_a_top_level_package_outside_the_layer_table_is_reported(
         "import agents.graph",
         "from agents.graph import build",
     ],
+    ids=["from import", "import module", "from submodule import"],
 )
 def test_each_form_of_an_upward_import_is_reported(
     tmp_path: Path, import_line: str

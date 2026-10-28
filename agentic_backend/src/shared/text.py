@@ -13,5 +13,5 @@ def squash_whitespace(text: str) -> str:
 
 
 # A schema field of this type arrives with its whitespace squashed. Defined after
-# the function it applies, the way `config.DEFAULT_LLM_SETTINGS` follows its class.
+# the function it applies, the way `shared.config.DEFAULT_LLM_SETTINGS` follows its class.
 CleanText = Annotated[str, AfterValidator(squash_whitespace)]
