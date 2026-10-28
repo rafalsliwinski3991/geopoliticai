@@ -36,7 +36,7 @@ class KindSummary:
         return self.errors / self.count
 
 
-def percentile(values: Sequence[float], q: float) -> float:
+def compute_percentile(values: Sequence[float], q: float) -> float:
     """Return the nearest-rank `q`th percentile (0 < q <= 100) of non-empty values."""
     if not values:
         raise ValueError("percentile of no values")
@@ -60,11 +60,13 @@ def summarize(samples: Sequence[Sample]) -> list[KindSummary]:
                 kind=kind,
                 count=len(group),
                 errors=sum(failures.values()),
-                p50=percentile(latencies, 50),
-                p95=percentile(latencies, 95),
-                p99=percentile(latencies, 99),
+                p50=compute_percentile(latencies, 50),
+                p95=compute_percentile(latencies, 95),
+                p99=compute_percentile(latencies, 99),
                 max=max(latencies),
-                first_token_p95=percentile(first_tokens, 95) if first_tokens else None,
+                first_token_p95=compute_percentile(first_tokens, 95)
+                if first_tokens
+                else None,
                 top_errors=tuple(failures.most_common(TOP_ERRORS)),
             )
         )

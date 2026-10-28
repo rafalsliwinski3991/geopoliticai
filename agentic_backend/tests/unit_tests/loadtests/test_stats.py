@@ -1,7 +1,7 @@
 import pytest
 
 from loadtests.scenarios import Sample
-from loadtests.stats import find_breaches, percentile, summarize
+from loadtests.stats import compute_percentile, find_breaches, summarize
 
 TEN_VALUES = [float(value) for value in range(1, 11)]
 
@@ -30,7 +30,7 @@ def test_percentile_takes_the_nearest_rank(
     never an interpolation between two of them."""
     # Arrange
     # Act
-    result = percentile(values, q)
+    result = compute_percentile(values, q)
 
     # Assert
     assert result == expected
@@ -42,7 +42,7 @@ def test_percentile_of_no_values_is_an_error() -> None:
     # Arrange
     # Act + Assert
     with pytest.raises(ValueError):
-        percentile([], 95)
+        compute_percentile([], 95)
 
 
 def test_a_failed_request_counts_as_an_error_and_keeps_its_latency() -> None:

@@ -19,7 +19,7 @@ import subprocess
 import sys
 import time
 from collections.abc import Iterator
-from contextlib import contextmanager
+from contextlib import AbstractContextManager, contextmanager, nullcontext
 from dataclasses import asdict
 
 import httpx
@@ -34,7 +34,7 @@ REQUEST_TIMEOUT_SECONDS = 120.0
 HEALTH_PATH = "/api/health"
 
 
-def free_port() -> int:
+def find_free_port() -> int:
     """Return a TCP port nothing on this host listens on right now."""
     with socket.socket() as probe:
         probe.bind((DEFAULT_HOST, 0))
@@ -60,7 +60,7 @@ def wait_until_healthy(base_url: str, server: subprocess.Popen[bytes]) -> None:
 @contextmanager
 def spawned_server(profile: str, signing_key: str) -> Iterator[str]:
     """Run `loadtests.server` in a child process; yield its base URL."""
-    port = free_port()
+    port = find_free_port()
     server = subprocess.Popen(
         [
             sys.executable,
@@ -84,7 +84,7 @@ def spawned_server(profile: str, signing_key: str) -> Iterator[str]:
         server.wait(timeout=10)
 
 
-async def load(
+async def run_load_over_http(
     base_url: str, *, users: int, rounds: int, ramp_up: float, signing_key: str
 ) -> LoadResult:
     """Run the virtual users against `base_url` over one shared connection pool."""
@@ -139,18 +139,26 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 def main(argv: list[str] | None = None) -> int:
     """Run one load test, print its report, and return the exit status."""
     args = parse_args(argv)
-    run = {"users": args.users, "rounds": args.rounds, "ramp_up": args.ramp_up}
     if args.base_url:
         signing_key = os.environ.get("JWT_SIGNING_KEY", "")
         if not signing_key:
             sys.exit(
                 "--base-url needs the server's JWT_SIGNING_KEY in the environment."
             )
-        result = asyncio.run(load(args.base_url, signing_key=signing_key, **run))
+        server: AbstractContextManager[str] = nullcontext(args.base_url)
     else:
         signing_key = secrets.token_urlsafe(48)
-        with spawned_server(args.profile, signing_key) as base_url:
-            result = asyncio.run(load(base_url, signing_key=signing_key, **run))
+        server = spawned_server(args.profile, signing_key)
+    with server as base_url:
+        result = asyncio.run(
+            run_load_over_http(
+                base_url,
+                users=args.users,
+                rounds=args.rounds,
+                ramp_up=args.ramp_up,
+                signing_key=signing_key,
+            )
+        )
     summaries = summarize(result.samples)
     print(format_report(result, summaries))
     if args.json_out:

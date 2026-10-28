@@ -120,7 +120,7 @@ async def stream_turn(
     return Sample(kind, ok=False, latency=latency, first_token=first_token, error=error)
 
 
-async def get_json(
+async def send_get(
     client: httpx.AsyncClient, kind: str, *, path: str, token: str
 ) -> Sample:
     """Send one GET; any status but 200 is a failure."""
@@ -166,7 +166,7 @@ async def run_user(
                 path = (
                     THREADS_PATH if kind == "threads" else f"{THREADS_PATH}/{thread_id}"
                 )
-                sample = await get_json(client, kind, path=path, token=token)
+                sample = await send_get(client, kind, path=path, token=token)
             samples.append(sample)
     return samples
 
@@ -178,7 +178,6 @@ async def run_load(
     rounds: int,
     ramp_up: float,
     signing_key: str,
-    first_user_id: int = 1,
 ) -> LoadResult:
     """Run every virtual user concurrently and collect their samples."""
     started = time.perf_counter()
@@ -186,7 +185,7 @@ async def run_load(
         *(
             run_user(
                 client,
-                user_id=first_user_id + index,
+                user_id=index + 1,
                 rounds=rounds,
                 start_after=ramp_up * index / users,
                 signing_key=signing_key,
