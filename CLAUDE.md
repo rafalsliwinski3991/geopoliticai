@@ -107,13 +107,15 @@ deep_forecaster  START -> research -> draft_claims -> council_round_1 -> council
   queries route to specialist tools: `deep` (`run_deep_expert`) only after an explicit request for depth, and
   same-topic follow-ups stay deep; `forecast` (`run_deep_forecaster`) only on an explicit forecast or prediction
   request, never sticky: a new question after a forecast is `geopolitical`, a question about the forecast `other`.
-  `SUPERVISOR_SYSTEM_PROMPT` states each of these rules.
+  `SUPERVISOR_SYSTEM_PROMPT` states each of these rules. A message in a language other than English or
+  Polish gets a direct English refusal and no tool, whatever the earlier turns were.
 - Next-steps footer: After specialist tool execution, supervisor Pass 2 generates a dynamic next-steps footer
   offering follow-up options with canonical turn costs from `shared/config.py`, falling back to `STATIC_NEXT_STEPS_MENU`
   on failure, emitted as a notice chunk.
 - Expert: exactly three Brave batches (one failing is skipped, all failing is an error), allow-listed
   pages through trafilatura (HTML) or pypdf (PDF, the first pages, dropped when over the
-  size cap), and one streamed model call.
+  size cap), and one streamed model call. It searches with the English `search_query` the orchestrator
+  passes (the user's question, translated when it was Polish); the answer stays in the user's language.
 - Deep expert: a `deepagents` agent built per turn, never at import. It searches through
   `services/web_search.py` with `EXPERT_SOURCES` and revises under deepagents' `RubricMiddleware`, whose grader
   sees only the question and the final draft (`graph.grader_view`). A spent search budget is a
