@@ -12,6 +12,8 @@ from __future__ import annotations
 import importlib
 from typing import Any
 
+import pytest
+
 prompts_module: Any = importlib.import_module("agents.deep_expert.prompts")
 
 
@@ -55,20 +57,34 @@ def test_the_deep_prompt_forbids_a_preamble_a_leak_and_a_closing_offer() -> None
         assert phrase in prompt
 
 
-def test_the_deep_prompt_searches_in_english_and_answers_in_the_questions_language() -> (
-    None
-):
+@pytest.mark.parametrize(
+    ("prompt", "fragment"),
+    [
+        (
+            prompts_module.DEEP_SYSTEM_PROMPT,
+            "Always write search_sources queries in English",
+        ),
+        (
+            prompts_module.DEEP_SYSTEM_PROMPT,
+            "language of the user's question (English or Polish)",
+        ),
+        (
+            prompts_module.DEEP_SUBAGENT_PROMPT,
+            "Always write search_sources queries in English",
+        ),
+    ],
+    ids=[
+        "lead-searches-in-english",
+        "lead-answers-in-question-language",
+        "scout-searches-in-english",
+    ],
+)
+def test_the_deep_prompts_search_in_english_and_answer_in_the_questions_language(
+    prompt: str, fragment: str
+) -> None:
     """Approved sources publish in English, but a Polish reader needs a Polish analysis."""
-    # Arrange
-    prompt = prompts_module.DEEP_SYSTEM_PROMPT
-    subagent_prompt = prompts_module.DEEP_SUBAGENT_PROMPT
-
     # Act
-    stated = (
-        "Always write search_sources queries in English" in prompt,
-        "language of the user's question (English or Polish)" in prompt,
-        "Always write search_sources queries in English" in subagent_prompt,
-    )
+    stated = fragment in prompt
 
     # Assert
-    assert stated == (True, True, True)
+    assert stated is True
