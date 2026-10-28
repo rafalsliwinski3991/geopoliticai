@@ -56,25 +56,43 @@ def test_the_rewrite_is_checked_only_when_expected() -> None:
     }
 
 
-def test_the_search_query_is_checked_only_when_expected() -> None:
+def test_the_search_query_is_not_checked_unless_expected() -> None:
     # Arrange: only cases that expect a research route carry a search query.
     output = {"search_query": "What is the target?"}
 
     # Act
-    unchecked = _search_query_view(CONVERSATION, output, {"destination": "other"})
-    checked = _search_query_view(
-        CONVERSATION,
-        output,
-        {"destination": "geopolitical", "search_query": "What is the 5% target?"},
-    )
+    view = _search_query_view(CONVERSATION, output, {"destination": "other"})
 
     # Assert
-    assert unchecked is None
-    assert checked == {
+    assert view is None
+
+
+def test_the_search_query_is_checked_when_expected() -> None:
+    # Arrange
+    output = {"search_query": "What is the target?"}
+    expected = {"destination": "geopolitical", "search_query": "What is the 5% target?"}
+
+    # Act
+    view = _search_query_view(CONVERSATION, output, expected)
+
+    # Assert
+    assert view == {
         "conversation": "user: hi\nassistant: hello there",
         "actual": "What is the target?",
         "expected": "What is the 5% target?",
     }
+
+
+def test_a_missing_search_query_is_checked_as_empty() -> None:
+    # Arrange: the model called the research tool without a search query.
+    expected = {"destination": "geopolitical", "search_query": "What is the target?"}
+
+    # Act
+    view = _search_query_view(CONVERSATION, {}, expected)
+
+    # Assert
+    assert view is not None
+    assert view["actual"] == ""
 
 
 def test_every_prompt_field_is_supplied() -> None:
