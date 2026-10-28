@@ -83,6 +83,10 @@ class ChatUser(User):
         self.session.headers["Authorization"] = f"Bearer {token}"
         self.thread_id = f"load-{user_id}-{uuid4().hex[:12]}"
 
+    def on_stop(self) -> None:
+        """Close the user's connections when Locust stops it."""
+        self.session.close()
+
     @task
     def run_round(self) -> None:
         """Send the four requests of one round, in order."""

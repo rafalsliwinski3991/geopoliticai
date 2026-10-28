@@ -16,7 +16,7 @@ import sys
 
 import uvicorn
 
-import api
+from api.app import app
 from loadtests.fakes import LatencyProfile, fake_backend
 
 DEFAULT_HOST = "127.0.0.1"
@@ -44,7 +44,7 @@ def main() -> None:
     logging.basicConfig(level=logging.WARNING)
     with fake_backend(PROFILES[args.profile]):
         uvicorn.run(
-            api.app,
+            app,
             host=args.host,
             port=args.port,
             lifespan="off",

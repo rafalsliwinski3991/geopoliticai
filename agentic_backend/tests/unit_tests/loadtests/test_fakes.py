@@ -6,8 +6,8 @@ import httpx
 import pytest
 from langchain_core.messages import HumanMessage
 
-import api
 from agents.expert.consts.sources import EXPERT_SOURCES
+from api.app import app
 from loadtests.fakes import (
     CHAT_ANSWER,
     FakeChatModel,
@@ -25,7 +25,7 @@ from loadtests.turns import (
     mint_token,
     parse_frame,
 )
-from search import _extract_page
+from services.page_reader import _extract_page
 
 POOL = None
 DAY = date(2026, 10, 27)
@@ -142,12 +142,12 @@ def test_leaving_the_fake_backend_restores_the_real_graph() -> None:
     """The fakes patch module globals; a test or a run that leaked them would
     send every later caller to the fake models."""
     # Arrange
-    real_graph = api.graph
+    real_graph = app.state.graph
     with fake_backend(LatencyProfile()):
         pass
 
     # Act
-    restored = api.graph
+    restored = app.state.graph
 
     # Assert
     assert restored is real_graph
@@ -192,7 +192,7 @@ async def _run_user(client: httpx.AsyncClient, user_id: int) -> list[str | None]
 
 def _asgi_client() -> httpx.AsyncClient:
     return httpx.AsyncClient(
-        transport=httpx.ASGITransport(app=api.app), base_url="http://test"
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
     )
 
 

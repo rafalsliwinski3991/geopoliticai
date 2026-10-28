@@ -67,6 +67,7 @@ def test_a_percentile_is_the_nearest_rank_of_the_histogram(
 ) -> None:
     """A nearest-rank percentile is a time some request really took, so a p95
     never reads faster than the slowest 5% of requests."""
+    # Arrange
     # Act
     seconds = compute_percentile(RESPONSE_TIMES, q)
 
@@ -125,3 +126,17 @@ def test_a_kind_without_answer_tokens_shows_a_dash(tmp_path: Path) -> None:
         "| 100 | threads | 20 | 0 | 0.500 | 1.250 | 3.000 | 3.000 | - |"
         in table.splitlines()
     )
+
+
+def test_a_run_with_no_requests_still_gets_its_row(tmp_path: Path) -> None:
+    """A run whose server never answered records no rows; the summary must
+    still show it, not crash the workflow step that prints the others."""
+    # Arrange
+    EMPTY_USERS = 150
+    runs = read_runs([_write_run(tmp_path, EMPTY_USERS, [])])
+
+    # Act
+    table = format_comparison(runs)
+
+    # Assert
+    assert f"| {EMPTY_USERS} | 0 | 0 | - | - |" in table

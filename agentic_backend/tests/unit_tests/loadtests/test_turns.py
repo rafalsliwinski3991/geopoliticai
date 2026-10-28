@@ -1,6 +1,6 @@
 import os
 
-import auth
+from api import auth
 from loadtests.turns import find_turn_error, mint_token, parse_frame
 
 USER_ID = 7
@@ -51,6 +51,19 @@ def test_a_line_that_is_not_data_has_no_frame() -> None:
 
     # Act
     frame = parse_frame(blank_line)
+
+    # Assert
+    assert frame is None
+
+
+def test_a_frame_cut_off_mid_line_has_no_frame() -> None:
+    """A stream that drops mid-frame leaves half a JSON object; raising there
+    would kill the virtual user instead of counting a failed turn."""
+    # Arrange
+    cut_line = 'data: {"type": "token", "cont'
+
+    # Act
+    frame = parse_frame(cut_line)
 
     # Assert
     assert frame is None

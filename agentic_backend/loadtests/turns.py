@@ -12,7 +12,7 @@ from uuid import uuid4
 
 import jwt
 
-from auth import JWT_ALGORITHM, USER_ID_CLAIM
+from api.auth import JWT_ALGORITHM, USER_ID_CLAIM
 
 # A query that names this word routes to the expert; any other is small talk.
 RESEARCH_KEYWORD = "research"
@@ -42,10 +42,17 @@ def mint_token(user_id: int, signing_key: str) -> str:
 
 
 def parse_frame(line: str) -> dict[str, object] | None:
-    """Return the JSON frame of an SSE `data:` line, or None for any other line."""
+    """Return the JSON frame of an SSE `data:` line, or None for any other line.
+
+    A frame cut off mid-line is not a frame: the turn then ends without a
+    result and is counted as failed, instead of raising inside the user.
+    """
     if not line.startswith(DATA_PREFIX):
         return None
-    frame: dict[str, object] = json.loads(line.removeprefix(DATA_PREFIX))
+    try:
+        frame: dict[str, object] = json.loads(line.removeprefix(DATA_PREFIX))
+    except json.JSONDecodeError:
+        return None
     return frame
 
 

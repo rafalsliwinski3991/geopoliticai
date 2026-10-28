@@ -27,6 +27,7 @@ from loadtests.server import DEFAULT_HOST, PROFILES
 
 STARTUP_TIMEOUT_SECONDS = 60.0
 STARTUP_POLL_SECONDS = 0.2
+SHUTDOWN_TIMEOUT_SECONDS = 10.0
 HEALTH_PATH = "/api/health"
 LOCUSTFILE = Path(__file__).with_name("locustfile.py")
 # 50 users started over 5 s, for a minute; a round in flight at the end may
@@ -68,7 +69,7 @@ def wait_until_healthy(base_url: str, server: subprocess.Popen[bytes]) -> None:
 
 
 @contextmanager
-def spawned_server(profile: str, signing_key: str) -> Iterator[str]:
+def spawn_server(profile: str, signing_key: str) -> Iterator[str]:
     """Run `loadtests.server` in a child process; yield its base URL."""
     port = find_free_port()
     server = subprocess.Popen(
@@ -91,7 +92,12 @@ def spawned_server(profile: str, signing_key: str) -> Iterator[str]:
         yield base_url
     finally:
         server.terminate()
-        server.wait(timeout=10)
+        try:
+            server.wait(timeout=SHUTDOWN_TIMEOUT_SECONDS)
+        except subprocess.TimeoutExpired:
+            # A server stuck in shutdown must not outlive the run.
+            server.kill()
+            server.wait()
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -100,7 +106,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--profile", choices=sorted(PROFILES), default="realistic")
     args, locust_args = parser.parse_known_args(argv)
     signing_key = secrets.token_urlsafe(48)
-    with spawned_server(args.profile, signing_key) as base_url:
+    with spawn_server(args.profile, signing_key) as base_url:
         return subprocess.run(
             [
                 sys.executable,

@@ -5,11 +5,12 @@ FastAPI, auth, the rate limit, `quota.charge_turn`, the orchestrator and expert
 graphs, LangGraph streaming and checkpointing, and the page reader's
 trafilatura extraction. Only these are replaced:
 
-- the OpenAI clients (`llm._build_client`, `llm._build_structured_client`),
-- one Brave request (`search._brave_batch`),
-- the page fetch transport (`search.build_fetch_client`),
-- the Django-owned tables (`db/web/sql.py`'s helpers, as `api` and `quota`
-  import them), and Postgres for the checkpointer (an `InMemorySaver`).
+- the OpenAI clients (`services.llm._build_client` and `_build_structured_client`),
+- one Brave request (`services.web_search._brave_batch`),
+- the page fetch transport (`services.page_reader.build_fetch_client`),
+- the Django-owned tables (`db/web/sql.py`'s helpers, as `api.routes`,
+  `api.stream` and `api.quota` import them), and Postgres for the checkpointer
+  (an `InMemorySaver` on `app.state.graph`).
 
 So a run costs nothing, needs no key or database, and gives the same answers
 every time; its timings measure this service, plus the delays set here.
@@ -39,15 +40,14 @@ from langchain_core.outputs import ChatGeneration, ChatGenerationChunk, ChatResu
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.store.memory import InMemoryStore
 
-import api
-import llm
-import quota
-import search
 from agents.orchestrator import build_graph
-from config import LLMSettings
+from api import quota, rate_limit, routes, stream
+from api.app import app
 from db.web.sql import ThreadRow, quota_day
 from loadtests.turns import RESEARCH_KEYWORD
 from models import Candidate, SourcePolicy
+from services import llm, page_reader, web_search
+from shared.config import LLMSettings
 
 CHAT_ANSWER = "Hello! Ask me about any geopolitical question and I will research it."
 # Every non-routing call (the expert's answer, the supervisor's footer) streams
@@ -271,7 +271,7 @@ class InMemoryWebDb:
 
 @contextmanager
 def fake_backend(profile: LatencyProfile) -> Iterator[InMemoryWebDb]:
-    """Point `api.app` at the fakes for the duration; yield the fake tables.
+    """Point `api.app.app` at the fakes for the duration; yield the fake tables.
 
     The rate-limit window, the refund cap and the turn locks start empty, so
     one run never inherits another's counters.
@@ -310,7 +310,7 @@ def fake_backend(profile: LatencyProfile) -> Iterator[InMemoryWebDb]:
 
     def build_fetch_client() -> httpx.AsyncClient:
         return httpx.AsyncClient(
-            headers=search.FETCH_HEADERS, transport=httpx.MockTransport(serve_page)
+            headers=page_reader.FETCH_HEADERS, transport=httpx.MockTransport(serve_page)
         )
 
     with ExitStack() as stack:
@@ -319,12 +319,18 @@ def fake_backend(profile: LatencyProfile) -> Iterator[InMemoryWebDb]:
         )
         stack.enter_context(patch.object(llm, "_build_client", build_model))
         stack.enter_context(patch.object(llm, "_build_structured_client", build_model))
-        stack.enter_context(patch.object(search, "_brave_batch", brave_batch))
+        stack.enter_context(patch.object(web_search, "_brave_batch", brave_batch))
         stack.enter_context(
-            patch.object(search, "build_fetch_client", build_fetch_client)
+            patch.object(page_reader, "build_fetch_client", build_fetch_client)
         )
-        for name in ("claim_thread", "owns_thread", "list_threads", "quota_used"):
-            stack.enter_context(patch.object(api, name, getattr(db, name)))
+        for module, name in (
+            (stream, "claim_thread"),
+            (stream, "owns_thread"),
+            (routes, "owns_thread"),
+            (routes, "list_threads"),
+            (routes, "quota_used"),
+        ):
+            stack.enter_context(patch.object(module, name, getattr(db, name)))
         for name in (
             "quota_used",
             "increment_quota",
@@ -334,13 +340,13 @@ def fake_backend(profile: LatencyProfile) -> Iterator[InMemoryWebDb]:
             stack.enter_context(patch.object(quota, name, getattr(db, name)))
         stack.enter_context(
             patch.object(
-                api,
+                app.state,
                 "graph",
                 build_graph(checkpointer=InMemorySaver(), store=InMemoryStore()),
             )
         )
-        stack.enter_context(patch.object(api.app.state, "pool", None, create=True))
-        stack.enter_context(patch.dict(api._rate_limit_store, clear=True))
+        stack.enter_context(patch.object(app.state, "pool", None, create=True))
+        stack.enter_context(patch.dict(rate_limit._rate_limit_store, clear=True))
         stack.enter_context(patch.dict(quota._refunded_units, clear=True))
         stack.enter_context(patch.dict(quota._turn_locks, clear=True))
         yield db

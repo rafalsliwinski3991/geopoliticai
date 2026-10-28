@@ -63,13 +63,17 @@ def format_comparison(runs: list[Run]) -> str:
     lines = ["### Load test", "", RUN_HEADER]
     for users, rows in runs:
         requests = [row for row in rows if row["method"] != FIRST_TOKEN]
+        if not requests:
+            # A run whose server never answered still gets its row.
+            lines.append(f"| {users} | 0 | 0 | - | - |")
+            continue
         total = sum(row["num_requests"] for row in requests)
         duration = max(row["last_request_timestamp"] for row in requests) - min(
             row["start_time"] for row in requests
         )
         lines.append(
             f"| {users} | {total} | {sum(row['num_failures'] for row in requests)} "
-            f"| {duration:.1f} | {total / duration:.1f} |"
+            f"| {duration:.1f} | {total / duration if duration else 0:.1f} |"
         )
     lines += ["", KIND_HEADER]
     for users, rows in runs:
@@ -89,7 +93,7 @@ def format_comparison(runs: list[Run]) -> str:
                 f"| {compute_percentile(times, 95):.3f} "
                 f"| {compute_percentile(times, 99):.3f} "
                 f"| {row['max_response_time'] / 1000:.3f} "
-                f"| {'-' if ttft is None else f'{compute_percentile(ttft, 95):.3f}'} |"
+                f"| {'-' if not ttft else f'{compute_percentile(ttft, 95):.3f}'} |"
             )
     return "\n".join(lines)
 
