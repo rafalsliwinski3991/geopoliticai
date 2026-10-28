@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 async def search_and_fetch(state: PipelineState) -> dict[str, Any]:
     """Search the allow-list, fetch top pages, and extract article text."""
-    search_query = state.get("search_query") or state["query"]
+    search_query = state["search_query"]
     candidates = (await search_allowlisted(search_query, EXPERT_SOURCES))[
         : RETRIEVAL.fetch_candidates
     ]
