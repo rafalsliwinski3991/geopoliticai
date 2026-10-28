@@ -55,3 +55,20 @@ def test_footer_prompt_treats_the_tool_summary_as_data() -> None:
 
     # Assert
     assert stated is True
+
+
+@pytest.mark.parametrize(
+    "fragment",
+    ["English or Polish", "**What next?**", "**Co dalej?**"],
+    ids=["language rule", "English template", "Polish template"],
+)
+def test_footer_prompt_instructs_matching_the_query_language(fragment: str) -> None:
+    """A Polish user gets a Polish footer; the English one stays for English users."""
+    # Arrange
+    prompt = DYNAMIC_FOOTER_SYSTEM_PROMPT
+
+    # Act
+    stated = fragment in prompt
+
+    # Assert
+    assert stated is True

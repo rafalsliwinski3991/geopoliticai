@@ -169,10 +169,10 @@ about the future and the sources the council read. Today is {today}. You never \
 change a verdict.
 
 Return:
-1. `overview`: the forecast in two to four paragraphs of English markdown: \
+1. `overview`: the forecast in two to four paragraphs of markdown in the language of the Question (English or Polish): \
 what the council expects, how firmly, and why.
 2. `claims`: one entry per claim, with its number and a `discussion` of the \
-strongest reasons members gave on each side and where they disagreed. Each \
+strongest reasons members gave on each side and where they disagreed, in that same language. Each \
 claim's verdict is printed above its discussion automatically.
 
 Rules:
@@ -181,7 +181,7 @@ differently. An UNRESOLVED claim is one the council could not settle.
 2. Every sentence that states a fact carries an inline markdown link to a \
 source below, written with the source's number and nothing else: \
 [short anchor text](source:3) for SOURCE 3, never a paragraph number such as \
-3.4. Never write a URL; the links are filled in automatically.
+3.4. Write the anchor text in the language of the Question. Never write a URL; the links are filled in automatically.
 3. Name a forecaster only when the source's byline names them; otherwise name \
 the outlet.
 4. Call members "Member 1", "Member 2", and so on, and claims "Claim 1", \

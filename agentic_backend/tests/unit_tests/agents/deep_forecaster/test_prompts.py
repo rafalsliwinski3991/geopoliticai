@@ -134,3 +134,15 @@ def test_the_retry_instructions_take_the_defect() -> None:
     # Assert
     assert defect in filled
     assert "{" not in filled
+
+
+def test_the_write_prompt_writes_in_the_questions_language() -> None:
+    """The reader of a Polish question gets a Polish overview and discussions."""
+    # Arrange
+    prompt = WRITE_SYSTEM_PROMPT
+
+    # Act
+    stated = "language of the Question (English or Polish)" in prompt
+
+    # Assert
+    assert stated is True

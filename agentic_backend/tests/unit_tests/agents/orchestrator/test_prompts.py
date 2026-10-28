@@ -33,6 +33,9 @@ def test_supervisor_prompt_names_each_specialist_tool(tool_name: str) -> None:
         "Never answer it from memory",
         "Introduce yourself as PoliticalAgent",
         "without naming tools or routing",
+        "English and Polish",
+        "other than English or Polish",
+        "search_query",
     ],
 )
 def test_supervisor_prompt_keeps_its_rules(rule: str) -> None:

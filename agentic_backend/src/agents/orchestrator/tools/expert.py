@@ -16,11 +16,17 @@ from agents.orchestrator.state import OrchestratorState
 
 @tool
 async def run_expert(
-    query: str, runtime: ToolRuntime[Any, OrchestratorState]
+    query: str,
+    runtime: ToolRuntime[Any, OrchestratorState],
+    search_query: str | None = None,
 ) -> Command[Any]:
-    """Search allow-listed sources and synthesize a verified geopolitical answer."""
+    """Search allow-listed sources and synthesize a verified geopolitical answer.
+
+    Pass `query` in the user's language (English or Polish) and `search_query`
+    always in English for web search across the allow-listed outlets.
+    """
     runtime.stream_writer(SEARCH_PROGRESS)
-    result = await ask_expert(query)
+    result = await ask_expert(query, search_query=search_query)
     answer: str = result["answer"]
     source_count = len(result.get("sources", []))
 

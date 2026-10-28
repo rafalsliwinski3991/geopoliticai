@@ -29,7 +29,9 @@ def test_braces_survive_prompt() -> None:
 async def test_no_sources_raises() -> None:
     # Act + Assert
     with pytest.raises(NoSourcesError):
-        await answer_module.answer({"query": "x", "sources": [], "answer": ""})
+        await answer_module.answer(
+            {"query": "x", "search_query": "x", "sources": [], "answer": ""}
+        )
 
 
 @pytest.mark.anyio
@@ -48,6 +50,7 @@ async def test_stream_chunks_join(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(answer_module, "astream_text", stream)
     state = {
         "query": "x",
+        "search_query": "x",
         "sources": [Source("t", "https://bbc.com/x", "body")],
         "answer": "",
     }

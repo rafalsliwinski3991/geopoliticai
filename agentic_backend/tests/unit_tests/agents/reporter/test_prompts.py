@@ -3,6 +3,7 @@
 from agents.reporter.prompts import (
     OUTLINE_SYSTEM_PROMPT,
     REPORT_SYSTEM_PROMPT,
+    RESUME_INTENT_SYSTEM_PROMPT,
 )
 
 
@@ -44,3 +45,19 @@ def test_the_outline_prompt_asks_to_cancel_and_quote_a_question() -> None:
 
     # Assert
     assert missing == []
+
+
+def test_reporter_prompts_support_english_and_polish() -> None:
+    """A Polish request gets a Polish outline and report, and Polish replies are read."""
+    # Arrange
+    polish_replies = ['"tak"', '"nie"', '"anuluj"']
+
+    # Act
+    stated = (
+        "English or Polish" in OUTLINE_SYSTEM_PROMPT,
+        "English or Polish" in REPORT_SYSTEM_PROMPT,
+        all(reply in RESUME_INTENT_SYSTEM_PROMPT for reply in polish_replies),
+    )
+
+    # Assert
+    assert stated == (True, True, True)

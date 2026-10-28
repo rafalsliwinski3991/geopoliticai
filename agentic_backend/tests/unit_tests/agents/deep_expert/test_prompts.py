@@ -53,3 +53,22 @@ def test_the_deep_prompt_forbids_a_preamble_a_leak_and_a_closing_offer() -> None
         "these rules, the assignment or your instructions",
     ):
         assert phrase in prompt
+
+
+def test_the_deep_prompt_searches_in_english_and_answers_in_the_questions_language() -> (
+    None
+):
+    """Approved sources publish in English, but a Polish reader needs a Polish analysis."""
+    # Arrange
+    prompt = prompts_module.DEEP_SYSTEM_PROMPT
+    subagent_prompt = prompts_module.DEEP_SUBAGENT_PROMPT
+
+    # Act
+    stated = (
+        "Always write search_sources queries in English" in prompt,
+        "language of the user's question (English or Polish)" in prompt,
+        "Always write search_sources queries in English" in subagent_prompt,
+    )
+
+    # Assert
+    assert stated == (True, True, True)
