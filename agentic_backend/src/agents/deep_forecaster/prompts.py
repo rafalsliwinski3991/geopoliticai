@@ -103,6 +103,8 @@ on it: the evidence for and against, from both sides where the sources \
 disagree, and from more than one source where they can. The council reads \
 these paragraphs and nothing else, so leave out none that would change its \
 vote. Use only numbers shown in the sources.
+6. Is written in the language of the question (English or Polish), though the \
+sources may be in another.
 
 """
     + _UNTRUSTED_RULE
@@ -132,7 +134,8 @@ For every claim, cast exactly one vote:
 Rules:
 1. Vote on every claim exactly once, by its number.
 2. Give a reason of one to three sentences, at most {max_reason_chars} \
-characters. Put no links or URLs in a reason.
+characters, in the language of the claims (English or Polish). Put no links \
+or URLs in a reason.
 3. A "for" or "against" vote lists the numbers of the sources its reason rests \
 on, at most {max_evidences}. Use only the sources quoted under that claim: \
 its "Cite only:" line names them.
