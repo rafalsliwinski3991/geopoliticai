@@ -58,7 +58,7 @@ through LangGraph's store, the deep forecaster's cached video notes.
 The stream caps emitted answers at 50,000 characters, but `_generate` continues
 draining an over-limit upstream stream before emitting the capped result so the
 checkpoint can complete. Every `/api/*` route except `GET /api/health` requires
-a bearer JWT minted by Django at `GET /accounts/token/` and verified by `auth.py`. Production nginx
+a bearer JWT minted by Django at `GET /accounts/token/` and verified by `api/auth.py`. Production nginx
 applies Basic Auth to `/admin/` and `/phoenix/`; there `AUTH_REQUIRED=true`
 fails closed when `AUTH_USER` or `AUTH_PASSWORD` is missing, while local
 development leaves those two surfaces open.
@@ -233,7 +233,7 @@ Check the OVH panel for the mailbox's real hourly limit and set
 ### End-to-end tests
 
 Playwright tests in `e2e/` drive the real app under Docker Compose at `http://localhost:8082`. Each chat
-test spends the test user's daily research units (`DAILY_RESEARCH_TURNS` in `agentic_backend/src/config.py`). Specs are plain English in
+test spends the test user's daily research units (`DAILY_RESEARCH_TURNS` in `agentic_backend/src/shared/config.py`). Specs are plain English in
 `e2e/test_specs/`; the tests in `e2e/tests/` are generated from them.
 
 One-time setup:

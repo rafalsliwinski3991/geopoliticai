@@ -1,4 +1,4 @@
-"""The deep expert's two research tools, over the shared `search.py` boundary.
+"""The deep expert's two research tools, over the shared `services/web_search.py` and `services/page_reader.py` boundary.
 
 Two tools, not one: a search returns only titles and URLs, and the model reads
 the pages it chooses. One combined tool would put up to eight 20,000-character
@@ -25,7 +25,8 @@ from agents.deep_expert.consts.progress import (
 )
 from agents.deep_expert.state import ResearchRun
 from agents.expert.consts.sources import EXPERT_SOURCES
-from search import fetch_sources, search_allowlisted
+from services.page_reader import fetch_sources
+from services.web_search import search_allowlisted
 
 EMPTY_QUERY_MESSAGE = "The query was empty. Search again with a focused query."
 UNKNOWN_URL_MESSAGE = (
@@ -49,7 +50,7 @@ def build_tools(run: ResearchRun) -> list[BaseTool]:
         with `read_source`. Each call spends one search from a fixed budget.
         """
         # The argument is model output. A blank query would fail every batch in
-        # `search.build_batch_query` and surface as a 503 blaming Brave, so it
+        # `services.web_search.build_batch_query` and surface as a 503 blaming Brave, so it
         # is refused here, before it spends anything.
         query = " ".join(query.split())
         if not query:

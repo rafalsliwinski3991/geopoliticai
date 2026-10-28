@@ -24,7 +24,7 @@ Rules that hold in every subcommand:
 - No AI judging of answer content. Assertions are shape checks: the answer is not empty, it contains at least
   one link, no error bubble is shown, plus what the spec's expected results say about visible structure.
 - Every turn spends the test user's daily research units (`DAILY_RESEARCH_TURNS` in
-  `agentic_backend/src/config.py`): a chat turn 1, a deep turn `DEEP_RESEARCH_TURN_COST`, a forecast
+  `agentic_backend/src/shared/config.py`): a chat turn 1, a deep turn `DEEP_RESEARCH_TURN_COST`, a forecast
   `FORECAST_TURN_COST`. Read the numbers there; never restate them.
 
 ## Preflight (every subcommand)

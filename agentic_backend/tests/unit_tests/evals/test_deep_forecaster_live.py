@@ -18,16 +18,14 @@ import pytest
 
 import agents.deep_forecaster.config as config_module
 from agents.deep_forecaster.consts.editorial import VOTE_LIST_HEADING
-from agents.deep_forecaster.council import QuorumError
+from agents.deep_forecaster.council.members import QuorumError
 from agents.deep_forecaster.models import Ballot, Claim, EvidenceRef, Stance, Vote
 from agents.deep_forecaster.state import ClaimTally
 from evals.deep_forecaster_live import (
     forecast_output,
     run_deep_forecaster_live,
 )
-from models import (
-    Source,
-)
+from models import Source
 
 QUERY = "Forecast if Russia will attack Poland?"
 WALL_SECONDS = 0.05

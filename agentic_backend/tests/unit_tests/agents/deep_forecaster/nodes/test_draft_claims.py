@@ -11,8 +11,9 @@ from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
 
 from agents.deep_forecaster.consts.forecasters import FORECASTER_SOURCES
 from agents.deep_forecaster.models import Claim, EvidenceRef
-from frames import ProgressFrame
-from models import LLMInvocationError, Source
+from models import Source
+from shared.errors import LLMInvocationError
+from shared.frames import ProgressFrame
 from unit_tests.agents.deep_forecaster.conftest import (
     MARKER,
     TODAY,

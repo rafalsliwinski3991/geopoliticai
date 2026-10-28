@@ -10,8 +10,9 @@ import pytest
 from agents.deep_expert.config import LIMITS
 from agents.deep_expert.state import ResearchRun
 from agents.expert.consts.sources import EXPERT_SOURCES
-from frames import ProgressFrame
-from models import Candidate, SearchUnavailableError, Source
+from models import Candidate, Source
+from shared.errors import SearchUnavailableError
+from shared.frames import ProgressFrame
 
 tools_module: Any = __import__("importlib").import_module("agents.deep_expert.tools")
 

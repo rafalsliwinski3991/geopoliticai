@@ -14,7 +14,7 @@ from agents.reporter.consts.messages import NO_MATERIAL_NOTICE, REVISION_CAP_NOT
 from agents.reporter.consts.progress import OUTLINE_PROGRESS
 from agents.reporter.prompts import OUTLINE_SYSTEM_PROMPT
 from agents.reporter.state import OutlineDraft, ReporterState
-from llm import ainvoke_structured
+from services.llm import ainvoke_structured
 
 logger = logging.getLogger(__name__)
 

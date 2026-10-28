@@ -1,6 +1,6 @@
 """Progress copy the deep forecaster emits.
 
-Same rule as `agents/deep_expert/consts/progress.py`: `api._generate`
+Same rule as `agents/deep_expert/consts/progress.py`: `api.stream._generate`
 forwards these verbatim, so the labels are literals and the templates are
 filled with integers only, never with a query, a name, a title, or a URL.
 """

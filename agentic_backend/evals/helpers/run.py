@@ -27,7 +27,6 @@ from pydantic import (
     model_validator,
 )
 
-from config import init_environment, require_env
 from evals.helpers import phoenix
 from evals.helpers.graph import load_sources, replay_sources
 from evals.helpers.judge import (
@@ -39,7 +38,8 @@ from evals.helpers.judge import (
     build_classifiers,
 )
 from evals.helpers.live import build_failure_row, print_row
-from tracing import init_tracing
+from shared.config import init_environment, require_env
+from shared.tracing import init_tracing
 
 EvalKind = Literal["fixed", "live"]
 # A coroutine function: Phoenix's experiment runner awaits each call itself.

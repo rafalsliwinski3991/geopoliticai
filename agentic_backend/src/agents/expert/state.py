@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from typing import TypedDict
 
-from models import Source, squash_whitespace
+from models import Source
+from shared.text import squash_whitespace
 
 
 class PipelineState(TypedDict):

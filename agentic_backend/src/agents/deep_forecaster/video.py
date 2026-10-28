@@ -32,7 +32,7 @@ from agents.deep_forecaster.prompts import VIDEO_NOT_DISCUSSED, VIDEO_PROMPT
 logger = logging.getLogger(__name__)
 
 # Gemini's notes, cached by video and question (user decision 2026-10-01).
-# Items expire with the API store's TTL (`api.STORE_TTL`, 30 days).
+# Items expire with the API store's TTL (`api.app.STORE_TTL`, 30 days).
 NOTES_NAMESPACE = ("forecast_video_notes",)
 
 # Per-key request coalescing (review thread, #151): `aget` then call then

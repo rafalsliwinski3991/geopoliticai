@@ -9,7 +9,7 @@ import pytest
 from langchain_core.messages import ToolMessage
 
 from agents.orchestrator.tools.deep_expert import run_deep_expert
-from models import LLMInvocationError
+from shared.errors import LLMInvocationError
 from unit_tests.agents.orchestrator.tools.conftest import make_tool_runtime
 
 deep_expert_tool_module = importlib.import_module(

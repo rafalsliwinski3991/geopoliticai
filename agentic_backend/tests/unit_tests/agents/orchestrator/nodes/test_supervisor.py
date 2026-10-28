@@ -27,8 +27,8 @@ from agents.orchestrator.consts.menu import (
 from agents.orchestrator.prompts import SUPERVISOR_SYSTEM_PROMPT
 from agents.orchestrator.state import OrchestratorState
 from agents.orchestrator.tools import ALL_TOOLS
-from config import FOOTER_PREFIX
-from models import LLMInvocationError
+from shared.config import FOOTER_PREFIX
+from shared.errors import LLMInvocationError
 from unit_tests.agents.orchestrator.conftest import ScriptedChatModel
 
 node_module = importlib.import_module("agents.orchestrator.nodes.supervisor")

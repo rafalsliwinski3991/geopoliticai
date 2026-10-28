@@ -2,7 +2,7 @@
 
 Django owns `public` and runs its own migrations; nothing here may touch a
 Django-owned table. The DSN comes from the root `.env` through
-`config.init_environment()` so this file never reads a second source of truth,
+`shared.config.init_environment()` so this file never reads a second source of truth,
 and the scheme is rewritten because SQLAlchemy resolves a bare
 `postgresql://` to psycopg2, which this project does not install.
 
@@ -19,7 +19,7 @@ import os
 from alembic import context
 from sqlalchemy import create_engine
 
-from config import init_environment
+from shared.config import init_environment
 
 # No ORM models in this project, so autogenerate is unavailable by design.
 target_metadata = None

@@ -17,7 +17,7 @@ from typing_extensions import TypedDict
 
 from agents import capped_run
 from agents.deep_forecaster.config import COUNCIL
-from agents.deep_forecaster.council import QuorumError
+from agents.deep_forecaster.council.members import QuorumError
 from agents.deep_forecaster.models import (
     Analysis,
     Ballot,
@@ -26,14 +26,14 @@ from agents.deep_forecaster.models import (
     EvidenceRef,
 )
 from agents.deep_forecaster.state import ForecastRun, ResearchRun
-from frames import ProgressFrame
-from models import (
+from models import Source
+from shared.errors import (
     LLMInvocationError,
     NoSourcesError,
     ResearchLimitError,
     SearchUnavailableError,
-    Source,
 )
+from shared.frames import ProgressFrame
 from unit_tests.agents.deep_forecaster.conftest import (
     DEFECTS,
     HANG,
@@ -57,7 +57,7 @@ draft_claims_node: Any = importlib.import_module(
 write_analysis_node: Any = importlib.import_module(
     "agents.deep_forecaster.nodes.write_analysis"
 )
-council_module: Any = importlib.import_module("agents.deep_forecaster.council")
+council_module: Any = importlib.import_module("agents.deep_forecaster.council.members")
 
 STEP_NAMES = [
     "research",
@@ -755,7 +755,7 @@ async def test_a_council_below_quorum_stops_before_writing(
     # Arrange
     rig.round_1 = round_1_replies
     if member_seconds is not None:
-        shorten_limit(monkeypatch, "council", member_seconds=member_seconds)
+        shorten_limit(monkeypatch, "council.members", member_seconds=member_seconds)
     # Act
     with pytest.raises(QuorumError) as raised:
         await rig.run()

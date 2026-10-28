@@ -3,14 +3,16 @@ from typing import Any, AsyncIterator
 
 import pytest
 
+from agents.expert import ask_expert
 from agents.expert.state import build_initial_pipeline_state
-from models import Candidate, LLMInvocationError, Source
+from models import Candidate, Source
+from shared.errors import LLMInvocationError, NoSourcesError
 
 expert = importlib.import_module("agents.expert")
 graph_module: Any = importlib.import_module("agents.expert.graph")
 retrieve_module = importlib.import_module("agents.expert.nodes.search_and_fetch")
 answer_module = importlib.import_module("agents.expert.nodes.answer")
-llm_module = importlib.import_module("llm")
+llm_module = importlib.import_module("services.llm")
 
 
 def test_graph_has_exactly_two_nodes() -> None:
@@ -138,3 +140,58 @@ async def test_execution_propagates_llm_failure_after_partial_tokens(
     # Already-produced chunks are yielded before the exception surfaces, so no
     # partial output is lost.
     assert "partial" in texts
+
+
+class RecordingGraph:
+    """A compiled-graph stand-in: records each input and returns or raises what it was given."""
+
+    def __init__(
+        self, result: dict[str, Any] | None = None, error: Exception | None = None
+    ):
+        self.inputs: list[Any] = []
+        self._result = result
+        self._error = error
+
+    async def ainvoke(self, graph_input: Any) -> dict[str, Any]:
+        self.inputs.append(graph_input)
+        if self._error is not None:
+            raise self._error
+        assert self._result is not None
+        return self._result
+
+
+@pytest.mark.anyio
+async def test_ask_expert_returns_what_the_graph_returns(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The orchestrator's tool reads `answer` and `sources` from the graph's own
+    state, so the wrapper must hand that state back untouched."""
+    # Arrange
+    final_state = {
+        "answer": "Reply.",
+        "sources": [Source("t", "https://a.example/x", "x")],
+    }
+    fake_graph = RecordingGraph(result=final_state)
+    monkeypatch.setattr(graph_module, "graph", fake_graph)
+
+    # Act
+    result = await ask_expert("q")
+
+    # Assert
+    assert fake_graph.inputs == [{"query": "q", "sources": [], "answer": ""}]
+    assert result == final_state
+
+
+@pytest.mark.anyio
+async def test_ask_expert_lets_a_pipeline_error_through(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A graph failure must reach the API's error frame, not turn into an empty answer."""
+    # Arrange
+    monkeypatch.setattr(
+        graph_module, "graph", RecordingGraph(error=NoSourcesError("no pages"))
+    )
+
+    # Act + Assert
+    with pytest.raises(NoSourcesError, match="no pages"):
+        await ask_expert("q")

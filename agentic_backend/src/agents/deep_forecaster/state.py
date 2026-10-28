@@ -26,9 +26,9 @@ from typing_extensions import NotRequired, TypedDict
 from agents.deep_forecaster.config import LIMITS
 from agents.deep_forecaster.consts.progress import PROGRESS_NODE
 from agents.deep_forecaster.models import Analysis, Ballot, Claim, Verdict
-from frames import ProgressFrame
 from models import Candidate, Source
-from search import FETCH_CONCURRENCY
+from services.page_reader import FETCH_CONCURRENCY
+from shared.frames import ProgressFrame
 
 logger = logging.getLogger(__name__)
 
@@ -149,7 +149,7 @@ class ResearchRun:
         default_factory=lambda: asyncio.Semaphore(LIMITS.max_search_concurrency)
     )
     # Page fetches bound the same way: `fetch_sources` builds its per-call
-    # semaphore (search.py) around a call's own candidates, so without this
+    # semaphore (services/page_reader.py) around a call's own candidates, so without this
     # gate a batch read would put `max_batch` GETs on a forecaster's site at
     # once and parallel scouts would multiply that (review thread).
     read_gate: asyncio.Semaphore = field(

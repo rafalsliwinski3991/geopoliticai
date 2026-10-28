@@ -4,7 +4,7 @@ from typing import Any, AsyncIterator
 import pytest
 
 from agents.reporter.consts.progress import REPORT_PROGRESS
-from models import LLMInvocationError
+from shared.errors import LLMInvocationError
 
 node_module = importlib.import_module("agents.reporter.nodes.write")
 

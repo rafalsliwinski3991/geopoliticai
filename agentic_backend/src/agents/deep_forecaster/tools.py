@@ -50,9 +50,11 @@ from agents.deep_forecaster.consts.progress import (
 from agents.deep_forecaster.prompts import VIDEO_NOT_DISCUSSED
 from agents.deep_forecaster.state import ResearchRun
 from agents.deep_forecaster.video import VideoUnavailableError, watch_video
-from models import Candidate, SearchUnavailableError, Source, SourcePolicy
-from search import fetch_sources, search_allowlisted
-from tracing import start_span
+from models import Candidate, Source, SourcePolicy
+from services.page_reader import fetch_sources
+from services.web_search import search_allowlisted
+from shared.errors import SearchUnavailableError
+from shared.tracing import start_span
 
 UNKNOWN_FORECASTER_MESSAGE = "Unknown forecaster id. Use one of: {ids}."
 EMPTY_QUERY_MESSAGE = "Every query was empty. Search again with focused queries."
@@ -182,7 +184,7 @@ def build_tools(run: ResearchRun) -> list[BaseTool]:
         profile = FORECASTERS_BY_ID.get(forecaster.strip().lower())
         if profile is None:
             return UNKNOWN_FORECASTER_MESSAGE.format(ids=", ".join(FORECASTERS_BY_ID))
-        # Model output: a blank query would fail `search.build_batch_query`
+        # Model output: a blank query would fail `services.web_search.build_batch_query`
         # and surface as a 503 blaming Brave (deep expert, plan v2 row 3), and
         # a repeated one would spend a search on results the scout has.
         asked = [query for query in dict.fromkeys(map(_clean_query, queries)) if query]
@@ -350,7 +352,7 @@ def build_tools(run: ResearchRun) -> list[BaseTool]:
             run.reserved += 1
             try:
                 # One gate for every scout's page fetches: `fetch_sources`
-                # bounds a call's own candidates only (search.py), so
+                # bounds a call's own candidates only (services/page_reader.py), so
                 # parallel batches would otherwise multiply the GETs one
                 # forecaster's site takes at once (review thread).
                 async with run.read_gate:

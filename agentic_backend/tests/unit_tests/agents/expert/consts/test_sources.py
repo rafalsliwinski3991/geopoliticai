@@ -4,7 +4,7 @@ from agents.expert.consts.sources import (
     HARD_PAYWALLED_DOMAINS,
     SEARCH_BATCHES,
 )
-from search import build_batch_query
+from services.web_search import build_batch_query
 
 BRAVE_MAX_DOMAINS_PER_BATCH = 10
 LONGEST_QUESTION = " ".join(["international"] * 9 + ["geopolitically"])

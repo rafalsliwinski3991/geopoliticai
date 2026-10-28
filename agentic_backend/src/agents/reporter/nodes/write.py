@@ -12,8 +12,8 @@ from agents.reporter.config import REPORT_LLM_SETTINGS
 from agents.reporter.consts.progress import REPORT_PROGRESS
 from agents.reporter.prompts import REPORT_SYSTEM_PROMPT
 from agents.reporter.state import ReporterState
-from config import MAX_ANSWER_CHARS
-from llm import astream_text, collect_text
+from services.llm import astream_text, collect_text
+from shared.config import MAX_ANSWER_CHARS
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +25,7 @@ async def write(
 ) -> dict[str, Any]:
     """Write the approved report in one streamed call.
 
-    This node's name is load-bearing twice over: `api.ANSWER_NODES` forwards
+    This node's name is load-bearing twice over: `api.stream.ANSWER_NODES` forwards
     streamed `AIMessage` chunks tagged `langgraph_node == "write"`, and
     `_astream_answer` uses the same tag to emit the `_ReportStarted` event
     that puts a Download .md button on the answer. Renaming it would silently

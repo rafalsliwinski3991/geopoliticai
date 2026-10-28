@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from config import LLMSettings
+from shared.config import LLMSettings
 
 ANSWER_LLM_SETTINGS = LLMSettings(
     model="gpt-4o-mini",

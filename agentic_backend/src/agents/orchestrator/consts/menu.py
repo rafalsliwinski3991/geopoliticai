@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from config import DEEP_RESEARCH_TURN_COST, FORECAST_TURN_COST
+from shared.config import DEEP_RESEARCH_TURN_COST, FORECAST_TURN_COST
 
 STATIC_NEXT_STEPS_MENU = (
     "**What next?**\n"

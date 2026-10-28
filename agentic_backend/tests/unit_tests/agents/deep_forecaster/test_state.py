@@ -12,8 +12,8 @@ from agents.deep_forecaster import state as state_module
 from agents.deep_forecaster.config import LIMITS
 from agents.deep_forecaster.consts.progress import RESEARCH_LABEL
 from agents.deep_forecaster.state import ForecastRun, ResearchRun
-from frames import ProgressFrame
 from models import Candidate, Source
+from shared.frames import ProgressFrame
 
 
 def _limits_with(**changes: int) -> object:

@@ -113,7 +113,7 @@ def url() -> str:
     return os.environ["DATABASE_URL"]
 
 
-# These fixtures open their own connections and inherit nothing from api.py's
+# These fixtures open their own connections and inherit nothing from api/app.py's
 # pool, so they must set the same search_path or setup() will create a second
 # set of checkpointer tables in `public` and the tripwire will fire on the next
 # real boot.

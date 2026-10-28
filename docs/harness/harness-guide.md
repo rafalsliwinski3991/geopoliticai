@@ -228,7 +228,7 @@ Antigravity ignore the flag).
 
 | Skill | Load it when |
 |---|---|
-| `fastapi-service` | Changing `agentic_backend/src/api.py` or `auth.py`: routes, SSE, JWTs, error statuses |
+| `fastapi-service` | Changing `agentic_backend/src/api/`: routes, SSE, JWTs, error statuses |
 | `django-service` | Working in `web_backend/`: auth, admin, models, migrations, JWT issuing |
 | `react-frontend` | Changing `frontend/chat/`: components, streaming, untrusted Markdown, Vitest |
 | `codebase-design` | Deciding where a module boundary goes or whether an abstraction pays for itself |
