@@ -26,7 +26,7 @@ Agent-specific code lives under `src/agents/`; shared retrieval and LLM
 boundaries are in `src/services/web_search.py`, `src/services/page_reader.py` and `src/services/llm.py`. The API accepts exactly
 one of `{query, thread_id}` or `{resume, thread_id}`, the resume carrying the
 reply to a paused outline, and persists conversation state in a required
-Postgres checkpointer. The static frontend is English-only, keeps its thread id in
+Postgres checkpointer. The static frontend welcomes English and Polish users, keeps its thread id in
 `localStorage`, and provides a **New chat** button.
 
 With Compose, Postgres has a `pg_isready` healthcheck and the backend waits for
