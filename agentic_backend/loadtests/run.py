@@ -165,6 +165,9 @@ def main(argv: list[str] | None = None) -> int:
         with open(args.json_out, "w", encoding="utf-8") as out:
             json.dump(
                 {
+                    "users": args.users,
+                    "rounds": args.rounds,
+                    "profile": args.profile,
                     "wall_seconds": result.wall_seconds,
                     "kinds": [asdict(summary) for summary in summaries],
                 },

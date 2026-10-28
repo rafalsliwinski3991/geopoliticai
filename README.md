@@ -306,6 +306,10 @@ Run from `agentic_backend/`:
   the numbers measure this service's own CPU; `--json-out results.json` keeps the summaries.
 - The run exits 1 when any kind's error rate is over `--max-error-rate` (default 0) or its p95 is
   over `--max-p95`, and names the kind.
+- `uv run python -m loadtests.compare results/*.json` puts several `--json-out` files side by side
+  as Markdown tables. The `Load tests` workflow (`.github/workflows/loadtests.yml`, on a pull
+  request that touches `agentic_backend/src/`, `loadtests/` or `uv.lock`, or by hand) runs 50, 100
+  and 150 users one after another and writes those tables to the job summary.
 
 The runner starts `loadtests.server` on a free local port with a random signing key and stops it
 afterwards. To profile the server or run it separately, start it yourself with a key and point the
