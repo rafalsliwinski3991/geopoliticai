@@ -314,6 +314,31 @@ def test_experiment_name_falls_back_without_git(
     assert re.fullmatch(r"test-eval-nogit-\d{8}T\d{6}Z", name)
 
 
+def test_git_commit_returns_the_short_head_hash() -> None:
+    """The commit that ran an experiment is how a Phoenix result is traced back to code."""
+    # Act
+    commit = run_mod.git_commit()
+
+    # Assert
+    assert re.fullmatch(r"[0-9a-f]+", commit)
+
+
+def test_git_commit_falls_back_without_git(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A checkout without git still runs the eval; it is named nogit."""
+
+    # Arrange
+    def _fail(*args: Any, **kwargs: Any) -> Any:
+        raise OSError("no git")
+
+    monkeypatch.setattr(subprocess, "run", _fail)
+
+    # Act
+    commit = run_mod.git_commit()
+
+    # Assert
+    assert commit == "nogit"
+
+
 def test_failures_allows_numeric_average_at_minimum() -> None:
     # Arrange
     judge = Judge("q", "numeric", lambda i, o, e: {}, prompt="{x}")
@@ -459,6 +484,31 @@ async def test_run_passes_a_fixed_eval_without_a_brave_key(
     # Assert
     assert received["dataset_name"] == "geopoliticai-orchestrator_fixed"
     assert received["judges"] == [judge]
+
+
+@pytest.mark.anyio
+async def test_run_passes_git_commit_to_phoenix(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The experiment's name and its metadata must name the same commit."""
+    # Arrange
+    received: dict[str, Any] = {}
+
+    async def _fake_run(**kwargs: Any) -> Results:
+        received.update(kwargs)
+        return _passing_results()
+
+    _set_up_run(monkeypatch, tmp_path, _fake_run)
+    monkeypatch.setattr(run_mod, "git_commit", lambda: "abc1234")
+
+    # Act
+    await run_mod.run(
+        eval_name="orchestrator_fixed", task=_task, judges=[_always_pass_judge()]
+    )
+
+    # Assert
+    assert received["git_commit"] == "abc1234"
+    assert received["experiment_name"].startswith("orchestrator_fixed-abc1234-")
 
 
 @pytest.mark.anyio

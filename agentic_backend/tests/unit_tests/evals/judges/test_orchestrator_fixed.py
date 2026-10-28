@@ -4,8 +4,10 @@ from __future__ import annotations
 
 from evals.judges.orchestrator_fixed import (
     QUERY_PROMPT,
+    SEARCH_QUERY_PROMPT,
     _query_view,
     _routing_view,
+    _search_query_view,
 )
 
 CONVERSATION = {
@@ -54,6 +56,27 @@ def test_the_rewrite_is_checked_only_when_expected() -> None:
     }
 
 
+def test_the_search_query_is_checked_only_when_expected() -> None:
+    # Arrange: only cases that expect a research route carry a search query.
+    output = {"search_query": "What is the target?"}
+
+    # Act
+    unchecked = _search_query_view(CONVERSATION, output, {"destination": "other"})
+    checked = _search_query_view(
+        CONVERSATION,
+        output,
+        {"destination": "geopolitical", "search_query": "What is the 5% target?"},
+    )
+
+    # Assert
+    assert unchecked is None
+    assert checked == {
+        "conversation": "user: hi\nassistant: hello there",
+        "actual": "What is the target?",
+        "expected": "What is the 5% target?",
+    }
+
+
 def test_every_prompt_field_is_supplied() -> None:
     # Arrange
     variables = _query_view(
@@ -63,3 +86,8 @@ def test_every_prompt_field_is_supplied() -> None:
 
     # Act + Assert: str.format raises KeyError on a field the view leaves out.
     QUERY_PROMPT.format(**variables)
+    search_variables = _search_query_view(
+        CONVERSATION, {"search_query": "q"}, {"search_query": "e"}
+    )
+    assert search_variables is not None
+    SEARCH_QUERY_PROMPT.format(**search_variables)

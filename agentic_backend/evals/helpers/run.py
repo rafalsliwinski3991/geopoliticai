@@ -150,19 +150,24 @@ def load_examples(path: Path) -> list[dict[str, Any]]:
     ]
 
 
-def experiment_name(eval_name: str) -> str:
-    """Name the experiment after the commit and time it ran at."""
+def git_commit() -> str:
+    """Return the short HEAD commit hash, or "nogit" when git is unavailable."""
     try:
-        commit = subprocess.run(
+        return subprocess.run(
             ["git", "rev-parse", "--short", "HEAD"],
             capture_output=True,
             text=True,
             check=True,
         ).stdout.strip()
     except (OSError, subprocess.CalledProcessError):
-        commit = "nogit"
+        return "nogit"
+
+
+def experiment_name(eval_name: str, *, commit: str | None = None) -> str:
+    """Name the experiment after the commit and time it ran at."""
+    resolved_commit = commit if commit is not None else git_commit()
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    return f"{eval_name}-{commit}-{timestamp}"
+    return f"{eval_name}-{resolved_commit}-{timestamp}"
 
 
 def failures(
@@ -230,9 +235,11 @@ async def run(
     )
     if not init_tracing():
         raise RuntimeError("Phoenix tracing could not be initialized")
+    commit = git_commit()
     results = await phoenix.run(
         dataset_name=f"geopoliticai-{eval_name}",
-        experiment_name=experiment_name(eval_name),
+        experiment_name=experiment_name(eval_name, commit=commit),
+        git_commit=commit,
         examples=examples,
         task=_wrap_live_task(task) if kind == "live" else _wrap_fixed_task(task),
         judges=judges,

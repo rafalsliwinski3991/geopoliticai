@@ -7,7 +7,7 @@ from typing import Any
 from evals.helpers.judge import Judge
 from evals.judges.shared import matches_expected
 
-EXPECTED_KEYS = frozenset({"destination", "standalone_query"})
+EXPECTED_KEYS = frozenset({"destination", "standalone_query", "search_query"})
 QUERY_PROMPT = """
 You grade how an assistant rewrote the last user turn of a conversation into a
 standalone question.
@@ -31,6 +31,33 @@ Choose exactly one label:
 3: same topic with a noticeable change in scope.
 4: same meaning with a small loss of detail.
 5: same meaning as the expected rewrite.
+
+Give a concise evidence-based explanation.
+"""
+SEARCH_QUERY_PROMPT = """
+You grade the web search query an assistant passed to its research tool for the
+last user turn of a conversation.
+
+Conversation:
+{conversation}
+
+Actual search query:
+{actual}
+
+Expected search query:
+{expected}
+
+The search query must be written in English, even when the conversation is in
+another language, so that English-language outlets return results. Wording may
+differ from the expected search query; meaning may not.
+
+Choose exactly one label:
+1: missing, not in English, or a different question.
+2: in English and related, but materially broadened, narrowed, or with an
+unresolved reference.
+3: same topic with a noticeable change in scope.
+4: same meaning with a small loss of detail.
+5: same meaning as the expected search query.
 
 Give a concise evidence-based explanation.
 """
@@ -69,9 +96,28 @@ def _query_view(
     }
 
 
+def _search_query_view(
+    input: dict[str, Any], output: dict[str, Any], expected: dict[str, Any]
+) -> dict[str, Any] | None:
+    # Only cases that expect a research route say what the search query is.
+    if "search_query" not in expected:
+        return None
+    return {
+        "conversation": _conversation(input),
+        "actual": output.get("search_query") or "",
+        "expected": expected["search_query"],
+    }
+
+
 def judges() -> tuple[Judge, ...]:
     """Return the orchestrator_fixed eval's judges."""
     return (
         Judge("routing_correct", "binary", _routing_view, check=matches_expected),
         Judge("query_matches_expected", "numeric", _query_view, prompt=QUERY_PROMPT),
+        Judge(
+            "search_query_matches_expected",
+            "numeric",
+            _search_query_view,
+            prompt=SEARCH_QUERY_PROMPT,
+        ),
     )

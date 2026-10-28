@@ -115,6 +115,35 @@
     "outcome": "open",
     "notice_asks_question": true
    }
+  },
+  {
+   "name": "reporter-polish-approve-first-outline",
+   "description": "One researched Polish answer, then a Polish request for a report and 'Wygląda dobrze, napisz go.' at the outline: read as approve, and the report is written.",
+   "input": {
+    "messages": [
+     {
+      "role": "user",
+      "content": "Co przywódcy Sojuszu Północnego uzgodnili w sprawie wydatków na obronność i kto zgłosił sprzeciw?"
+     },
+     {
+      "role": "assistant",
+      "content": "Przywódcy Sojuszu Północnego uzgodnili wspólny cel wydatków na obronę: 5 procent produktu krajowego do 2035 roku, z czego 3,5 procent na obronę podstawową, a 1,5 procent na wydatki powiązane, takie jak odporność i cyberobronę [Sojusz Północny przyjmuje cel 5% wydatków](https://news.example/2026/06/alliance-summit-spending-target). Sprzeciwiła się premier Norlandu, która nazwała cel nierealnym dla swojej gospodarki i ostrzegła, że oznaczałby cięcia emerytur, a nie czołgi. Wskazała, że obecne 2,1 procent wystarcza Norlandowi, i twierdziła, że uzgodniono nieformalnie wyjątek dla członków z ograniczeniami budżetowymi, choć nie ma go w komunikacie [Norland: cel 5% jest nierealny](https://news.example/2026/06/norland-rejects-spending-target).\n\nVestria poparła cel, ale zakwestionowała twierdzenie Norlandu o wyjątku: według jej delegacji komunikat jest całością porozumienia i nie zawiera klauzuli wyłączającej. Chciała też szerszej definicji wydatków powiązanych, obejmującej infrastrukturę wspierającą gotowość obronną [Vestria popiera cel, prosi o elastyczność](https://news.example/2026/06/vestria-backs-target-with-caveats)."
+     },
+     {
+      "role": "user",
+      "content": "Napisz raport z tej rozmowy"
+     }
+    ],
+    "replies": [
+     "Wygląda dobrze, napisz go."
+    ]
+   },
+   "expected": {
+    "reply_actions": [
+     "approve"
+    ],
+    "outcome": "report"
+   }
   }
  ]
 }
