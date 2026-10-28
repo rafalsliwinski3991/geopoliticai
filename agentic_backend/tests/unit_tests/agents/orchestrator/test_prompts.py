@@ -35,6 +35,7 @@ def test_supervisor_prompt_names_each_specialist_tool(tool_name: str) -> None:
         "without naming tools or routing",
         "English and Polish",
         "other than English or Polish",
+        "whatever the earlier turns were",
         "search_query",
     ],
 )
