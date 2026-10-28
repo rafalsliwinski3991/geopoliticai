@@ -30,7 +30,7 @@ certifi==2026.2.25
     #   httpx
     #   requests
     #   trafilatura
-cffi==2.0.0 ; platform_python_implementation != 'PyPy'
+cffi==2.1.1 ; platform_python_implementation != 'PyPy'
     # via cryptography
 charset-normalizer==3.5.1
     # via

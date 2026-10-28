@@ -284,6 +284,51 @@ after a deploy that carries nginx's 50 MB limit on `/phoenix/`: before that, lar
 with 413. Locally, run `make evals-fixed`, `make evals-live`, or `make evals` from `agentic_backend/`;
 it reads `PHOENIX_COLLECTOR_ENDPOINT` (and `PHOENIX_CLIENT_HEADERS`, for the VPS) from the root `.env`.
 
+### Load tests
+
+`agentic_backend/loadtests/` load-tests the API over real HTTP with [Locust](https://locust.io), without
+spending anything: the FastAPI app, auth, the rate limit, the quota charge, the orchestrator and expert
+graphs, LangGraph streaming and checkpointing, and trafilatura's page extraction all run as in
+production, while the OpenAI models, Brave, the page fetches and the Django tables are faked in the
+server's process (`loadtests/fakes.py`), with an in-memory checkpointer. No key, database or Docker is
+needed.
+
+Each Locust user (`loadtests/locustfile.py`) owns one thread and repeats a round of four requests: a
+chat turn, a research turn (the expert: three Brave batches, ten pages fetched and extracted, a
+streamed answer, the footer), the sidebar list, and the thread's history. A round starts at most every
+10 s, which keeps a user under the per-user rate limit. A streamed turn counts as a success only when
+its stream ends in a `result` frame, and its time to the first answer token is a `TTFT` row of its own.
+
+Run from `agentic_backend/`:
+
+- `make loadtest` starts the faked server (`loadtests.server`, `realistic` profile: each faked call
+  waits about as long as production's providers) on a free port with a random signing key, runs
+  Locust headless against it with 50 users started over 5 s for a minute, prints Locust's summary,
+  and stops the server.
+- `make loadtest LOADTEST_ARGS="--users 100 --spawn-rate 20 --run-time 2m --max-p95 12"` passes
+  flags: `--profile instant` (drop every fake delay, so the numbers measure this service's own CPU)
+  and `--max-p95 SECONDS` are ours; every other flag is Locust's (`uv run locust --help`), such as
+  `--json-file`, `--csv`, or `--html` for its report.
+- The run exits 1 when any request failed or any row's p95 is over `--max-p95`.
+- `uv run python -m loadtests.compare results/users-*.json` puts several runs' `--json-file results/users-<N>`
+  outputs side by side as Markdown tables. Locust stores times rounded (to 100 ms above 1 s), so a
+  p99 can read slightly above the exact max.
+
+The `Load tests` workflow (`.github/workflows/loadtests.yml`, on a pull request that touches
+`agentic_backend/src/`, `loadtests/` or `uv.lock`, or by hand) runs 50, 100 and 150 users one after
+another, writes those tables to the job summary, and uploads Locust's HTML reports.
+
+To use Locust's web UI, start the server with a key and point Locust at it:
+
+```bash
+export JWT_SIGNING_KEY=$(python -c 'import secrets; print(secrets.token_urlsafe(48))')
+uv run python -m loadtests.server --port 8765 --profile realistic &
+uv run locust -f loadtests/locustfile.py --host http://127.0.0.1:8765
+```
+
+The API's own limits still apply: each research turn spends one of the user's 50 daily units and one
+of the site's 2,500.
+
 ### After the SEO launch (one-time, then upkeep)
 
 User actions after the `seo-blog` deploy:

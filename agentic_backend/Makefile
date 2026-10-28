@@ -1,4 +1,4 @@
-.PHONY: all format lint test tests test-integration test_watch docker_tests help extended_tests evals evals-fixed evals-live
+.PHONY: all format lint test tests test-integration test_watch docker_tests help extended_tests evals evals-fixed evals-live loadtest
 
 # Default target executed when no arguments are given to make.
 all: help
@@ -96,6 +96,19 @@ evals:
 	$(call run_evals,$(FIXED_EVALS) $(LIVE_EVALS))
 
 ######################
+# LOAD TESTS
+######################
+
+# Locust against the real app and graphs over HTTP, with the models, Brave,
+# page fetches and the database faked (loadtests/fakes.py): no key, no
+# Postgres, no spend. Locust's flags go through LOADTEST_ARGS, e.g.
+# LOADTEST_ARGS="--users 100 --spawn-rate 20 --max-p95 10".
+LOADTEST_ARGS ?=
+
+loadtest:
+	$(PYTHON) -m loadtests.run $(LOADTEST_ARGS)
+
+######################
 # HELP
 ######################
 
@@ -111,4 +124,5 @@ help:
 	@echo 'evals-fixed                  - run the fixed evals (inputs written in advance)'
 	@echo 'evals-live                   - run the live evals (Brave and live pages)'
 	@echo 'evals                        - run both, like evals.yml with type all'
+	@echo 'loadtest                     - load-test the API against faked providers (LOADTEST_ARGS=...)'
 

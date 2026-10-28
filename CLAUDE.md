@@ -23,8 +23,9 @@ this file, so OpenCode, Copilot, and Antigravity read it too: name no tool or pa
 ## Commands
 
 - From `agentic_backend/`: `uv sync --locked --dev`, `make test`, `make lint` (ruff and
-  `mypy --strict`; CI does not run it), `make format`, `langgraph dev`, and `make test-integration`
-  (needs a Postgres migrated by `make migrate-web` and `make migrate-agentic`).
+  `mypy --strict`; CI does not run it), `make format`, `langgraph dev`, `make test-integration`
+  (needs a Postgres migrated by `make migrate-web` and `make migrate-agentic`), and `make loadtest`
+  (the API against faked providers; README, "Load tests").
 - From the root: `make test-web-backend` (needs the dev Postgres), `make test-web-integration`,
   `make migrate-web`, `make migrate-agentic`, `make e2e-user`, `make logs-SERVICE`; `make help`
   lists the rest.
