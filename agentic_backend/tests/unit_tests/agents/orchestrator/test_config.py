@@ -3,7 +3,7 @@
 import pytest
 
 from agents.orchestrator.config import FOOTER_LLM_SETTINGS, SUPERVISOR_LLM_SETTINGS
-from config import LLMSettings
+from shared.config import LLMSettings
 
 
 @pytest.mark.parametrize(

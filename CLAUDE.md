@@ -12,7 +12,7 @@ this file, so OpenCode, Copilot, and Antigravity read it too: name no tool or pa
 - Make the smallest correct change. Reuse a local pattern, the standard library, or an installed
   dependency before writing code; fix a shared root cause once; leave unrelated code alone and
   remove only what your change made unused.
-- Pipeline failures raise a `PipelineError` subclass (`models.py`) whose `status` the API reports.
+- Pipeline failures raise a `PipelineError` subclass (`shared/errors.py`) whose `status` the API reports.
   Answer with the error, never with a degraded fallback.
 - A behaviour change needs a focused test that goes red when the logic regresses. Run the narrowest
   check until it passes, then the area's suite below.
@@ -70,9 +70,7 @@ deep_forecaster  START -> research -> draft_claims -> council_round_1 -> council
 
 ## agentic_backend
 
-- The shared modules (`config.py`, `models.py`, `search.py`, `llm.py`, `tracing.py`, `api.py`,
-  `auth.py`, `quota.py`, `frames.py`, `db/web/sql.py`) import no agent, except `api.py`, the delivery layer, which imports
-  the orchestrator's graph and builders and the reporter's resume classifier.
+- `src/` has three layers. `shared/` (`config`, `tracing`, `frames`, `errors`, `text`) needs no provider key and makes no call to a provider; `tracing` only exports spans to Phoenix in the background. `services/` (`llm`, `web_search`, `page_reader`) talks to a provider and bounds each call with a timeout; a provider failure becomes a `PipelineError` subclass, or, where the caller can still answer, the failed item is dropped and counted on a span. `api/` (`app`, `routes`, `stream`, `rate_limit`, `auth`, `quota`) serves HTTP, and only `api/` imports an agent from outside `agents/` (the orchestrator's graph and builders, and the reporter's resume classifier). Imports run `api` -> `agents` -> `services` -> `shared`. `models.py` imports nothing from the project, every layer may import it, and `db/` imports only `shared`. Nothing outside `api/` imports `api`.
 - Besides the LangGraph checkpointer and store, the only Postgres access is the raw SQL in
   `db/web/sql.py` against Django-owned tables, whose schema only `web_backend`'s migrations change;
   the integration tests guard it.
@@ -81,17 +79,17 @@ deep_forecaster  START -> research -> draft_claims -> council_round_1 -> council
   creates its tables at startup through the pool's `search_path` (`agentic,public`). Run
   `make migrate-agentic` before starting the service: startup refuses while `public.checkpoints`
   exists or `agentic` is not the current schema.
-- Every custom type stored in a checkpoint must be in `api.CHECKPOINT_SERDE`'s msgpack allow-list
+- Every custom type stored in a checkpoint must be in `api.app.CHECKPOINT_SERDE`'s msgpack allow-list
   (only `models.Source` today), and a new field on it needs a default. A field change is a rollback
   hazard a database snapshot does not cover: the previous image's `Source(**fields)` raises on the
   unknown field, and JsonPlusSerializer silently reads back `None` in place of each `Source`.
-- The store holds only `ask_video`'s video-notes cache, expiring after `api.STORE_TTL`; the
+- The store holds only `ask_video`'s video-notes cache, expiring after `api.app.STORE_TTL`; the
   forecaster reaches it through the orchestrator tool's `runtime.store`.
-- `build_graph()` works without a checkpointer (tests, Studio), and `auth.py` reads
-  `JWT_SIGNING_KEY` at call time. API startup requires `config.REQUIRED_ENV_VARS` and `DATABASE_URL`.
+- `build_graph()` works without a checkpointer (tests, Studio), and `api/auth.py` reads
+  `JWT_SIGNING_KEY` at call time. API startup requires `shared.config.REQUIRED_ENV_VARS` and `DATABASE_URL`.
 - Record every decision agent code makes (a retry, a drop, a cap reached, a verdict) as attributes
   on a custom span: counts, outcomes, reasons, timings, and the model that answered, so a Phoenix
-  trace alone explains a run. Open each span with `tracing.start_span`, which parents it on the
+  trace alone explains a run. Open each span with `shared.tracing.start_span`, which parents it on the
   current LangChain run's span (that tracer never makes its spans current) and adds `user.id`. Keep
   the attributes on the `fetch_source`, `brave_search`, `deep_research`, `forecast_research`,
   `evidence_positions`, and `watch_video` spans: they will decide whether to build a source corpus.
@@ -100,7 +98,8 @@ deep_forecaster  START -> research -> draft_claims -> council_round_1 -> council
 
 - Each agent lives in `agentic_backend/src/agents/<name>/`: fixed editorial data in `consts/`,
   prompts in `prompts.py`, tuning in its config dataclasses (`LIMITS`, the `*_LLM_SETTINGS`). Nodes
-  return partial state dicts without mutating state.
+  return partial state dicts without mutating state. Each `graph.py` has one verb-named entry
+  function the orchestrator's tool calls (`ask_expert`, `research`, `forecast`, `report`).
 - The orchestrator coordinates specialists via modular tools (`agents/orchestrator/tools/`) executed
   in a `ToolNode(ALL_TOOLS, handle_tool_errors=False)` that update the `expert_synthesis` and `forecast_data`
   channels on `OrchestratorState`, so a failing tool raises to the API's error frame.
@@ -110,13 +109,13 @@ deep_forecaster  START -> research -> draft_claims -> council_round_1 -> council
   request, never sticky: a new question after a forecast is `geopolitical`, a question about the forecast `other`.
   `SUPERVISOR_SYSTEM_PROMPT` states each of these rules.
 - Next-steps footer: After specialist tool execution, supervisor Pass 2 generates a dynamic next-steps footer
-  offering follow-up options with canonical turn costs from `config.py`, falling back to `STATIC_NEXT_STEPS_MENU`
+  offering follow-up options with canonical turn costs from `shared/config.py`, falling back to `STATIC_NEXT_STEPS_MENU`
   on failure, emitted as a notice chunk.
 - Expert: exactly three Brave batches (one failing is skipped, all failing is an error), allow-listed
   pages through trafilatura (HTML) or pypdf (PDF, the first pages, dropped when over the
   size cap), and one streamed model call.
 - Deep expert: a `deepagents` agent built per turn, never at import. It searches through
-  `search.py` with `EXPERT_SOURCES` and revises under deepagents' `RubricMiddleware`, whose grader
+  `services/web_search.py` with `EXPERT_SOURCES` and revises under deepagents' `RubricMiddleware`, whose grader
   sees only the question and the final draft (`graph.grader_view`). A spent search budget is a
   message to the model; the wall cap is a 504 (`capped_run.run_under_time_limits`, the same
   dedicated-task cancel as the forecaster's); an unsatisfied grader ships the last draft; a grader
@@ -143,21 +142,21 @@ deep_forecaster  START -> research -> draft_claims -> council_round_1 -> council
 
 - A request carries exactly one of `{query, thread_id}` or `{resume, thread_id}`. Every `/api/*`
   route except `GET /api/health` needs a bearer token minted at Django's `GET /accounts/token/`
-  (`accounts_api`); `auth.py` answers a failed check with 401 and a foreign thread with 403.
-- Stream `custom`, `updates`, and `messages` with `subgraphs=True`; nodes emit `frames.ProgressFrame`
-  and `frames.NoticeEvent` through a `StreamWriter`. Read custom events from every namespace (a subgraph's arrive under the child's)
+  (`accounts_api`); `api/auth.py` answers a failed check with 401 and a foreign thread with 403.
+- Stream `custom`, `updates`, and `messages` with `subgraphs=True`; nodes emit `shared.frames.ProgressFrame`
+  and `shared.frames.NoticeEvent` through a `StreamWriter`. Read custom events from every namespace (a subgraph's arrive under the child's)
   and `updates` from the root only.
-- Answer text streams from the AI messages of `api.ANSWER_NODES` (`answer`, `supervisor`, `write`); the
+- Answer text streams from the AI messages of `api.stream.ANSWER_NODES` (`answer`, `supervisor`, `write`); the
   supervisor returns a chat answer whole. The reporter's refusal, cancel, and revision-cap paths, the deep
   expert, and the forecaster deliver their answer whole as a `notice` event instead. The reporter's
   `outline`/`gate`, the deep expert, the forecaster, and `tools` may never join `ANSWER_NODES` (the text
-  would print twice); the supervisor's footer starts with `config.FOOTER_PREFIX` and is skipped. No
+  would print twice); the supervisor's footer starts with `shared.config.FOOTER_PREFIX` and is skipped. No
   forecaster node may be named `answer`, `supervisor`, or `write`.
 
 ## Quota
 
 - `DAILY_RESEARCH_TURNS` caps one user's day and `DAILY_RESEARCH_TURNS_ALL_USERS` the site's
-  (`config.py`), counted in the Django-owned `quota` and `site_quota` tables per UTC day. Chat turns
+  (`shared/config.py`), counted in the Django-owned `quota` and `site_quota` tables per UTC day. Chat turns
   are free, a deep turn spends `DEEP_RESEARCH_TURN_COST`, a forecast `FORECAST_TURN_COST`, and any
   other research turn one unit. A costly turn refused before the site's charge
   touches neither counter; when the site's charge commits and the user's upsert
@@ -166,7 +165,7 @@ deep_forecaster  START -> research -> draft_claims -> council_round_1 -> council
   the charge day, up to `MAX_DAILY_REFUND_UNITS` per user
   per UTC day (counted in process memory); a disconnect gives nothing back, and site units stay
   spent.
-- `quota.py` holds these rules; `api._generate` only calls `charge_turn` and `refund_turn`.
+- `api/quota.py` holds these rules; `api.stream`'s `_generate` only calls `charge_turn` and `refund_turn`.
 - A quota number has copies in `web_backend/templates/pages/landing.html` (the daily limit is
   drift-tested, the forecast's cost is not) and `e2e/test_specs/ui-daily-limit-is-50.md`.
 

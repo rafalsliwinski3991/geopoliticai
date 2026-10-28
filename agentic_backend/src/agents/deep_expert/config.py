@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from config import LLMSettings
+from shared.config import LLMSettings
 
 # The planning/searching/writing model. gpt-5* accepts only temperature 1.0;
 # see `agents/reporter/config.py` for the measurement. max_output_tokens covers

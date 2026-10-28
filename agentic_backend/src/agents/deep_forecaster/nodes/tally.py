@@ -5,10 +5,10 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from typing import Any
 
-from agents.deep_forecaster.council import count_votes, final_ballots
+from agents.deep_forecaster.council.ballots import count_votes, final_ballots
 from agents.deep_forecaster.models import Ballot, Stance
 from agents.deep_forecaster.state import ClaimTally, ForecastState
-from tracing import start_span
+from shared.tracing import start_span
 
 
 async def tally(state: ForecastState) -> dict[str, Any]:

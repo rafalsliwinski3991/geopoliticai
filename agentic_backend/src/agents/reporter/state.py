@@ -10,8 +10,8 @@ from pydantic import BaseModel, ConfigDict, Field
 from typing_extensions import NotRequired
 
 from agents.reporter.config import MAX_TRANSCRIPT_CHARS
-from config import FOOTER_PREFIX
-from models import CleanText
+from shared.config import FOOTER_PREFIX
+from shared.text import CleanText
 
 GateAction = Literal["approve", "revise", "cancel"]
 ResumeAction = Literal["approve", "revise", "cancel", "new_question"]

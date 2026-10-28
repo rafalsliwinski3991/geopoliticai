@@ -15,8 +15,9 @@ from langchain_core.messages import HumanMessage
 from agents.reporter.config import INTENT_LLM_SETTINGS
 from agents.reporter.prompts import RESUME_INTENT_SYSTEM_PROMPT
 from agents.reporter.state import ResumeIntent
-from llm import ainvoke_structured
-from models import OutlinePause, squash_whitespace
+from models import OutlinePause
+from services.llm import ainvoke_structured
+from shared.text import squash_whitespace
 
 logger = logging.getLogger(__name__)
 

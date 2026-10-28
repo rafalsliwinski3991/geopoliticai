@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from config import LLMSettings
+from shared.config import LLMSettings
 
 # The research lead and its scouts: the deep expert's model and effort, for its
 # reason (a self-driven tool loop, where per-turn latency is the budget; see
@@ -150,7 +150,7 @@ class ForecastLimits:
     points at, at most `max_passages` per claim (user decision 2026-10-01,
     overriding Q20's "every member reads everything"): about 10k tokens.
     `claims_seconds` and `write_seconds` are LangGraph node
-    timeouts (`graph.STEPS`): `llm.ainvoke_structured` retries, so the
+    timeouts (`graph.STEPS`): `services.llm.ainvoke_structured` retries, so the
     per-attempt `timeout_seconds` alone would not bound a step. Each equals
     its call's per-attempt timeout, so a slow attempt ends as the node's 504
     and only a fast failure (a quick 429) is retried inside the budget.
@@ -176,7 +176,7 @@ class ForecastLimits:
     near 10k tokens (4 claims x 6 passages x 1,200 characters). Up to 7
     members x 4 claims of reasons, each with its source links, are printed in
     the answer, which the delivery layer clips at 50,000 characters
-    (`api.MAX_ANSWER_CHARS`): with `max_reason_chars` and `max_evidences`,
+    (`shared.config.MAX_ANSWER_CHARS`): with `max_reason_chars` and `max_evidences`,
     28 x (600 + 5 links of ~100) is ~31,000.
     """
 

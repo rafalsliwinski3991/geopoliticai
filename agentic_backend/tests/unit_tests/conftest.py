@@ -25,7 +25,7 @@ def _tracer_provider() -> None:
 def _reset_tracing_initialized() -> None:
     """`init_tracing` tests leave `_initialized` True; `start_span` would then
     call the LangChain lookup, which prints to stdout outside an instrumented run."""
-    import tracing
+    from shared import tracing
 
     tracing._initialized = False
 

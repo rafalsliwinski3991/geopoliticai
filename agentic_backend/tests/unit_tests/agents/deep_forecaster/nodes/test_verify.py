@@ -8,7 +8,7 @@ from typing import Any
 
 import pytest
 
-from agents.deep_forecaster.council import count_votes, final_ballots
+from agents.deep_forecaster.council.ballots import count_votes, final_ballots
 from agents.deep_forecaster.models import (
     Analysis,
     Ballot,
@@ -18,7 +18,8 @@ from agents.deep_forecaster.models import (
     Vote,
 )
 from agents.deep_forecaster.state import ClaimTally, ResearchOutcome
-from models import LLMInvocationError, Source
+from models import Source
+from shared.errors import LLMInvocationError
 from unit_tests.agents.deep_forecaster.conftest import (
     DEFECTS,
     MARKER,

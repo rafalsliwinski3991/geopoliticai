@@ -28,10 +28,10 @@ from agents.orchestrator.consts.menu import (
 from agents.orchestrator.prompts import SUPERVISOR_SYSTEM_PROMPT
 from agents.orchestrator.state import Destination, OrchestratorState
 from agents.orchestrator.tools import ALL_TOOLS
-from config import FOOTER_PREFIX
-from llm import build_chat_model
-from models import LLMInvocationError
-from tracing import start_span
+from services.llm import build_chat_model
+from shared.config import FOOTER_PREFIX
+from shared.errors import LLMInvocationError
+from shared.tracing import start_span
 
 logger = logging.getLogger(__name__)
 

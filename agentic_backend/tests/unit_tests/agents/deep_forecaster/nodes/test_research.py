@@ -24,13 +24,9 @@ from typing_extensions import TypedDict
 from agents import capped_run
 from agents.deep_forecaster.consts.progress import RESEARCH_LABEL
 from agents.deep_forecaster.state import ForecastRun, ResearchOutcome, ResearchRun
-from frames import ProgressFrame
-from models import (
-    LLMInvocationError,
-    NoSourcesError,
-    SearchUnavailableError,
-    Source,
-)
+from models import Source
+from shared.errors import LLMInvocationError, NoSourcesError, SearchUnavailableError
+from shared.frames import ProgressFrame
 
 research_module: Any = importlib.import_module("agents.deep_forecaster.nodes.research")
 

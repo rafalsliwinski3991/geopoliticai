@@ -25,7 +25,7 @@ from evals.helpers.judge import markdown_link_urls
 from evals.helpers.live import build_failure_row
 from evals.helpers.run import run
 from evals.judges.deep_forecaster_live import judges
-from models import ResearchLimitError
+from shared.errors import ResearchLimitError
 
 # 2.5x the forecaster's wall cap (`ForecastLimits.wall_seconds`, 840 s). The
 # task runs under the wall itself; this bounds a task that outlives the cap's
@@ -40,7 +40,7 @@ def forecast_output(
 ) -> dict[str, Any]:
     """Return what the judges read from a finished forecast, and its report numbers."""
     from agents.deep_forecaster.consts.editorial import VOTE_LIST_HEADING
-    from agents.deep_forecaster.evidence import render_passages
+    from agents.deep_forecaster.render import render_passages
 
     claims, sources = state["claims"], state["sources"]
     # The writer's analysis, without the code-written vote list: its member

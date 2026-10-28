@@ -22,7 +22,7 @@ from langchain_core.runnables import RunnableConfig
 from langgraph.constants import CONFIG_KEY_CHECKPOINTER
 from langgraph.errors import NodeTimeoutError
 
-from models import LLMInvocationError, PipelineError
+from shared.errors import LLMInvocationError, PipelineError
 
 logger = logging.getLogger(__name__)
 

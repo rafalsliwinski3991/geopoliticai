@@ -12,19 +12,19 @@ from langgraph.types import Interrupt
 
 from agents.orchestrator.tools.reporter import run_reporter
 from agents.reporter.consts.messages import CANCELLED_NOTICE, NO_MATERIAL_NOTICE
-from models import LLMInvocationError
+from shared.errors import LLMInvocationError
 from unit_tests.agents.orchestrator.tools.conftest import make_tool_runtime
 
 reporter_tool_module = importlib.import_module("agents.orchestrator.tools.reporter")
 
 
-class _PausingReporterGraph:
-    """Fake for reporter_graph that pauses at the approval gate."""
+class _PausingReport:
+    """Fake for `report` that pauses at the approval gate."""
 
     def __init__(self, outline_sections: list[str]) -> None:
         self._outline_sections = outline_sections
 
-    async def ainvoke(self, state: dict[str, Any]) -> dict[str, Any]:
+    async def __call__(self, transcript: str) -> dict[str, Any]:
         raise GraphInterrupt(
             [Interrupt(value={"outline": list(self._outline_sections)})]
         )
@@ -73,10 +73,10 @@ async def test_run_reporter_compiles_report_when_workspace_has_material(
     emitted_events: list[dict[str, Any]] = []
     compiled_report = "# Defense Report\n\nFull structured analysis."
 
-    async def fake_ainvoke(input_state: dict[str, Any]) -> dict[str, Any]:
+    async def fake_report(transcript: str) -> dict[str, Any]:
         return {"report": compiled_report}
 
-    monkeypatch.setattr(reporter_tool_module.reporter_graph, "ainvoke", fake_ainvoke)
+    monkeypatch.setattr(reporter_tool_module, "report", fake_report)
 
     initial_state = {
         "messages": [
@@ -123,7 +123,7 @@ async def test_run_reporter_propagates_the_pause_at_the_approval_gate(
     # Arrange
     outline_sections = ["1. Strategic Context", "2. Scenario Projections"]
     monkeypatch.setattr(
-        reporter_tool_module, "reporter_graph", _PausingReporterGraph(outline_sections)
+        reporter_tool_module, "report", _PausingReport(outline_sections)
     )
     emitted_events: list[dict[str, Any]] = []
     runtime = make_tool_runtime(
@@ -163,10 +163,10 @@ async def test_run_reporter_emits_notice_when_report_is_cancelled_or_declined(
     # Arrange
     emitted_events: list[dict[str, Any]] = []
 
-    async def fake_ainvoke(input_state: dict[str, Any]) -> dict[str, Any]:
+    async def fake_report(transcript: str) -> dict[str, Any]:
         return {"report": "", "notice": CANCELLED_NOTICE}
 
-    monkeypatch.setattr(reporter_tool_module.reporter_graph, "ainvoke", fake_ainvoke)
+    monkeypatch.setattr(reporter_tool_module, "report", fake_report)
 
     initial_state = {
         "messages": [HumanMessage("Topic")],
@@ -193,13 +193,13 @@ async def test_run_reporter_hands_the_reporter_the_thread_transcript(
 ) -> None:
     """The reporter writes from the thread, so the prior answer's artifact text must reach it."""
     # Arrange
-    received: list[dict[str, Any]] = []
+    received: list[str] = []
 
-    async def fake_ainvoke(input_state: dict[str, Any]) -> dict[str, Any]:
-        received.append(input_state)
+    async def fake_report(transcript: str) -> dict[str, Any]:
+        received.append(transcript)
         return {"report": "# Report"}
 
-    monkeypatch.setattr(reporter_tool_module.reporter_graph, "ainvoke", fake_ainvoke)
+    monkeypatch.setattr(reporter_tool_module, "report", fake_report)
     runtime = make_tool_runtime(
         state={
             "messages": [
@@ -217,7 +217,7 @@ async def test_run_reporter_hands_the_reporter_the_thread_transcript(
     await run_reporter.ainvoke({"topic": "Baltic", "runtime": runtime})
 
     # Assert
-    assert "Baltic briefing [1](https://example.com/b)." in received[0]["transcript"]
+    assert "Baltic briefing [1](https://example.com/b)." in received[0]
 
 
 @pytest.mark.anyio
@@ -241,10 +241,10 @@ async def test_run_reporter_without_a_report_emits_the_graph_notice_or_the_cance
     # Arrange
     emitted_events: list[dict[str, Any]] = []
 
-    async def fake_ainvoke(input_state: dict[str, Any]) -> dict[str, Any]:
+    async def fake_report(transcript: str) -> dict[str, Any]:
         return graph_result
 
-    monkeypatch.setattr(reporter_tool_module.reporter_graph, "ainvoke", fake_ainvoke)
+    monkeypatch.setattr(reporter_tool_module, "report", fake_report)
     runtime = make_tool_runtime(
         state={"messages": [HumanMessage("Topic")], "expert_synthesis": ["Material."]},
         writer=emitted_events.append,
@@ -265,10 +265,10 @@ async def test_run_reporter_lets_a_pipeline_error_propagate(
     """A failed report run must reach the API's error frame, not become a tool result."""
 
     # Arrange
-    async def failing_ainvoke(input_state: dict[str, Any]) -> dict[str, Any]:
+    async def failing_report(transcript: str) -> dict[str, Any]:
         raise LLMInvocationError("Model call failed.")
 
-    monkeypatch.setattr(reporter_tool_module.reporter_graph, "ainvoke", failing_ainvoke)
+    monkeypatch.setattr(reporter_tool_module, "report", failing_report)
     runtime = make_tool_runtime(
         state={"messages": [HumanMessage("Topic")], "expert_synthesis": ["Material."]}
     )

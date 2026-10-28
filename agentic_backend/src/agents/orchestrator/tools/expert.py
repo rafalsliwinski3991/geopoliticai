@@ -9,8 +9,7 @@ from langchain_core.tools import tool
 from langgraph.prebuilt import ToolRuntime
 from langgraph.types import Command
 
-from agents.expert import build_initial_pipeline_state
-from agents.expert import graph as expert_graph
+from agents.expert import ask_expert
 from agents.orchestrator.consts.progress import SEARCH_PROGRESS
 from agents.orchestrator.state import OrchestratorState
 
@@ -21,7 +20,7 @@ async def run_expert(
 ) -> Command[Any]:
     """Search allow-listed sources and synthesize a verified geopolitical answer."""
     runtime.stream_writer(SEARCH_PROGRESS)
-    result = await expert_graph.ainvoke(build_initial_pipeline_state(query))
+    result = await ask_expert(query)
     answer: str = result["answer"]
     source_count = len(result.get("sources", []))
 

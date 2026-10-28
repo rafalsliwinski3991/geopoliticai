@@ -5,7 +5,6 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable, Coroutine, Sequence
 from typing import Any
 
-from config import get_trace_endpoint
 from evals.helpers.judge import (
     JUDGE_ERROR,
     JUDGE_MODEL,
@@ -15,6 +14,7 @@ from evals.helpers.judge import (
     async_score,
     verdict_from_label,
 )
+from shared.config import get_trace_endpoint
 
 
 def base_url() -> str:

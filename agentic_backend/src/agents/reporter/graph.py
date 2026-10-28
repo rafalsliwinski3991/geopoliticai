@@ -7,8 +7,8 @@ from typing import Any
 from langgraph.graph import END, START, StateGraph
 
 from agents.reporter.nodes import gate, outline, write
-from agents.reporter.state import ReporterState
-from tracing import init_tracing
+from agents.reporter.state import ReporterState, build_initial_reporter_state
+from shared.tracing import init_tracing
 
 
 def _after_outline(state: ReporterState) -> str:
@@ -54,3 +54,16 @@ def build_graph(checkpointer: Any | None = None) -> Any:
 # nothing else, so module scope is Studio's only hook for Phoenix tracing.
 init_tracing()
 graph = build_graph()
+
+
+async def report(transcript: str) -> dict[str, Any]:
+    """Run the reporter on `transcript` and return the graph's final state.
+
+    Called from the orchestrator's `run_reporter` tool, inside the orchestrator's
+    run: the child graph inherits that run's checkpointer, so a pause and its
+    resume work as they did when the tool called `graph.ainvoke` itself.
+    """
+    result: dict[str, Any] = await graph.ainvoke(
+        build_initial_reporter_state(transcript)
+    )
+    return result

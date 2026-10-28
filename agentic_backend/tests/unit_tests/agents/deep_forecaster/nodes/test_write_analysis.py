@@ -8,11 +8,11 @@ from typing import Any
 import pytest
 
 from agents.deep_forecaster.consts.progress import REWRITE_LABEL, WRITE_LABEL
-from agents.deep_forecaster.council import final_ballots
+from agents.deep_forecaster.council.ballots import final_ballots
 from agents.deep_forecaster.models import Analysis, ClaimDiscussion
 from agents.deep_forecaster.prompts import RETRY_INSTRUCTIONS
 from agents.deep_forecaster.state import ClaimTally
-from frames import ProgressFrame
+from shared.frames import ProgressFrame
 from unit_tests.agents.deep_forecaster.conftest import (
     MISSING_CLAIM_DEFECT,
     ballot,

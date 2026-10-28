@@ -7,8 +7,8 @@ from typing import Any
 from langgraph.graph import END, START, StateGraph
 
 from agents.expert.nodes import answer, search_and_fetch
-from agents.expert.state import PipelineState
-from tracing import init_tracing
+from agents.expert.state import PipelineState, build_initial_pipeline_state
+from shared.tracing import init_tracing
 
 
 def build_graph() -> Any:
@@ -37,3 +37,9 @@ def build_runtime_config(*, thread_id: str | None = None) -> dict[str, dict[str,
 # never raises, so this is not orchestration leaking back into construction.
 init_tracing()
 graph = build_graph()
+
+
+async def ask_expert(query: str) -> dict[str, Any]:
+    """Run the expert pipeline on `query` and return the graph's final state."""
+    result: dict[str, Any] = await graph.ainvoke(build_initial_pipeline_state(query))
+    return result

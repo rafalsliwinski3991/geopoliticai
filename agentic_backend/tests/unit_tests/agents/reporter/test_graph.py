@@ -5,9 +5,11 @@ import pytest
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.types import Command
 
+from agents.reporter import report
 from agents.reporter.config import MAX_REVISION_ROUNDS
 from agents.reporter.consts.messages import CANCELLED_NOTICE, REVISION_CAP_NOTICE
 from agents.reporter.state import OutlineDraft, build_initial_reporter_state
+from shared.errors import LLMInvocationError
 
 graph_module = importlib.import_module("agents.reporter.graph")
 outline_module = importlib.import_module("agents.reporter.nodes.outline")
@@ -245,3 +247,64 @@ async def test_max_revision_rounds_plus_one_revisions_end_the_run(
     assert state.values["notice"] == REVISION_CAP_NOTICE
     assert len(outline_calls) == MAX_REVISION_ROUNDS + 1
     assert write_calls == []
+
+
+class RecordingGraph:
+    """A compiled-graph stand-in: records each input and returns or raises what it was given."""
+
+    def __init__(
+        self, result: dict[str, Any] | None = None, error: Exception | None = None
+    ):
+        self.inputs: list[Any] = []
+        self._result = result
+        self._error = error
+
+    async def ainvoke(self, graph_input: Any) -> dict[str, Any]:
+        self.inputs.append(graph_input)
+        if self._error is not None:
+            raise self._error
+        assert self._result is not None
+        return self._result
+
+
+@pytest.mark.anyio
+async def test_report_returns_what_the_graph_returns(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The orchestrator's tool reads `report` and `notice` from the graph's own
+    state, so the wrapper must hand that state back untouched."""
+    # Arrange
+    final_state = {"report": "# Report", "notice": ""}
+    fake_graph = RecordingGraph(result=final_state)
+    monkeypatch.setattr(graph_module, "graph", fake_graph)
+
+    # Act
+    result = await report(TRANSCRIPT)
+
+    # Assert
+    assert fake_graph.inputs == [
+        {
+            "transcript": TRANSCRIPT,
+            "outline": [],
+            "notice": "",
+            "instruction": "",
+            "revisions": 0,
+            "report": "",
+        }
+    ]
+    assert result == final_state
+
+
+@pytest.mark.anyio
+async def test_report_lets_a_pipeline_error_through(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A graph failure must reach the API's error frame, not turn into an empty report."""
+    # Arrange
+    monkeypatch.setattr(
+        graph_module, "graph", RecordingGraph(error=LLMInvocationError("model down"))
+    )
+
+    # Act + Assert
+    with pytest.raises(LLMInvocationError, match="model down"):
+        await report(TRANSCRIPT)

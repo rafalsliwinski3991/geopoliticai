@@ -11,13 +11,12 @@ from langgraph.types import Command
 
 from agents.orchestrator.state import OrchestratorState
 from agents.reporter import (
-    build_initial_reporter_state,
     build_transcript,
     has_researched_material,
+    report,
 )
-from agents.reporter import graph as reporter_graph
 from agents.reporter.consts.messages import CANCELLED_NOTICE, NO_MATERIAL_NOTICE
-from tracing import start_span
+from shared.tracing import start_span
 
 
 @tool
@@ -48,13 +47,13 @@ async def run_reporter(
             )
 
         transcript = build_transcript(messages)
-        result = await reporter_graph.ainvoke(build_initial_reporter_state(transcript))
-        report: str = result.get("report") or ""
-        text = report or result.get("notice") or CANCELLED_NOTICE
+        result = await report(transcript)
+        report_text: str = result.get("report") or ""
+        text = report_text or result.get("notice") or CANCELLED_NOTICE
 
-        if report:
+        if report_text:
             span.set_attribute("report.outcome", "written")
-            span.set_attribute("report.chars", len(report))
+            span.set_attribute("report.chars", len(report_text))
         else:
             span.set_attribute("report.outcome", "not_written")
             runtime.stream_writer({"type": "notice", "text": text})
@@ -63,7 +62,7 @@ async def run_reporter(
         update={
             "messages": [
                 ToolMessage(
-                    content=f"Report compiled ({len(report)} chars).",
+                    content=f"Report compiled ({len(report_text)} chars).",
                     tool_call_id=runtime.tool_call_id or "",
                     artifact={"text": text},
                 )

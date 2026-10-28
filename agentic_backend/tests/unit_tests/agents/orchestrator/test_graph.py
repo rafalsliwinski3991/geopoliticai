@@ -18,12 +18,12 @@ from agents.orchestrator import build_graph, build_runtime_config
 from agents.orchestrator.state import build_initial_orchestrator_state
 from agents.reporter.consts.messages import CANCELLED_NOTICE, NO_MATERIAL_NOTICE
 from agents.reporter.state import OutlineDraft
-from models import LLMInvocationError
+from shared.errors import LLMInvocationError
 from unit_tests.agents.orchestrator.conftest import ScriptedChatModel
 
 supervisor_module = importlib.import_module("agents.orchestrator.nodes.supervisor")
 outline_module = importlib.import_module("agents.reporter.nodes.outline")
-llm_module = importlib.import_module("llm")
+llm_module = importlib.import_module("services.llm")
 
 CITED_ANSWER = "Here is the situation [1](https://reuters.com/x)."
 
@@ -98,15 +98,13 @@ async def test_graph_executes_supervisor_tool_supervisor_loop(
         lambda: ScriptedChatModel([footer_response]),
     )
 
-    async def fake_expert_ainvoke(state: Any) -> dict[str, Any]:
+    async def fake_ask_expert(query: str) -> dict[str, Any]:
         return {
             "answer": "Verified Sudan analysis [1](https://reuters.com/sudan).",
             "sources": [],
         }
 
-    monkeypatch.setattr(
-        "agents.orchestrator.tools.expert.expert_graph.ainvoke", fake_expert_ainvoke
-    )
+    monkeypatch.setattr("agents.orchestrator.tools.expert.ask_expert", fake_ask_expert)
 
     compiled = build_graph(checkpointer=InMemorySaver())
     config = build_runtime_config(thread_id="t-loop-1")
@@ -243,11 +241,11 @@ async def test_a_pipeline_error_inside_a_tool_propagates_out_of_the_graph(
     # Arrange
     _script_supervisor(monkeypatch, [_call("run_expert", query="q")])
 
-    async def failing_expert(state: Any) -> dict[str, Any]:
+    async def failing_ask_expert(query: str) -> dict[str, Any]:
         raise LLMInvocationError("Model call failed.")
 
     monkeypatch.setattr(
-        "agents.orchestrator.tools.expert.expert_graph.ainvoke", failing_expert
+        "agents.orchestrator.tools.expert.ask_expert", failing_ask_expert
     )
 
     # Act + Assert

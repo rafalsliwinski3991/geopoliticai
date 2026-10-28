@@ -42,7 +42,7 @@ dependencies = [
     "uvicorn[standard]>=0.29,<1.0",
     "arize-phoenix-otel>=0.17,<1.0",
     "openinference-instrumentation-langchain>=0.1,<1.0",
-    # Imported directly (`tracing.py` builds its `OITracer` from both even
+    # Imported directly (`shared/tracing.py` builds its `OITracer` from both even
     # though no instrumentor package is read there); declared because direct.
     "openinference-instrumentation>=0.1.59,<0.2",
     "opentelemetry-api>=1.29,<2.0",
@@ -77,21 +77,11 @@ constraint-dependencies = ["langsmith>=0.11.2"]
 
 [tool.setuptools]
 package-dir = {"" = "src"}
-py-modules = [
-    "api",
-    "auth",
-    "config",
-    "frames",
-    "llm",
-    "models",
-    "quota",
-    "search",
-    "tracing",
-]
+py-modules = ["models"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
-include = ["agents*", "db*"]
+include = ["agents*", "api*", "db*", "services*", "shared*"]
 
 
 [tool.setuptools.package-data]

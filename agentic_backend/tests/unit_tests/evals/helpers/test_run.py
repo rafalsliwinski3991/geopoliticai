@@ -15,7 +15,7 @@ import pytest
 from evals.helpers import phoenix as phoenix_mod
 from evals.helpers import run as run_mod
 from evals.helpers.judge import JUDGE_ERROR, NOT_APPLICABLE, Judge, Results, Verdict
-from models import SearchUnavailableError
+from shared.errors import SearchUnavailableError
 
 FIXED_PATH_NAME = "x_fixed.json"
 LIVE_PATH_NAME = "x_live.json"

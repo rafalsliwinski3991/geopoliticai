@@ -10,15 +10,15 @@ from unittest.mock import patch
 
 from langchain_core.messages import AIMessage, AnyMessage, HumanMessage
 
-import search
 from models import Candidate, OutlinePause, Source, SourcePolicy
+from services import page_reader
 
 # The node imports both functions by name, so they are patched where it looks them up.
 SEARCH_NODE_MODULE = "agents.expert.nodes.search_and_fetch"
 # The deep expert's tools import the same two names; patched the same way.
 DEEP_TOOLS_MODULE = "agents.deep_expert.tools"
 # `research()` builds its `ResearchRun` by name here; patched where it looks it up.
-DEEP_EXPERT_RESEARCH_MODULE = "agents.deep_expert.research"
+DEEP_EXPERT_RESEARCH_MODULE = "agents.deep_expert.graph"
 # The two roles a dataset conversation may hold, and the message each becomes.
 MESSAGE_TYPES: dict[str, type[HumanMessage] | type[AIMessage]] = {
     "user": HumanMessage,
@@ -107,7 +107,7 @@ def record_sources(pages: list[Source]) -> Iterator[None]:
     async def fetch_and_keep(
         candidates: Sequence[Candidate], policy: SourcePolicy
     ) -> list[Source]:
-        fetched = await search.fetch_sources(candidates, policy)
+        fetched = await page_reader.fetch_sources(candidates, policy)
         # The deep tool reads one URL at a time and takes the first page back.
         if len(candidates) == 1 and fetched:
             page = replace(fetched[0], url=candidates[0].url)
@@ -143,7 +143,7 @@ def dump_sources(sources: Sequence[Source]) -> list[dict[str, str]]:
 
 
 async def pending_pause(graph: Any, config: dict[str, Any]) -> OutlinePause | None:
-    """Return the value a paused thread waits on, or None (mirrors `api._pending_pause`)."""
+    """Return the value a paused thread waits on, or None (mirrors `api.stream._pending_pause`)."""
     interrupts = (await graph.aget_state(config)).interrupts
     if not interrupts:
         return None

@@ -7,11 +7,11 @@ environment.
 
 from __future__ import annotations
 
-from config import LLMSettings
+from shared.config import LLMSettings
 
 # The outline reads the whole thread (brainstorm Q15), so it needs the large
 # window. `gpt-5-mini` supports `with_structured_output(..., method="json_schema",
-# strict=True)`, verified through this repo's own `llm.py` boundary. Its context
+# strict=True)`, verified through this repo's own `services/llm.py` boundary. Its context
 # window (~400k tokens) is an OpenAI-published figure, not something measurable
 # from any installed package — see §1's "unverified provider claims".
 OUTLINE_LLM_SETTINGS = LLMSettings(
@@ -19,7 +19,7 @@ OUTLINE_LLM_SETTINGS = LLMSettings(
     # 1.0, not 0.0. `gpt-5*` non-chat models accept only temperature 1, and
     # langchain-openai 0.3.35 *silently drops* any other value before the
     # request is built (`chat_models/base.py:720-744`, `validate_temperature`).
-    # Measured through this repo's own `llm._build_client`: gpt-5-mini at 0.0
+    # Measured through this repo's own `services.llm._build_client`: gpt-5-mini at 0.0
     # yields `temperature=None` and no temperature in the payload, while
     # gpt-4o-mini keeps 0.0. Writing 1.0 makes the code say what actually
     # happens. Outline generation is therefore NOT deterministic.

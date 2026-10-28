@@ -23,7 +23,7 @@ the retrieved text to one streamed OpenAI plain-text call. Search, extraction,
 and model failures are surfaced to clients; the expert has no degraded answer.
 
 Agent-specific code lives under `src/agents/`; shared retrieval and LLM
-boundaries are in `src/search.py` and `src/llm.py`. The API accepts exactly
+boundaries are in `src/services/web_search.py`, `src/services/page_reader.py` and `src/services/llm.py`. The API accepts exactly
 one of `{query, thread_id}` or `{resume, thread_id}`, the resume carrying the
 reply to a paused outline, and persists conversation state in a required
 Postgres checkpointer. The static frontend is English-only, keeps its thread id in
@@ -44,7 +44,7 @@ writes can complete; the reporter clips its stored report to the same
 `MAX_ANSWER_CHARS = 50_000`, bounding what is stored in the thread, not what is
 delivered. Every `/api/*`
 route except `GET /api/health` requires a bearer JWT minted by Django at
-`GET /accounts/token/` and verified by `auth.py`, in development too. Production
+`GET /accounts/token/` and verified by `api/auth.py`, in development too. Production
 nginx applies Basic Auth to `/admin/` and `/phoenix/`; `AUTH_REQUIRED=true` fails
 closed without credentials, while local development leaves those two surfaces
 open.
@@ -57,7 +57,7 @@ cp ../.env.example ../.env  # populate at the repo root, not under agentic_backe
 langgraph dev
 ```
 
-There is a single canonical `.env` at the repo root; `config.py` resolves it
+There is a single canonical `.env` at the repo root; `shared/config.py` resolves it
 by absolute path regardless of working directory, `langgraph.json`'s `env`
 field points at `../.env`, and Docker Compose's `env_file: .env` reads the
 same file. There is no separate `agentic_backend/.env`. Required environment variables

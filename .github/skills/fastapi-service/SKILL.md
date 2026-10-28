@@ -1,6 +1,6 @@
 ---
 name: fastapi-service
-description: "INVOKE THIS SKILL when changing agentic_backend/src/api.py or auth.py — routes, dependencies, Pydantic models, lifespan and startup, SSE streaming, JWT verification, error statuses, or rate limiting. Use it before adding any endpoint or dependency."
+description: "INVOKE THIS SKILL when changing agentic_backend/src/api/ (app, routes, stream, rate_limit, auth, quota) — routes, dependencies, Pydantic models, lifespan and startup, SSE streaming, JWT verification, error statuses, or rate limiting. Use it before adding any endpoint or dependency."
 ---
 
 FastAPI is an async framework; the whole value is one event loop that is never
