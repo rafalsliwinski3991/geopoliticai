@@ -99,9 +99,10 @@ evals:
 # LOAD TESTS
 ######################
 
-# The real app and graphs over HTTP, with the models, Brave, page fetches and
-# the database faked (loadtests/fakes.py): no key, no Postgres, no spend.
-# Flags go through LOADTEST_ARGS, e.g. LOADTEST_ARGS="--users 100 --max-p95 10".
+# Locust against the real app and graphs over HTTP, with the models, Brave,
+# page fetches and the database faked (loadtests/fakes.py): no key, no
+# Postgres, no spend. Locust's flags go through LOADTEST_ARGS, e.g.
+# LOADTEST_ARGS="--users 100 --spawn-rate 20 --max-p95 10".
 LOADTEST_ARGS ?=
 
 loadtest:

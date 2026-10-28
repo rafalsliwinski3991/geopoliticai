@@ -1,5 +1,8 @@
+import asyncio
+import os
 from datetime import date
 
+import httpx
 import pytest
 from langchain_core.messages import HumanMessage
 
@@ -13,12 +16,22 @@ from loadtests.fakes import (
     build_article_html,
     fake_backend,
 )
-from loadtests.scenarios import RESEARCH_QUERY
+from loadtests.turns import (
+    CHAT_QUERY,
+    RESEARCH_QUERY,
+    STREAM_PATH,
+    THREADS_PATH,
+    find_turn_error,
+    mint_token,
+    parse_frame,
+)
 from search import _extract_page
 
 POOL = None
 DAY = date(2026, 10, 27)
 LIMIT = 2
+USERS = 6
+ROUNDS = 2
 
 
 def test_the_supervisor_fake_routes_a_research_query_to_the_expert() -> None:
@@ -138,3 +151,79 @@ def test_leaving_the_fake_backend_restores_the_real_graph() -> None:
 
     # Assert
     assert restored is real_graph
+
+
+async def _send_turn(
+    client: httpx.AsyncClient, token: str, thread_id: str, query: str
+) -> str | None:
+    async with client.stream(
+        "POST",
+        STREAM_PATH,
+        json={"query": query, "thread_id": thread_id},
+        headers={"Authorization": f"Bearer {token}"},
+    ) as response:
+        if response.status_code != 200:
+            return f"http {response.status_code}"
+        last: dict[str, object] = {}
+        async for line in response.aiter_lines():
+            frame = parse_frame(line)
+            if frame is not None:
+                last = frame
+    return find_turn_error(last)
+
+
+async def _send_get(client: httpx.AsyncClient, token: str, path: str) -> str | None:
+    response = await client.get(path, headers={"Authorization": f"Bearer {token}"})
+    return None if response.status_code == 200 else f"http {response.status_code}"
+
+
+async def _run_user(client: httpx.AsyncClient, user_id: int) -> list[str | None]:
+    """One load user's rounds, as the locustfile sends them; one error per request."""
+    token = mint_token(user_id, os.environ["JWT_SIGNING_KEY"])
+    thread_id = f"load-{user_id}"
+    errors = []
+    for _ in range(ROUNDS):
+        errors.append(await _send_turn(client, token, thread_id, CHAT_QUERY))
+        errors.append(await _send_turn(client, token, thread_id, RESEARCH_QUERY))
+        errors.append(await _send_get(client, token, THREADS_PATH))
+        errors.append(await _send_get(client, token, f"{THREADS_PATH}/{thread_id}"))
+    return errors
+
+
+def _asgi_client() -> httpx.AsyncClient:
+    return httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=api.app), base_url="http://test"
+    )
+
+
+@pytest.mark.anyio
+async def test_every_request_of_concurrent_users_succeeds_on_the_fakes() -> None:
+    """Concurrent users on separate threads must not see each other's state:
+    every chat, research, list, and history request of every user succeeds."""
+    # Arrange
+    with fake_backend(LatencyProfile()):
+        async with _asgi_client() as client:
+            # Act
+            per_user = await asyncio.gather(
+                *(_run_user(client, user_id) for user_id in range(1, USERS + 1))
+            )
+
+    # Assert
+    assert per_user == [[None] * ROUNDS * 4] * USERS
+
+
+@pytest.mark.anyio
+async def test_each_research_turn_charges_its_own_user_one_unit() -> None:
+    """The fakes drive the real `quota.charge_turn`: each user pays one unit per
+    research turn and nothing for chat, however the turns interleave."""
+    # Arrange
+    with fake_backend(LatencyProfile()) as db:
+        async with _asgi_client() as client:
+            # Act
+            await asyncio.gather(
+                *(_run_user(client, user_id) for user_id in range(1, USERS + 1))
+            )
+
+    # Assert
+    assert sorted(db.used.values()) == [ROUNDS] * USERS
+    assert sum(db.site_used.values()) == USERS * ROUNDS

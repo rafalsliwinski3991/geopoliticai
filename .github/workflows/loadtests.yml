@@ -36,22 +36,37 @@ jobs:
         working-directory: agentic_backend
         run: uv sync --locked --dev
 
-      # Each load still runs after a failed one, so the summary shows all three.
+      # Locust, against the faked API (loadtests.run starts it), for a minute
+      # each with users started over 5 s. Each load still runs after a failed
+      # one, so the summary shows all three.
       - name: Load test, 50 users
         working-directory: agentic_backend
-        run: mkdir -p results && uv run python -m loadtests.run --users 50 --json-out results/users-50.json
+        run: >-
+          mkdir -p results && uv run python -m loadtests.run --users 50 --spawn-rate 10
+          --json-file results/users-50 --html results/users-50.html
 
       - name: Load test, 100 users
         if: ${{ !cancelled() }}
         working-directory: agentic_backend
-        run: uv run python -m loadtests.run --users 100 --json-out results/users-100.json
+        run: >-
+          uv run python -m loadtests.run --users 100 --spawn-rate 20
+          --json-file results/users-100 --html results/users-100.html
 
       - name: Load test, 150 users
         if: ${{ !cancelled() }}
         working-directory: agentic_backend
-        run: uv run python -m loadtests.run --users 150 --json-out results/users-150.json
+        run: >-
+          uv run python -m loadtests.run --users 150 --spawn-rate 30
+          --json-file results/users-150 --html results/users-150.html
 
       - name: Summarize
         if: ${{ !cancelled() }}
         working-directory: agentic_backend
-        run: uv run python -m loadtests.compare results/*.json >> "$GITHUB_STEP_SUMMARY"
+        run: uv run python -m loadtests.compare results/users-*.json >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload Locust reports
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: locust-reports
+          path: agentic_backend/results/

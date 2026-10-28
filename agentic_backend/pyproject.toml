@@ -148,4 +148,6 @@ dev = [
     "arize-phoenix-client>=3.3,<4.0",
     "arize-phoenix-evals>=3.5.1,<4.0",
     "tenacity>=9.1,<10",
+    # Load tests (`loadtests/`): the users that drive the faked API.
+    "locust>=2.43,<3",
 ]

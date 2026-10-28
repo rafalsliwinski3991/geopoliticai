@@ -46,10 +46,9 @@ import search
 from agents.orchestrator import build_graph
 from config import LLMSettings
 from db.web.sql import ThreadRow, quota_day
+from loadtests.turns import RESEARCH_KEYWORD
 from models import Candidate, SourcePolicy
 
-# A query that names this word routes to the expert; any other is small talk.
-RESEARCH_KEYWORD = "research"
 CHAT_ANSWER = "Hello! Ask me about any geopolitical question and I will research it."
 # Every non-routing call (the expert's answer, the supervisor's footer) streams
 # this, one word per chunk.

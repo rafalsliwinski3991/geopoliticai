@@ -1,17 +1,16 @@
-"""Load-test the API against faked providers, and fail when a limit is crossed.
+"""Start the faked API, load-test it with Locust, and exit with Locust's status.
 
-From `agentic_backend/`: `uv run python -m loadtests.run --users 50 --rounds 3`.
-Without `--base-url` it starts `loadtests.server` in a child process on a free
-port, with a fresh random signing key, and stops it afterwards; with one it
-targets a server you started, signing with your `JWT_SIGNING_KEY`. Exits 1
-when any request kind breaks `--max-error-rate` or `--max-p95`.
+From `agentic_backend/`: `uv run python -m loadtests.run`, then any of Locust's
+own flags, which win over the defaults below:
+`uv run python -m loadtests.run --profile instant --users 100 --spawn-rate 20 --csv results/run`.
+`--max-p95 SECONDS` fails the run when any row's p95 is over it; any failed
+request fails it already. The server gets a fresh random signing key, on a
+free port, and stops afterwards.
 """
 
 from __future__ import annotations
 
 import argparse
-import asyncio
-import json
 import os
 import secrets
 import socket
@@ -19,19 +18,30 @@ import subprocess
 import sys
 import time
 from collections.abc import Iterator
-from contextlib import AbstractContextManager, contextmanager, nullcontext
-from dataclasses import asdict
+from contextlib import contextmanager
+from pathlib import Path
 
 import httpx
 
-from loadtests.scenarios import LoadResult, run_load
 from loadtests.server import DEFAULT_HOST, PROFILES
-from loadtests.stats import find_breaches, format_report, summarize
 
 STARTUP_TIMEOUT_SECONDS = 60.0
 STARTUP_POLL_SECONDS = 0.2
-REQUEST_TIMEOUT_SECONDS = 120.0
 HEALTH_PATH = "/api/health"
+LOCUSTFILE = Path(__file__).with_name("locustfile.py")
+# 50 users started over 5 s, for a minute; a round in flight at the end may
+# finish rather than be cut off.
+DEFAULT_LOCUST_ARGS = (
+    "--users",
+    "50",
+    "--spawn-rate",
+    "10",
+    "--run-time",
+    "60s",
+    "--stop-timeout",
+    "60",
+    "--only-summary",
+)
 
 
 def find_free_port() -> int:
@@ -84,102 +94,29 @@ def spawned_server(profile: str, signing_key: str) -> Iterator[str]:
         server.wait(timeout=10)
 
 
-async def run_load_over_http(
-    base_url: str, *, users: int, rounds: int, ramp_up: float, signing_key: str
-) -> LoadResult:
-    """Run the virtual users against `base_url` over one shared connection pool."""
-    async with httpx.AsyncClient(
-        base_url=base_url,
-        timeout=REQUEST_TIMEOUT_SECONDS,
-        limits=httpx.Limits(max_connections=users, max_keepalive_connections=users),
-    ) as client:
-        return await run_load(
-            client,
-            users=users,
-            rounds=rounds,
-            ramp_up=ramp_up,
-            signing_key=signing_key,
-        )
-
-
-def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    """Parse the runner's flags."""
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--users", type=int, default=50, help="concurrent users")
-    parser.add_argument(
-        "--rounds",
-        type=int,
-        default=3,
-        help="rounds per user; each sends three rate-limited requests, and the "
-        "API allows 20 per user per minute",
-    )
-    parser.add_argument(
-        "--ramp-up", type=float, default=5.0, help="seconds over which users start"
-    )
-    parser.add_argument("--profile", choices=sorted(PROFILES), default="realistic")
-    parser.add_argument(
-        "--base-url", help="target a running loadtests.server instead of starting one"
-    )
-    parser.add_argument(
-        "--max-error-rate",
-        type=float,
-        default=0.0,
-        help="largest share of failed requests allowed per kind",
-    )
-    parser.add_argument(
-        "--max-p95", type=float, help="largest p95 latency in seconds allowed per kind"
-    )
-    parser.add_argument("--json-out", help="also write the summaries to this file")
-    args = parser.parse_args(argv)
-    if args.users < 1 or args.rounds < 1 or args.ramp_up < 0:
-        parser.error("--users and --rounds must be positive and --ramp-up not negative")
-    return args
-
-
 def main(argv: list[str] | None = None) -> int:
-    """Run one load test, print its report, and return the exit status."""
-    args = parse_args(argv)
-    if args.base_url:
-        signing_key = os.environ.get("JWT_SIGNING_KEY", "")
-        if not signing_key:
-            sys.exit(
-                "--base-url needs the server's JWT_SIGNING_KEY in the environment."
-            )
-        server: AbstractContextManager[str] = nullcontext(args.base_url)
-    else:
-        signing_key = secrets.token_urlsafe(48)
-        server = spawned_server(args.profile, signing_key)
-    with server as base_url:
-        result = asyncio.run(
-            run_load_over_http(
+    """Run Locust headless against a fresh server and return its exit status."""
+    parser = argparse.ArgumentParser(description=__doc__, allow_abbrev=False)
+    parser.add_argument("--profile", choices=sorted(PROFILES), default="realistic")
+    args, locust_args = parser.parse_known_args(argv)
+    signing_key = secrets.token_urlsafe(48)
+    with spawned_server(args.profile, signing_key) as base_url:
+        return subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "locust",
+                "-f",
+                str(LOCUSTFILE),
+                "--headless",
+                "--host",
                 base_url,
-                users=args.users,
-                rounds=args.rounds,
-                ramp_up=args.ramp_up,
-                signing_key=signing_key,
-            )
-        )
-    summaries = summarize(result.samples)
-    print(format_report(result, summaries))
-    if args.json_out:
-        with open(args.json_out, "w", encoding="utf-8") as out:
-            json.dump(
-                {
-                    "users": args.users,
-                    "rounds": args.rounds,
-                    "profile": args.profile,
-                    "wall_seconds": result.wall_seconds,
-                    "kinds": [asdict(summary) for summary in summaries],
-                },
-                out,
-                indent=2,
-            )
-    breaches = find_breaches(
-        summaries, max_error_rate=args.max_error_rate, max_p95=args.max_p95
-    )
-    for breach in breaches:
-        print(f"FAIL {breach}")
-    return 1 if breaches else 0
+                *DEFAULT_LOCUST_ARGS,
+                *locust_args,
+            ],
+            env={**os.environ, "JWT_SIGNING_KEY": signing_key},
+            check=False,
+        ).returncode
 
 
 if __name__ == "__main__":
