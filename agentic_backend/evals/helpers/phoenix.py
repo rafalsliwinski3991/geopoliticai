@@ -84,7 +84,7 @@ async def run(
     judges: Sequence[Judge],
     classifiers: dict[str, Any],
     timeout: int,
-    git_commit: str = "nogit",
+    git_commit: str,
 ) -> Results:
     """Get or create the dataset, run the task, then evaluate in a second call."""
     from phoenix.client import AsyncClient

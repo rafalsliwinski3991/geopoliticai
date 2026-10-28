@@ -163,11 +163,10 @@ def git_commit() -> str:
         return "nogit"
 
 
-def experiment_name(eval_name: str, *, commit: str | None = None) -> str:
+def experiment_name(eval_name: str, *, commit: str) -> str:
     """Name the experiment after the commit and time it ran at."""
-    resolved_commit = commit if commit is not None else git_commit()
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    return f"{eval_name}-{resolved_commit}-{timestamp}"
+    return f"{eval_name}-{commit}-{timestamp}"
 
 
 def failures(

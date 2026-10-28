@@ -290,37 +290,46 @@ def test_load_examples_rejects_malformed_files(
         run_mod.load_examples(path)
 
 
-def test_experiment_name_matches_commit_and_time() -> None:
+def test_experiment_name_joins_eval_commit_and_time() -> None:
     # Act
-    name = run_mod.experiment_name("test-eval")
+    name = run_mod.experiment_name("test-eval", commit="abc1234")
 
     # Assert
-    assert re.fullmatch(r"test-eval-[0-9a-f]+-\d{8}T\d{6}Z", name)
+    assert re.fullmatch(r"test-eval-abc1234-\d{8}T\d{6}Z", name)
 
 
-def test_experiment_name_falls_back_without_git(
+def test_git_commit_returns_the_short_head_hash(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    # Arrange
-    def _fail(*args: Any, **kwargs: Any) -> Any:
-        raise OSError("no git")
-
-    monkeypatch.setattr(subprocess, "run", _fail)
-
-    # Act
-    name = run_mod.experiment_name("test-eval")
-
-    # Assert
-    assert re.fullmatch(r"test-eval-nogit-\d{8}T\d{6}Z", name)
-
-
-def test_git_commit_returns_the_short_head_hash() -> None:
     """The commit that ran an experiment is how a Phoenix result is traced back to code."""
+
+    # Arrange
+    def _rev_parse(*args: Any, **kwargs: Any) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(args, 0, stdout="abc1234\n")
+
+    monkeypatch.setattr(subprocess, "run", _rev_parse)
+
     # Act
     commit = run_mod.git_commit()
 
     # Assert
-    assert re.fullmatch(r"[0-9a-f]+", commit)
+    assert commit == "abc1234"
+
+
+def test_git_commit_falls_back_when_git_fails(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Git exits non-zero outside a repository; the eval is still named nogit."""
+
+    # Arrange
+    def _fail(*args: Any, **kwargs: Any) -> Any:
+        raise subprocess.CalledProcessError(128, "git")
+
+    monkeypatch.setattr(subprocess, "run", _fail)
+
+    # Act
+    commit = run_mod.git_commit()
+
+    # Assert
+    assert commit == "nogit"
 
 
 def test_git_commit_falls_back_without_git(monkeypatch: pytest.MonkeyPatch) -> None:
