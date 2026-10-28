@@ -231,6 +231,19 @@ class LandingMetadataTests(SimpleTestCase):
             {node["@type"] for node in payload["@graph"]}, {"Organization", "WebSite"}
         )
 
+    def test_the_limits_describe_english_and_polish_support(self) -> None:
+        # Arrange
+        # Act
+        response = self.client.get("/")
+
+        # Assert
+        self.assertContains(
+            response,
+            "Geopolitical research, in English and Polish, one question at a time",
+        )
+        self.assertContains(response, "Questions and answers are in English or Polish.")
+        self.assertNotContains(response, "Questions and answers are English.")
+
     def test_the_limits_describe_the_opt_in_forecast(self) -> None:
         # Arrange
         # Act

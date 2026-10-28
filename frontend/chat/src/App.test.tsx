@@ -103,6 +103,24 @@ describe("the app shell", () => {
     expect(screen.getByRole("heading", { name: "PoliticalAgent" })).toBeTruthy();
   });
 
+  it("a new conversation shows the welcome message without an article role and hides it once a message is sent", async () => {
+    stubFetch(tokenOk);
+    const App = await importApp();
+    render(<App />);
+    await screen.findByRole("button", { name: "Send" });
+    const welcome = "Możesz rozmawiać ze mną po angielsku lub po polsku.";
+    expect(screen.getByText(welcome)).toBeTruthy();
+    expect(screen.queryAllByRole("article")).toEqual([]);
+
+    const input = screen.getByLabelText("Ask a question") as HTMLTextAreaElement;
+    fireEvent.change(input, { target: { value: "Cześć" } });
+    fireEvent.submit(input.closest("form")!);
+
+    expect(await screen.findByText("Cześć")).toBeTruthy();
+    expect(screen.queryByText(welcome)).toBeNull();
+    await vi.waitFor(() => expect(screen.queryByText(welcome)).toBeNull());
+  });
+
   it("the New conversation control resets the conversation", async () => {
     const fetchMock = stubFetch(tokenOk);
     const App = await importApp();

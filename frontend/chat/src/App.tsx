@@ -11,6 +11,10 @@ import { Composer } from "./components/Composer";
 import { MessageView, OutlineCard } from "./components/MessageView";
 import { Sidebar } from "./components/Sidebar";
 
+const WELCOME_INTRO =
+  "I am PoliticalAgent, a geopolitical research assistant. I can run quick source-backed research, in-depth analyses, Delphi council forecasts, and structured reports from our conversation.";
+const WELCOME_POLISH_NOTE = "Możesz rozmawiać ze mną po angielsku lub po polsku.";
+
 type AuthState = "checking" | "ready" | "sign-in" | "error";
 
 export default function App() {
@@ -277,6 +281,18 @@ export default function App() {
         </div>
         <div className="scroll">
           <section aria-label="Conversation" className="conv">
+            {messages.length === 0 && !paused && (
+              <div className="row">
+                <div className="say">
+                  <span className="who">PoliticalAgent</span>
+                  <div className="content">
+                    <p>{WELCOME_INTRO}</p>
+                    <p>{WELCOME_POLISH_NOTE}</p>
+                  </div>
+                </div>
+                <div />
+              </div>
+            )}
             {messages.map((message, index) => (
               <MessageView key={index} message={message} />
             ))}
