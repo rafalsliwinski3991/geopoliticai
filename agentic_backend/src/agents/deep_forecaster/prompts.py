@@ -172,9 +172,11 @@ about the future and the sources the council read. Today is {today}. You never \
 change a verdict.
 
 Return:
-1. `overview`: the forecast in two to four paragraphs of markdown in the language of the Question (English or Polish): \
+1. `language`: `pl` when the Question is in Polish, otherwise `en`. Code prints the \
+headings, verdict words and vote list in it.
+2. `overview`: the forecast in two to four paragraphs of markdown in the language of the Question (English or Polish): \
 what the council expects, how firmly, and why.
-2. `claims`: one entry per claim, with its number and a `discussion` of the \
+3. `claims`: one entry per claim, with its number and a `discussion` of the \
 strongest reasons members gave on each side and where they disagreed, in that same language. Each \
 claim's verdict is printed above its discussion automatically.
 
@@ -188,7 +190,7 @@ source below, written with the source's number and nothing else: \
 3. Name a forecaster only when the source's byline names them; otherwise name \
 the outlet.
 4. Call members "Member 1", "Member 2", and so on, and claims "Claim 1", \
-"Claim 2". Use no abbreviations.
+"Claim 2" (in Polish "Członek 1" and "Twierdzenie 1"). Use no abbreviations.
 5. Do not list the votes; the full vote list is appended automatically.
 6. Keep the whole analysis under 1,500 words.
 

@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Mapping, Sequence
+from datetime import date
 from typing import Any
 from urllib.parse import urlsplit
 
@@ -31,11 +32,11 @@ from agents.deep_forecaster.citations import (
     quoted_sources,
 )
 from agents.deep_forecaster.config import COUNCIL
-from agents.deep_forecaster.consts.editorial import CARRIED_VOTE, VOTE_LIST_HEADING
+from agents.deep_forecaster.consts.editorial import WORDS, Words
 from agents.deep_forecaster.consts.forecasters import FORECASTER_SOURCES, VIDEO_DOMAINS
 from agents.deep_forecaster.consts.progress import VERIFY_LABEL
-from agents.deep_forecaster.models import Analysis, Ballot, Claim
-from agents.deep_forecaster.render import render_deadline, render_numbers, render_reason
+from agents.deep_forecaster.models import Analysis, Ballot, Claim, Language
+from agents.deep_forecaster.render import render_numbers, render_reason
 from agents.deep_forecaster.state import (
     ClaimTally,
     ForecastRun,
@@ -71,6 +72,11 @@ def _host(url: str) -> str:
 def _site(url: str) -> str:
     """Return the allow-listed site `url` belongs to, or its host (recorded eval URLs)."""
     return allowed_domain(url, FORECASTER_SOURCES) or _host(url)
+
+
+def _deadline(deadline: date, words: Words) -> str:
+    """Return a date in full words in the answer's language, e.g. "31 grudnia 2027"."""
+    return f"{deadline.day} {words.months[deadline.month - 1]} {deadline.year}"
 
 
 def _counted(number: int, noun: str) -> str:
@@ -135,7 +141,10 @@ def find_defect(
 
 
 def evidence_line(
-    sources: Sequence[Source], research: ResearchOutcome, claims: Sequence[Claim]
+    sources: Sequence[Source],
+    research: ResearchOutcome,
+    claims: Sequence[Claim],
+    language: Language,
 ) -> str:
     """Return the vote list's evidence line: what the verdicts stand on.
 
@@ -145,6 +154,22 @@ def evidence_line(
     sites = {_site(source.url) for source in sources}
     videos = sum(1 for source in sources if _site(source.url) in VIDEO_DOMAINS)
     passages = sum(len(claim.evidence) for claim in claims)
+    if language == "pl":
+        line = f"Dowody: przeczytane źródła: {len(sources)}, witryny: {len(sites)}"
+        if videos:
+            line += f", w tym notatki Gemini do wideo: {videos}"
+        line += (
+            f". Rada głosowała na podstawie cytowanych fragmentów: {passages}, "
+            f"pochodzących z liczby źródeł: {len(quoted_sources(claims))}."
+        )
+        if research.timed_out:
+            line += " Badanie zatrzymał limit czasu."
+        if research.failed_searches:
+            line += (
+                f" Nieudane wyszukiwania: {research.failed_searches} "
+                f"z {research.searches}."
+            )
+        return line
     line = (
         f"Evidence: {_counted(len(sources), 'source')} read from "
         f"{_counted(len(sites), 'site')}"
@@ -168,12 +193,14 @@ def checked_answer(state: ForecastState) -> str:
     `verify` has already run `find_defect` on this analysis.
     """
     analysis, tally, sources = state["analysis"], state["tally"], state["sources"]
+    words = WORDS[analysis.language]
     sections = sorted(analysis.claims, key=lambda section: section.claim)
     parts = [link_sources(analysis.overview.strip(), sources)]
     for section, counted, claim in zip(sections, tally, state["claims"], strict=True):
         parts.append(
-            f"## Claim {counted.claim}: {claim.statement}\n"
-            f"By {render_deadline(claim.deadline)}. Council verdict: **{counted.verdict}**"
+            f"## {words.claim} {counted.claim}: {claim.statement}\n"
+            f"{words.by_deadline} {_deadline(claim.deadline, words)}. "
+            f"{words.council_verdict}: **{words.verdicts[counted.verdict]}**"
             f"\n\n{link_sources(section.discussion.strip(), sources)}"
         )
     parts.append(
@@ -184,6 +211,7 @@ def checked_answer(state: ForecastState) -> str:
             sources,
             state["research"],
             state["claims"],
+            analysis.language,
         )
     )
     answer = "\n\n".join(parts)
@@ -205,43 +233,59 @@ def _vote_list(
     sources: Sequence[Source],
     research: ResearchOutcome,
     claims: Sequence[Claim],
+    language: Language,
 ) -> str:
     """Render every counted vote in full words, with links from source numbers."""
+    words = WORDS[language]
+    polish = language == "pl"
     voting = len(ballots)
     unavailable = len(COUNCIL) - voting
     carried = len(set(ballots) - revised)
-    lines = [
-        VOTE_LIST_HEADING,
-        "",
-        f"Members voting: {voting} of {len(COUNCIL)}"
-        + (f" ({unavailable} unavailable)." if unavailable else "."),
-    ]
+    if polish:
+        voters = f"Głosowało członków: {voting} z {len(COUNCIL)}" + (
+            f" (niedostępnych: {unavailable})." if unavailable else "."
+        )
+    else:
+        voters = f"Members voting: {voting} of {len(COUNCIL)}" + (
+            f" ({unavailable} unavailable)." if unavailable else "."
+        )
+    lines = [words.vote_list_heading, "", voters]
     # One paragraph each: Markdown would join adjacent lines into one.
     if carried:
         lines += [
             "",
-            f"Round 2: {carried} of {voting} kept their round-1 vote because "
-            "they did not answer.",
+            (
+                f"Runda 2: członkowie, którzy zostali przy głosie z rundy 1, "
+                f"bo nie odpowiedzieli: {carried} z {voting}."
+                if polish
+                else f"Round 2: {carried} of {voting} kept their round-1 vote because "
+                "they did not answer."
+            ),
         ]
-    lines += ["", evidence_line(sources, research, claims)]
+    lines += ["", evidence_line(sources, research, claims, language)]
     for counted in tally:
         lines += [
             "",
-            f"### Claim {counted.claim}: {counted.verdict}",
-            f"{counted.votes_for} of {voting} voted for, {counted.against} against, "
-            f"{counted.unsure} unsure.",
+            f"### {words.claim} {counted.claim}: {words.verdicts[counted.verdict]}",
+            (
+                f"Za: {counted.votes_for}, przeciw: {counted.against}, "
+                f"niepewnych: {counted.unsure} (głosowało {voting})."
+                if polish
+                else f"{counted.votes_for} of {voting} voted for, {counted.against} "
+                f"against, {counted.unsure} unsure."
+            ),
             "",
         ]
         for member, ballot in sorted(ballots.items()):
             vote = next(v for v in ballot.votes if v.claim == counted.claim)
             cited = ", ".join(
-                f"[Source {n}]({sources[n - 1].url})" for n in vote.evidence
+                f"[{words.source} {n}]({sources[n - 1].url})" for n in vote.evidence
             )
             # Not `carried`: that name holds the count above, and mypy --strict
             # refuses rebinding an int to a str (correctness review).
-            mark = "" if member in revised else CARRIED_VOTE
+            mark = "" if member in revised else words.carried_vote
             lines.append(
-                f"- Member {member}{mark}: {vote.stance} — {render_reason(vote.reason)}"
-                + (f" ({cited})" if cited else "")
+                f"- {words.member} {member}{mark}: {words.stances[vote.stance]} — "
+                f"{render_reason(vote.reason)}" + (f" ({cited})" if cited else "")
             )
     return "\n".join(lines)

@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 import time
 from typing import Any
 
@@ -39,13 +40,15 @@ def forecast_output(
     state: dict[str, Any], step_seconds: dict[str, float]
 ) -> dict[str, Any]:
     """Return what the judges read from a finished forecast, and its report numbers."""
-    from agents.deep_forecaster.consts.editorial import VOTE_LIST_HEADING
+    from agents.deep_forecaster.consts.editorial import WORDS
     from agents.deep_forecaster.render import render_passages
 
     claims, sources = state["claims"], state["sources"]
     # The writer's analysis, without the code-written vote list: its member
     # reasons are judgments, not facts a page states.
-    analysis = state["answer"].split(VOTE_LIST_HEADING)[0].strip()
+    # The heading is in the language the question was asked in.
+    vote_list = "|".join(re.escape(words.vote_list_heading) for words in WORDS.values())
+    analysis = re.split(vote_list, state["answer"])[0].strip()
     cited = set(markdown_link_urls(analysis))
     return {
         "finished": True,

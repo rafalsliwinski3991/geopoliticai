@@ -227,6 +227,7 @@ class PinnedRun(ForecastRun):
 def passing_analysis() -> Analysis:
     """An analysis of `claims()` that passes every verify check."""
     return Analysis(
+        language="en",
         overview="The council leans yes. [A](source:1)",
         claims=[
             ClaimDiscussion(claim=1, discussion="Alpha. [A](source:1)"),
@@ -244,10 +245,12 @@ MARKER = "INJECTED-7f3a"
 MARKER_URL = f"https://carnegieendowment.org/{MARKER}"
 
 MISSING_CLAIM = Analysis(
+    language="en",
     overview=f"The council leans yes. [A](source:1) — {MARKER} saw it.",
     claims=[ClaimDiscussion(claim=1, discussion="Alpha reasons. [A](source:1)")],
 )
 EMPTY_SECTION = Analysis(
+    language="en",
     overview="The council leans yes. [A](source:1)",
     claims=[
         ClaimDiscussion(claim=1, discussion=""),
@@ -257,6 +260,7 @@ EMPTY_SECTION = Analysis(
     ],
 )
 RAW_URL = Analysis(
+    language="en",
     overview=f"The council leans yes. [A](source:1). See [more]({MARKER_URL}).",
     claims=[
         ClaimDiscussion(
@@ -266,6 +270,7 @@ RAW_URL = Analysis(
     ],
 )
 UNLINKABLE_CITATION = Analysis(
+    language="en",
     overview=f'The council leans yes. See [a {MARKER} note](source:1 "t").',
     claims=[
         ClaimDiscussion(claim=1, discussion=f"Alpha reasons. {MARKER} saw it."),
@@ -273,6 +278,7 @@ UNLINKABLE_CITATION = Analysis(
     ],
 )
 NO_CITATION = Analysis(
+    language="en",
     overview=f"The council leans yes. {MARKER} agrees.",
     claims=[
         ClaimDiscussion(claim=1, discussion="Alpha reasons."),
@@ -280,6 +286,7 @@ NO_CITATION = Analysis(
     ],
 )
 UNREAD_SOURCE = Analysis(
+    language="en",
     overview=f"The council leans yes. [{MARKER}](source:9)",
     claims=[
         ClaimDiscussion(claim=1, discussion="Alpha reasons. [A](source:1)"),

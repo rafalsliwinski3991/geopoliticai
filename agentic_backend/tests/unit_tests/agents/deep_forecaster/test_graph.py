@@ -97,6 +97,7 @@ def n_claims(count: int) -> list[Claim]:
 def analysis_of(drafted: list[Claim]) -> Analysis:
     """An analysis with one section per claim, citing only the first source."""
     return Analysis(
+        language="en",
         overview="The council leans yes. [A](source:1)",
         claims=[
             ClaimDiscussion(
@@ -319,6 +320,7 @@ async def test_a_forecast_runs_every_step_once_inside_a_checkpointed_parent(
         system: Any, messages: Any, schema: Any, **kwargs: Any
     ) -> Any:
         return Analysis(
+            language="en",
             overview="The council leans yes. [A](source:1)",
             claims=[
                 ClaimDiscussion(claim=1, discussion="Alpha. [A](source:1)"),
@@ -904,6 +906,7 @@ async def test_a_good_analysis_is_written_once(rig: ForecastRig) -> None:
 def over_cap_analysis() -> Analysis:
     """A passing analysis whose rendered answer is over `MAX_ANSWER_CHARS` (50,000)."""
     return Analysis(
+        language="en",
         # The citation passes check 4; a lead-in plus 50,001 x's is far over the cap.
         overview="The council leans yes. [A](source:1) " + "x" * 50_001,
         claims=[

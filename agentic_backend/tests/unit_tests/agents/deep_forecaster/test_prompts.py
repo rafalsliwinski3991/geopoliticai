@@ -170,3 +170,15 @@ def test_the_member_prompt_writes_reasons_in_the_claims_language() -> None:
 
     # Assert
     assert stated is True
+
+
+def test_the_writer_prompt_asks_for_the_questions_language_field() -> None:
+    """Code prints the headings and vote list in the writer's `language`, so it must be asked for."""
+    # Arrange
+    prompt = " ".join(WRITE_SYSTEM_PROMPT.split())
+
+    # Act
+    stated = "`language`: `pl` when the Question is in Polish, otherwise `en`" in prompt
+
+    # Assert
+    assert stated is True
