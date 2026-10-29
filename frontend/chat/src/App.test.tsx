@@ -174,9 +174,9 @@ describe("the app shell", () => {
 
     // Act
     fireEvent.click(screen.getByRole("link", { name: /Baltic energy/ }));
-    await screen.findByText("earlier answer");
 
     // Assert
+    await screen.findByText("earlier answer");
     expect(screen.queryByText(WELCOME_POLISH_NOTE)).toBeNull();
   });
 
