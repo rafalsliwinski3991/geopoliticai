@@ -9,7 +9,7 @@ from typing import Any
 import pytest
 
 from evals.helpers import phoenix as phoenix_mod
-from evals.helpers.judge import JUDGE_ERROR, Judge, Verdict
+from evals.helpers.judge import JUDGE_ERROR, JUDGE_MODEL, Judge, Verdict
 
 
 def _view(
@@ -101,3 +101,58 @@ async def test_build_evaluator_awaits_async_evaluate_only() -> None:
     # Assert
     assert asyncio.iscoroutinefunction(evaluator)
     assert result == {"score": 0.75, "label": "4", "explanation": "ok"}
+
+
+class RecordingExperiments:
+    """Stands in for Phoenix's experiments API: records the run, returns no runs."""
+
+    def __init__(self) -> None:
+        self.run_kwargs: dict[str, Any] = {}
+
+    async def run_experiment(self, **kwargs: Any) -> dict[str, Any]:
+        self.run_kwargs = kwargs
+        return {"task_runs": []}
+
+    async def evaluate_experiment(self, **kwargs: Any) -> dict[str, Any]:
+        return {"evaluation_runs": []}
+
+
+@pytest.mark.anyio
+async def test_run_passes_the_git_commit_and_branch_in_experiment_metadata(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A result in Phoenix must say which commit and branch produced it."""
+    # Arrange
+    experiments = RecordingExperiments()
+
+    async def _get_dataset(**kwargs: Any) -> object:
+        return object()
+
+    client = SimpleNamespace(
+        datasets=SimpleNamespace(get_dataset=_get_dataset), experiments=experiments
+    )
+    monkeypatch.setattr("phoenix.client.AsyncClient", lambda **kwargs: client)
+    monkeypatch.setattr(phoenix_mod, "base_url", lambda: "http://phoenix:6006")
+
+    async def _task(input: dict[str, Any]) -> dict[str, Any]:
+        return {}
+
+    # Act
+    await phoenix_mod.run(
+        dataset_name="d",
+        experiment_name="e",
+        examples=[],
+        task=_task,
+        judges=[],
+        classifiers={},
+        timeout=1,
+        git_commit="abc1234",
+        git_branch="feature/x",
+    )
+
+    # Assert
+    assert experiments.run_kwargs["experiment_metadata"] == {
+        "judge_model": JUDGE_MODEL,
+        "git_commit": "abc1234",
+        "git_branch": "feature/x",
+    }

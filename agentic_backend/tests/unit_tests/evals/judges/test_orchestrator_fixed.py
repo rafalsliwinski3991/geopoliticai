@@ -4,8 +4,10 @@ from __future__ import annotations
 
 from evals.judges.orchestrator_fixed import (
     QUERY_PROMPT,
+    SEARCH_QUERY_PROMPT,
     _query_view,
     _routing_view,
+    _search_query_view,
 )
 
 CONVERSATION = {
@@ -54,7 +56,46 @@ def test_the_rewrite_is_checked_only_when_expected() -> None:
     }
 
 
-def test_every_prompt_field_is_supplied() -> None:
+def test_the_search_query_is_not_checked_unless_expected() -> None:
+    # Arrange: only cases that expect a research route carry a search query.
+    output = {"search_query": "What is the target?"}
+
+    # Act
+    view = _search_query_view(CONVERSATION, output, {"destination": "other"})
+
+    # Assert
+    assert view is None
+
+
+def test_the_search_query_is_checked_when_expected() -> None:
+    # Arrange
+    output = {"search_query": "What is the target?"}
+    expected = {"destination": "geopolitical", "search_query": "What is the 5% target?"}
+
+    # Act
+    view = _search_query_view(CONVERSATION, output, expected)
+
+    # Assert
+    assert view == {
+        "conversation": "user: hi\nassistant: hello there",
+        "actual": "What is the target?",
+        "expected": "What is the 5% target?",
+    }
+
+
+def test_a_missing_search_query_is_checked_as_empty() -> None:
+    # Arrange: the model called the research tool without a search query.
+    expected = {"destination": "geopolitical", "search_query": "What is the target?"}
+
+    # Act
+    view = _search_query_view(CONVERSATION, {}, expected)
+
+    # Assert
+    assert view is not None
+    assert view["actual"] == ""
+
+
+def test_every_query_prompt_field_is_supplied() -> None:
     # Arrange
     variables = _query_view(
         CONVERSATION, {"standalone_query": "q"}, {"standalone_query": "e"}
@@ -63,3 +104,14 @@ def test_every_prompt_field_is_supplied() -> None:
 
     # Act + Assert: str.format raises KeyError on a field the view leaves out.
     QUERY_PROMPT.format(**variables)
+
+
+def test_every_search_query_prompt_field_is_supplied() -> None:
+    # Arrange
+    variables = _search_query_view(
+        CONVERSATION, {"search_query": "q"}, {"search_query": "e"}
+    )
+    assert variables is not None
+
+    # Act + Assert: str.format raises KeyError on a field the view leaves out.
+    SEARCH_QUERY_PROMPT.format(**variables)

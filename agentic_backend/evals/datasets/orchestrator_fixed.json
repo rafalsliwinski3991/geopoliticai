@@ -1,5 +1,5 @@
 {
- "description": "The orchestrator's routing pass alone, on recorded conversations: 'destination' is where the last turn must go (other, geopolitical, report, deep, or forecast), and on the research routes 'standalone_query' is the rewrite the expert, deep expert, or forecaster would receive. Judges: routing_correct on every case, query_matches_expected where a rewrite is expected.",
+ "description": "The orchestrator's routing pass alone, on recorded conversations: 'destination' is where the last turn must go (other, geopolitical, report, deep, or forecast), and on the research routes 'standalone_query' is the rewrite the expert, deep expert, or forecaster would receive. Judges: routing_correct on every case, query_matches_expected where a rewrite is expected. Polish and third-language cases check the language rules; on a Polish research route 'search_query' is the English query handed to the expert (judge: search_query_matches_expected).",
  "cases": [
   {
    "name": "orchestrator-greeting",
@@ -366,6 +366,61 @@
    }
   },
   {
+   "name": "orchestrator-polish-greeting",
+   "description": "A bare Polish 'Cześć'. Must go to 'other' (plain chat), not to a research route.",
+   "input": {
+    "messages": [
+     {
+      "role": "user",
+      "content": "Cześć"
+     }
+    ]
+   },
+   "expected": {
+    "destination": "other"
+   }
+  },
+  {
+   "name": "orchestrator-polish-follow-up-resolves-elision",
+   "description": "'A Polska?' after a Polish answer about Germany's defence budget. The rewrite stays in Polish and resolves the elision; the search query handed to the expert must be English.",
+   "input": {
+    "messages": [
+     {
+      "role": "user",
+      "content": "Co Niemcy zdecydowały w sprawie budżetu obronnego w tym roku?"
+     },
+     {
+      "role": "assistant",
+      "content": "Niemcy zatwierdziły wyższy budżet obronny i wyłączyły wydatki powyżej 1% PKB z hamulca zadłużenia."
+     },
+     {
+      "role": "user",
+      "content": "A Polska?"
+     }
+    ]
+   },
+   "expected": {
+    "destination": "geopolitical",
+    "standalone_query": "Co Polska zdecydowała w sprawie budżetu obronnego w tym roku?",
+    "search_query": "What has Poland decided about its defence budget this year?"
+   }
+  },
+  {
+   "name": "orchestrator-third-language-declines-in-chat",
+   "description": "A German question about Germany's defence budget. PoliticalAgent supports only English and Polish, so it must answer in chat ('other') without calling a research tool.",
+   "input": {
+    "messages": [
+     {
+      "role": "user",
+      "content": "Was hat Deutschland in diesem Jahr über seinen Verteidigungshaushalt entschieden?"
+     }
+    ]
+   },
+   "expected": {
+    "destination": "other"
+   }
+  },
+  {
    "name": "orchestrator-third-language-follow-up-after-deep-declines",
    "description": "A German follow-up after a deep Poland turn. The refusal rule precedes the deep follow-up rule, so PoliticalAgent must answer in chat ('other') without calling run_deep_expert.",
    "input": {
@@ -381,6 +436,29 @@
      {
       "role": "user",
       "content": "Und was bedeutet das für die Bundeswehr?"
+     }
+    ]
+   },
+   "expected": {
+    "destination": "other"
+   }
+  },
+  {
+   "name": "orchestrator-third-language-after-polish-turns",
+   "description": "A German question after a Polish answer about NATO's Article 5. The refusal rule outranks the Polish conversation, so it must answer in chat ('other') without calling a research tool; the prompt asks for the refusal in English.",
+   "input": {
+    "messages": [
+     {
+      "role": "user",
+      "content": "Czym jest Artykuł 5 NATO?"
+     },
+     {
+      "role": "assistant",
+      "content": "Artykuł 5 Traktatu Północnoatlantyckiego głosi, że zbrojny atak na jednego sojusznika jest atakiem na wszystkich."
+     },
+     {
+      "role": "user",
+      "content": "Was ist Artikel 5 der NATO?"
      }
     ]
    },

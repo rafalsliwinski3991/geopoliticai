@@ -19,6 +19,7 @@ async def run_orchestrator_fixed(input: dict[str, Any]) -> dict[str, Any]:
     )
     destination = result.get("destination", "other")
     standalone_query = ""
+    search_query = ""
     messages = result.get("messages", [])
     if messages and hasattr(messages[0], "tool_calls") and messages[0].tool_calls:
         tc = messages[0].tool_calls[0]
@@ -26,10 +27,12 @@ async def run_orchestrator_fixed(input: dict[str, Any]) -> dict[str, Any]:
         standalone_query = (
             args.get("query") or args.get("question") or args.get("topic") or ""
         )
+        search_query = args.get("search_query") or ""
 
     return {
         "destination": destination,
         "standalone_query": standalone_query,
+        "search_query": search_query,
     }
 
 

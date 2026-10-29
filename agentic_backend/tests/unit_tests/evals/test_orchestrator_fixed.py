@@ -60,6 +60,7 @@ async def test_the_orchestrator_eval_extracts_destination_and_standalone_query_f
     assert output == {
         "destination": "geopolitical",
         "standalone_query": "Who objected to 5%?",
+        "search_query": "",
     }
     assert len(supervisor.seen) == 1
     assert [type(message) for message in supervisor.seen[0]] == [
@@ -72,6 +73,37 @@ async def test_the_orchestrator_eval_extracts_destination_and_standalone_query_f
         "A 5% target.",
         "And who objected?",
     ]
+
+
+@pytest.mark.anyio
+async def test_the_orchestrator_eval_extracts_search_query_from_run_expert() -> None:
+    """A Polish question reaches `run_expert` with an English search query, which the eval grades."""
+    # Arrange
+    ai_msg = AIMessage(
+        content="",
+        tool_calls=[
+            {
+                "name": "run_expert",
+                "args": {
+                    "query": "A Polska?",
+                    "search_query": "What did Poland decide?",
+                },
+                "id": "call_789",
+                "type": "tool_call",
+            }
+        ],
+    )
+    supervisor = RecordingSupervisor(
+        {"destination": "geopolitical", "messages": [ai_msg]}
+    )
+    supervisor_module = importlib.import_module("agents.orchestrator.nodes.supervisor")
+
+    # Act
+    with patch.object(supervisor_module, "supervisor", supervisor):
+        output = await run_orchestrator_fixed({"messages": CONVERSATION})
+
+    # Assert
+    assert output["search_query"] == "What did Poland decide?"
 
 
 @pytest.mark.anyio
@@ -92,6 +124,7 @@ async def test_the_orchestrator_eval_handles_direct_chat_turn_without_tool_calls
     assert output == {
         "destination": "other",
         "standalone_query": "",
+        "search_query": "",
     }
     assert len(supervisor.seen) == 1
 
@@ -137,6 +170,7 @@ async def test_the_orchestrator_eval_extracts_standalone_query_from_alternate_to
     assert output == {
         "destination": destination,
         "standalone_query": arg_value,
+        "search_query": "",
     }
     assert len(supervisor.seen) == 1
 
@@ -155,4 +189,8 @@ async def test_the_orchestrator_eval_reports_other_when_the_orchestrator_names_n
         output = await run_orchestrator_fixed({"messages": CONVERSATION})
 
     # Assert
-    assert output == {"destination": "other", "standalone_query": ""}
+    assert output == {
+        "destination": "other",
+        "standalone_query": "",
+        "search_query": "",
+    }
