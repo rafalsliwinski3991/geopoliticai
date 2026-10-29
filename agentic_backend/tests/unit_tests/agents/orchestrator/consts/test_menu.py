@@ -72,3 +72,15 @@ def test_footer_prompt_instructs_matching_the_query_language(fragment: str) -> N
 
     # Assert
     assert stated is True
+
+
+def test_footer_prompt_asks_for_the_footer_alone() -> None:
+    """A sentence before the heading would print above the menu in the chat."""
+    # Arrange
+    prompt = DYNAMIC_FOOTER_SYSTEM_PROMPT
+
+    # Act
+    stated = "with no text before it" in prompt
+
+    # Assert
+    assert stated is True

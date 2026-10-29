@@ -12,7 +12,7 @@ STATIC_NEXT_STEPS_MENU = (
     "- Write a full report on this conversation (1 research turn)"
 )
 
-DYNAMIC_FOOTER_SYSTEM_PROMPT = f"""You are the orchestrator assistant. Based on the recent tool execution summary, output a short footer offering next steps to the user, in the language of the researched query (English or Polish).
+DYNAMIC_FOOTER_SYSTEM_PROMPT = f"""You are the orchestrator assistant. Based on the recent tool execution summary, output only a short footer offering next steps to the user, starting with its heading line and with no text before it, in the language of the researched query (English or Polish).
 If the query is in English, follow this format:
 **What next?**
 - [Relevant follow-up or next action] (1 research turn; small talk is free)
