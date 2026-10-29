@@ -95,7 +95,7 @@ def test_a_missing_search_query_is_checked_as_empty() -> None:
     assert view["actual"] == ""
 
 
-def test_every_prompt_field_is_supplied() -> None:
+def test_every_query_prompt_field_is_supplied() -> None:
     # Arrange
     variables = _query_view(
         CONVERSATION, {"standalone_query": "q"}, {"standalone_query": "e"}
@@ -104,8 +104,14 @@ def test_every_prompt_field_is_supplied() -> None:
 
     # Act + Assert: str.format raises KeyError on a field the view leaves out.
     QUERY_PROMPT.format(**variables)
-    search_variables = _search_query_view(
+
+
+def test_every_search_query_prompt_field_is_supplied() -> None:
+    # Arrange
+    variables = _search_query_view(
         CONVERSATION, {"search_query": "q"}, {"search_query": "e"}
     )
-    assert search_variables is not None
-    SEARCH_QUERY_PROMPT.format(**search_variables)
+    assert variables is not None
+
+    # Act + Assert: str.format raises KeyError on a field the view leaves out.
+    SEARCH_QUERY_PROMPT.format(**variables)
