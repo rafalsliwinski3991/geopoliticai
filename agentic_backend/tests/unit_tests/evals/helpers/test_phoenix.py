@@ -118,10 +118,10 @@ class RecordingExperiments:
 
 
 @pytest.mark.anyio
-async def test_run_passes_git_commit_in_experiment_metadata(
+async def test_run_passes_the_git_commit_and_branch_in_experiment_metadata(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A result in Phoenix must say which commit produced it."""
+    """A result in Phoenix must say which commit and branch produced it."""
     # Arrange
     experiments = RecordingExperiments()
 
@@ -147,10 +147,12 @@ async def test_run_passes_git_commit_in_experiment_metadata(
         classifiers={},
         timeout=1,
         git_commit="abc1234",
+        git_branch="feature/x",
     )
 
     # Assert
     assert experiments.run_kwargs["experiment_metadata"] == {
         "judge_model": JUDGE_MODEL,
         "git_commit": "abc1234",
+        "git_branch": "feature/x",
     }

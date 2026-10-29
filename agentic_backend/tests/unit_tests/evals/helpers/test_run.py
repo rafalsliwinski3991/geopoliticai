@@ -316,6 +316,40 @@ def test_git_commit_returns_the_short_head_hash(
     assert commit == "abc1234"
 
 
+def test_git_branch_returns_the_checked_out_branch_name(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The branch tells a reader of Phoenix which line of work an experiment came from."""
+
+    # Arrange
+    def _rev_parse(*args: Any, **kwargs: Any) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(args, 0, stdout="feature/x\n")
+
+    monkeypatch.setattr(subprocess, "run", _rev_parse)
+
+    # Act
+    branch = run_mod.git_branch()
+
+    # Assert
+    assert branch == "feature/x"
+
+
+def test_git_branch_falls_back_without_git(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A checkout without git still runs the eval; the branch is nogit."""
+
+    # Arrange
+    def _fail(*args: Any, **kwargs: Any) -> Any:
+        raise OSError("no git")
+
+    monkeypatch.setattr(subprocess, "run", _fail)
+
+    # Act
+    branch = run_mod.git_branch()
+
+    # Assert
+    assert branch == "nogit"
+
+
 def test_git_commit_falls_back_when_git_fails(monkeypatch: pytest.MonkeyPatch) -> None:
     """Git exits non-zero outside a repository; the eval is still named nogit."""
 
@@ -496,10 +530,10 @@ async def test_run_passes_a_fixed_eval_without_a_brave_key(
 
 
 @pytest.mark.anyio
-async def test_run_passes_git_commit_to_phoenix(
+async def test_run_passes_the_git_commit_and_branch_to_phoenix(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """The experiment's name and its metadata must name the same commit."""
+    """The experiment's name and its metadata must name the same commit, and the metadata the branch."""
     # Arrange
     received: dict[str, Any] = {}
 
@@ -509,6 +543,7 @@ async def test_run_passes_git_commit_to_phoenix(
 
     _set_up_run(monkeypatch, tmp_path, _fake_run)
     monkeypatch.setattr(run_mod, "git_commit", lambda: "abc1234")
+    monkeypatch.setattr(run_mod, "git_branch", lambda: "feature/x")
 
     # Act
     await run_mod.run(
@@ -517,6 +552,7 @@ async def test_run_passes_git_commit_to_phoenix(
 
     # Assert
     assert received["git_commit"] == "abc1234"
+    assert received["git_branch"] == "feature/x"
     assert received["experiment_name"].startswith("orchestrator_fixed-abc1234-")
 
 

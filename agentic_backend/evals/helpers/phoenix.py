@@ -85,6 +85,7 @@ async def run(
     classifiers: dict[str, Any],
     timeout: int,
     git_commit: str,
+    git_branch: str,
 ) -> Results:
     """Get or create the dataset, run the task, then evaluate in a second call."""
     from phoenix.client import AsyncClient
@@ -109,7 +110,11 @@ async def run(
         task=task,
         evaluators=None,
         experiment_name=experiment_name,
-        experiment_metadata={"judge_model": JUDGE_MODEL, "git_commit": git_commit},
+        experiment_metadata={
+            "judge_model": JUDGE_MODEL,
+            "git_commit": git_commit,
+            "git_branch": git_branch,
+        },
         print_summary=False,
         concurrency=1,
         timeout=timeout,

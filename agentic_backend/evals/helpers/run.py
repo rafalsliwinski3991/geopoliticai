@@ -150,17 +150,27 @@ def load_examples(path: Path) -> list[dict[str, Any]]:
     ]
 
 
-def git_commit() -> str:
-    """Return the short HEAD commit hash, or "nogit" when git is unavailable."""
+def _read_git(*args: str) -> str:
+    """Return one git command's output, or "nogit" when git is unavailable."""
     try:
         return subprocess.run(
-            ["git", "rev-parse", "--short", "HEAD"],
+            ["git", *args],
             capture_output=True,
             text=True,
             check=True,
         ).stdout.strip()
     except (OSError, subprocess.CalledProcessError):
         return "nogit"
+
+
+def git_commit() -> str:
+    """Return the short HEAD commit hash, or "nogit" when git is unavailable."""
+    return _read_git("rev-parse", "--short", "HEAD")
+
+
+def git_branch() -> str:
+    """Return the checked-out branch name, or "nogit" when git is unavailable."""
+    return _read_git("rev-parse", "--abbrev-ref", "HEAD")
 
 
 def experiment_name(eval_name: str, *, commit: str) -> str:
@@ -239,6 +249,7 @@ async def run(
         dataset_name=f"geopoliticai-{eval_name}",
         experiment_name=experiment_name(eval_name, commit=commit),
         git_commit=commit,
+        git_branch=git_branch(),
         examples=examples,
         task=_wrap_live_task(task) if kind == "live" else _wrap_fixed_task(task),
         judges=judges,
