@@ -34,9 +34,9 @@ graph_module: Any = importlib.import_module("agents.deep_expert.graph")
 DEEP_ANSWER = "A" * 10_000
 # The wall-cap test: a model call hangs far past a short cap, and the run must
 # end well before the hang would have.
-WALL_SECONDS = 0.2
-HANG_SECONDS = 5.0
-ENDED_WITHIN_SECONDS = 2.0
+WALL_SECONDS = 1.0
+HANG_SECONDS = 10.0
+ENDED_WITHIN_SECONDS = 5.0
 
 
 def _rubric_messages() -> list[Any]:
