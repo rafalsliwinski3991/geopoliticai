@@ -1,6 +1,6 @@
 # geopoliticai
 
-An English-language geopolitical research assistant built on LangGraph, live at
+An English- and Polish-language geopolitical research assistant built on LangGraph, live at
 [politicalagent.eu](https://politicalagent.eu). Its sourced answers (expert,
 deep expert, and forecast) read only pages it fetched from fixed lists: named
 publications and institutes, or, for a forecast, twelve forecasters' own sites

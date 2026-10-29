@@ -5,6 +5,10 @@ import { render, screen, act, fireEvent, cleanup } from "@testing-library/react"
 // module-level state that must not leak between tests.
 const importApp = async () => (await import("./App")).default;
 
+const WELCOME_INTRO =
+  "I am PoliticalAgent, a geopolitical research assistant. I can run quick source-backed research, in-depth analyses, Delphi council forecasts, and structured reports from our conversation.";
+const WELCOME_POLISH_NOTE = "Możesz rozmawiać ze mną po angielsku lub po polsku.";
+
 const tokenOk = {
   ok: true,
   status: 200,
@@ -101,6 +105,79 @@ describe("the app shell", () => {
     expect(await screen.findByText("Sign in required.")).toBeTruthy();
     // The gate screen must still carry a page heading for screen readers.
     expect(screen.getByRole("heading", { name: "PoliticalAgent" })).toBeTruthy();
+  });
+
+  it("a new conversation shows the welcome message, which is not an article", async () => {
+    // Arrange
+    stubFetch(tokenOk);
+    const App = await importApp();
+
+    // Act
+    render(<App />);
+    await screen.findByRole("button", { name: "Send" });
+
+    // Assert
+    expect(screen.getByText(WELCOME_INTRO)).toBeTruthy();
+    expect(screen.getByText(WELCOME_POLISH_NOTE)).toBeTruthy();
+    expect(screen.queryAllByRole("article")).toEqual([]);
+  });
+
+  it("the welcome message disappears once a message is sent", async () => {
+    // Arrange
+    const fetchMock = stubFetch(tokenOk);
+    const App = await importApp();
+    render(<App />);
+    await screen.findByRole("button", { name: "Send" });
+    const input = screen.getByLabelText("Ask a question") as HTMLTextAreaElement;
+
+    // Act
+    fireEvent.change(input, { target: { value: "Cześć" } });
+    fireEvent.submit(input.closest("form")!);
+
+    // Assert
+    expect(await screen.findByText("Cześć")).toBeTruthy();
+    expect(screen.queryByText(WELCOME_POLISH_NOTE)).toBeNull();
+    // The completed turn's refresh must land inside this test: a promise that
+    // outlives the test would fire against the next test's unstubbed fetch.
+    await vi.waitFor(() => {
+      expect(fetchMock.mock.calls.filter(([url]) => url === "/api/threads").length).toBe(2);
+    });
+  });
+
+  it("the welcome message returns after a new conversation is started", async () => {
+    // Arrange
+    const fetchMock = stubFetch(tokenOk);
+    const App = await importApp();
+    render(<App />);
+    await screen.findByRole("button", { name: "Send" });
+    const input = screen.getByLabelText("Ask a question") as HTMLTextAreaElement;
+    fireEvent.change(input, { target: { value: "hello" } });
+    fireEvent.submit(input.closest("form")!);
+    await screen.findByText("hello");
+    await vi.waitFor(() => {
+      expect(fetchMock.mock.calls.filter(([url]) => url === "/api/threads").length).toBe(2);
+    });
+
+    // Act
+    fireEvent.click(screen.getByRole("button", { name: "New conversation" }));
+
+    // Assert
+    expect(screen.getByText(WELCOME_POLISH_NOTE)).toBeTruthy();
+  });
+
+  it("the welcome message stays hidden when a saved conversation is reopened", async () => {
+    // Arrange
+    stubFetch(tokenOk);
+    const App = await importApp();
+    render(<App />);
+    await screen.findByRole("link", { name: /Baltic energy/ });
+
+    // Act
+    fireEvent.click(screen.getByRole("link", { name: /Baltic energy/ }));
+
+    // Assert
+    await screen.findByText("earlier answer");
+    expect(screen.queryByText(WELCOME_POLISH_NOTE)).toBeNull();
   });
 
   it("the New conversation control resets the conversation", async () => {
