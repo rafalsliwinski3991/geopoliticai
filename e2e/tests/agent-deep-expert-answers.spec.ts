@@ -1,6 +1,6 @@
 // spec-sha256: a30e13fbcb335ce84d34751f32cccab59c39861f8f448a47ea7b5d25cd0970f7
 // Generated from test_specs/agent-deep-expert-answers.md by /e2e. Never hand-edit: run /e2e update agent-deep-expert-answers.
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect, type Page } from '../fixtures';
 import { readFileSync } from 'node:fs';
 
 const SPEC = readFileSync(`${__dirname}/../test_specs/agent-deep-expert-answers.md`, 'utf8');

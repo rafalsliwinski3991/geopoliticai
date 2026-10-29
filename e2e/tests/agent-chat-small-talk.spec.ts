@@ -1,6 +1,6 @@
 // spec-sha256: 491903ae7ab20a49340f08e478c3860a5a3a4d15f6e09300ea194090dbdbeef3
 // Generated from test_specs/agent-chat-small-talk.md by /e2e. Never hand-edit: run /e2e update agent-chat-small-talk.
-import { test, expect } from '@playwright/test';
+import { test, expect } from '../fixtures';
 import { readFileSync } from 'node:fs';
 
 const SPEC = readFileSync(`${__dirname}/../test_specs/agent-chat-small-talk.md`, 'utf8');

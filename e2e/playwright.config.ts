@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { defineConfig } from '@playwright/test';
+import { E2E_WORKERS } from './users';
 
 // Each generated test starts with this line plus the sha256 of its spec.
 const SPEC_HASH_HEADER = '// spec-sha256: ';
@@ -34,9 +35,9 @@ if (!process.env.TEST_WORKER_INDEX) warnOnStaleTests();
 export default defineConfig({
   testDir: '.',
   timeout: TEST_TIMEOUT_MS,
-  // One test at a time: every test is the same user, and two tests asking the same question at once
-  // would each see the other's conversation in the sidebar.
-  workers: 1,
+  // Each worker runs as its own user (`fixtures.ts`), so tests on different workers never share a
+  // meter, a sidebar or a daily quota; the tests of one worker still run one at a time.
+  workers: E2E_WORKERS,
   reporter: [['list'], ['html', { open: 'never' }], ['json', { outputFile: 'test-results/results.json' }]],
   use: { baseURL: 'http://localhost:8082', screenshot: 'on', trace: 'on' },
   projects: [
@@ -46,7 +47,6 @@ export default defineConfig({
       name: 'e2e',
       testDir: './tests',
       dependencies: ['setup'],
-      use: { storageState: `${__dirname}/.auth/user.json` },
     },
   ],
 });

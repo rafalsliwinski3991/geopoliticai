@@ -70,7 +70,7 @@ createsuperuser:
 # Runs inside the web-backend container: Compose's env_file is what hands it
 # E2E_EMAIL/E2E_PASSWORD, so recreate the container after adding them to .env.
 # The command refuses unless DEBUG is on (docker-compose.override.yml sets it).
-# Re-running also refills the test user's daily research quota.
+# Re-running also refills every test user's daily research quota.
 e2e-user:
 	$(COMPOSE) exec web-backend .venv/bin/python manage.py create_e2e_user
 

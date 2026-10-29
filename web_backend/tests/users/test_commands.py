@@ -74,7 +74,7 @@ class CreateE2eUserCommandTests(TestCase):
         self.assertTrue(User.objects.get().check_password("admin-pass-123"))
 
     @override_settings(DEBUG=True)
-    def test_command_creates_the_user_and_prints_no_password(self):
+    def test_command_creates_one_user_per_worker_and_prints_no_password(self):
         # Arrange
         out = StringIO()
 
@@ -83,6 +83,14 @@ class CreateE2eUserCommandTests(TestCase):
             call_command("create_e2e_user", stdout=out)
 
         # Assert
-        self.assertEqual(out.getvalue().strip(), "E2E user ready: e2e@example.com")
+        self.assertEqual(
+            out.getvalue().splitlines(),
+            [
+                "E2E user ready: e2e@example.com",
+                "E2E user ready: e2e+2@example.com",
+                "E2E user ready: e2e+3@example.com",
+                "E2E user ready: e2e+4@example.com",
+            ],
+        )
         self.assertNotIn(ENV["E2E_PASSWORD"], out.getvalue())
-        self.assertTrue(User.objects.filter(email="e2e@example.com").exists())
+        self.assertEqual(User.objects.count(), 4)

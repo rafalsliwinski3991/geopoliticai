@@ -1,6 +1,6 @@
 // spec-sha256: 06d729e40ca3e06aebf8f580dda1b850a59800945815a37b5662789e88c6c8fd
 // Generated from test_specs/agent-language-follows-the-latest-message.md by /e2e. Never hand-edit: run /e2e update agent-language-follows-the-latest-message.
-import { test, expect } from '@playwright/test';
+import { test, expect } from '../fixtures';
 import { readFileSync } from 'node:fs';
 
 const SPEC = readFileSync(`${__dirname}/../test_specs/agent-language-follows-the-latest-message.md`, 'utf8');

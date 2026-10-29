@@ -242,10 +242,15 @@ One-time setup:
    the leak check compares it literally.
 2. `make up`, then `docker compose up -d --force-recreate web-backend` so the container reads the new
    variables.
-3. `make e2e-user` creates (or resets) the test user. It refuses unless `DEBUG` is on.
+3. `make e2e-user` creates (or resets) four test users, one per Playwright worker: `E2E_EMAIL` and its
+   `+2`, `+3` and `+4` siblings (`e2e+2@example.com`), all with `E2E_PASSWORD`. It refuses unless `DEBUG` is on.
 4. `cd e2e && npm ci && npx playwright install chromium`. `@playwright/cli` (used by `/e2e` walks)
    ships on a pre-release Playwright core, never on a final release, so it runs a newer core than
    `@playwright/test`; the skew is deliberate.
+
+Tests run on four workers in parallel (`E2E_WORKERS` in `e2e/users.ts`, `E2E_USER_COUNT` in
+`web_backend/users/services.py`; keep them equal). Each worker logs in as its own user, so tests on different
+workers never share a research meter, a sidebar or a daily quota; one worker's tests still run one at a time.
 
 Running, from `e2e/`:
 
@@ -254,7 +259,7 @@ Running, from `e2e/`:
 - `npx playwright show-report` opens the HTML report.
 - `bash check-no-password.sh` fails if the password reached any trace, result or report file.
 
-If a run hits a 429 (quota spent), `make e2e-user` refills the user's quota.
+If a run hits a 429 (quota spent), `make e2e-user` refills every test user's quota.
 
 In Claude Code, `/e2e new "<prompt>"`, `/e2e run [name]` and `/e2e update <name>` write, run and explain
 tests from the specs.

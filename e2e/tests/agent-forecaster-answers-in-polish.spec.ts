@@ -1,6 +1,6 @@
 // spec-sha256: abb47ee1bf79f9c44dc70288c1980c63620e2cd7a4009af7bd054216a73447d2
 // Generated from test_specs/agent-forecaster-answers-in-polish.md by /e2e. Never hand-edit: run /e2e update agent-forecaster-answers-in-polish.
-import { test, expect } from '@playwright/test';
+import { test, expect } from '../fixtures';
 import { readFileSync } from 'node:fs';
 
 const SPEC = readFileSync(`${__dirname}/../test_specs/agent-forecaster-answers-in-polish.md`, 'utf8');

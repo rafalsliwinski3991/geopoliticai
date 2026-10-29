@@ -1,6 +1,6 @@
 // spec-sha256: 16a0ac8980393bfaf6c8f69d0c0348adeee22b6923eb7d6c8e51f58701e1be16
 // Generated from test_specs/agent-other-language-is-refused-in-english.md by /e2e. Never hand-edit: run /e2e update agent-other-language-is-refused-in-english.
-import { test, expect } from '@playwright/test';
+import { test, expect } from '../fixtures';
 import { readFileSync } from 'node:fs';
 
 const SPEC = readFileSync(`${__dirname}/../test_specs/agent-other-language-is-refused-in-english.md`, 'utf8');

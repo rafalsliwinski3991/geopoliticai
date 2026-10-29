@@ -1,6 +1,6 @@
 // spec-sha256: ca9bf62b4ef9a0fae73d774558f12c125f3eebae4cb013bbd6046f50d57af24a
 // Generated from test_specs/agent-supervisor-keeps-follow-up-on-expert.md by /e2e. Never hand-edit: run /e2e update agent-supervisor-keeps-follow-up-on-expert.
-import { test, expect } from '@playwright/test';
+import { test, expect } from '../fixtures';
 import { readFileSync } from 'node:fs';
 
 const SPEC = readFileSync(`${__dirname}/../test_specs/agent-supervisor-keeps-follow-up-on-expert.md`, 'utf8');
