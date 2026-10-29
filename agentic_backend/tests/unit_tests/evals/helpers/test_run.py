@@ -291,8 +291,13 @@ def test_load_examples_rejects_malformed_files(
 
 
 def test_experiment_name_joins_eval_commit_and_time() -> None:
+    """The commit in the name is how an experiment in Phoenix is traced back to code."""
+    # Arrange
+    eval_name = "test-eval"
+    commit = "abc1234"
+
     # Act
-    name = run_mod.experiment_name("test-eval", commit="abc1234")
+    name = run_mod.experiment_name(eval_name, commit=commit)
 
     # Assert
     assert re.fullmatch(r"test-eval-abc1234-\d{8}T\d{6}Z", name)
