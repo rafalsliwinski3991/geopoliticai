@@ -1,6 +1,6 @@
 // spec-sha256: 93089104ba6ea8c4a66abbfe343f81fd48d3f8b4aa15d3ac15c4b9c50e6e0b58
 // Generated from test_specs/agent-supervisor-forecasts-only-when-asked.md by /e2e. Never hand-edit: run /e2e update agent-supervisor-forecasts-only-when-asked.
-import { test, expect } from '@playwright/test';
+import { test, expect } from '../fixtures';
 import { readFileSync } from 'node:fs';
 
 const SPEC = readFileSync(`${__dirname}/../test_specs/agent-supervisor-forecasts-only-when-asked.md`, 'utf8');

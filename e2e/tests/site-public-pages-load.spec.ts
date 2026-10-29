@@ -1,6 +1,6 @@
 // spec-sha256: 2ed7ed748d4e220430d72ce0769d5c598d4a2f534f75e8c1c283f68c677dd954
 // Generated from test_specs/site-public-pages-load.md by /e2e. Never hand-edit: run /e2e update site-public-pages-load.
-import { test, expect } from '@playwright/test';
+import { test, expect } from '../fixtures';
 import { readFileSync } from 'node:fs';
 
 const SPEC = readFileSync(`${__dirname}/../test_specs/site-public-pages-load.md`, 'utf8');

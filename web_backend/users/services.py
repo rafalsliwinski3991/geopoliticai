@@ -6,6 +6,24 @@ from django.db import transaction
 from chat.models import Quota
 from users.models import User
 
+# One test user per Playwright worker, so parallel tests never share a meter or
+# a sidebar. Keep it equal to `E2E_WORKERS` in e2e/users.ts.
+E2E_USER_COUNT = 4
+
+
+def e2e_emails(email: str) -> list[str]:
+    """Return the E2E_EMAIL account and its worker siblings: `e2e@x`, `e2e+2@x`, `e2e+3@x`."""
+    local, _, domain = email.strip().lower().rpartition("@")
+    return [email.strip().lower()] + [
+        f"{local}+{number}@{domain}" for number in range(2, E2E_USER_COUNT + 1)
+    ]
+
+
+@transaction.atomic
+def ensure_e2e_users(email: str, password: str) -> list[User]:
+    """Create or reset every worker's test user from the one E2E_EMAIL and password."""
+    return [ensure_e2e_user(address, password) for address in e2e_emails(email)]
+
 
 @transaction.atomic
 def ensure_e2e_user(email: str, password: str) -> User:

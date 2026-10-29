@@ -1,6 +1,6 @@
 // spec-sha256: c3484a973255fb5a8b4df82683405772cfea92dce441993d5be627fc6166ac15
 // Generated from test_specs/auth-bad-login-shows-error.md by /e2e. Never hand-edit: run /e2e update auth-bad-login-shows-error.
-import { test, expect } from '@playwright/test';
+import { test, expect } from '../fixtures';
 import { readFileSync } from 'node:fs';
 
 const SPEC = readFileSync(`${__dirname}/../test_specs/auth-bad-login-shows-error.md`, 'utf8');

@@ -1,6 +1,6 @@
 // spec-sha256: 32f7f3b8c71d759f1fb9a226cbd92e541b6d00423b1ece59196a2e7b8cf3b42e
 // Generated from test_specs/ui-second-conversation-keeps-first.md by /e2e. Never hand-edit: run /e2e update ui-second-conversation-keeps-first.
-import { test, expect } from '@playwright/test';
+import { test, expect } from '../fixtures';
 import { readFileSync } from 'node:fs';
 
 const SPEC = readFileSync(`${__dirname}/../test_specs/ui-second-conversation-keeps-first.md`, 'utf8');

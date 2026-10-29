@@ -1,6 +1,6 @@
 // spec-sha256: acdfc5b94578e316a0f27f044f565a7d11fdd1a4fd451210430e6ee7d4a6b5d0
 // Generated from test_specs/ui-new-conversation-starts-empty.md by /e2e. Never hand-edit: run /e2e update ui-new-conversation-starts-empty.
-import { test, expect } from '@playwright/test';
+import { test, expect } from '../fixtures';
 import { readFileSync } from 'node:fs';
 
 const SPEC = readFileSync(`${__dirname}/../test_specs/ui-new-conversation-starts-empty.md`, 'utf8');

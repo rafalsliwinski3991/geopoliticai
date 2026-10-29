@@ -4,7 +4,7 @@ from django.utils import timezone
 
 from chat.models import Quota
 from users.models import User
-from users.services import ensure_e2e_user
+from users.services import E2E_USER_COUNT, e2e_emails, ensure_e2e_user, ensure_e2e_users
 
 
 class EnsureE2eUserTests(TestCase):
@@ -84,3 +84,43 @@ class EnsureE2eUserTests(TestCase):
 
         # Assert
         self.assertTrue(User.objects.get().check_password("admin-pass-123"))
+
+
+class EnsureE2eUsersTests(TestCase):
+    def test_e2e_emails_keeps_the_base_address_and_adds_plus_siblings(self):
+        # Arrange
+        email = "E2E@Example.com"
+
+        # Act
+        emails = e2e_emails(email)
+
+        # Assert
+        self.assertEqual(
+            emails,
+            ["e2e@example.com", "e2e+2@example.com", "e2e+3@example.com", "e2e+4@example.com"],
+        )
+
+    def test_ensure_e2e_users_creates_every_worker_user_with_the_same_password(self):
+        # Arrange
+        password = "s3cret-pass-1"
+
+        # Act
+        users = ensure_e2e_users("e2e@example.com", password)
+
+        # Assert
+        self.assertEqual(len(users), E2E_USER_COUNT)
+        self.assertTrue(all(user.check_password(password) for user in users))
+        self.assertEqual(EmailAddress.objects.filter(verified=True).count(), E2E_USER_COUNT)
+
+    def test_ensure_e2e_users_refills_each_workers_quota(self):
+        # Arrange
+        users = ensure_e2e_users("e2e@example.com", "s3cret-pass-1")
+        today = timezone.now().date()
+        for user in users:
+            Quota.objects.create(user=user, day=today, used=20)
+
+        # Act
+        ensure_e2e_users("e2e@example.com", "s3cret-pass-1")
+
+        # Assert
+        self.assertFalse(Quota.objects.exists())

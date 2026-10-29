@@ -1,6 +1,6 @@
 // spec-sha256: 088c829cd16b38d8f34a7a0038c9ec7f12badc714769ae01a1611ae69d637939
 // Generated from test_specs/ui-chat-opens-without-errors.md by /e2e. Never hand-edit: run /e2e update ui-chat-opens-without-errors.
-import { test, expect } from '@playwright/test';
+import { test, expect } from '../fixtures';
 import { readFileSync } from 'node:fs';
 
 const SPEC = readFileSync(`${__dirname}/../test_specs/ui-chat-opens-without-errors.md`, 'utf8');

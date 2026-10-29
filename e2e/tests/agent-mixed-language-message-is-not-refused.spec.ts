@@ -1,6 +1,6 @@
 // spec-sha256: 6345ffdb70e0961d9d91c3743a37f2913174432c3fe2c8f825555cc15d628a2f
 // Generated from test_specs/agent-mixed-language-message-is-not-refused.md by /e2e. Never hand-edit: run /e2e update agent-mixed-language-message-is-not-refused.
-import { test, expect } from '@playwright/test';
+import { test, expect } from '../fixtures';
 import { readFileSync } from 'node:fs';
 
 const SPEC = readFileSync(`${__dirname}/../test_specs/agent-mixed-language-message-is-not-refused.md`, 'utf8');

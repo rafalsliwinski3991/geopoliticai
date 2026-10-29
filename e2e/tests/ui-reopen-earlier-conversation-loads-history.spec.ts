@@ -1,6 +1,6 @@
 // spec-sha256: dec161e396bc73dc5abd83df6bc89bfa60b826178aec729b96c31613bba70302
 // Generated from test_specs/ui-reopen-earlier-conversation-loads-history.md by /e2e. Never hand-edit: run /e2e update ui-reopen-earlier-conversation-loads-history.
-import { test, expect } from '@playwright/test';
+import { test, expect } from '../fixtures';
 import { readFileSync } from 'node:fs';
 
 const SPEC = readFileSync(`${__dirname}/../test_specs/ui-reopen-earlier-conversation-loads-history.md`, 'utf8');

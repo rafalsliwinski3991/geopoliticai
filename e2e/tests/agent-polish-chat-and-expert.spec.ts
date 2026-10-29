@@ -1,6 +1,6 @@
 // spec-sha256: d5dafd0ad6f0e4ab4a00dccf3e4e647b32fa935f6fb140528fb55f96b523dc97
 // Generated from test_specs/agent-polish-chat-and-expert.md by /e2e. Never hand-edit: run /e2e update agent-polish-chat-and-expert.
-import { test, expect } from '@playwright/test';
+import { test, expect } from '../fixtures';
 import { readFileSync } from 'node:fs';
 
 const SPEC = readFileSync(`${__dirname}/../test_specs/agent-polish-chat-and-expert.md`, 'utf8');

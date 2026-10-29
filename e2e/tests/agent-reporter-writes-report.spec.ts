@@ -1,6 +1,6 @@
 // spec-sha256: 7c35fc217252d19a44308f89b82a614a5f06c68d83ab2ca50f7c46a92355a2e4
 // Generated from test_specs/agent-reporter-writes-report.md by /e2e. Never hand-edit: run /e2e update agent-reporter-writes-report.
-import { test, expect } from '@playwright/test';
+import { test, expect } from '../fixtures';
 import { readFileSync } from 'node:fs';
 
 const SPEC = readFileSync(`${__dirname}/../test_specs/agent-reporter-writes-report.md`, 'utf8');

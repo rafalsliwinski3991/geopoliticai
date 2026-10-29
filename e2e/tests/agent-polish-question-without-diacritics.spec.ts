@@ -1,6 +1,6 @@
 // spec-sha256: 40aa7024cac22d79cfb1801f0f49991027dbab4c470f5026709087d6ef525ecd
 // Generated from test_specs/agent-polish-question-without-diacritics.md by /e2e. Never hand-edit: run /e2e update agent-polish-question-without-diacritics.
-import { test, expect } from '@playwright/test';
+import { test, expect } from '../fixtures';
 import { readFileSync } from 'node:fs';
 
 const SPEC = readFileSync(`${__dirname}/../test_specs/agent-polish-question-without-diacritics.md`, 'utf8');

@@ -1,6 +1,6 @@
 // spec-sha256: 1ceb5c63d69692a417b261e45818240b87ebb6934c4570f53bfb0933e33861b8
 // Generated from test_specs/ui-composer-blocks-empty-send.md by /e2e. Never hand-edit: run /e2e update ui-composer-blocks-empty-send.
-import { test, expect } from '@playwright/test';
+import { test, expect } from '../fixtures';
 import { readFileSync } from 'node:fs';
 
 const SPEC = readFileSync(`${__dirname}/../test_specs/ui-composer-blocks-empty-send.md`, 'utf8');

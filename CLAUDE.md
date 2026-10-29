@@ -195,8 +195,9 @@ deep_forecaster  START -> research -> draft_claims -> council_round_1 -> council
 - End-to-end tests are a Playwright project in `e2e/`; run its commands from there. People edit only
   the plain-English specs in `e2e/test_specs/`. The `e2e/tests/*.spec.ts` files are generated from
   them by a command only the user runs (README, "End-to-end tests"), so an agent edits the spec
-  and asks the user to regenerate the test. The tests hit the real Compose stack, spending the test user's
-  quota (`make e2e-user` creates the user and refills it), and check shapes only.
+  and asks the user to regenerate the test. The tests hit the real Compose stack on four parallel workers, each its own test user, spending
+  their quota (`make e2e-user` creates the users and refills them), and check shapes only. Every
+  test imports `test` from `e2e/fixtures.ts`, never from `@playwright/test`.
 
 ## Evals
 

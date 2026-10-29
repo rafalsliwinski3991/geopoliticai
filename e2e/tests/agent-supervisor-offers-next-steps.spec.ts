@@ -1,6 +1,6 @@
 // spec-sha256: 01f71ef550b4c267639d25146fb93edc52cf9c064e040043b556313ef0eb90da
 // Generated from test_specs/agent-supervisor-offers-next-steps.md by /e2e. Never hand-edit: run /e2e update agent-supervisor-offers-next-steps.
-import { test, expect } from '@playwright/test';
+import { test, expect } from '../fixtures';
 import { readFileSync } from 'node:fs';
 
 const SPEC = readFileSync(`${__dirname}/../test_specs/agent-supervisor-offers-next-steps.md`, 'utf8');

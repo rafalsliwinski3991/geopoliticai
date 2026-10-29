@@ -1,6 +1,6 @@
 // spec-sha256: db630a25a85fd9933900b0f6c53c85bec056814f0cddd9690eaed86127102c0b
 // Generated from test_specs/ui-daily-limit-is-50.md by /e2e. Never hand-edit: run /e2e update ui-daily-limit-is-50.
-import { test, expect } from '@playwright/test';
+import { test, expect } from '../fixtures';
 import { readFileSync } from 'node:fs';
 
 const SPEC = readFileSync(`${__dirname}/../test_specs/ui-daily-limit-is-50.md`, 'utf8');

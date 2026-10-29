@@ -1,6 +1,6 @@
 // spec-sha256: df4afb29a251ea762a11a112d7b1fcd9649010d4220a04b37b2a237d4e3ef228
 // Generated from test_specs/agent-expert-answers-with-source.md by /e2e. Never hand-edit: run /e2e update agent-expert-answers-with-source.
-import { test, expect } from '@playwright/test';
+import { test, expect } from '../fixtures';
 import { readFileSync } from 'node:fs';
 
 const SPEC = readFileSync(`${__dirname}/../test_specs/agent-expert-answers-with-source.md`, 'utf8');

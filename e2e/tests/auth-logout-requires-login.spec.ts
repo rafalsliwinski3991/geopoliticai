@@ -1,6 +1,6 @@
 // spec-sha256: aa9a2fef5aaea1064a27b0025dfff4ef80326f57836e08a9e7888dd58849e851
 // Generated from test_specs/auth-logout-requires-login.md by /e2e. Never hand-edit: run /e2e update auth-logout-requires-login.
-import { test, expect } from '@playwright/test';
+import { test, expect } from '../fixtures';
 import { readFileSync } from 'node:fs';
 
 const SPEC = readFileSync(`${__dirname}/../test_specs/auth-logout-requires-login.md`, 'utf8');
