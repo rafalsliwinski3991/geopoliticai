@@ -442,6 +442,29 @@
    "expected": {
     "destination": "other"
    }
+  },
+  {
+   "name": "orchestrator-third-language-after-polish-turns",
+   "description": "A German question after a Polish answer about NATO's Article 5. The refusal rule outranks the Polish conversation, so it must answer in chat ('other') without calling a research tool; the prompt asks for the refusal in English.",
+   "input": {
+    "messages": [
+     {
+      "role": "user",
+      "content": "Czym jest Artykuł 5 NATO?"
+     },
+     {
+      "role": "assistant",
+      "content": "Artykuł 5 Traktatu Północnoatlantyckiego głosi, że zbrojny atak na jednego sojusznika jest atakiem na wszystkich."
+     },
+     {
+      "role": "user",
+      "content": "Was ist Artikel 5 der NATO?"
+     }
+    ]
+   },
+   "expected": {
+    "destination": "other"
+   }
   }
  ]
 }
