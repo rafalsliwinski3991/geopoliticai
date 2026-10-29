@@ -59,7 +59,7 @@ def test_answer_prompt_retains_research_rules_zero_through_four() -> None:
         "1. Every sentence that states a fact must carry an inline markdown link",
         "2. Where the sources conflict, say so explicitly",
         "3. If the sources do not answer the question, say plainly",
-        "4. Write in English, in markdown.",
+        "4. Write in the language of the Question (English or Polish), in markdown.",
     ]
 
     # Act

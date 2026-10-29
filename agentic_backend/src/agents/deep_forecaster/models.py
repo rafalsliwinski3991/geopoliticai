@@ -14,6 +14,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field, model_validator
 
+Language = Literal["en", "pl"]
 Stance = Literal["for", "against", "unsure"]
 Verdict = Literal["ACCEPTED", "REJECTED", "UNRESOLVED"]
 
@@ -111,6 +112,9 @@ class ClaimDiscussion(BaseModel):
 class Analysis(BaseModel):
     """`write_analysis`' structured output; `nodes.verify` checks it and renders it."""
 
+    language: Language = Field(
+        description="The language of the question, `en` or `pl`; write the analysis in it."
+    )
     overview: str = Field(
         description=(
             "Markdown: the forecast in two to four paragraphs, citing sources "

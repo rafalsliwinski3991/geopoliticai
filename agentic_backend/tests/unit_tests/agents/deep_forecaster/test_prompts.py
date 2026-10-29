@@ -134,3 +134,51 @@ def test_the_retry_instructions_take_the_defect() -> None:
     # Assert
     assert defect in filled
     assert "{" not in filled
+
+
+def test_the_write_prompt_writes_in_the_questions_language() -> None:
+    """The reader of a Polish question gets a Polish overview and discussions."""
+    # Arrange
+    prompt = WRITE_SYSTEM_PROMPT
+
+    # Act
+    stated = "language of the Question (English or Polish)" in prompt
+
+    # Assert
+    assert stated is True
+
+
+def test_the_draft_prompt_writes_claims_in_the_questions_language() -> None:
+    """Claim statements become the verdict headings, so a Polish question needs Polish claims."""
+    # Arrange
+    prompt = " ".join(DRAFT_CLAIMS_PROMPT.split())
+
+    # Act
+    stated = "language of the question (English or Polish)" in prompt
+
+    # Assert
+    assert stated is True
+
+
+def test_the_member_prompt_writes_reasons_in_the_claims_language() -> None:
+    """Council members otherwise answer a Polish claim in English and the vote reads mixed."""
+    # Arrange
+    prompt = " ".join(MEMBER_SYSTEM_PROMPT.split())
+
+    # Act
+    stated = "in the language of the claims (English or Polish)" in prompt
+
+    # Assert
+    assert stated is True
+
+
+def test_the_writer_prompt_asks_for_the_questions_language_field() -> None:
+    """Code prints the headings and vote list in the writer's `language`, so it must be asked for."""
+    # Arrange
+    prompt = " ".join(WRITE_SYSTEM_PROMPT.split())
+
+    # Act
+    stated = "`language`: `pl` when the Question is in Polish, otherwise `en`" in prompt
+
+    # Assert
+    assert stated is True

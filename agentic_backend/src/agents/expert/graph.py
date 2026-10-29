@@ -39,7 +39,9 @@ init_tracing()
 graph = build_graph()
 
 
-async def ask_expert(query: str) -> dict[str, Any]:
+async def ask_expert(query: str, search_query: str | None = None) -> dict[str, Any]:
     """Run the expert pipeline on `query` and return the graph's final state."""
-    result: dict[str, Any] = await graph.ainvoke(build_initial_pipeline_state(query))
+    result: dict[str, Any] = await graph.ainvoke(
+        build_initial_pipeline_state(query, search_query=search_query)
+    )
     return result

@@ -364,6 +364,29 @@
    "expected": {
     "destination": "other"
    }
+  },
+  {
+   "name": "orchestrator-third-language-follow-up-after-deep-declines",
+   "description": "A German follow-up after a deep Poland turn. The refusal rule precedes the deep follow-up rule, so PoliticalAgent must answer in chat ('other') without calling run_deep_expert.",
+   "input": {
+    "messages": [
+     {
+      "role": "user",
+      "content": "Give me an in-depth analysis of Poland's defence budget decisions this year."
+     },
+     {
+      "role": "assistant",
+      "content": "Poland raised defence spending to about 4.7% of GDP, financed partly by EU SAFE loans."
+     },
+     {
+      "role": "user",
+      "content": "Und was bedeutet das für die Bundeswehr?"
+     }
+    ]
+   },
+   "expected": {
+    "destination": "other"
+   }
   }
  ]
 }

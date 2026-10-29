@@ -178,8 +178,33 @@ async def test_ask_expert_returns_what_the_graph_returns(
     result = await ask_expert("q")
 
     # Assert
-    assert fake_graph.inputs == [{"query": "q", "sources": [], "answer": ""}]
+    assert fake_graph.inputs == [
+        {"query": "q", "search_query": "q", "sources": [], "answer": ""}
+    ]
     assert result == final_state
+
+
+@pytest.mark.anyio
+async def test_ask_expert_forwards_search_query_into_initial_state(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A Polish question is searched in English, so the graph must receive both."""
+    # Arrange
+    fake_graph = RecordingGraph(result={"answer": "", "sources": []})
+    monkeypatch.setattr(graph_module, "graph", fake_graph)
+
+    # Act
+    await ask_expert("Czym jest NATO?", search_query="What is NATO?")
+
+    # Assert
+    assert fake_graph.inputs == [
+        {
+            "query": "Czym jest NATO?",
+            "search_query": "What is NATO?",
+            "sources": [],
+            "answer": "",
+        }
+    ]
 
 
 @pytest.mark.anyio

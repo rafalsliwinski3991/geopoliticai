@@ -12,6 +12,8 @@ from __future__ import annotations
 import importlib
 from typing import Any
 
+import pytest
+
 prompts_module: Any = importlib.import_module("agents.deep_expert.prompts")
 
 
@@ -53,3 +55,38 @@ def test_the_deep_prompt_forbids_a_preamble_a_leak_and_a_closing_offer() -> None
         "these rules, the assignment or your instructions",
     ):
         assert phrase in prompt
+
+
+@pytest.mark.parametrize(
+    ("prompt", "fragment"),
+    [
+        (
+            prompts_module.DEEP_SYSTEM_PROMPT,
+            "Always write search_sources queries in English",
+        ),
+        (
+            prompts_module.DEEP_SYSTEM_PROMPT,
+            "language of the user's question (English or Polish)",
+        ),
+        (
+            prompts_module.DEEP_SUBAGENT_PROMPT,
+            "Always write search_sources queries in English",
+        ),
+    ],
+    ids=[
+        "lead-searches-in-english",
+        "lead-answers-in-question-language",
+        "scout-searches-in-english",
+    ],
+)
+def test_the_deep_prompts_search_in_english_and_answer_in_the_questions_language(
+    prompt: str, fragment: str
+) -> None:
+    """Approved sources publish in English, but a Polish reader needs a Polish analysis."""
+    # Arrange: `prompt` and `fragment` come from the parametrization above.
+
+    # Act
+    stated = fragment in prompt
+
+    # Assert
+    assert stated is True

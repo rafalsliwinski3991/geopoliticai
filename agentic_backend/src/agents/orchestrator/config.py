@@ -14,6 +14,8 @@ from shared.config import LLMSettings
 # the retired chat branch had: a sourceless answer of sixteen thousand tokens
 # is a bug. Reasoning tokens count against both ceilings on a reasoning model,
 # hence `reasoning_effort`.
+# The footer's 250 once left an empty reply (the reasoning used them all) and
+# the static English menu shipped to a Polish user.
 SUPERVISOR_LLM_SETTINGS: LLMSettings = LLMSettings(
     model="gpt-5-mini",
     temperature=1.0,
@@ -24,7 +26,7 @@ SUPERVISOR_LLM_SETTINGS: LLMSettings = LLMSettings(
 FOOTER_LLM_SETTINGS: LLMSettings = LLMSettings(
     model="gpt-5-mini",
     temperature=1.0,
-    max_output_tokens=250,
+    max_output_tokens=2_000,
     reasoning_effort="minimal",
 )
 

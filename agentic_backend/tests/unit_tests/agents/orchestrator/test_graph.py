@@ -98,7 +98,9 @@ async def test_graph_executes_supervisor_tool_supervisor_loop(
         lambda: ScriptedChatModel([footer_response]),
     )
 
-    async def fake_ask_expert(query: str) -> dict[str, Any]:
+    async def fake_ask_expert(
+        query: str, search_query: str | None = None
+    ) -> dict[str, Any]:
         return {
             "answer": "Verified Sudan analysis [1](https://reuters.com/sudan).",
             "sources": [],
@@ -241,7 +243,9 @@ async def test_a_pipeline_error_inside_a_tool_propagates_out_of_the_graph(
     # Arrange
     _script_supervisor(monkeypatch, [_call("run_expert", query="q")])
 
-    async def failing_ask_expert(query: str) -> dict[str, Any]:
+    async def failing_ask_expert(
+        query: str, search_query: str | None = None
+    ) -> dict[str, Any]:
         raise LLMInvocationError("Model call failed.")
 
     monkeypatch.setattr(

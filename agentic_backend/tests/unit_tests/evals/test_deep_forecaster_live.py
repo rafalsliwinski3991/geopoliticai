@@ -17,7 +17,7 @@ from unittest.mock import patch
 import pytest
 
 import agents.deep_forecaster.config as config_module
-from agents.deep_forecaster.consts.editorial import VOTE_LIST_HEADING
+from agents.deep_forecaster.consts.editorial import WORDS
 from agents.deep_forecaster.council.members import QuorumError
 from agents.deep_forecaster.models import Ballot, Claim, EvidenceRef, Stance, Vote
 from agents.deep_forecaster.state import ClaimTally
@@ -70,7 +70,7 @@ def _state() -> dict[str, Any]:
     ]
     answer = (
         "Overview: trouble is brewing [one](https://news.example/one).\n"
-        f"{VOTE_LIST_HEADING}\n"
+        f"{WORDS['en'].vote_list_heading}\n"
         "- one member [two](https://news.example/two)"
     )
     return {
@@ -142,7 +142,7 @@ def test_forecast_output_reports_verdicts_passages_and_cited_pages() -> None:
         "https://news.example/two",
     ]
     assert output["analysis"].startswith("Overview: trouble is brewing")
-    assert VOTE_LIST_HEADING not in output["analysis"]
+    assert WORDS["en"].vote_list_heading not in output["analysis"]
     assert output["cited_sources"] == [
         {
             "title": "First",
@@ -151,6 +151,25 @@ def test_forecast_output_reports_verdicts_passages_and_cited_pages() -> None:
         }
     ]
     assert output["members_voting"] == 7
+
+
+def test_forecast_output_drops_a_polish_vote_list() -> None:
+    """A forecast asked in Polish heads its vote list in Polish; the judges must not read it."""
+    # Arrange
+    state = _state()
+    state["answer"] = (
+        "Przegląd: sytuacja się zaostrza [jeden](https://news.example/one).\n"
+        f"{WORDS['pl'].vote_list_heading}\n"
+        "- jeden członek [dwa](https://news.example/two)"
+    )
+
+    # Act
+    output = forecast_output(state, {})
+
+    # Assert
+    assert output["analysis"] == (
+        "Przegląd: sytuacja się zaostrza [jeden](https://news.example/one)."
+    )
 
 
 class _GraphThatNeverEnds:

@@ -1,8 +1,11 @@
 """The reporter's prompts ignore the expert's closing next-step menu."""
 
+import pytest
+
 from agents.reporter.prompts import (
     OUTLINE_SYSTEM_PROMPT,
     REPORT_SYSTEM_PROMPT,
+    RESUME_INTENT_SYSTEM_PROMPT,
 )
 
 
@@ -44,3 +47,31 @@ def test_the_outline_prompt_asks_to_cancel_and_quote_a_question() -> None:
 
     # Assert
     assert missing == []
+
+
+@pytest.mark.parametrize(
+    ("prompt", "fragment"),
+    [
+        (OUTLINE_SYSTEM_PROMPT, "English or Polish"),
+        (REPORT_SYSTEM_PROMPT, "English or Polish"),
+        (RESUME_INTENT_SYSTEM_PROMPT, '"tak"'),
+        (RESUME_INTENT_SYSTEM_PROMPT, '"nie"'),
+        (RESUME_INTENT_SYSTEM_PROMPT, '"anuluj"'),
+    ],
+    ids=[
+        "outline names both languages",
+        "report names both languages",
+        "resume reads tak",
+        "resume reads nie",
+        "resume reads anuluj",
+    ],
+)
+def test_reporter_prompts_support_english_and_polish(
+    prompt: str, fragment: str
+) -> None:
+    """A Polish request gets a Polish outline and report, and Polish replies are read."""
+    # Act
+    stated = fragment in prompt
+
+    # Assert
+    assert stated

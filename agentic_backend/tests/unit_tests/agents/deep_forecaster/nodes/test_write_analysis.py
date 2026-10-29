@@ -28,6 +28,7 @@ write_analysis_module: Any = importlib.import_module(
 def a_written_analysis() -> Analysis:
     """The writer's dummy structured reply, one section per claim."""
     return Analysis(
+        language="en",
         overview="Overview.",
         claims=[
             ClaimDiscussion(claim=1, discussion="Alpha."),

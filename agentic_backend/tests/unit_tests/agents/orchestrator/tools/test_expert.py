@@ -28,7 +28,9 @@ async def test_run_expert_appends_synthesis_and_returns_tool_message_with_artifa
     emitted_events: list[Any] = []
     asked_queries: list[str] = []
 
-    async def fake_ask_expert(query: str) -> dict[str, Any]:
+    async def fake_ask_expert(
+        query: str, search_query: str | None = None
+    ) -> dict[str, Any]:
         asked_queries.append(query)
         return {
             "answer": "Verified NATO briefing [1](https://nato.int).",
@@ -86,7 +88,9 @@ async def test_run_expert_handles_empty_initial_workspace_state(
     """
 
     # Arrange
-    async def fake_ask_expert(query: str) -> dict[str, Any]:
+    async def fake_ask_expert(
+        query: str, search_query: str | None = None
+    ) -> dict[str, Any]:
         return {
             "answer": "Fresh answer.",
             "sources": [
@@ -114,7 +118,9 @@ async def test_run_expert_lets_a_pipeline_error_propagate(
     """A failed expert run must reach the API's error frame, not become a tool result."""
 
     # Arrange
-    async def failing_ask_expert(query: str) -> dict[str, Any]:
+    async def failing_ask_expert(
+        query: str, search_query: str | None = None
+    ) -> dict[str, Any]:
         raise LLMInvocationError("Model call failed.")
 
     monkeypatch.setattr(expert_tool_module, "ask_expert", failing_ask_expert)
@@ -123,3 +129,34 @@ async def test_run_expert_lets_a_pipeline_error_propagate(
     # Act + Assert
     with pytest.raises(LLMInvocationError):
         await run_expert.ainvoke({"query": "Any topic", "runtime": runtime})
+
+
+@pytest.mark.anyio
+async def test_run_expert_forwards_search_query_to_ask_expert(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The user's language stays in `query`; the English `search_query` only drives retrieval."""
+    # Arrange
+    asked: list[tuple[str, str | None]] = []
+
+    async def recording_ask_expert(
+        query: str, search_query: str | None = None
+    ) -> dict[str, Any]:
+        asked.append((query, search_query))
+        return {"answer": "Odpowiedź.", "sources": []}
+
+    monkeypatch.setattr(expert_tool_module, "ask_expert", recording_ask_expert)
+    runtime = make_tool_runtime(state={"messages": []})
+
+    # Act
+    command = await run_expert.ainvoke(
+        {
+            "query": "Czym jest NATO?",
+            "search_query": "What is NATO?",
+            "runtime": runtime,
+        }
+    )
+
+    # Assert
+    assert asked == [("Czym jest NATO?", "What is NATO?")]
+    assert "'Czym jest NATO?'" in command.update["messages"][0].content

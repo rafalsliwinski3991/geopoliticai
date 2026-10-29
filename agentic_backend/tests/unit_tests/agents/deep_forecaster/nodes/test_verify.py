@@ -70,41 +70,52 @@ CHECKED_DEFECTS = [
     # `int("²")` and a 5000-digit run would raise `ValueError` without the digit rule.
     pytest.param(
         Analysis(
-            overview="The council leans yes. [A](source:0)", claims=PLAIN_SECTIONS
+            language="en",
+            overview="The council leans yes. [A](source:0)",
+            claims=PLAIN_SECTIONS,
         ),
         OUT_OF_RANGE_DEFECT,
         id="source zero",
     ),
     pytest.param(
         Analysis(
-            overview="The council leans yes. [A](source:3)", claims=PLAIN_SECTIONS
+            language="en",
+            overview="The council leans yes. [A](source:3)",
+            claims=PLAIN_SECTIONS,
         ),
         OUT_OF_RANGE_DEFECT,
         id="one past the last source",
     ),
     pytest.param(
         Analysis(
-            overview="The council leans yes. [A](source:1.2)", claims=PLAIN_SECTIONS
+            language="en",
+            overview="The council leans yes. [A](source:1.2)",
+            claims=PLAIN_SECTIONS,
         ),
         OUT_OF_RANGE_DEFECT,
         id="a paragraph number 1.2",
     ),
     pytest.param(
         Analysis(
-            overview="The council leans yes. [A](source:x)", claims=PLAIN_SECTIONS
+            language="en",
+            overview="The council leans yes. [A](source:x)",
+            claims=PLAIN_SECTIONS,
         ),
         OUT_OF_RANGE_DEFECT,
         id="not a number",
     ),
     pytest.param(
         Analysis(
-            overview="The council leans yes. [A](source:²)", claims=PLAIN_SECTIONS
+            language="en",
+            overview="The council leans yes. [A](source:²)",
+            claims=PLAIN_SECTIONS,
         ),
         OUT_OF_RANGE_DEFECT,
         id="a superscript digit ²",
     ),
     pytest.param(
         Analysis(
+            language="en",
             overview="The council leans yes. [A](source:" + "9" * 5000 + ")",
             claims=PLAIN_SECTIONS,
         ),
@@ -114,6 +125,7 @@ CHECKED_DEFECTS = [
     # Unlinkable: one valid citation beside a broken one must not rescue it.
     pytest.param(
         Analysis(
+            language="en",
             overview='The council leans yes. [A](source:1) and [B](source:2 "t").',
             claims=PLAIN_SECTIONS,
         ),
@@ -122,6 +134,7 @@ CHECKED_DEFECTS = [
     ),
     pytest.param(
         Analysis(
+            language="en",
             overview="The council leans yes. [A](source:1) and <source:2>.",
             claims=PLAIN_SECTIONS,
         ),
@@ -130,6 +143,7 @@ CHECKED_DEFECTS = [
     ),
     pytest.param(
         Analysis(
+            language="en",
             overview="The council leans yes. [A](source:1) and [B](source: 2).",
             claims=PLAIN_SECTIONS,
         ),
@@ -138,6 +152,7 @@ CHECKED_DEFECTS = [
     ),
     pytest.param(
         Analysis(
+            language="en",
             overview="The council leans yes. [A](source:1) and (source:2).",
             claims=PLAIN_SECTIONS,
         ),
@@ -147,6 +162,7 @@ CHECKED_DEFECTS = [
     # Raw URL: any URL the writer still writes is a defect; the URLs come from the list.
     pytest.param(
         Analysis(
+            language="en",
             overview="The council leans yes. [A](source:1) and https://evil.example/x.",
             claims=PLAIN_SECTIONS,
         ),
@@ -155,6 +171,7 @@ CHECKED_DEFECTS = [
     ),
     pytest.param(
         Analysis(
+            language="en",
             overview="The council leans yes. [A](source:1) and <https://evil.example/y>.",
             claims=PLAIN_SECTIONS,
         ),
@@ -163,6 +180,7 @@ CHECKED_DEFECTS = [
     ),
     pytest.param(
         Analysis(
+            language="en",
             overview="The council leans yes. [A](source:1) and [1]: https://evil.example/ref.",
             claims=PLAIN_SECTIONS,
         ),
@@ -171,6 +189,7 @@ CHECKED_DEFECTS = [
     ),
     pytest.param(
         Analysis(
+            language="en",
             overview="The council leans yes. [A](source:1) and www.evil.example/z.",
             claims=PLAIN_SECTIONS,
         ),
@@ -180,6 +199,7 @@ CHECKED_DEFECTS = [
     # Claim sections: one section for each claim, no more and no fewer.
     pytest.param(
         Analysis(
+            language="en",
             overview="Overview. [A](source:1)",
             claims=[ClaimDiscussion(claim=1, discussion="Discussion. [B](source:2)")],
         ),
@@ -188,6 +208,7 @@ CHECKED_DEFECTS = [
     ),
     pytest.param(
         Analysis(
+            language="en",
             overview="Overview. [A](source:1)",
             claims=[
                 ClaimDiscussion(claim=1, discussion="Discussion. [B](source:2)"),
@@ -199,6 +220,7 @@ CHECKED_DEFECTS = [
     ),
     pytest.param(
         Analysis(
+            language="en",
             overview="   ",
             claims=[
                 ClaimDiscussion(claim=1, discussion="Discussion. [B](source:2)"),
@@ -210,6 +232,7 @@ CHECKED_DEFECTS = [
     ),
     pytest.param(
         Analysis(
+            language="en",
             overview="Overview without links.",
             claims=[
                 ClaimDiscussion(claim=1, discussion="D."),
@@ -225,6 +248,7 @@ CHECKED_DEFECTS = [
 def analysis() -> Analysis:
     """A valid analysis: every section cites the sources read, by number."""
     return Analysis(
+        language="en",
         overview="The council leans yes. [A](source:1)",
         claims=[
             ClaimDiscussion(claim=1, discussion="Alpha reasons. [A](source:1)"),
@@ -485,7 +509,7 @@ def test_the_evidence_line_reports_the_counts(
 ) -> None:
     # Arrange
     # Act
-    line = verify_module.evidence_line(sources_, research_, claims_)
+    line = verify_module.evidence_line(sources_, research_, claims_, "en")
     # Assert
     assert line.startswith(expected)
 
@@ -507,6 +531,7 @@ def test_ordinary_prose_is_not_a_citation(prose: str) -> None:
     forecast_state = state(round_1=first, round_2=dict(first))
     forecast_state["tally"] = VOTING6_TALLY
     analysis_ = Analysis(
+        language="en",
         overview=f"The council leans yes. [A](source:1). See {prose}.",
         claims=[
             ClaimDiscussion(claim=1, discussion="Alpha reasons."),
@@ -537,6 +562,7 @@ def test_a_citation_links_regardless_of_its_case(citation: str) -> None:
     forecast_state = state(round_1=first, round_2=dict(first))
     forecast_state["tally"] = VOTING6_TALLY
     analysis_ = Analysis(
+        language="en",
         overview=f"The council leans yes. {citation}",
         claims=[
             ClaimDiscussion(claim=1, discussion="Alpha reasons. [A](source:1)"),
@@ -559,6 +585,7 @@ def test_a_non_clickable_link_form_is_not_checked(link: str) -> None:
     forecast_state = state(round_1=first, round_2=dict(first))
     forecast_state["tally"] = VOTING6_TALLY
     analysis_ = Analysis(
+        language="en",
         overview=f"The council leans yes. [A](source:1) and {link}.",
         claims=[
             ClaimDiscussion(claim=1, discussion="Alpha reasons."),
@@ -692,3 +719,64 @@ async def test_a_second_defect_raises(events: list[object]) -> None:
         await verify_module.verify(forecast_state, runtime(events))
     assert raised.value.status == 502
     assert str(raised.value) == MISSING_CLAIM_DEFECT
+
+
+@pytest.mark.anyio
+async def test_a_polish_analysis_gets_a_polish_answer(events: list[object]) -> None:
+    """A Polish reader must not meet English headings, verdicts, stances or dates."""
+    # Arrange
+    first = six_voters()
+    second = {member: one for member, one in first.items() if member != 4}
+    forecast_state: Any = state(round_1=first, round_2=second)
+    forecast_state["tally"] = VOTING6_TALLY
+    forecast_state["analysis"] = analysis().model_copy(update={"language": "pl"})
+    forecast_state["final_ballots"] = final_ballots(first, second)
+
+    # Act
+    out = await verify_module.verify(forecast_state, runtime(events))
+
+    # Assert
+    answer = out["answer"]
+    for part in (
+        "## Twierdzenie 1: Alpha happens by 2027.",
+        "Do 31 grudnia 2027. Werdykt rady: **PRZYJĘTE**",
+        "## Jak głosowała rada",
+        "Głosowało członków: 6 z 7 (niedostępnych: 1).",
+        "Runda 2: członkowie, którzy zostali przy głosie z rundy 1, "
+        "bo nie odpowiedzieli: 1 z 6.",
+        "Dowody: przeczytane źródła: 2, witryny: 2.",
+        "### Twierdzenie 1: PRZYJĘTE",
+        "Za: 5, przeciw: 1, niepewnych: 0 (głosowało 6).",
+        "- Członek 2: przeciw — Reason 1. ([Źródło 2](https://reuters.com/b))",
+        "- Członek 4 (głos z rundy 1): za — Reason 1.",
+    ):
+        assert part in answer, part
+    for english in ("Council verdict", "voted for", "- Member", "Evidence:"):
+        assert english not in answer, english
+
+
+def test_the_polish_evidence_line_reports_every_count() -> None:
+    """Polish nouns inflect with the count (1 źródło, 2 źródła, 5 źródeł), so each count follows a label."""
+    # Arrange
+    sources_ = [
+        Source("T", "https://forecasters.example/a", "Alpha."),
+        Source("V", "https://www.youtube.com/watch?v=x", "Notes."),
+    ]
+    claims_ = [
+        Claim(
+            statement="S.",
+            deadline=date(2027, 12, 31),
+            evidence=[EvidenceRef(source=1, paragraph=1)],
+        )
+    ]
+    research_ = ResearchOutcome(11, 3, True)
+
+    # Act
+    line = verify_module.evidence_line(sources_, research_, claims_, "pl")
+
+    # Assert
+    assert line == (
+        "Dowody: przeczytane źródła: 2, witryny: 2, w tym notatki Gemini do wideo: 1. "
+        "Rada głosowała na podstawie cytowanych fragmentów: 1, pochodzących z liczby "
+        "źródeł: 1. Badanie zatrzymał limit czasu. Nieudane wyszukiwania: 3 z 11."
+    )
