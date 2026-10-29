@@ -18,7 +18,8 @@ Rules that hold in every subcommand:
   cannot find what an expected result describes, write the assertion from the spec anyway, say so, and let the
   run fail: that is evidence, not a reason to weaken the check.
 - Never read, print, or write the root `.env`, and never type `E2E_PASSWORD` into `playwright-cli`. Login
-  belongs to `e2e/auth.setup.ts`; every walk starts from its saved session.
+  belongs to `e2e/auth.setup.ts` (the walks' session) and `e2e/fixtures.ts` (one user per worker, for the
+  tests); every walk starts from the saved session.
 - Run every command from `e2e/` with `npx` (pinned in `e2e/package.json`). If `e2e/node_modules` is missing,
   run `npm ci && npx playwright install chromium` first.
 - No AI judging of answer content. Assertions are shape checks: the answer is not empty, it contains at least
@@ -51,6 +52,7 @@ Rules that hold in every subcommand:
      turn did not finish; write no test. Send each question once.
    - `npx playwright-cli -s=e2e close`.
 3. Write `tests/<name>.spec.ts`, following `tests/agent-expert-answers-with-source.spec.ts`:
+   - import `test` from `../fixtures`, never from `@playwright/test`, so each worker logs in as its own user;
    - line 1: `// spec-sha256: ` + the hash from `sha256sum test_specs/<name>.md`;
    - line 2: `// Generated from test_specs/<name>.md by /e2e. Never hand-edit: run /e2e update <name>.`;
    - read the spec into `SPEC` and pass `{ annotation: { type: 'spec', description: SPEC } }` so the HTML
