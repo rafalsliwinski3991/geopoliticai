@@ -83,6 +83,8 @@ def test_the_deep_prompts_search_in_english_and_answer_in_the_questions_language
     prompt: str, fragment: str
 ) -> None:
     """Approved sources publish in English, but a Polish reader needs a Polish analysis."""
+    # Arrange: `prompt` and `fragment` come from the parametrization above.
+
     # Act
     stated = fragment in prompt
 
