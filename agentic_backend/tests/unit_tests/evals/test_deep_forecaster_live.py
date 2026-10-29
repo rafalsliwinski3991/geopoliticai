@@ -153,6 +153,25 @@ def test_forecast_output_reports_verdicts_passages_and_cited_pages() -> None:
     assert output["members_voting"] == 7
 
 
+def test_forecast_output_drops_a_polish_vote_list() -> None:
+    """A forecast asked in Polish heads its vote list in Polish; the judges must not read it."""
+    # Arrange
+    state = _state()
+    state["answer"] = (
+        "Przegląd: sytuacja się zaostrza [jeden](https://news.example/one).\n"
+        f"{WORDS['pl'].vote_list_heading}\n"
+        "- jeden członek [dwa](https://news.example/two)"
+    )
+
+    # Act
+    output = forecast_output(state, {})
+
+    # Assert
+    assert output["analysis"] == (
+        "Przegląd: sytuacja się zaostrza [jeden](https://news.example/one)."
+    )
+
+
 class _GraphThatNeverEnds:
     """A built graph whose `astream` never ends, as a hung step's stream would not."""
 

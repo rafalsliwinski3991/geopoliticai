@@ -756,6 +756,7 @@ async def test_a_polish_analysis_gets_a_polish_answer(events: list[object]) -> N
 
 
 def test_the_polish_evidence_line_reports_every_count() -> None:
+    """Polish nouns inflect with the count (1 źródło, 2 źródła, 5 źródeł), so each count follows a label."""
     # Arrange
     sources_ = [
         Source("T", "https://forecasters.example/a", "Alpha."),
