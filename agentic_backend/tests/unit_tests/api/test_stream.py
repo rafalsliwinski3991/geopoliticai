@@ -13,6 +13,7 @@ from psycopg.errors import OperationalError
 
 from agents.orchestrator import build_graph, build_initial_orchestrator_state
 from agents.orchestrator.consts.progress import SEARCH_PROGRESS
+from agents.orchestrator.state import OrchestratorContext
 from agents.reporter import ResumeIntent
 from agents.reporter.consts.messages import (
     CANCELLED_NOTICE,
@@ -59,7 +60,7 @@ from unit_tests.api.conftest import (
 async def test_unknown_legacy_field_is_ignored(client: httpx.AsyncClient) -> None:
     # Arrange
     async def turn(
-        graph: Any, graph_input: Any, thread_id: str
+        graph: Any, graph_input: Any, thread_id: str, context: Any = None
     ) -> AsyncIterator[stream.StreamEvent]:
         # Arrange
         yield TokenFrame(content="answer")
@@ -91,7 +92,7 @@ async def test_sync_route_is_gone(client: httpx.AsyncClient) -> None:
 async def test_stream_progress_tokens_result(client: httpx.AsyncClient) -> None:
     # Arrange
     async def turn(
-        graph: Any, graph_input: Any, thread_id: str
+        graph: Any, graph_input: Any, thread_id: str, context: Any = None
     ) -> AsyncIterator[stream.StreamEvent]:
         # Arrange
         yield TokenFrame(content="Hello ")
@@ -137,7 +138,7 @@ async def test_forwarded_progress_reaches_the_browser_verbatim(
     # Arrange
     # Arrange
     async def turn(
-        graph: Any, graph_input: Any, thread_id: str
+        graph: Any, graph_input: Any, thread_id: str, context: Any = None
     ) -> AsyncIterator[stream.StreamEvent]:
         yield SEARCH_PROGRESS
 
@@ -166,7 +167,7 @@ async def test_a_report_emits_no_answer_progress(client: httpx.AsyncClient) -> N
 
     # Arrange
     async def turn(
-        graph: Any, graph_input: Any, thread_id: str
+        graph: Any, graph_input: Any, thread_id: str, context: Any = None
     ) -> AsyncIterator[stream.StreamEvent]:
         # Arrange
         yield REPORT_PROGRESS
@@ -194,7 +195,7 @@ async def test_a_notice_is_the_answer_and_emits_no_answer_progress(
     # Arrange
     # Arrange
     async def turn(
-        graph: Any, graph_input: Any, thread_id: str
+        graph: Any, graph_input: Any, thread_id: str, context: Any = None
     ) -> AsyncIterator[stream.StreamEvent]:
         yield NoticeEvent(text=CANCELLED_NOTICE)
 
@@ -224,7 +225,7 @@ async def test_cancel_and_revision_cap_resumes_end_as_answers(
     # Arrange
     # Arrange
     async def turn(
-        graph: Any, graph_input: Any, thread_id: str
+        graph: Any, graph_input: Any, thread_id: str, context: Any = None
     ) -> AsyncIterator[stream.StreamEvent]:
         yield NoticeEvent(text=notice)
 
@@ -336,7 +337,7 @@ async def test_a_pause_frame_ends_the_stream_without_a_result(
 
     # Arrange
     async def turn(
-        graph: Any, graph_input: Any, thread_id: str
+        graph: Any, graph_input: Any, thread_id: str, context: Any = None
     ) -> AsyncIterator[stream.StreamEvent]:
         yield PauseFrame.model_validate(pause)
 
@@ -380,7 +381,7 @@ async def test_resume_with_no_pending_pause_is_a_409_error_frame(
     called = False
 
     async def turn(
-        graph: Any, graph_input: Any, thread_id: str
+        graph: Any, graph_input: Any, thread_id: str, context: Any = None
     ) -> AsyncIterator[stream.StreamEvent]:
         nonlocal called
         called = True
@@ -445,7 +446,7 @@ async def test_an_approve_resume_sends_a_resume_command(
     seen: list[Any] = []
 
     async def turn(
-        graph: Any, graph_input: Any, thread_id: str
+        graph: Any, graph_input: Any, thread_id: str, context: Any = None
     ) -> AsyncIterator[stream.StreamEvent]:
         seen.append(graph_input)
         yield TokenFrame(content="The report.")
@@ -486,7 +487,7 @@ async def test_an_approve_resume_proceeds_at_the_cap(
         return DAILY_RESEARCH_TURNS
 
     async def turn(
-        graph: Any, graph_input: Any, thread_id: str
+        graph: Any, graph_input: Any, thread_id: str, context: Any = None
     ) -> AsyncIterator[stream.StreamEvent]:
         yield TokenFrame(content="The report.")
 
@@ -529,7 +530,7 @@ async def test_a_new_question_resume_starts_a_fresh_turn(
     seen: list[Any] = []
 
     async def turn(
-        graph: Any, graph_input: Any, thread_id: str
+        graph: Any, graph_input: Any, thread_id: str, context: Any = None
     ) -> AsyncIterator[stream.StreamEvent]:
         seen.append(graph_input)
         yield TokenFrame(content="A fresh answer.")
@@ -564,7 +565,7 @@ async def test_a_query_turn_never_reads_the_checkpoint(
     monkeypatch.setattr(stream, "_pending_pause", boom)
 
     async def turn(
-        graph: Any, graph_input: Any, thread_id: str
+        graph: Any, graph_input: Any, thread_id: str, context: Any = None
     ) -> AsyncIterator[stream.StreamEvent]:
         yield TokenFrame(content="fine")
 
@@ -590,7 +591,7 @@ async def test_result_kind_is_stamped_from_the_write_node(
     # Arrange
     # Arrange
     async def turn(
-        graph: Any, graph_input: Any, thread_id: str
+        graph: Any, graph_input: Any, thread_id: str, context: Any = None
     ) -> AsyncIterator[stream.StreamEvent]:
         if report_kind:
             yield stream._ReportStarted()
@@ -616,7 +617,7 @@ async def test_a_stream_of_exactly_max_answer_chars_is_not_truncated(
     # Arrange
     # Arrange
     async def turn(
-        graph: Any, graph_input: Any, thread_id: str
+        graph: Any, graph_input: Any, thread_id: str, context: Any = None
     ) -> AsyncIterator[stream.StreamEvent]:
         yield TokenFrame(content="a" * (config.MAX_ANSWER_CHARS - 10))
         yield TokenFrame(content="b" * 10)
@@ -639,7 +640,7 @@ async def test_stream_caps_answer_size(client: httpx.AsyncClient) -> None:
     fully_consumed = False
 
     async def turn(
-        graph: Any, graph_input: Any, thread_id: str
+        graph: Any, graph_input: Any, thread_id: str, context: Any = None
     ) -> AsyncIterator[stream.StreamEvent]:
         # Arrange
         nonlocal fully_consumed
@@ -664,7 +665,7 @@ async def test_stream_caps_answer_size(client: httpx.AsyncClient) -> None:
 async def test_stream_error_has_no_result(client: httpx.AsyncClient) -> None:
     # Arrange
     async def turn(
-        graph: Any, graph_input: Any, thread_id: str
+        graph: Any, graph_input: Any, thread_id: str, context: Any = None
     ) -> AsyncIterator[stream.StreamEvent]:
         # Arrange
         raise NoSourcesError("nothing usable")
@@ -745,7 +746,7 @@ async def test_stream_reports_error_status_per_type(
     # Arrange
     # Arrange
     async def turn(
-        graph: Any, graph_input: Any, thread_id: str
+        graph: Any, graph_input: Any, thread_id: str, context: Any = None
     ) -> AsyncIterator[stream.StreamEvent]:
         raise error
         yield TokenFrame(content="never")
@@ -1069,7 +1070,7 @@ async def test_a_resume_never_upserts_and_never_mints_a_thread(
         return True
 
     async def turn(
-        graph: Any, graph_input: Any, thread_id: str
+        graph: Any, graph_input: Any, thread_id: str, context: Any = None
     ) -> AsyncIterator[stream.StreamEvent]:
         yield TokenFrame(content="answer")
 
@@ -1133,7 +1134,7 @@ async def test_the_21st_research_turn_is_429_mid_stream(
     quota.user_has_room = False
 
     async def turn(
-        graph: Any, graph_input: Any, thread_id: str
+        graph: Any, graph_input: Any, thread_id: str, context: Any = None
     ) -> AsyncIterator[stream.StreamEvent]:
         yield stream._Counted(destination=None)
         yield TokenFrame(content="never")
@@ -1164,7 +1165,7 @@ async def test_a_chat_routed_turn_proceeds_at_the_cap(
         return DAILY_RESEARCH_TURNS
 
     async def turn(
-        graph: Any, graph_input: Any, thread_id: str
+        graph: Any, graph_input: Any, thread_id: str, context: Any = None
     ) -> AsyncIterator[stream.StreamEvent]:
         yield TokenFrame(content="Hello.")
 
@@ -1193,7 +1194,7 @@ async def test_a_turn_refused_by_the_site_ceiling_does_not_charge_the_user(
     quota.site_has_room = False
 
     async def turn(
-        graph: Any, graph_input: Any, thread_id: str
+        graph: Any, graph_input: Any, thread_id: str, context: Any = None
     ) -> AsyncIterator[stream.StreamEvent]:
         yield stream._Counted(destination=None)
         yield TokenFrame(content="never")
@@ -1220,7 +1221,7 @@ async def test_a_chat_routed_turn_does_not_increment_the_quota(
 
     # Arrange
     async def turn(
-        graph: Any, graph_input: Any, thread_id: str
+        graph: Any, graph_input: Any, thread_id: str, context: Any = None
     ) -> AsyncIterator[stream.StreamEvent]:
         yield TokenFrame(content="Hello.")
 
@@ -1297,7 +1298,7 @@ async def test_a_turn_that_fails_after_routing_still_increments_once(
 
     # Arrange
     async def turn(
-        graph: Any, graph_input: Any, thread_id: str
+        graph: Any, graph_input: Any, thread_id: str, context: Any = None
     ) -> AsyncIterator[stream.StreamEvent]:
         yield stream._Counted(destination=None)
         raise NoSourcesError("down")
@@ -1326,7 +1327,7 @@ async def test_a_turn_at_the_cap_ends_with_a_429_error_frame(
     quota.user_has_room = False
 
     async def turn(
-        graph: Any, graph_input: Any, thread_id: str
+        graph: Any, graph_input: Any, thread_id: str, context: Any = None
     ) -> AsyncIterator[stream.StreamEvent]:
         yield stream._Counted(destination=None)
         yield TokenFrame(content="free answer")
@@ -1357,7 +1358,7 @@ async def test_a_client_that_disconnects_mid_stream_is_still_counted(
 
     # Arrange
     async def turn(
-        graph: Any, graph_input: Any, thread_id: str
+        graph: Any, graph_input: Any, thread_id: str, context: Any = None
     ) -> AsyncIterator[stream.StreamEvent]:
         yield stream._Counted(destination=None)
         yield TokenFrame(content="partial answer")
@@ -1395,7 +1396,7 @@ async def test_a_cancelled_response_is_still_counted(
     past_the_count = asyncio.Event()
 
     async def turn(
-        graph: Any, graph_input: Any, thread_id: str
+        graph: Any, graph_input: Any, thread_id: str, context: Any = None
     ) -> AsyncIterator[stream.StreamEvent]:
         yield stream._Counted(destination=None)
         yield TokenFrame(content="partial answer")
@@ -1449,7 +1450,7 @@ async def test_a_resume_run_counts_nothing_new(
     monkeypatch.setattr(stream, "classify_resume_intent", intent)
 
     async def turn(
-        graph: Any, graph_input: Any, thread_id: str
+        graph: Any, graph_input: Any, thread_id: str, context: Any = None
     ) -> AsyncIterator[stream.StreamEvent]:
         # A resumed report run: the reporter continues from the interrupt; no
         # `classify` update frame ever arrives in this run.
@@ -1519,7 +1520,7 @@ async def test_a_geopolitical_turn_still_spends_one(
 ) -> None:
     # Arrange
     async def turn(
-        graph: Any, graph_input: Any, thread_id: str
+        graph: Any, graph_input: Any, thread_id: str, context: Any = None
     ) -> AsyncIterator[stream.StreamEvent]:
         yield stream._Counted(destination="geopolitical")
         yield TokenFrame(content="never")
@@ -1553,7 +1554,7 @@ async def test_a_geopolitical_turn_skips_the_headroom_read(
     monkeypatch.setattr(quota_module, "quota_used", read)
 
     async def turn(
-        graph: Any, graph_input: Any, thread_id: str
+        graph: Any, graph_input: Any, thread_id: str, context: Any = None
     ) -> AsyncIterator[stream.StreamEvent]:
         yield stream._Counted(destination="geopolitical")
         yield TokenFrame(content="never")
@@ -1586,7 +1587,7 @@ async def test_a_deep_turn_reads_the_headroom_of_its_user(
     monkeypatch.setattr(quota_module, "quota_used", read)
 
     async def turn(
-        graph: Any, graph_input: Any, thread_id: str
+        graph: Any, graph_input: Any, thread_id: str, context: Any = None
     ) -> AsyncIterator[stream.StreamEvent]:
         yield stream._Counted(destination="deep")
         yield TokenFrame(content="never")
@@ -1743,7 +1744,7 @@ async def test_no_forecaster_node_is_an_answer_node() -> None:
 async def test_stream_endpoint_binds_the_trace_user(client: httpx.AsyncClient) -> None:
     # Arrange
     async def turn(
-        graph: Any, graph_input: Any, thread_id: str
+        graph: Any, graph_input: Any, thread_id: str, context: Any = None
     ) -> AsyncIterator[stream.StreamEvent]:
         yield TokenFrame(content="answer")
 
@@ -1905,7 +1906,7 @@ async def test_a_failed_free_turn_refunds_nothing(
 
     # Arrange
     async def turn(
-        graph: Any, graph_input: Any, thread_id: str
+        graph: Any, graph_input: Any, thread_id: str, context: Any = None
     ) -> AsyncIterator[stream.StreamEvent]:
         raise NoSourcesError("down")
         yield TokenFrame(content="never")
@@ -2148,3 +2149,117 @@ async def test_the_cap_resets_on_the_next_day(
         quota.site_calls()
         == [("site", DAILY_RESEARCH_TURNS_ALL_USERS, FORECAST_TURN_COST)] * 2
     )
+
+
+DOCUMENT_CONTEXT = OrchestratorContext(filename="terms.txt")
+
+
+@pytest.mark.anyio
+async def test_the_stream_gives_the_graph_the_threads_document_context(
+    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The graph only learns about the upload through the context the stream builds for the turn."""
+    # Arrange
+    seen: list[Any] = []
+
+    async def context_for_thread(*args: Any, **kwargs: Any) -> OrchestratorContext:
+        return DOCUMENT_CONTEXT
+
+    async def turn(
+        graph: Any, graph_input: Any, thread_id: str, context: Any = None
+    ) -> AsyncIterator[stream.StreamEvent]:
+        seen.append(context)
+        yield TokenFrame(content="answer")
+
+    monkeypatch.setattr(stream, "build_orchestrator_context", context_for_thread)
+
+    # Act
+    with patch("api.stream._astream_answer", turn):
+        await client.post(
+            "/api/run_pipeline/stream", json={"query": "x", "thread_id": "t-1"}
+        )
+
+    # Assert
+    assert seen == [DOCUMENT_CONTEXT]
+
+
+@pytest.mark.anyio
+async def test_astream_passes_the_context_to_the_graph() -> None:
+    """`_astream_answer` must hand the context to `graph.astream`, or every thread runs as research."""
+    # Arrange
+    received: dict[str, Any] = {}
+
+    class _FakeGraph:
+        async def astream(self, *args: Any, **kwargs: Any) -> Any:
+            received.update(kwargs)
+            return
+            yield
+
+    # Act
+    [
+        event
+        async for event in stream._astream_answer(
+            _FakeGraph(),
+            build_initial_orchestrator_state("q"),
+            "t-1",
+            context=DOCUMENT_CONTEXT,
+        )
+    ]
+
+    # Assert
+    assert received["context"] is DOCUMENT_CONTEXT
+
+
+@pytest.mark.anyio
+async def test_a_failed_document_turn_gives_the_unit_back(
+    client: httpx.AsyncClient, quota: RecordingQuota
+) -> None:
+    """A document turn that errors is refunded like any other failed turn."""
+
+    # Arrange
+    async def turn(
+        graph: Any, graph_input: Any, thread_id: str, context: Any = None
+    ) -> AsyncIterator[stream.StreamEvent]:
+        yield stream._Counted(destination="document")
+        raise LLMInvocationError("down")
+        yield TokenFrame(content="never")
+
+    # Act
+    with patch("api.stream._astream_answer", turn):
+        response = await client.post(
+            "/api/run_pipeline/stream", json={"query": "x", "thread_id": "t-1"}
+        )
+
+    # Assert
+    assert _events(response.text)[-1]["type"] == "error"
+    assert quota.charged() == [("user", 1, CHARGE_DAY, DAILY_RESEARCH_TURNS, 1)]
+    assert quota.refunds() == [("refund", 1, CHARGE_DAY, 1)]
+
+
+@pytest.mark.anyio
+async def test_a_report_resume_in_a_document_thread_is_refused(
+    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch, quota: RecordingQuota
+) -> None:
+    """A report paused before the upload would resume through `tools` and write a web-sourced
+    report inside a document thread."""
+
+    # Arrange
+    async def context_for_thread(*args: Any, **kwargs: Any) -> OrchestratorContext:
+        return DOCUMENT_CONTEXT
+
+    async def boom(*args: Any, **kwargs: Any) -> NoReturn:
+        raise AssertionError("the graph must not run")
+
+    monkeypatch.setattr(stream, "build_orchestrator_context", context_for_thread)
+    monkeypatch.setattr(stream, "_astream_answer", boom)
+
+    # Act
+    response = await client.post(
+        "/api/run_pipeline/stream", json={"resume": "go ahead", "thread_id": "t-1"}
+    )
+
+    # Assert
+    last = _events(response.text)[-1]
+    assert last["type"] == "error"
+    assert last["status"] == 409
+    assert quota.charged() == []

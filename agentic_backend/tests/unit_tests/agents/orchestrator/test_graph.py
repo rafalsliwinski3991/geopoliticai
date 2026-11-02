@@ -15,7 +15,10 @@ from langgraph.store.memory import InMemoryStore
 from langgraph.types import Command
 
 from agents.orchestrator import build_graph, build_runtime_config
-from agents.orchestrator.state import build_initial_orchestrator_state
+from agents.orchestrator.state import (
+    OrchestratorContext,
+    build_initial_orchestrator_state,
+)
 from agents.reporter.consts.messages import CANCELLED_NOTICE, NO_MATERIAL_NOTICE
 from agents.reporter.state import OutlineDraft
 from shared.errors import LLMInvocationError
@@ -394,3 +397,120 @@ async def test_a_cancelled_report_reaches_the_custom_stream_as_one_notice(
     # Assert
     notices = [e[1] for e in events if e[1].get("type") == "notice"]
     assert notices == [{"type": "notice", "text": CANCELLED_NOTICE}]
+
+
+def test_the_tool_node_holds_the_document_tool() -> None:
+    """The tool node must be able to run what the document-mode supervisor binds."""
+    # Act
+    tool_node = build_graph().nodes["tools"].bound
+
+    # Assert
+    assert "run_document" in tool_node.tools_by_name
+
+
+@pytest.mark.anyio
+async def test_a_document_turn_ends_after_the_tool_with_no_footer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The footer offers research tools a document thread does not have, so the turn ends at the tool.
+
+    No footer client is scripted: a second supervisor pass would fail the test.
+    """
+    # Arrange
+    QUESTION = "What are the fees?"
+    call = {"name": "run_document", "args": {"query": QUESTION}, "id": "call-doc-1"}
+    monkeypatch.setattr(
+        supervisor_module,
+        "_build_supervisor_client",
+        lambda tools=None: ScriptedChatModel([AIMessage("", tool_calls=[call])]),
+    )
+
+    async def fake_ask_document(
+        query: str, history: list[str], search: Any
+    ) -> dict[str, Any]:
+        return {"answer": "Fees are 5 percent.", "chunks": []}
+
+    monkeypatch.setattr(
+        "agents.orchestrator.tools.document.ask_document", fake_ask_document
+    )
+
+    async def search(embedding: list[float]) -> list[Any]:
+        return []
+
+    compiled = build_graph(checkpointer=InMemorySaver())
+    config = build_runtime_config(thread_id="t-doc-1")
+
+    # Act
+    updates = [
+        data
+        async for data in compiled.astream(
+            build_initial_orchestrator_state(QUESTION),
+            config=config,
+            context=OrchestratorContext(filename="terms.txt", search_document=search),
+            stream_mode="updates",
+        )
+    ]
+
+    # Assert
+    assert [list(update)[0] for update in updates] == ["supervisor", "tools"]
+    final_state = await compiled.aget_state(config)
+    assert final_state.next == ()
+    assert final_state.values["messages"][-1].artifact == {
+        "text": "Fees are 5 percent."
+    }
+
+
+@pytest.mark.anyio
+async def test_a_research_turn_still_returns_to_the_supervisor(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Only the report and the document end at the tool; an expert answer still gets its footer."""
+    # Arrange
+    QUESTION = "What is happening in Sudan?"
+    call = {"name": "run_expert", "args": {"query": QUESTION}, "id": "call-exp-1"}
+    monkeypatch.setattr(
+        supervisor_module,
+        "_build_supervisor_client",
+        lambda tools=None: ScriptedChatModel([AIMessage("", tool_calls=[call])]),
+    )
+    monkeypatch.setattr(
+        supervisor_module,
+        "_build_footer_client",
+        lambda: ScriptedChatModel([AIMessage("1. Deep dive")]),
+    )
+
+    async def fake_ask_expert(
+        query: str, search_query: str | None = None
+    ) -> dict[str, Any]:
+        return {"answer": "Sudan analysis.", "sources": []}
+
+    monkeypatch.setattr("agents.orchestrator.tools.expert.ask_expert", fake_ask_expert)
+    compiled = build_graph(checkpointer=InMemorySaver())
+
+    # Act
+    updates = [
+        data
+        async for data in compiled.astream(
+            build_initial_orchestrator_state(QUESTION),
+            config=build_runtime_config(thread_id="t-doc-2"),
+            context=OrchestratorContext(),
+            stream_mode="updates",
+        )
+    ]
+
+    # Assert
+    assert [list(update)[0] for update in updates] == [
+        "supervisor",
+        "tools",
+        "supervisor",
+    ]
+
+
+def test_the_context_can_be_described_for_studio() -> None:
+    """`langgraph dev` asks for the context schema; the search function must not break it."""
+    # Act
+    schema = build_graph().get_context_jsonschema()
+
+    # Assert
+    assert "search_document" not in schema.get("properties", {})
+    assert "filename" in schema["properties"]

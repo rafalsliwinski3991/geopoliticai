@@ -436,3 +436,19 @@ async def test_one_users_charges_run_one_at_a_time(
     # Assert
     assert waiting_site_calls == 1
     assert len(site_calls) == 2
+
+
+@pytest.mark.anyio
+async def test_a_document_turn_costs_one_unit(quota: RecordingQuota) -> None:
+    """A document question is one lookup and one model call, so it is priced as an ordinary turn."""
+
+    # Arrange
+    # Act
+    charge = await charge_turn(POOL, user_id=1, destination="document")
+
+    # Assert
+    assert charge == Charge(day=CHARGE_DAY, cost=1)
+    assert quota.calls == [
+        ("site", DAILY_RESEARCH_TURNS_ALL_USERS, 1),
+        ("user", 1, CHARGE_DAY, DAILY_RESEARCH_TURNS, 1),
+    ]

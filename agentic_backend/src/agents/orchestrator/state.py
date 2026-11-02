@@ -13,7 +13,7 @@ from typing_extensions import NotRequired, TypedDict
 from agents.document import DocumentSearch
 from shared.text import squash_whitespace
 
-Destination = Literal["geopolitical", "deep", "forecast", "other", "report"]
+Destination = Literal["geopolitical", "deep", "forecast", "other", "report", "document"]
 
 
 @dataclass(frozen=True)

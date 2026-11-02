@@ -9,14 +9,15 @@ from langgraph.prebuilt import ToolNode, tools_condition
 from langgraph.store.base import BaseStore
 
 from agents.orchestrator.nodes.supervisor import supervisor
-from agents.orchestrator.state import OrchestratorState
+from agents.orchestrator.state import OrchestratorContext, OrchestratorState
 from agents.orchestrator.tools import ALL_TOOLS
 from shared.tracing import init_tracing
 
 
 def _route_after_tools(state: OrchestratorState) -> str:
-    # run_reporter goes straight to END on completion or cancellation
-    if state.get("destination") == "report":
+    # The report ends its own turn, and so does a document answer: the footer
+    # offers tools a document thread does not have.
+    if state.get("destination") in ("report", "document"):
         return END
     return "supervisor"
 
@@ -35,7 +36,7 @@ def build_graph(checkpointer: Any | None = None, store: BaseStore | None = None)
     included, raise to the API's error frame and its refund. The default would
     turn a malformed call into an error ToolMessage that nothing retries.
     """
-    orchestrator = StateGraph(OrchestratorState)
+    orchestrator = StateGraph(OrchestratorState, context_schema=OrchestratorContext)
     orchestrator.add_node("supervisor", supervisor)
     orchestrator.add_node("tools", ToolNode(ALL_TOOLS, handle_tool_errors=False))
 

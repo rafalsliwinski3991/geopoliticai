@@ -9,6 +9,7 @@ import httpx
 import jwt
 import pytest
 
+from agents.orchestrator.state import OrchestratorContext
 from api import quota as quota_module
 from api import rate_limit, routes, stream
 from api.app import app
@@ -73,6 +74,11 @@ def _owned_thread_with_quota_headroom(monkeypatch: pytest.MonkeyPatch) -> None:
         return None
 
     monkeypatch.setattr(routes, "read_document_name", no_document)
+
+    async def no_context(*args: Any, **kwargs: Any) -> OrchestratorContext:
+        return OrchestratorContext()
+
+    monkeypatch.setattr(stream, "build_orchestrator_context", no_context)
 
 
 @dataclass
@@ -141,12 +147,12 @@ def _events(body: str) -> list[dict[str, Any]]:
 
 def _turn_stream(
     destination: Any, *events: stream.StreamEvent, error: BaseException | None = None
-) -> Callable[[Any, Any, str], AsyncIterator[stream.StreamEvent]]:
+) -> Callable[..., AsyncIterator[stream.StreamEvent]]:
     """Build a fake `_astream_answer` for one turn: the counted frame, then
     the case's events or a raise."""
 
     async def turn(
-        graph: Any, graph_input: Any, thread_id: str
+        graph: Any, graph_input: Any, thread_id: str, context: Any = None
     ) -> AsyncIterator[stream.StreamEvent]:
         yield stream._Counted(destination=destination)
         for event in events:

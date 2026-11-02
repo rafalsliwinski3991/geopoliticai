@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Optional
+from typing import Any, Optional, Sequence
 
 from langchain_core.messages import (
     AIMessage,
@@ -13,7 +13,9 @@ from langchain_core.messages import (
     ToolMessage,
 )
 from langchain_core.runnables import Runnable, RunnableConfig
+from langchain_core.tools import BaseTool
 from langgraph.constants import TAG_NOSTREAM
+from langgraph.runtime import Runtime
 from langgraph.types import StreamWriter
 
 from agents.orchestrator.config import (
@@ -25,9 +27,16 @@ from agents.orchestrator.consts.menu import (
     DYNAMIC_FOOTER_SYSTEM_PROMPT,
     STATIC_NEXT_STEPS_MENU,
 )
-from agents.orchestrator.prompts import SUPERVISOR_SYSTEM_PROMPT
-from agents.orchestrator.state import Destination, OrchestratorState
-from agents.orchestrator.tools import ALL_TOOLS
+from agents.orchestrator.prompts import (
+    SUPERVISOR_DOCUMENT_PROMPT,
+    SUPERVISOR_SYSTEM_PROMPT,
+)
+from agents.orchestrator.state import (
+    Destination,
+    OrchestratorContext,
+    OrchestratorState,
+)
+from agents.orchestrator.tools import DOCUMENT_TOOLS, RESEARCH_TOOLS
 from services.llm import build_chat_model
 from shared.config import FOOTER_PREFIX
 from shared.errors import LLMInvocationError
@@ -40,13 +49,16 @@ TOOL_DESTINATION_MAP: dict[str, Destination] = {
     "run_deep_expert": "deep",
     "run_deep_forecaster": "forecast",
     "run_reporter": "report",
+    "run_document": "document",
 }
 
 
-def _build_supervisor_client() -> Runnable[Any, Any]:
+def _build_supervisor_client(
+    tools: Sequence[BaseTool] = RESEARCH_TOOLS,
+) -> Runnable[Any, Any]:
     return (
         build_chat_model(SUPERVISOR_LLM_SETTINGS)
-        .bind_tools(ALL_TOOLS, parallel_tool_calls=False)
+        .bind_tools(tools, parallel_tool_calls=False)
         .with_config(tags=[TAG_NOSTREAM])
     )
 
@@ -125,6 +137,7 @@ async def supervisor(
     state: OrchestratorState,
     writer: StreamWriter,
     config: Optional[RunnableConfig] = None,
+    runtime: Optional[Runtime[OrchestratorContext]] = None,
 ) -> dict[str, Any]:
     """Two-phase supervisor node.
 
@@ -132,6 +145,8 @@ async def supervisor(
     Pass 2 (Post-tool): Summarizes next steps into a dynamic footer emitted as a notice chunk.
     """
     last_message = state["messages"][-1] if state.get("messages") else None
+    context = runtime.context if runtime else None
+    in_document_mode = bool(context and context.search_document)
 
     with start_span("supervisor") as span:
         # Pass 2 (Post-tool)
@@ -157,8 +172,18 @@ async def supervisor(
         span.set_attribute("supervisor.pass", "route")
         sanitized = _sanitize_and_slice_messages(list(state.get("messages", [])))
         span.set_attribute("supervisor.history_messages", len(sanitized))
-        payload = [SystemMessage(SUPERVISOR_SYSTEM_PROMPT), *sanitized]
-        res = await _invoke(_build_supervisor_client(), payload, config)
+        span.set_attribute("supervisor.document_mode", in_document_mode)
+        tools = DOCUMENT_TOOLS if in_document_mode else RESEARCH_TOOLS
+        client = (
+            _build_supervisor_client(DOCUMENT_TOOLS)
+            if in_document_mode
+            else _build_supervisor_client()
+        )
+        system_prompt = (
+            SUPERVISOR_DOCUMENT_PROMPT if in_document_mode else SUPERVISOR_SYSTEM_PROMPT
+        )
+        payload = [SystemMessage(system_prompt), *sanitized]
+        res = await _invoke(client, payload, config)
 
         if res.invalid_tool_calls:
             raise LLMInvocationError("Model returned a tool call it could not parse.")
@@ -173,6 +198,12 @@ async def supervisor(
                 raise LLMInvocationError(
                     f"Model called an unknown tool: {tc['name']}."
                 ) from exc
+            if tc["name"] not in {tool.name for tool in tools}:
+                # The history window can hold tool calls from before the mode
+                # changed; the model must not be able to run one of them now.
+                raise LLMInvocationError(
+                    f"Model called a tool that is not available: {tc['name']}."
+                )
             span.set_attribute("supervisor.tool", tc["name"])
             span.set_attribute("supervisor.destination", destination)
             return {

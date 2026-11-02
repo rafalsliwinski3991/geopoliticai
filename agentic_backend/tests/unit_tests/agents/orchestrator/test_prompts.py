@@ -2,7 +2,10 @@
 
 import pytest
 
-from agents.orchestrator.prompts import SUPERVISOR_SYSTEM_PROMPT
+from agents.orchestrator.prompts import (
+    SUPERVISOR_DOCUMENT_PROMPT,
+    SUPERVISOR_SYSTEM_PROMPT,
+)
 
 
 @pytest.mark.parametrize(
@@ -46,6 +49,43 @@ def test_supervisor_prompt_keeps_its_rules(rule: str) -> None:
 
     # Act
     kept = rule in prompt
+
+    # Assert
+    assert kept is True
+
+
+def test_the_document_prompt_names_only_the_document_tool() -> None:
+    """A research tool named here would invite a call the document thread cannot run."""
+    # Act
+    named = [
+        tool
+        for tool in (
+            "run_expert",
+            "run_deep_expert",
+            "run_deep_forecaster",
+            "run_reporter",
+        )
+        if tool in SUPERVISOR_DOCUMENT_PROMPT
+    ]
+
+    # Assert
+    assert named == []
+    assert "run_document" in SUPERVISOR_DOCUMENT_PROMPT
+
+
+def test_the_document_prompt_keeps_the_language_rule() -> None:
+    """The refusal for other languages holds in a document thread too."""
+    # Act
+    kept = "other than English or Polish" in SUPERVISOR_DOCUMENT_PROMPT
+
+    # Assert
+    assert kept is True
+
+
+def test_the_document_prompt_passes_the_message_unchanged() -> None:
+    """The document agent rewrites the question itself; a supervisor rewrite would lose its wording."""
+    # Act
+    kept = "exactly as written" in SUPERVISOR_DOCUMENT_PROMPT
 
     # Assert
     assert kept is True

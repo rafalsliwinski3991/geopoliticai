@@ -15,3 +15,4 @@ from shared.frames import ProgressFrame
 SEARCH_PROGRESS = ProgressFrame(
     node="search_and_fetch", label="Searching and reading sources..."
 )
+DOCUMENT_PROGRESS = ProgressFrame(node="retrieve", label="Searching your document...")

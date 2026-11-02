@@ -41,7 +41,7 @@ from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.store.memory import InMemoryStore
 
 from agents.orchestrator import build_graph
-from api import quota, rate_limit, routes, stream
+from api import documents, quota, rate_limit, routes, stream
 from api.app import app
 from db.web.sql import ThreadRow, quota_day
 from loadtests.turns import RESEARCH_KEYWORD
@@ -339,6 +339,9 @@ def fake_backend(profile: LatencyProfile) -> Iterator[InMemoryWebDb]:
             stack.enter_context(patch.object(module, name, getattr(db, name)))
         stack.enter_context(
             patch.object(routes, "read_document_name", db.read_document_name)
+        )
+        stack.enter_context(
+            patch.object(documents, "read_document_name", db.read_document_name)
         )
         for name in (
             "quota_used",

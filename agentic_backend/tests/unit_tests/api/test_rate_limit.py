@@ -22,7 +22,7 @@ async def test_rate_limit_keys_on_the_authenticated_user(
     # Arrange
     # Arrange
     async def turn(
-        graph: Any, graph_input: Any, thread_id: str
+        graph: Any, graph_input: Any, thread_id: str, context: Any = None
     ) -> AsyncIterator[stream.StreamEvent]:
         yield TokenFrame(content="answer")
 
@@ -78,7 +78,7 @@ def test_resolve_client_id_falls_back_to_the_rightmost_forwarded() -> None:
 async def test_rate_limiting_enforced(client: httpx.AsyncClient) -> None:
     # Arrange
     async def turn(
-        graph: Any, graph_input: Any, thread_id: str
+        graph: Any, graph_input: Any, thread_id: str, context: Any = None
     ) -> AsyncIterator[stream.StreamEvent]:
         # Arrange
         yield TokenFrame(content="output")
