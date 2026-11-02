@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { DocumentChip } from "./DocumentChip";
 
 const FILENAME = "Q3 report.pdf";
@@ -12,10 +13,11 @@ describe("DocumentChip", () => {
   it("shows the attached file's name", () => {
     // Arrange
     const onRemove = vi.fn();
-    // Act
     render(<DocumentChip filename={FILENAME} busy={false} onRemove={onRemove} />);
+    // Act
+    const name = screen.queryByText(FILENAME);
     // Assert
-    expect(screen.getByText(FILENAME)).toBeTruthy();
+    expect(name).toBeTruthy();
   });
 
   it("Remove calls onRemove once", () => {
@@ -28,16 +30,15 @@ describe("DocumentChip", () => {
     expect(onRemove).toHaveBeenCalledTimes(1);
   });
 
-  it("Remove is disabled while busy, so a running turn cannot lose its document", () => {
+  it("Remove is disabled while busy, so a running turn cannot lose its document", async () => {
     // Arrange
     const onRemove = vi.fn();
-    // Act
     render(<DocumentChip filename={FILENAME} busy={true} onRemove={onRemove} />);
-    fireEvent.click(screen.getByRole("button", { name: "Remove document" }));
+    const remove = screen.getByRole("button", { name: "Remove document" }) as HTMLButtonElement;
+    // Act
+    await userEvent.click(remove);
     // Assert
-    expect(
-      (screen.getByRole("button", { name: "Remove document" }) as HTMLButtonElement).disabled,
-    ).toBe(true);
+    expect(remove.disabled).toBe(true);
     expect(onRemove).not.toHaveBeenCalled();
   });
 });

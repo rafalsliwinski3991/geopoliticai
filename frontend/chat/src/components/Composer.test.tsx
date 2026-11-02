@@ -80,19 +80,23 @@ describe("the composer", () => {
   });
 
   it("the file picker offers only PDF and text files", () => {
-    // Arrange + Act
+    // Arrange
     render(<Composer {...IDLE} onSend={vi.fn()} />);
+    // Act
     const input = screen.getByLabelText("Attach a document") as HTMLInputElement;
     // Assert
     expect(input.getAttribute("accept")).toBe(".pdf,.txt,application/pdf,text/plain");
   });
 
   it("an upload in progress changes the placeholder and disables Send", () => {
-    // Arrange + Act
+    // Arrange
     render(<Composer {...IDLE} uploading={true} onSend={vi.fn()} />);
+    // Act
+    const placeholder = screen.queryByPlaceholderText("Reading your document…");
+    const send = screen.getByRole("button", { name: "Send" }) as HTMLButtonElement;
     // Assert
-    expect(screen.getByPlaceholderText("Reading your document…")).toBeTruthy();
-    expect((screen.getByRole("button", { name: "Send" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(placeholder).toBeTruthy();
+    expect(send.disabled).toBe(true);
   });
 
   it("an upload in progress ignores the submit key", () => {
@@ -119,18 +123,20 @@ describe("the composer", () => {
   });
 
   it("with no document attached there is no chip", () => {
-    // Arrange + Act
+    // Arrange
     render(<Composer {...IDLE} onSend={vi.fn()} />);
+    // Act
+    const chip = screen.queryByRole("button", { name: "Remove document" });
     // Assert
-    expect(screen.queryByRole("button", { name: "Remove document" })).toBeNull();
+    expect(chip).toBeNull();
   });
 
   it("the footer says answers come from the document while one is attached", () => {
-    // Arrange + Act
+    // Arrange
     render(<Composer {...IDLE} document="report.txt" onSend={vi.fn()} />);
+    // Act
+    const footer = screen.queryByText(/Answers come from your document while one is attached\./);
     // Assert
-    expect(
-      screen.getByText(/Answers come from your document while one is attached\./),
-    ).toBeTruthy();
+    expect(footer).toBeTruthy();
   });
 });

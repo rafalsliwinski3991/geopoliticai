@@ -597,6 +597,10 @@ describe("the attached document", () => {
     reset: () => void;
   };
 
+  function probe(getLatest: () => unknown): DocumentProbe {
+    return getLatest() as DocumentProbe;
+  }
+
   function stubDocumentApi(upload: { ok: boolean; status: number; body: object }) {
     const calls: { url: string; method?: string }[] = [];
     vi.stubGlobal(
@@ -619,11 +623,11 @@ describe("the attached document", () => {
     const getLatest = await renderHookProbe();
     // Act
     await act(async () => {
-      await (getLatest() as unknown as DocumentProbe).attachDocument(REPORT);
+      await probe(getLatest).attachDocument(REPORT);
     });
     // Assert
-    expect((getLatest() as unknown as DocumentProbe).document).toBe("report.txt");
-    expect((getLatest() as unknown as DocumentProbe).uploading).toBe(false);
+    expect(probe(getLatest).document).toBe("report.txt");
+    expect(probe(getLatest).uploading).toBe(false);
     expect(calls.map((c) => `${c.method} ${c.url}`)).toContain(
       "POST /api/threads/t-doc/document?filename=report.txt",
     );
@@ -636,10 +640,10 @@ describe("the attached document", () => {
     const getLatest = await renderHookProbe();
     // Act
     await act(async () => {
-      await (getLatest() as unknown as DocumentProbe).attachDocument(REPORT);
+      await probe(getLatest).attachDocument(REPORT);
     });
     // Assert
-    const state = getLatest() as unknown as DocumentProbe;
+    const state = probe(getLatest);
     expect(state.document).toBeNull();
     expect(state.uploading).toBe(false);
     expect(state.messages).toEqual([{ role: "error", text: "That file has no readable text." }]);
@@ -651,29 +655,39 @@ describe("the attached document", () => {
     const calls = stubDocumentApi({ ok: true, status: 200, body: { filename: "report.txt", chunks: 1 } });
     const getLatest = await renderHookProbe();
     await act(async () => {
-      await (getLatest() as unknown as DocumentProbe).attachDocument(REPORT);
+      await probe(getLatest).attachDocument(REPORT);
     });
     // Act
     await act(async () => {
-      await (getLatest() as unknown as DocumentProbe).detachDocument();
+      await probe(getLatest).detachDocument();
     });
     // Assert
-    expect((getLatest() as unknown as DocumentProbe).document).toBeNull();
+    expect(probe(getLatest).document).toBeNull();
     expect(calls.map((c) => `${c.method} ${c.url}`)).toContain("DELETE /api/threads/t-doc/document");
   });
 
-  it("restore sets the document of a reopened conversation and reset clears it", async () => {
+  it("restore sets the document of a reopened conversation", async () => {
     // Arrange
     const getLatest = await renderHookProbe();
     // Act
     await act(async () => {
-      (getLatest() as unknown as DocumentProbe).restore("t-old", [], "old.pdf");
+      probe(getLatest).restore("t-old", [], "old.pdf");
     });
     // Assert
-    expect((getLatest() as unknown as DocumentProbe).document).toBe("old.pdf");
+    expect(probe(getLatest).document).toBe("old.pdf");
+  });
+
+  it("reset clears the document of the conversation before", async () => {
+    // Arrange
+    const getLatest = await renderHookProbe();
     await act(async () => {
-      (getLatest() as unknown as DocumentProbe).reset();
+      probe(getLatest).restore("t-old", [], "old.pdf");
     });
-    expect((getLatest() as unknown as DocumentProbe).document).toBeNull();
+    // Act
+    await act(async () => {
+      probe(getLatest).reset();
+    });
+    // Assert
+    expect(probe(getLatest).document).toBeNull();
   });
 });
