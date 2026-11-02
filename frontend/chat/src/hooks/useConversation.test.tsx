@@ -584,3 +584,96 @@ function versionGreater(actual: string, floor: string): boolean {
   if ((b ?? 0) !== (y ?? 0)) return (b ?? 0) > (y ?? 0);
   return (c ?? 0) > (z ?? 0);
 }
+
+describe("the attached document", () => {
+  const REPORT = new File(["Q3 revenue was 41 million"], "report.txt", { type: "text/plain" });
+  type DocumentProbe = {
+    document: string | null;
+    uploading: boolean;
+    messages: { role: string; text: string }[];
+    attachDocument: (file: File) => Promise<void>;
+    detachDocument: () => Promise<void>;
+    restore: (id: string, messages: [], document: string | null) => void;
+    reset: () => void;
+  };
+
+  function stubDocumentApi(upload: { ok: boolean; status: number; body: object }) {
+    const calls: { url: string; method?: string }[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: string, init?: { method?: string }) => {
+        calls.push({ url, method: init?.method });
+        const body = url === "/accounts/token/" ? { access: "tok", expires_in: 900 } : upload.body;
+        const ok = url === "/accounts/token/" ? true : upload.ok;
+        const status = url === "/accounts/token/" ? 200 : upload.status;
+        return Promise.resolve({ ok, status, json: async () => body } as unknown as Response);
+      }),
+    );
+    return calls;
+  }
+
+  it("attaching a file uploads it for the current thread and remembers its name", async () => {
+    // Arrange
+    storeThreadId("t-doc");
+    const calls = stubDocumentApi({ ok: true, status: 200, body: { filename: "report.txt", chunks: 1 } });
+    const getLatest = await renderHookProbe();
+    // Act
+    await act(async () => {
+      await (getLatest() as unknown as DocumentProbe).attachDocument(REPORT);
+    });
+    // Assert
+    expect((getLatest() as unknown as DocumentProbe).document).toBe("report.txt");
+    expect((getLatest() as unknown as DocumentProbe).uploading).toBe(false);
+    expect(calls.map((c) => `${c.method} ${c.url}`)).toContain(
+      "POST /api/threads/t-doc/document?filename=report.txt",
+    );
+  });
+
+  it("a rejected upload shows the backend's text as an error message and attaches nothing", async () => {
+    // Arrange
+    storeThreadId("t-doc");
+    stubDocumentApi({ ok: false, status: 422, body: { detail: "That file has no readable text." } });
+    const getLatest = await renderHookProbe();
+    // Act
+    await act(async () => {
+      await (getLatest() as unknown as DocumentProbe).attachDocument(REPORT);
+    });
+    // Assert
+    const state = getLatest() as unknown as DocumentProbe;
+    expect(state.document).toBeNull();
+    expect(state.uploading).toBe(false);
+    expect(state.messages).toEqual([{ role: "error", text: "That file has no readable text." }]);
+  });
+
+  it("detaching deletes the document and clears the name", async () => {
+    // Arrange
+    storeThreadId("t-doc");
+    const calls = stubDocumentApi({ ok: true, status: 200, body: { filename: "report.txt", chunks: 1 } });
+    const getLatest = await renderHookProbe();
+    await act(async () => {
+      await (getLatest() as unknown as DocumentProbe).attachDocument(REPORT);
+    });
+    // Act
+    await act(async () => {
+      await (getLatest() as unknown as DocumentProbe).detachDocument();
+    });
+    // Assert
+    expect((getLatest() as unknown as DocumentProbe).document).toBeNull();
+    expect(calls.map((c) => `${c.method} ${c.url}`)).toContain("DELETE /api/threads/t-doc/document");
+  });
+
+  it("restore sets the document of a reopened conversation and reset clears it", async () => {
+    // Arrange
+    const getLatest = await renderHookProbe();
+    // Act
+    await act(async () => {
+      (getLatest() as unknown as DocumentProbe).restore("t-old", [], "old.pdf");
+    });
+    // Assert
+    expect((getLatest() as unknown as DocumentProbe).document).toBe("old.pdf");
+    await act(async () => {
+      (getLatest() as unknown as DocumentProbe).reset();
+    });
+    expect((getLatest() as unknown as DocumentProbe).document).toBeNull();
+  });
+});

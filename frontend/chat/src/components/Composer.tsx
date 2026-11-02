@@ -1,17 +1,28 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
+import { DocumentChip } from "./DocumentChip";
 
 export function Composer({
   busy,
+  uploading,
+  document,
   onSend,
+  onAttach,
+  onDetach,
 }: {
   busy: boolean;
+  uploading: boolean;
+  document: string | null;
   onSend: (text: string) => void;
+  onAttach: (file: File) => void;
+  onDetach: () => void;
 }) {
   const [value, setValue] = useState("");
+  const fileInput = useRef<HTMLInputElement>(null);
+  const blocked = busy || uploading;
 
   function submit() {
     const text = value.trim();
-    if (!text || busy) return;
+    if (!text || blocked) return;
     setValue("");
     onSend(text);
   }
@@ -25,13 +36,22 @@ export function Composer({
       }}
     >
       <div className="composer-inner">
+        {document && (
+          <DocumentChip filename={document} busy={blocked} onRemove={onDetach} />
+        )}
         <div className="field">
           <textarea
             id="q"
             rows={1}
             aria-label="Ask a question"
             maxLength={2000}
-            placeholder={busy ? "Analyzing…" : "Ask about geopolitics…"}
+            placeholder={
+              uploading
+                ? "Reading your document…"
+                : busy
+                  ? "Analyzing…"
+                  : "Ask about geopolitics…"
+            }
             value={value}
             onChange={(event) => setValue(event.target.value)}
             onKeyDown={(event) => {
@@ -44,12 +64,39 @@ export function Composer({
               }
             }}
           />
-          <button className="btn" type="submit" disabled={busy}>
+          <input
+            ref={fileInput}
+            type="file"
+            hidden
+            aria-label="Attach a document"
+            accept=".pdf,.txt,application/pdf,text/plain"
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              // Clearing the value lets the same file be chosen again after it
+              // was removed.
+              event.target.value = "";
+              if (file) onAttach(file);
+            }}
+          />
+          <button
+            className="btn btn--quiet"
+            type="button"
+            disabled={blocked}
+            onClick={() => fileInput.current?.click()}
+          >
+            Attach
+          </button>
+          <button className="btn" type="submit" disabled={blocked}>
             Send
           </button>
         </div>
         <div className="composer-foot">
-          <p>Answers come from the sources read for this turn only. Up to 2,000 characters.</p>
+          <p>
+            {document
+              ? "Answers come from your document while one is attached."
+              : "Answers come from the sources read for this turn only."}{" "}
+            Up to 2,000 characters.
+          </p>
         </div>
       </div>
     </form>

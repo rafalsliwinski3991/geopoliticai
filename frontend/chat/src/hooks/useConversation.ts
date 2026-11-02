@@ -1,5 +1,6 @@
 import { useCallback, useState } from "react";
 import { getAccessToken } from "../api/token";
+import { removeDocument, uploadDocument } from "../api/documents";
 import { HttpError, ServerEvent, streamTurn } from "../lib/sse";
 
 export type Message =
@@ -76,6 +77,39 @@ export function useConversation() {
   const [outline, setOutline] = useState<string[]>([]);
   const [progress, setProgress] = useState<{ node: string; label: string }[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [document, setDocument] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
+
+  const showError = useCallback((error: unknown) => {
+    setMessages((previous) => [
+      ...previous,
+      { role: "error", text: error instanceof Error ? error.message : GENERIC_ERROR },
+    ]);
+  }, []);
+
+  const attachDocument = useCallback(
+    async (file: File) => {
+      setUploading(true);
+      try {
+        const uploaded = await uploadDocument(loadThreadId(), file);
+        setDocument(uploaded.filename);
+      } catch (error) {
+        showError(error);
+      } finally {
+        setUploading(false);
+      }
+    },
+    [showError],
+  );
+
+  const detachDocument = useCallback(async () => {
+    try {
+      await removeDocument(loadThreadId());
+      setDocument(null);
+    } catch (error) {
+      showError(error);
+    }
+  }, [showError]);
 
   const send = useCallback(
     async (text: string) => {
@@ -134,13 +168,18 @@ export function useConversation() {
     setOutline([]);
     setProgress([]);
     setIsLoading(false);
+    setDocument(null);
   }, []);
 
   // Re-open a stored conversation from the threads API: the sidebar's
   // selection replaces whatever is on screen, and a loaded turn is never
   // paused — the pause/outlines belong to the working thread only.
   const restore = useCallback(
-    (threadId: string, stored: { role: "user" | "assistant"; text: string }[]) => {
+    (
+      threadId: string,
+      stored: { role: "user" | "assistant"; text: string }[],
+      attached: string | null,
+    ) => {
       storeThreadId(threadId);
       setMessages(
         stored.map((message) =>
@@ -154,6 +193,7 @@ export function useConversation() {
               },
         ),
       );
+      setDocument(attached);
       setPaused(false);
       setOutline([]);
       setProgress([]);
@@ -268,5 +308,18 @@ export function useConversation() {
     }
   }
 
-  return { messages, paused, outline, progress, isLoading, send, reset, restore };
+  return {
+    messages,
+    paused,
+    outline,
+    progress,
+    isLoading,
+    document,
+    uploading,
+    send,
+    reset,
+    restore,
+    attachDocument,
+    detachDocument,
+  };
 }

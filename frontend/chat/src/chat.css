@@ -311,6 +311,22 @@ p { margin: 0 0 1em; max-width: 68ch; }
      carries a border change; in the app the textarea is the primary control,
      so the global :focus-visible outline stays on. */
   .field textarea:focus { outline-style: solid; outline-color: var(--annot); }
+  .document-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+    padding: 4px 6px 4px 10px;
+    border: 1px solid var(--rule);
+    border-radius: 2px;
+    background: var(--paper);
+    font: 400 var(--s-xs)/1.5 var(--label);
+    color: var(--ink);
+  }
+  .document-name { max-width: 24rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .document-chip button { border: 0; background: transparent; color: var(--ink-soft); cursor: pointer; font-size: var(--s-base); line-height: 1; }
+  .document-chip button:hover:not(:disabled) { color: var(--ink); }
+  .document-chip button:disabled { cursor: not-allowed; opacity: 0.5; }
   .composer-foot { display: flex; justify-content: space-between; gap: 16px; padding-top: 8px; }
   .composer-foot p { margin: 0; font: 400 var(--s-xs)/1.5 var(--label); color: var(--ink-soft); }
 
