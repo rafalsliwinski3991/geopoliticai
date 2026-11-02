@@ -32,5 +32,6 @@ marked.use({
 export function renderMarkdown(text: string): string {
   return DOMPurify.sanitize(marked.parse(text, { async: false }), {
     ALLOWED_URI_REGEXP,
+    FORBID_TAGS: ["img"],
   });
 }
