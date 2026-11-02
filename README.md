@@ -114,6 +114,13 @@ incidental:
    `agentic` and hides the real history)
 4. start `frontend`
 
+The deploy that first ships the document mode rebuilds and restarts the `postgres`
+container once, because the image now adds pgvector (`postgres/Dockerfile`). It is
+the same Alpine base, so the data directory is unchanged. `make migrate-agentic`
+then runs Alembic `0004`, which needs a role allowed to `CREATE EXTENSION vector`;
+Compose's `POSTGRES_USER` is the cluster superuser. Deploy at a quiet time: the
+old app containers see a brief database restart before the snapshot is taken.
+
 Do not add a migrate-on-start hook to the `web-backend` container: two
 replicas would race. Before the Basic Auth cutover (`users-auth/07`), run the
 pre-launch purge with a `pg_dump` in hand: `purge_prelaunch_threads --dry-run`,
