@@ -1,7 +1,11 @@
 import pytest
 
 from shared.errors import (
+    DocumentLimitError,
+    DocumentTooLargeError,
+    DocumentUnreadableError,
     LLMInvocationError,
+    NoDocumentError,
     NoSourcesError,
     PipelineError,
     QuotaExceededError,
@@ -40,3 +44,23 @@ def test_research_limit_error_is_a_pipeline_error() -> None:
 def test_research_limit_error_status_is_504() -> None:
     # Act + Assert
     assert ResearchLimitError.status == 504
+
+
+@pytest.mark.parametrize(
+    ("error_type", "status"),
+    [
+        (DocumentUnreadableError, 422),
+        (DocumentTooLargeError, 413),
+        (DocumentLimitError, 409),
+        (NoDocumentError, 409),
+    ],
+    ids=["unreadable", "too large", "limit reached", "no document"],
+)
+def test_each_document_error_carries_its_status(
+    error_type: type[PipelineError], status: int
+) -> None:
+    """The API answers a document failure with the error's own status, so the
+    browser can tell a bad file (422) from a big one (413) from a full account (409)."""
+    # Act + Assert
+    assert issubclass(error_type, PipelineError)
+    assert error_type.status == status

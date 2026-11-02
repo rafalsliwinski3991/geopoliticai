@@ -45,6 +45,10 @@ REQUIRED_ENV_VARS = (
 # UTC day), spent by INCREMENT_SITE_QUOTA just before the caller's own count.
 DAILY_RESEARCH_TURNS = 50
 DAILY_RESEARCH_TURNS_ALL_USERS = 2500
+MAX_DOCUMENT_BYTES = 25 * 1024 * 1024
+MAX_DOCUMENT_PAGES = 500
+MAX_DOCUMENT_CHUNKS = 1_500
+MAX_DOCUMENTS_PER_USER = 5
 # A deep-expert turn costs roughly 10-30x an expert turn, so it spends this many
 # units from both counters (brainstorm 2026Sep28 Q3; review decision 2026Sep30:
 # 10, not 5, keeps one deep turn from crowding out an expert user's whole day).
