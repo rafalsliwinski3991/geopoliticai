@@ -16,6 +16,8 @@ from psycopg_pool import AsyncConnectionPool
 
 Pool = AsyncConnectionPool[AsyncConnection[DictRow]]
 
+# Held until the transaction ends, so two replaces of one thread run one after the other.
+LOCK_THREAD = "SELECT pg_advisory_xact_lock(hashtext(%(thread_id)s))"
 # Replacing a thread's document clears every row under that id, whoever wrote it:
 # an old owner's leftovers under a reused id go too.
 DELETE_THREAD_CHUNKS = "DELETE FROM document_chunks WHERE thread_id = %(thread_id)s"
@@ -69,7 +71,8 @@ async def replace_chunks(
 
     The pool's connections are autocommit, so `transaction()` is what makes the
     delete and the inserts one unit: a bad vector rolls the delete back and the
-    old document survives.
+    old document survives. An advisory lock on the thread id, taken first, makes
+    concurrent replaces of one thread take turns, so the last one wins whole.
     """
     rows = [
         {
@@ -84,6 +87,7 @@ async def replace_chunks(
     ]
     async with pool.connection() as conn:
         async with conn.transaction():
+            await conn.execute(LOCK_THREAD, {"thread_id": thread_id})
             await conn.execute(DELETE_THREAD_CHUNKS, {"thread_id": thread_id})
             async with conn.cursor() as cursor:
                 await cursor.executemany(INSERT_CHUNK, rows)

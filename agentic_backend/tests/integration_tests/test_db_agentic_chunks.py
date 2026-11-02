@@ -1,5 +1,6 @@
 """PostgreSQL integration tests for db/agentic/chunks.py: ordering, scoping, and the transaction."""
 
+import asyncio
 import os
 import time
 import uuid
@@ -484,3 +485,35 @@ async def test_one_document_counts_once_however_many_chunks(
 
     # Assert
     assert count == 1
+
+
+@pytest.mark.anyio
+async def test_two_concurrent_replaces_of_one_thread_leave_only_one_document(
+    pool: chunks.Pool,
+    admin: psycopg.Connection[DictRow],
+    make_user: Any,
+    make_thread: Any,
+) -> None:
+    """Without the lock both deletes run first and both inserts land, mixing two files in one thread."""
+    # Arrange
+    user_id = make_user()
+    thread_id = make_thread(user_id)
+
+    # Act
+    await asyncio.gather(
+        put(
+            pool, thread_id=thread_id, user_id=user_id, axes=[0, 1, 2], filename="a.pdf"
+        ),
+        put(pool, thread_id=thread_id, user_id=user_id, axes=[3, 4], filename="b.pdf"),
+    )
+
+    # Assert
+    rows = admin.execute(
+        "SELECT filename, chunk_index FROM document_chunks WHERE thread_id = %s"
+        " ORDER BY chunk_index",
+        (thread_id,),
+    ).fetchall()
+    names = {row["filename"] for row in rows}
+    indexes = [row["chunk_index"] for row in rows]
+    assert len(names) == 1
+    assert indexes == list(range(1, len(rows) + 1))
