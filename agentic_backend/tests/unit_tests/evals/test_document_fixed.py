@@ -57,11 +57,11 @@ def test_ranking_returns_the_most_similar_vector_first() -> None:
 
 def test_every_document_has_a_filename_and_text() -> None:
     """A case without them would crash the run after the first model call was paid for."""
+    # Arrange
+    examples = load_examples(DATASET)
+
     # Act
-    documents = [
-        load_document(example["input"]["document"])
-        for example in load_examples(DATASET)
-    ]
+    documents = [load_document(example["input"]["document"]) for example in examples]
 
     # Assert
     assert all(filename and text for filename, text in documents)

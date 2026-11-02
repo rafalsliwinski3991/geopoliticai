@@ -61,6 +61,12 @@ def test_each_document_error_carries_its_status(
 ) -> None:
     """The API answers a document failure with the error's own status, so the
     browser can tell a bad file (422) from a big one (413) from a full account (409)."""
-    # Act + Assert
+    # Arrange
+    expected_status = status
+
+    # Act
+    declared_status = error_type.status
+
+    # Assert
     assert issubclass(error_type, PipelineError)
-    assert error_type.status == status
+    assert declared_status == expected_status

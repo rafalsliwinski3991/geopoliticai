@@ -65,8 +65,11 @@ def _blank_pdf() -> bytes:
 )
 def test_empty_text_makes_no_chunks(text: str) -> None:
     """A chunk with no words would be embedded and paid for, then match nothing."""
-    # Arrange / Act
-    chunks = split_into_chunks(text)
+    # Arrange
+    raw_text = text
+
+    # Act
+    chunks = split_into_chunks(raw_text)
 
     # Assert
     assert chunks == []
@@ -86,7 +89,8 @@ def test_text_shorter_than_one_chunk_is_one_chunk() -> None:
 
 def test_paragraphs_are_packed_until_the_chunk_is_full() -> None:
     """Whole paragraphs read better as an excerpt than fragments of one."""
-    # Arrange: 300 + 300 fit in 800, a third 300 does not.
+    # Arrange
+    # 300 + 300 fit in 800, a third 300 does not.
     first, second, third = _words(300), _words(300), _words(300)
     text = PARAGRAPH_BREAK.join([first, second, third])
 
@@ -127,7 +131,8 @@ def test_a_chunk_that_exactly_fills_the_limit_is_not_split() -> None:
 
 def test_each_chunk_starts_with_the_tail_of_the_one_before() -> None:
     """A sentence cut at a boundary must be whole in one of the two chunks."""
-    # Arrange: 17 paragraphs of 50 tokens; 16 fill a chunk, the overlap is the last two.
+    # Arrange
+    # 17 paragraphs of 50 tokens; 16 fill a chunk, the overlap is the last two.
     paragraphs = [f"{index} {_words(48)}" for index in range(17)]
     text = PARAGRAPH_BREAK.join(paragraphs)
 
@@ -168,8 +173,11 @@ def test_polish_text_is_never_cut_inside_a_character() -> None:
 
 def test_a_single_word_longer_than_a_chunk_is_kept_whole() -> None:
     """The splitter cuts at word boundaries only; it never invents a cut inside a word."""
-    # Arrange / Act
-    chunks = split_into_chunks(LONG_WORD)
+    # Arrange
+    word = LONG_WORD
+
+    # Act
+    chunks = split_into_chunks(word)
 
     # Assert
     assert chunks == [LONG_WORD]
@@ -181,8 +189,11 @@ def test_a_single_word_longer_than_a_chunk_is_kept_whole() -> None:
 @pytest.mark.anyio
 async def test_a_text_file_is_decoded() -> None:
     """Plain text uploads are the simplest supported type."""
-    # Arrange / Act
-    text = await read_document("Zażółć gęślą jaźń".encode(), "notes.txt")
+    # Arrange
+    body = "Zażółć gęślą jaźń".encode()
+
+    # Act
+    text = await read_document(body, "notes.txt")
 
     # Assert
     assert text == "Zażółć gęślą jaźń"
@@ -273,9 +284,12 @@ async def test_a_scanned_pdf_with_no_text_is_unreadable() -> None:
 @pytest.mark.anyio
 async def test_a_corrupt_pdf_is_unreadable() -> None:
     """pypdf raises many types on bad input; the user must see one clear error."""
-    # Arrange / Act + Assert
+    # Arrange
+    body = b"not really a pdf"
+
+    # Act + Assert
     with pytest.raises(DocumentUnreadableError):
-        await read_document(b"not really a pdf", "broken.pdf")
+        await read_document(body, "broken.pdf")
 
 
 @pytest.mark.anyio
@@ -295,16 +309,22 @@ async def test_a_text_file_that_is_not_utf8_is_unreadable() -> None:
 )
 async def test_an_unsupported_file_type_is_unreadable(filename: str) -> None:
     """Only PDF and .txt are read; anything else is refused with the supported types."""
-    # Arrange / Act + Assert
+    # Arrange
+    body = b"text"
+
+    # Act + Assert
     with pytest.raises(DocumentUnreadableError):
-        await read_document(b"text", filename)
+        await read_document(body, filename)
 
 
 @pytest.mark.anyio
 async def test_the_type_is_read_from_the_file_name_in_any_case() -> None:
     """Phones and Windows often upload NOTES.TXT; refusing it would surprise people."""
-    # Arrange / Act
-    text = await read_document(b"upper", "NOTES.TXT")
+    # Arrange
+    body = b"upper"
+
+    # Act
+    text = await read_document(body, "NOTES.TXT")
 
     # Assert
     assert text == "upper"
@@ -313,6 +333,9 @@ async def test_the_type_is_read_from_the_file_name_in_any_case() -> None:
 @pytest.mark.anyio
 async def test_an_empty_file_is_unreadable() -> None:
     """An empty file has no chunks and would leave a thread with a document that answers nothing."""
-    # Arrange / Act + Assert
+    # Arrange
+    body = b"  \n "
+
+    # Act + Assert
     with pytest.raises(DocumentUnreadableError):
-        await read_document(b"  \n ", "empty.txt")
+        await read_document(body, "empty.txt")

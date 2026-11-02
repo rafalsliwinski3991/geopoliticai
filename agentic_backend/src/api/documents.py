@@ -130,6 +130,7 @@ async def ingest_document(
         if not await claim_thread(
             pool, thread_id=thread_id, user_id=user_id, title=title_from(filename)
         ):
+            span.set_attribute("document.outcome", "foreign_thread")
             raise HTTPException(
                 status_code=403, detail="That conversation is not yours."
             )

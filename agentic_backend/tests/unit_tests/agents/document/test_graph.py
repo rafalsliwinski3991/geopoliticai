@@ -64,21 +64,28 @@ async def test_the_search_function_reaches_the_node_through_the_context() -> Non
 
 def test_the_graph_runs_retrieve_then_answer() -> None:
     """The order is the design: an answer written before retrieval would have no excerpts."""
-    # Act
-    edges = {(edge.source, edge.target) for edge in build_graph().get_graph().edges}
-
-    # Assert
-    assert edges == {
+    # Arrange
+    expected_edges = {
         ("__start__", "retrieve"),
         ("retrieve", "answer"),
         ("answer", "__end__"),
     }
+    graph = build_graph()
+
+    # Act
+    edges = {(edge.source, edge.target) for edge in graph.get_graph().edges}
+
+    # Assert
+    assert edges == expected_edges
 
 
 def test_the_answer_node_is_named_answer_so_it_streams() -> None:
     """The stream only forwards text from nodes in `ANSWER_NODES`; renaming silences the answer."""
+    # Arrange
+    graph = build_graph()
+
     # Act
-    nodes = set(build_graph().get_graph().nodes)
+    nodes = set(graph.get_graph().nodes)
 
     # Assert
     assert "answer" in nodes
@@ -100,8 +107,11 @@ async def test_ask_document_returns_the_answer_and_the_chunks() -> None:
 
 def test_the_context_can_be_described_for_studio() -> None:
     """`langgraph dev` asks for the context schema; a bare Callable field once broke it."""
+    # Arrange
+    graph = build_graph()
+
     # Act
-    schema = build_graph().get_context_jsonschema()
+    schema = graph.get_context_jsonschema()
 
     # Assert
     assert "search" not in schema.get("properties", {})

@@ -7,15 +7,22 @@ from api.app import CHECKPOINT_SERDE
 @pytest.mark.parametrize("query", ["", "   \n\t "], ids=["empty", "only blanks"])
 def test_an_empty_question_is_refused(query: str) -> None:
     """A blank question would embed nothing and cost a model call."""
+    # Arrange
+    history: list[str] = []
+
     # Act + Assert
     with pytest.raises(ValueError, match="must not be empty"):
-        build_initial_document_state(query, [])
+        build_initial_document_state(query, history)
 
 
 def test_the_question_is_squashed() -> None:
     """Stray whitespace in a pasted question must not reach the rewrite prompt."""
+    # Arrange
+    raw_question = "  What \n  are   fees?  "
+    history = ["earlier"]
+
     # Act
-    state = build_initial_document_state("  What \n  are   fees?  ", ["earlier"])
+    state = build_initial_document_state(raw_question, history)
 
     # Assert
     assert state["query"] == "What are fees?"

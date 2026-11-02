@@ -146,6 +146,26 @@ async def test_an_upload_into_another_users_thread_is_refused_and_stores_nothing
 
 
 @pytest.mark.anyio
+async def test_a_refused_foreign_thread_is_recorded_on_the_ingest_span(
+    client: httpx.AsyncClient,
+    store: FakeChunkStore,
+    captured_spans: InMemorySpanExporter,
+) -> None:
+    """Every ingest branch names its outcome, so a trace explains a 403 too."""
+    # Arrange
+    store.thread_is_claimed = False
+
+    # Act
+    await client.post(UPLOAD_URL, content=TEXT_FILE)
+
+    # Assert
+    (span,) = [
+        s for s in captured_spans.get_finished_spans() if s.name == "document_ingest"
+    ]
+    assert (span.attributes or {})["document.outcome"] == "foreign_thread"
+
+
+@pytest.mark.anyio
 async def test_a_second_upload_replaces_the_first(
     client: httpx.AsyncClient, store: FakeChunkStore
 ) -> None:
@@ -389,8 +409,11 @@ async def test_the_ingest_span_records_bytes_chunks_and_outcome(
 )
 def test_a_path_is_cut_to_its_base_name(raw: str, expected: str) -> None:
     """The browser may send a full path; only the base name is shown and stored."""
-    # Arrange / Act
-    cleaned = documents.clean_filename(raw)
+    # Arrange
+    path = raw
+
+    # Act
+    cleaned = documents.clean_filename(path)
 
     # Assert
     assert cleaned == expected

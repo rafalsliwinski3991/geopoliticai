@@ -38,8 +38,11 @@ def test_build_initial_orchestrator_state_omits_workspace_channels() -> None:
 
 def test_the_default_context_has_no_document() -> None:
     """A thread without an upload must run exactly as before: no filename, no search."""
+    # Arrange
+    context_type = OrchestratorContext
+
     # Act
-    context = OrchestratorContext()
+    context = context_type()
 
     # Assert
     assert context.filename is None

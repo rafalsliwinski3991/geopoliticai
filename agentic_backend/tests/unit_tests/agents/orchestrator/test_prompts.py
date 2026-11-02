@@ -56,17 +56,16 @@ def test_supervisor_prompt_keeps_its_rules(rule: str) -> None:
 
 def test_the_document_prompt_names_only_the_document_tool() -> None:
     """A research tool named here would invite a call the document thread cannot run."""
+    # Arrange
+    research_tools = (
+        "run_expert",
+        "run_deep_expert",
+        "run_deep_forecaster",
+        "run_reporter",
+    )
+
     # Act
-    named = [
-        tool
-        for tool in (
-            "run_expert",
-            "run_deep_expert",
-            "run_deep_forecaster",
-            "run_reporter",
-        )
-        if tool in SUPERVISOR_DOCUMENT_PROMPT
-    ]
+    named = [tool for tool in research_tools if tool in SUPERVISOR_DOCUMENT_PROMPT]
 
     # Assert
     assert named == []
@@ -75,8 +74,11 @@ def test_the_document_prompt_names_only_the_document_tool() -> None:
 
 def test_the_document_prompt_keeps_the_language_rule() -> None:
     """The refusal for other languages holds in a document thread too."""
+    # Arrange
+    rule = "other than English or Polish"
+
     # Act
-    kept = "other than English or Polish" in SUPERVISOR_DOCUMENT_PROMPT
+    kept = rule in SUPERVISOR_DOCUMENT_PROMPT
 
     # Assert
     assert kept is True
@@ -84,8 +86,11 @@ def test_the_document_prompt_keeps_the_language_rule() -> None:
 
 def test_the_document_prompt_passes_the_message_unchanged() -> None:
     """The document agent rewrites the question itself; a supervisor rewrite would lose its wording."""
+    # Arrange
+    rule = "exactly as written"
+
     # Act
-    kept = "exactly as written" in SUPERVISOR_DOCUMENT_PROMPT
+    kept = rule in SUPERVISOR_DOCUMENT_PROMPT
 
     # Assert
     assert kept is True

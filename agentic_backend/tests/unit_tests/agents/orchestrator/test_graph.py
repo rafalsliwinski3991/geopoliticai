@@ -401,8 +401,11 @@ async def test_a_cancelled_report_reaches_the_custom_stream_as_one_notice(
 
 def test_the_tool_node_holds_the_document_tool() -> None:
     """The tool node must be able to run what the document-mode supervisor binds."""
+    # Arrange
+    graph = build_graph()
+
     # Act
-    tool_node = build_graph().nodes["tools"].bound
+    tool_node = graph.nodes["tools"].bound
 
     # Assert
     assert "run_document" in tool_node.tools_by_name
@@ -508,8 +511,11 @@ async def test_a_research_turn_still_returns_to_the_supervisor(
 
 def test_the_context_can_be_described_for_studio() -> None:
     """`langgraph dev` asks for the context schema; the search function must not break it."""
+    # Arrange
+    graph = build_graph()
+
     # Act
-    schema = build_graph().get_context_jsonschema()
+    schema = graph.get_context_jsonschema()
 
     # Assert
     assert "search_document" not in schema.get("properties", {})
