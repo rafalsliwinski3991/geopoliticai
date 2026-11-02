@@ -3,6 +3,16 @@ import { marked } from "marked";
 
 export const ALLOWED_URI_REGEXP = /^https?:\/\//i;
 
+// Only what marked emits for ordinary markdown. Any tag or attribute outside
+// these lists (img, video, audio, source, svg, style, srcset, poster) could make
+// the browser fetch a URL, and so leak document text to a third party.
+const ALLOWED_TAGS = [
+  "p", "a", "ul", "ol", "li", "strong", "em", "code", "pre", "blockquote",
+  "h1", "h2", "h3", "h4", "h5", "h6", "br", "hr", "del",
+  "table", "thead", "tbody", "tr", "th", "td",
+];
+const ALLOWED_ATTR = ["href", "title", "target", "rel", "class", "align", "start"];
+
 // Escape for interpolation into a double-quoted attribute. DOMPurify parses
 // its input as HTML, not as a URL or an attribute value, so sanitize() alone
 // neither validates a URI nor escapes the quote that would close one.
@@ -32,6 +42,7 @@ marked.use({
 export function renderMarkdown(text: string): string {
   return DOMPurify.sanitize(marked.parse(text, { async: false }), {
     ALLOWED_URI_REGEXP,
-    FORBID_TAGS: ["img"],
+    ALLOWED_TAGS,
+    ALLOWED_ATTR,
   });
 }
