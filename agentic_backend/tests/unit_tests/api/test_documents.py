@@ -561,3 +561,53 @@ def test_a_pipeline_error_raised_in_a_route_is_answered_with_its_status() -> Non
     # Assert
     assert response.status_code == 409
     assert json.loads(bytes(response.body)) == {"detail": "You can keep 5 documents."}
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    ("body", "status", "outcome"),
+    [(b"a\x00b", 422, "unreadable"), (b"   ", 422, "unreadable")],
+    ids=["a NUL byte", "no readable text"],
+)
+async def test_an_unreadable_file_is_recorded_on_the_ingest_span(
+    client: httpx.AsyncClient,
+    captured_spans: InMemorySpanExporter,
+    body: bytes,
+    status: int,
+    outcome: str,
+) -> None:
+    """Every ingest branch names its outcome, so a trace explains a 422 too."""
+    # Arrange: the parameters hold the file and what the trace must say.
+
+    # Act
+    response = await client.post(UPLOAD_URL, content=body)
+
+    # Assert
+    (span,) = [
+        s for s in captured_spans.get_finished_spans() if s.name == "document_ingest"
+    ]
+    assert response.status_code == status
+    assert (span.attributes or {})["document.outcome"] == outcome
+
+
+@pytest.mark.anyio
+async def test_text_over_the_character_cap_is_recorded_as_too_large(
+    client: httpx.AsyncClient,
+    captured_spans: InMemorySpanExporter,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The character and page caps fire inside the reader, and the trace must still say why."""
+    # Arrange
+    monkeypatch.setattr(
+        "services.document_reader.MAX_DOCUMENT_CHARS", len(TEXT_FILE) - 1
+    )
+
+    # Act
+    response = await client.post(UPLOAD_URL, content=TEXT_FILE)
+
+    # Assert
+    (span,) = [
+        s for s in captured_spans.get_finished_spans() if s.name == "document_ingest"
+    ]
+    assert response.status_code == 413
+    assert (span.attributes or {})["document.outcome"] == "too_large"

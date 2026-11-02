@@ -39,6 +39,7 @@ from shared.config import (
 from shared.errors import (
     DocumentLimitError,
     DocumentTooLargeError,
+    DocumentUnreadableError,
     ResearchLimitError,
 )
 from shared.tracing import bind_trace_user, start_span
@@ -115,7 +116,14 @@ async def ingest_document(
                 f"You can keep {MAX_DOCUMENTS_PER_USER} documents. "
                 "Remove one from an older conversation first."
             )
-        text = await read_document(body, filename)
+        try:
+            text = await read_document(body, filename)
+        except DocumentUnreadableError:
+            span.set_attribute("document.outcome", "unreadable")
+            raise
+        except DocumentTooLargeError:
+            span.set_attribute("document.outcome", "too_large")
+            raise
         chunks = await asyncio.to_thread(split_into_chunks, text)
         span.set_attribute("document.chunks", len(chunks))
         if len(chunks) > MAX_DOCUMENT_CHUNKS:

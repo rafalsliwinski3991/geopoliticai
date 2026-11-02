@@ -8,11 +8,19 @@ import io
 import tiktoken
 from pypdf import PdfReader
 
-from shared.config import MAX_DOCUMENT_BYTES, MAX_DOCUMENT_PAGES
+from shared.config import (
+    MAX_DOCUMENT_BYTES,
+    MAX_DOCUMENT_CHUNKS,
+    MAX_DOCUMENT_PAGES,
+)
 from shared.errors import DocumentTooLargeError, DocumentUnreadableError
 
 CHUNK_TOKENS = 800
 OVERLAP_TOKENS = 100
+CHARS_PER_TOKEN = 4
+# Text past this many characters cannot fit `MAX_DOCUMENT_CHUNKS` chunks, so it is
+# refused before the chunker spends time on it.
+MAX_DOCUMENT_CHARS = MAX_DOCUMENT_CHUNKS * CHUNK_TOKENS * CHARS_PER_TOKEN
 # The encoding `text-embedding-3-small` uses, so chunk sizes match what is embedded.
 TOKEN_ENCODING = "cl100k_base"
 PARAGRAPH_BREAK = "\n\n"
@@ -51,8 +59,12 @@ async def read_document(body: bytes, filename: str) -> str:
         text = _read_text(body)
     else:
         raise DocumentUnreadableError("Upload a PDF or a .txt file.")
+    if "\x00" in text:
+        raise DocumentUnreadableError("That file contains NUL bytes.")
     if not text.strip():
         raise DocumentUnreadableError(UNREADABLE_MESSAGE)
+    if len(text) > MAX_DOCUMENT_CHARS:
+        raise DocumentTooLargeError("That file is too long to read.")
     return text
 
 

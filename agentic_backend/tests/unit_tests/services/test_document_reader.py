@@ -1,8 +1,10 @@
 import io
+from types import SimpleNamespace
+from unittest.mock import patch
 
 import pytest
 import tiktoken
-from pypdf import PdfWriter
+from pypdf import PdfReader, PdfWriter
 
 from services import document_reader
 from services.document_reader import CHUNK_TOKENS, read_document, split_into_chunks
@@ -339,3 +341,74 @@ async def test_an_empty_file_is_unreadable() -> None:
     # Act + Assert
     with pytest.raises(DocumentUnreadableError):
         await read_document(body, "empty.txt")
+
+
+@pytest.mark.anyio
+async def test_a_text_file_with_a_nul_byte_is_unreadable() -> None:
+    """Postgres text columns cannot hold NUL; found after embedding it is a 500 and a wasted bill."""
+    # Arrange
+    body = b"before\x00after"
+
+    # Act + Assert
+    with pytest.raises(DocumentUnreadableError):
+        await read_document(body, "a.txt")
+
+
+@pytest.mark.anyio
+async def test_a_pdf_whose_text_has_a_nul_byte_is_unreadable() -> None:
+    """A PDF can extract NUL too, and it must be refused the same way as a text file."""
+    # Arrange
+    body = _text_pdf(pages=1)
+
+    # Act + Assert
+    with (
+        patch.object(
+            PdfReader, "pages", [SimpleNamespace(extract_text=lambda: "a\x00b")]
+        ),
+        pytest.raises(DocumentUnreadableError),
+    ):
+        await read_document(body, "a.pdf")
+
+
+@pytest.mark.anyio
+async def test_text_one_character_over_the_character_cap_is_refused(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A one-paragraph 25 MB file would tie up the server in the chunker before any cap fires."""
+    # Arrange
+    body = b"twelve bytes"
+    monkeypatch.setattr(document_reader, "MAX_DOCUMENT_CHARS", len(body) - 1)
+
+    # Act + Assert
+    with pytest.raises(DocumentTooLargeError):
+        await read_document(body, "a.txt")
+
+
+@pytest.mark.anyio
+async def test_text_of_exactly_the_character_cap_is_read(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The cap is inclusive: text of exactly the limit is allowed."""
+    # Arrange
+    body = b"twelve bytes"
+    monkeypatch.setattr(document_reader, "MAX_DOCUMENT_CHARS", len(body))
+
+    # Act
+    text = await read_document(body, "a.txt")
+
+    # Assert
+    assert text == "twelve bytes"
+
+
+def test_the_character_cap_is_four_characters_for_each_token_of_the_chunk_budget() -> (
+    None
+):
+    """The cap must stay in step with the chunk cap and chunk size, or it refuses valid files."""
+    # Arrange
+    expected = 1_500 * 800 * 4
+
+    # Act
+    cap = document_reader.MAX_DOCUMENT_CHARS
+
+    # Assert
+    assert cap == expected
