@@ -5,6 +5,7 @@ import { Composer } from "./Composer";
 const IDLE = {
   busy: false,
   uploading: false,
+  paused: false,
   document: null,
   onAttach: () => {},
   onDetach: () => {},
@@ -138,5 +139,25 @@ describe("the composer", () => {
     const footer = screen.queryByText(/Answers come from your document while one is attached\./);
     // Assert
     expect(footer).toBeTruthy();
+  });
+
+  // A paused report resumes with the next reply, and the backend refuses a
+  // document there; offering Attach would only end in an error.
+  it("a paused report disables Attach", () => {
+    // Arrange
+    render(<Composer {...IDLE} paused={true} onSend={vi.fn()} />);
+    // Act
+    const attach = screen.getByRole("button", { name: "Attach" }) as HTMLButtonElement;
+    // Assert
+    expect(attach.disabled).toBe(true);
+  });
+
+  it("Attach is enabled when nothing is running or paused", () => {
+    // Arrange
+    render(<Composer {...IDLE} onSend={vi.fn()} />);
+    // Act
+    const attach = screen.getByRole("button", { name: "Attach" }) as HTMLButtonElement;
+    // Assert
+    expect(attach.disabled).toBe(false);
   });
 });

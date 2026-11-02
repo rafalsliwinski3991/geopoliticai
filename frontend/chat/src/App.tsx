@@ -326,6 +326,7 @@ export default function App() {
         <Composer
           busy={isLoading}
           uploading={uploading}
+          paused={paused}
           document={attachedDocument}
           onSend={handleSend}
           onAttach={(file) => void attachDocument(file)}

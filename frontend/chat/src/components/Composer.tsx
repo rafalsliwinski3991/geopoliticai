@@ -4,6 +4,7 @@ import { DocumentChip } from "./DocumentChip";
 export function Composer({
   busy,
   uploading,
+  paused,
   document,
   onSend,
   onAttach,
@@ -11,6 +12,7 @@ export function Composer({
 }: {
   busy: boolean;
   uploading: boolean;
+  paused: boolean;
   document: string | null;
   onSend: (text: string) => void;
   onAttach: (file: File) => void;
@@ -81,7 +83,7 @@ export function Composer({
           <button
             className="btn btn--quiet"
             type="button"
-            disabled={blocked}
+            disabled={blocked || paused}
             onClick={() => fileInput.current?.click()}
           >
             Attach
