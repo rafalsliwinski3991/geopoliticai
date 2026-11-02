@@ -8,7 +8,7 @@ by typing a reply, and other turns to its own conversational answer:
 ```text
 START -> supervisor -> END                     (a chat answer)
                     \-> tools -> supervisor -> END (run_expert, run_deep_expert, run_deep_forecaster)
-                    \-> tools -> END               (run_reporter)
+                    \-> tools -> END               (run_reporter, run_document)
 ```
 
 The expert remains independently available in LangGraph Studio. Its graph is:

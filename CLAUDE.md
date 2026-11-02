@@ -45,7 +45,7 @@ this file, so OpenCode, Copilot, and Antigravity read it too: name no tool or pa
 
 ```text
 orchestrator     START -> supervisor -> tools | END (a chat answer);  tools -> supervisor -> END
-                 tools -> END (on run_reporter)
+                 tools -> END (on run_reporter or run_document)
 expert           START -> search_and_fetch -> answer -> END
 document         START -> retrieve -> answer -> END
 reporter         START -> outline -> gate | END;  gate -> outline | write | END;  write -> END
@@ -71,14 +71,15 @@ deep_forecaster  START -> research -> draft_claims -> council_round_1 -> council
 
 ## agentic_backend
 
-- `src/` has three layers. `shared/` (`config`, `tracing`, `frames`, `errors`, `text`) needs no provider key and makes no call to a provider; `tracing` only exports spans to Phoenix in the background. `services/` (`llm`, `web_search`, `page_reader`, `document_reader`, `embeddings`) talks to a provider and bounds each call with a timeout; a provider failure becomes a `PipelineError` subclass, or, where the caller can still answer, the failed item is dropped and counted on a span. `api/` (`app`, `routes`, `documents`, `stream`, `rate_limit`, `auth`, `quota`) serves HTTP, and only `api/` imports an agent from outside `agents/` (the orchestrator's graph, state, and builders, the document agent's types and retrieval settings, and the reporter's resume classifier). Imports run `api` -> `agents` -> `services` -> `shared`. `models.py` imports nothing from the project, every layer may import it, and `db/` imports only `shared`. Nothing outside `api/` imports `api`.
+- `src/` has three layers. `shared/` (`config`, `tracing`, `frames`, `errors`, `text`) needs no provider key and makes no call to a provider; `tracing` only exports spans to Phoenix in the background. `services/` (`llm`, `web_search`, `page_reader`, `embeddings`) talks to a provider and bounds each call with a timeout, while `document_reader` only reads an uploaded file and calls no provider; a provider failure becomes a `PipelineError` subclass, or, where the caller can still answer, the failed item is dropped and counted on a span. `api/` (`app`, `routes`, `documents`, `stream`, `rate_limit`, `auth`, `quota`) serves HTTP, and only `api/` imports an agent from outside `agents/` (the orchestrator's graph, state, and builders, the document agent's types and retrieval settings, and the reporter's resume classifier). Imports run `api` -> `agents` -> `services` -> `shared`. `models.py` imports nothing from the project, every layer may import it, and `db/` imports only `shared`. Nothing outside `api/` imports `api`.
 - Besides the LangGraph checkpointer and store, the only Postgres access is the raw SQL in
   `db/web/sql.py` against Django-owned tables, whose schema only `web_backend`'s migrations change,
   and in `db/agentic/chunks.py`; the integration tests guard both.
 - `agentic.document_chunks` belongs to Alembic (`0004`). It holds a thread's uploaded document as
   text chunks with a pgvector `vector(1536)` embedding; the `vector` type lives in `public`, and the
-  compose Postgres image (`postgres/Dockerfile`) is Alpine plus pgvector. Every read and delete
-  scopes by `thread_id` and `user_id`, since thread ids are client-chosen. The web backend's
+  compose Postgres image (`postgres/Dockerfile`) is Alpine plus pgvector. Every read and the user's own
+  delete are scoped by `thread_id` and `user_id`, since thread ids are client-chosen; a replace
+  clears the thread's rows whoever wrote them, under an advisory lock on the thread id. The web backend's
   `chat.signals.THREAD_TABLES` lists it with the checkpointer's tables, so deleting a thread or a user
   deletes its chunks, and the integration suite fails when a `thread_id`-keyed table in the schema is
   missing from that list. `COUNT_LIVE_DOCUMENTS` still joins `chat_threads`, which keeps chunks
@@ -232,14 +233,15 @@ deep_forecaster  START -> research -> draft_claims -> council_round_1 -> council
 - The runner reads an eval's kind from its name. A fixed eval (`*_fixed`) feeds the agent inputs
   written in advance: conversations, typed replies, and recorded, synthetic pages that
   `replay_sources` puts in place of the expert's and the deep expert's retrieval, never fetched
-  article text. A live eval (`*_live`) needs the Brave key and reads today's pages:
+  article text; `document_fixed` answers from the case's `document`, chunked and embedded live and
+  searched in memory. A live eval (`*_live`) needs the Brave key and reads today's pages:
   `expert_live` and `deep_expert_live` on hand-written questions about settled past events (the deep
   eval's expert baseline answers from up to `RETRIEVAL.keep_sources` of the pages the deep run
   read, in the order read, kept by `record_sources` under the URLs the deep expert cites and
   replayed by `replay_sources`), `deep_forecaster_live` on questions
   users asked, under the forecast's wall cap. The models are called live in both.
 - A dataset is `{description, cases}`; a case has `name`, `description`, `input` (keys `query`,
-  `messages`, `sources`, `replies`), and, in a fixed eval only, `expected`, whose present keys are
+  `messages`, `sources`, `replies`, `document`, which is `{filename, text}`), and, in a fixed eval only, `expected`, whose present keys are
   the checks; `test_datasets.py` fails on a key the eval's judges do not list in `EXPECTED_KEYS`. A
   failed live run is a report row judged by `finished_or_outside` (`outside` only for a provider
   outage), not a crash.

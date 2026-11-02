@@ -8,12 +8,12 @@ and one forecaster's public YouTube videos.
 
 ## What it is
 
-The API runs an orchestrator that routes each turn to one of five branches:
+The API runs an orchestrator that routes each turn to one of six branches:
 
 ```text
 START -> supervisor -> END                     (a chat answer)
                     \-> tools -> supervisor -> END (run_expert, run_deep_expert, run_deep_forecaster)
-                    \-> tools -> END               (run_reporter)
+                    \-> tools -> END               (run_reporter, run_document)
 ```
 
 Geopolitical turns are delegated to the nested expert. Other turns are answered
