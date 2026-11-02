@@ -38,6 +38,7 @@ def _client_with_token(token: str) -> httpx.AsyncClient:
 @pytest.fixture
 def client() -> httpx.AsyncClient:
     rate_limit._rate_limit_store.clear()
+    rate_limit._upload_store.clear()
     quota_module._refunded_units.clear()
     app.state.pool = None  # every test patches the threads helpers it needs
     return httpx.AsyncClient(
@@ -67,6 +68,11 @@ def _owned_thread_with_quota_headroom(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setattr(routes, "owns_thread", own)
     monkeypatch.setattr(stream, "owns_thread", own)
+
+    async def no_document(*args: Any, **kwargs: Any) -> None:
+        return None
+
+    monkeypatch.setattr(routes, "read_document_name", no_document)
 
 
 @dataclass

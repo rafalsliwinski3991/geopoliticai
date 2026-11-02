@@ -2,15 +2,26 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Annotated, Any, Literal
 
 from langchain_core.messages import AnyMessage, HumanMessage
 from langgraph.graph.message import add_messages
+from pydantic.json_schema import SkipJsonSchema
 from typing_extensions import NotRequired, TypedDict
 
+from agents.document import DocumentSearch
 from shared.text import squash_whitespace
 
 Destination = Literal["geopolitical", "deep", "forecast", "other", "report"]
+
+
+@dataclass(frozen=True)
+class OrchestratorContext:
+    """What a run needs that is not graph state: the thread's document, if any."""
+
+    filename: str | None = None
+    search_document: Annotated[DocumentSearch | None, SkipJsonSchema()] = None
 
 
 class OrchestratorState(TypedDict):

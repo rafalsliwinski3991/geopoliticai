@@ -15,10 +15,13 @@ logger = logging.getLogger(__name__)
 
 RATE_LIMIT_REQUESTS = 20
 RATE_LIMIT_WINDOW_SECONDS = 60
+UPLOAD_LIMIT_REQUESTS = 10
+UPLOAD_LIMIT_WINDOW_SECONDS = 3600
 MAX_TRACKED_CLIENTS = 10_000
 
 _rate_limit_store: dict[str, deque[float]] = {}
 _rate_limit_lock = Lock()
+_upload_store: dict[int, deque[float]] = {}
 
 
 def _resolve_client_id(request: Request, identity: Identity | None = None) -> str:
@@ -84,3 +87,19 @@ def enforce_rate_limit(request: Request, identity: Identity | None = None) -> No
             )
         timestamps.append(now)
         _rate_limit_store[client_id] = timestamps
+
+
+def enforce_upload_limit(identity: Identity) -> None:
+    """Allow a user `UPLOAD_LIMIT_REQUESTS` uploads per hour (embedding is not free)."""
+    now = time.monotonic()
+    with _rate_limit_lock:
+        timestamps = _upload_store.setdefault(identity.user_id, deque())
+        cutoff = now - UPLOAD_LIMIT_WINDOW_SECONDS
+        while timestamps and timestamps[0] < cutoff:
+            timestamps.popleft()
+        if len(timestamps) >= UPLOAD_LIMIT_REQUESTS:
+            raise HTTPException(
+                status_code=429,
+                detail=f"Upload limit reached: {UPLOAD_LIMIT_REQUESTS} per hour.",
+            )
+        timestamps.append(now)

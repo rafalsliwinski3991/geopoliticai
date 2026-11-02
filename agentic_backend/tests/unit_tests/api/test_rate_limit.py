@@ -3,6 +3,7 @@ from unittest.mock import patch
 
 import httpx
 import pytest
+from fastapi import HTTPException
 
 from api import auth, rate_limit, stream
 from shared.frames import TokenFrame
@@ -96,3 +97,56 @@ async def test_rate_limiting_enforced(client: httpx.AsyncClient) -> None:
         )
     # Assert
     assert response.status_code == 429
+
+
+UPLOAD_USER = 7
+OTHER_UPLOAD_USER = 8
+UPLOAD_CLOCK_START = 1000.0
+
+
+def _identity(user_id: int) -> auth.Identity:
+    return auth.Identity(user_id=user_id)
+
+
+def test_the_eleventh_upload_in_an_hour_is_refused() -> None:
+    """Embedding costs money, so a user gets ten uploads an hour and no more."""
+    # Arrange
+    rate_limit._upload_store.clear()
+    for _ in range(10):
+        rate_limit.enforce_upload_limit(_identity(UPLOAD_USER))
+
+    # Act + Assert
+    with pytest.raises(HTTPException) as refused:
+        rate_limit.enforce_upload_limit(_identity(UPLOAD_USER))
+    assert refused.value.status_code == 429
+
+
+def test_an_upload_made_an_hour_ago_no_longer_counts() -> None:
+    """The window slides: a user who waited an hour gets their uploads back."""
+    # Arrange
+    rate_limit._upload_store.clear()
+    with patch("api.rate_limit.time.monotonic", return_value=UPLOAD_CLOCK_START):
+        for _ in range(10):
+            rate_limit.enforce_upload_limit(_identity(UPLOAD_USER))
+    after_the_window = UPLOAD_CLOCK_START + rate_limit.UPLOAD_LIMIT_WINDOW_SECONDS + 1
+
+    # Act
+    with patch("api.rate_limit.time.monotonic", return_value=after_the_window):
+        rate_limit.enforce_upload_limit(_identity(UPLOAD_USER))
+
+    # Assert
+    assert len(rate_limit._upload_store[UPLOAD_USER]) == 1
+
+
+def test_upload_limits_are_per_user() -> None:
+    """One user's uploads must not use up another's."""
+    # Arrange
+    rate_limit._upload_store.clear()
+    for _ in range(10):
+        rate_limit.enforce_upload_limit(_identity(UPLOAD_USER))
+
+    # Act
+    rate_limit.enforce_upload_limit(_identity(OTHER_UPLOAD_USER))
+
+    # Assert
+    assert len(rate_limit._upload_store[OTHER_UPLOAD_USER]) == 1

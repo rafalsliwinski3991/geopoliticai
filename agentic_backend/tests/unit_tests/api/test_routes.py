@@ -119,6 +119,7 @@ async def test_get_thread_returns_the_callers_messages(
     assert response.json() == {
         "thread_id": "t-1",
         "messages": [{"role": "user", "text": "hello"}],
+        "document": None,
     }
 
 
@@ -164,6 +165,7 @@ async def test_admin_thread_endpoint_with_is_staff_true_returns_messages(
     assert response.json() == {
         "thread_id": "t-1",
         "messages": [{"role": "assistant", "text": "The answer."}],
+        "document": None,
     }
 
 
@@ -328,3 +330,48 @@ def _ai(text: str) -> Any:
     from langchain_core.messages import AIMessage
 
     return AIMessage(text)
+
+
+@pytest.mark.anyio
+async def test_a_thread_read_shows_its_attached_document(
+    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A reopened conversation must show its document chip, so the read carries the name."""
+    # Arrange
+    names_asked: list[dict[str, Any]] = []
+
+    async def document_name(pool: Any, **kwargs: Any) -> str:
+        names_asked.append(kwargs)
+        return "report.pdf"
+
+    async def messages(graph: Any, thread_id: str) -> list[Any]:
+        return []
+
+    monkeypatch.setattr(routes, "read_document_name", document_name)
+    monkeypatch.setattr(routes, "_thread_messages", messages)
+
+    # Act
+    response = await client.get("/api/threads/t-1")
+
+    # Assert
+    assert response.json()["document"] == "report.pdf"
+    assert names_asked == [{"thread_id": "t-1", "user_id": 1}]
+
+
+@pytest.mark.anyio
+async def test_a_thread_read_without_a_document_shows_none(
+    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A thread with no file must not claim one, or the page would show a chip for nothing."""
+
+    # Arrange
+    async def messages(graph: Any, thread_id: str) -> list[Any]:
+        return []
+
+    monkeypatch.setattr(routes, "_thread_messages", messages)
+
+    # Act
+    response = await client.get("/api/threads/t-1")
+
+    # Assert
+    assert response.json()["document"] is None

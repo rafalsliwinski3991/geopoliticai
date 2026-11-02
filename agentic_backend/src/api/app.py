@@ -8,8 +8,9 @@ import os
 from contextlib import asynccontextmanager
 from typing import Any, AsyncGenerator
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
 from langgraph.store.base import TTLConfig
@@ -22,11 +23,12 @@ from agents.orchestrator import (
     build_graph,
 )
 from agents.orchestrator import graph as _default_graph
-from api import routes, stream
+from api import documents, routes, stream
 from shared.config import (
     init_environment,
     require_env,
 )
+from shared.errors import PipelineError
 from shared.tracing import init_tracing
 
 logger = logging.getLogger(__name__)
@@ -205,9 +207,17 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
     allow_credentials=False,
-    allow_methods=["GET", "POST"],
+    allow_methods=["GET", "POST", "DELETE"],
     allow_headers=["*"],
 )
 
+
+@app.exception_handler(PipelineError)
+async def answer_pipeline_error(_request: Request, exc: PipelineError) -> JSONResponse:
+    """Answer a pipeline failure raised in a route with its own status."""
+    return JSONResponse(status_code=exc.status, content={"detail": str(exc)})
+
+
 app.include_router(routes.router)
 app.include_router(stream.router)
+app.include_router(documents.router)
