@@ -87,14 +87,17 @@ export function useConversation() {
     ]);
   }, []);
 
+  // An upload or removal outlives a click on another conversation; its result
+  // belongs to the thread it started on, so a late result is dropped.
   const attachDocument = useCallback(
     async (file: File) => {
+      const threadId = loadThreadId();
       setUploading(true);
       try {
-        const uploaded = await uploadDocument(loadThreadId(), file);
-        setDocument(uploaded.filename);
+        const uploaded = await uploadDocument(threadId, file);
+        if (loadThreadId() === threadId) setDocument(uploaded.filename);
       } catch (error) {
-        showError(error);
+        if (loadThreadId() === threadId) showError(error);
       } finally {
         setUploading(false);
       }
@@ -103,11 +106,12 @@ export function useConversation() {
   );
 
   const detachDocument = useCallback(async () => {
+    const threadId = loadThreadId();
     try {
-      await removeDocument(loadThreadId());
-      setDocument(null);
+      await removeDocument(threadId);
+      if (loadThreadId() === threadId) setDocument(null);
     } catch (error) {
-      showError(error);
+      if (loadThreadId() === threadId) showError(error);
     }
   }, [showError]);
 
