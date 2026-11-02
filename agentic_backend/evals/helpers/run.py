@@ -50,7 +50,7 @@ TIMEOUT_SECONDS = 180
 FIXED_ENV_VARS = ("OPENAI_API_KEY", "OPENROUTER_API_KEY")
 LIVE_ENV_VARS = (*FIXED_ENV_VARS, "BRAVE_SEARCH_KEY")
 # One name per idea across every dataset (brainstorm 2026Oct21 Q1).
-InputKey = Literal["query", "messages", "sources", "replies"]
+InputKey = Literal["query", "messages", "sources", "replies", "document"]
 logger = logging.getLogger("agent")
 
 

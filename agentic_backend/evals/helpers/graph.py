@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import asdict, replace
@@ -50,6 +51,24 @@ def load_messages(raw: Sequence[Mapping[str, str]]) -> list[AnyMessage]:
             )
         messages.append(message_type(item["content"]))
     return messages
+
+
+def load_document(raw: Mapping[str, str]) -> tuple[str, str]:
+    """Return a case's document as `(filename, text)` from dataset JSON."""
+    return raw["filename"], raw["text"]
+
+
+def rank_by_cosine(
+    query: Sequence[float], vectors: Sequence[Sequence[float]], limit: int
+) -> list[int]:
+    """Return the positions of the `limit` vectors nearest `query`, nearest first."""
+
+    def similarity(vector: Sequence[float]) -> float:
+        dot = sum(a * b for a, b in zip(query, vector))
+        return dot / (math.hypot(*query) * math.hypot(*vector))
+
+    ranked = sorted(range(len(vectors)), key=lambda i: -similarity(vectors[i]))
+    return ranked[:limit]
 
 
 @contextmanager
