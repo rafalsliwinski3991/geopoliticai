@@ -36,10 +36,10 @@ jobs:
     runs-on: ubuntu-latest
     services:
       postgres:
-        # Docker Hub's and the AWS public gallery's anonymous pull budgets are
-        # shared across GitHub's runner IPs and exhaust without warning;
-        # Google's Docker Hub mirror serves the official image.
-        image: mirror.gcr.io/library/postgres:16-alpine
+        # pgvector's image is not in Google's Docker Hub mirror, so this pull
+        # comes from Docker Hub and can hit its anonymous pull budget, which
+        # GitHub's runner IPs share. Keep the version equal to postgres/Dockerfile.
+        image: pgvector/pgvector:0.8.1-pg16
         env:
           POSTGRES_DB: webbackend_test
           POSTGRES_USER: webbackend
@@ -91,10 +91,10 @@ jobs:
     runs-on: ubuntu-latest
     services:
       postgres:
-        # Docker Hub's and the AWS public gallery's anonymous pull budgets are
-        # shared across GitHub's runner IPs and exhaust without warning;
-        # Google's Docker Hub mirror serves the official image.
-        image: mirror.gcr.io/library/postgres:16-alpine
+        # pgvector's image is not in Google's Docker Hub mirror, so this pull
+        # comes from Docker Hub and can hit its anonymous pull budget, which
+        # GitHub's runner IPs share. Keep the version equal to postgres/Dockerfile.
+        image: pgvector/pgvector:0.8.1-pg16
         env:
           POSTGRES_DB: drift_test
           POSTGRES_USER: drift

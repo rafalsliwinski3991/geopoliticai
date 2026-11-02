@@ -18,6 +18,10 @@ COPY src/ src/
 COPY alembic.ini ./
 RUN uv sync --frozen --no-dev
 
+# Fetch the tokenizer file at build time so the first upload does not download it.
+ENV TIKTOKEN_CACHE_DIR=/app/.tiktoken
+RUN .venv/bin/python -c "import tiktoken; tiktoken.get_encoding('cl100k_base')"
+
 # Serve as an unprivileged user: the app only reads /app and talks to Postgres.
 RUN useradd --system --uid 10001 --no-create-home app
 USER app

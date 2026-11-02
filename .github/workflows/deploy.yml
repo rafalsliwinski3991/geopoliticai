@@ -51,8 +51,8 @@ jobs:
           test -f .env || touch .env
           echo "$GITHUB_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
           for tag in "$SHA" latest; do
-            IMAGE_TAG=$tag docker compose -f docker-compose.yml build agentic-backend web-backend frontend
-            IMAGE_TAG=$tag docker compose -f docker-compose.yml push agentic-backend web-backend frontend
+            IMAGE_TAG=$tag docker compose -f docker-compose.yml build postgres agentic-backend web-backend frontend
+            IMAGE_TAG=$tag docker compose -f docker-compose.yml push postgres agentic-backend web-backend frontend
           done
 
       - name: Configure SSH
