@@ -18,6 +18,7 @@ export type StoredMessage = { role: "user" | "assistant"; text: string };
 export type StoredThread = {
   thread_id: string;
   messages: StoredMessage[];
+  document: string | null;
 };
 
 const THREADS_URL = "/api/threads";
