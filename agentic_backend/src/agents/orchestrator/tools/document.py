@@ -9,8 +9,8 @@ from langchain_core.tools import tool
 from langgraph.prebuilt import ToolRuntime
 from langgraph.types import Command
 
-from agents.document import ask_document
-from agents.document.config import RETRIEVAL
+from agents.document_handler import ask_document
+from agents.document_handler.config import RETRIEVAL
 from agents.orchestrator.consts.progress import DOCUMENT_PROGRESS
 from agents.orchestrator.state import OrchestratorContext, OrchestratorState
 from shared.errors import NoDocumentError

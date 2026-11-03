@@ -1,11 +1,18 @@
 import io
+from types import SimpleNamespace
+from unittest.mock import patch
 
 import pytest
 import tiktoken
-from pypdf import PdfWriter
+from pypdf import PdfReader, PdfWriter
 
 from services import document_reader
-from services.document_reader import CHUNK_TOKENS, read_document, split_into_chunks
+from services.document_reader import (
+    CHUNK_TOKENS,
+    Page,
+    read_document,
+    split_into_chunks,
+)
 from shared.errors import DocumentTooLargeError, DocumentUnreadableError
 
 PARAGRAPH_BREAK = "\n\n"
@@ -47,6 +54,16 @@ def _text_pdf(pages: int, text: str = "Hello PDF") -> bytes:
     return out
 
 
+def _chunk_texts(text: str) -> list[str]:
+    """Return the chunk texts of a text file, which has no pages."""
+    return [chunk.text for chunk in split_into_chunks([Page(None, text)])]
+
+
+def _joined(pages: list[Page]) -> str:
+    """Return the pages' text as the old reader returned it."""
+    return PARAGRAPH_BREAK.join(page.text for page in pages)
+
+
 def _blank_pdf() -> bytes:
     writer = PdfWriter()
     writer.add_blank_page(width=200, height=200)
@@ -69,7 +86,7 @@ def test_empty_text_makes_no_chunks(text: str) -> None:
     raw_text = text
 
     # Act
-    chunks = split_into_chunks(raw_text)
+    chunks = _chunk_texts(raw_text)
 
     # Assert
     assert chunks == []
@@ -81,7 +98,7 @@ def test_text_shorter_than_one_chunk_is_one_chunk() -> None:
     text = "A short note."
 
     # Act
-    chunks = split_into_chunks(text)
+    chunks = _chunk_texts(text)
 
     # Assert
     assert chunks == [text]
@@ -95,7 +112,7 @@ def test_paragraphs_are_packed_until_the_chunk_is_full() -> None:
     text = PARAGRAPH_BREAK.join([first, second, third])
 
     # Act
-    chunks = split_into_chunks(text)
+    chunks = _chunk_texts(text)
 
     # Assert
     assert chunks[0] == first + PARAGRAPH_BREAK + second
@@ -110,7 +127,7 @@ def test_no_chunk_is_longer_than_the_limit() -> None:
     encoding = tiktoken.get_encoding(document_reader.TOKEN_ENCODING)
 
     # Act
-    chunks = split_into_chunks(text)
+    chunks = _chunk_texts(text)
 
     # Assert
     assert len(chunks) > 1
@@ -123,7 +140,7 @@ def test_a_chunk_that_exactly_fills_the_limit_is_not_split() -> None:
     text = PARAGRAPH_BREAK.join([_words(400), _words(400)])
 
     # Act
-    chunks = split_into_chunks(text)
+    chunks = _chunk_texts(text)
 
     # Assert
     assert chunks == [text]
@@ -137,7 +154,7 @@ def test_each_chunk_starts_with_the_tail_of_the_one_before() -> None:
     text = PARAGRAPH_BREAK.join(paragraphs)
 
     # Act
-    chunks = split_into_chunks(text)
+    chunks = _chunk_texts(text)
 
     # Assert
     assert chunks[1].startswith(PARAGRAPH_BREAK.join(paragraphs[14:16]))
@@ -150,7 +167,7 @@ def test_a_paragraph_longer_than_a_chunk_is_split_at_words() -> None:
     text = _words(3000)
 
     # Act
-    chunks = split_into_chunks(text)
+    chunks = _chunk_texts(text)
 
     # Assert
     assert len(chunks) > 1
@@ -163,7 +180,7 @@ def test_polish_text_is_never_cut_inside_a_character() -> None:
     text = " ".join(["zażółć gęślą jaźń"] * 1500)
 
     # Act
-    chunks = split_into_chunks(text)
+    chunks = _chunk_texts(text)
 
     # Assert
     assert len(chunks) > 1
@@ -177,13 +194,101 @@ def test_a_single_word_longer_than_a_chunk_is_kept_whole() -> None:
     word = LONG_WORD
 
     # Act
-    chunks = split_into_chunks(word)
+    chunks = _chunk_texts(word)
 
     # Assert
     assert chunks == [LONG_WORD]
 
 
+def test_a_chunk_inside_one_page_records_that_page_twice() -> None:
+    """The citation says p. 7, not pp. 7-7, so a one-page chunk must have equal first and last pages."""
+    # Arrange
+    pages = [Page(1, _words(700)), Page(2, _words(700))]
+
+    # Act
+    chunks = split_into_chunks(pages)
+
+    # Assert
+    assert [(chunk.page_start, chunk.page_end) for chunk in chunks] == [(1, 1), (2, 2)]
+
+
+def test_a_chunk_that_runs_across_a_page_break_records_both_pages() -> None:
+    """Chunks ignore page breaks, so the user must be shown the range the excerpt came from."""
+    # Arrange
+    pages = [Page(4, "Short text on page four."), Page(5, "Short text on page five.")]
+
+    # Act
+    chunks = split_into_chunks(pages)
+
+    # Assert
+    assert len(chunks) == 1
+    assert (chunks[0].page_start, chunks[0].page_end) == (4, 5)
+
+
+def test_the_overlap_keeps_the_page_of_the_text_it_repeats() -> None:
+    """The repeated tail came from the earlier page; claiming only the later page would send the reader to the wrong sheet."""
+    # Arrange
+    pages = [Page(1, _words(700) + PARAGRAPH_BREAK + _words(60)), Page(2, _words(700))]
+
+    # Act
+    chunks = split_into_chunks(pages)
+
+    # Assert
+    assert [(chunk.page_start, chunk.page_end) for chunk in chunks] == [(1, 1), (1, 2)]
+
+
+def test_a_long_paragraph_cut_at_words_keeps_its_page() -> None:
+    """Every piece of a cut paragraph is still on the page the paragraph was on."""
+    # Arrange
+    pages = [Page(3, _words(CHUNK_TOKENS * 2))]
+
+    # Act
+    chunks = split_into_chunks(pages)
+
+    # Assert
+    assert len(chunks) > 1
+    assert {(chunk.page_start, chunk.page_end) for chunk in chunks} == {(3, 3)}
+
+
+def test_a_text_file_chunk_has_no_pages() -> None:
+    """A .txt file has no pages, so its citations fall back to the chunk number."""
+    # Arrange
+    pages = [Page(None, "Plain notes.")]
+
+    # Act
+    chunks = split_into_chunks(pages)
+
+    # Assert
+    assert [(chunk.page_start, chunk.page_end) for chunk in chunks] == [(None, None)]
+
+
 # --- read_document ---
+
+
+@pytest.mark.anyio
+async def test_a_pdf_is_read_as_pages_numbered_from_one() -> None:
+    """The user is shown a page number, so it must be the PDF's own, counting from 1."""
+    # Arrange
+    body = _text_pdf(pages=3)
+
+    # Act
+    pages = await read_document(body, "report.pdf")
+
+    # Assert
+    assert [page.number for page in pages] == [1, 2, 3]
+
+
+@pytest.mark.anyio
+async def test_a_text_file_is_read_as_one_page_without_a_number() -> None:
+    """A .txt file has no pages."""
+    # Arrange
+    body = b"Plain notes"
+
+    # Act
+    pages = await read_document(body, "notes.txt")
+
+    # Assert
+    assert pages == [Page(number=None, text="Plain notes")]
 
 
 @pytest.mark.anyio
@@ -193,7 +298,7 @@ async def test_a_text_file_is_decoded() -> None:
     body = "Zażółć gęślą jaźń".encode()
 
     # Act
-    text = await read_document(body, "notes.txt")
+    text = _joined(await read_document(body, "notes.txt"))
 
     # Assert
     assert text == "Zażółć gęślą jaźń"
@@ -206,7 +311,7 @@ async def test_a_pdf_gives_its_text() -> None:
     body = _text_pdf(pages=1, text="Hello PDF")
 
     # Act
-    text = await read_document(body, "report.pdf")
+    text = _joined(await read_document(body, "report.pdf"))
 
     # Assert
     assert "Hello PDF" in text
@@ -222,7 +327,7 @@ async def test_a_file_of_exactly_the_byte_cap_is_read(
     monkeypatch.setattr(document_reader, "MAX_DOCUMENT_BYTES", len(body))
 
     # Act
-    text = await read_document(body, "a.txt")
+    text = _joined(await read_document(body, "a.txt"))
 
     # Assert
     assert text == "twelve bytes"
@@ -250,7 +355,7 @@ async def test_a_pdf_at_the_page_cap_is_read(monkeypatch: pytest.MonkeyPatch) ->
     body = _text_pdf(pages=PAGE_CAP)
 
     # Act
-    text = await read_document(body, "a.pdf")
+    text = _joined(await read_document(body, "a.pdf"))
 
     # Assert
     assert text.count("Hello PDF") == PAGE_CAP
@@ -324,7 +429,7 @@ async def test_the_type_is_read_from_the_file_name_in_any_case() -> None:
     body = b"upper"
 
     # Act
-    text = await read_document(body, "NOTES.TXT")
+    text = _joined(await read_document(body, "NOTES.TXT"))
 
     # Assert
     assert text == "upper"
@@ -339,3 +444,74 @@ async def test_an_empty_file_is_unreadable() -> None:
     # Act + Assert
     with pytest.raises(DocumentUnreadableError):
         await read_document(body, "empty.txt")
+
+
+@pytest.mark.anyio
+async def test_a_text_file_with_a_nul_byte_is_unreadable() -> None:
+    """Postgres text columns cannot hold NUL; found after embedding it is a 500 and a wasted bill."""
+    # Arrange
+    body = b"before\x00after"
+
+    # Act + Assert
+    with pytest.raises(DocumentUnreadableError):
+        await read_document(body, "a.txt")
+
+
+@pytest.mark.anyio
+async def test_a_pdf_whose_text_has_a_nul_byte_is_unreadable() -> None:
+    """A PDF can extract NUL too, and it must be refused the same way as a text file."""
+    # Arrange
+    body = _text_pdf(pages=1)
+
+    # Act + Assert
+    with (
+        patch.object(
+            PdfReader, "pages", [SimpleNamespace(extract_text=lambda: "a\x00b")]
+        ),
+        pytest.raises(DocumentUnreadableError),
+    ):
+        await read_document(body, "a.pdf")
+
+
+@pytest.mark.anyio
+async def test_text_one_character_over_the_character_cap_is_refused(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A one-paragraph 25 MB file would tie up the server in the chunker before any cap fires."""
+    # Arrange
+    body = b"twelve bytes"
+    monkeypatch.setattr(document_reader, "MAX_DOCUMENT_CHARS", len(body) - 1)
+
+    # Act + Assert
+    with pytest.raises(DocumentTooLargeError):
+        await read_document(body, "a.txt")
+
+
+@pytest.mark.anyio
+async def test_text_of_exactly_the_character_cap_is_read(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The cap is inclusive: text of exactly the limit is allowed."""
+    # Arrange
+    body = b"twelve bytes"
+    monkeypatch.setattr(document_reader, "MAX_DOCUMENT_CHARS", len(body))
+
+    # Act
+    text = _joined(await read_document(body, "a.txt"))
+
+    # Assert
+    assert text == "twelve bytes"
+
+
+def test_the_character_cap_is_four_characters_for_each_token_of_the_chunk_budget() -> (
+    None
+):
+    """The cap must stay in step with the chunk cap and chunk size, or it refuses valid files."""
+    # Arrange
+    expected = 1_500 * 800 * 4
+
+    # Act
+    cap = document_reader.MAX_DOCUMENT_CHARS
+
+    # Assert
+    assert cap == expected

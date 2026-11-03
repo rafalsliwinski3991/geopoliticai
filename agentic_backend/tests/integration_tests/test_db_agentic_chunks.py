@@ -1,5 +1,6 @@
 """PostgreSQL integration tests for db/agentic/chunks.py: ordering, scoping, and the transaction."""
 
+import asyncio
 import os
 import time
 import uuid
@@ -109,6 +110,7 @@ async def put(
     user_id: int,
     axes: list[int],
     filename: str = FILENAME,
+    pages: list[tuple[int | None, int | None]] | None = None,
 ) -> None:
     await chunks.replace_chunks(
         pool,
@@ -116,6 +118,7 @@ async def put(
         user_id=user_id,
         filename=filename,
         texts=[f"text on axis {axis}" for axis in axes],
+        pages=pages or [(None, None)] * len(axes),
         embeddings=[unit_vector(axis) for axis in axes],
     )
 
@@ -174,6 +177,7 @@ async def test_a_failed_insert_keeps_the_old_chunks(
             user_id=user_id,
             filename="new.pdf",
             texts=["good", "bad"],
+            pages=[(None, None), (None, None)],
             embeddings=[unit_vector(3), [1.0, 2.0]],
         )
     assert count_rows(admin, thread_id) == 2
@@ -232,6 +236,32 @@ async def test_the_nearest_chunk_comes_first(
     ]
     assert rows[0]["chunk_index"] == 3
     assert rows[0]["filename"] == FILENAME
+
+
+@pytest.mark.anyio
+async def test_a_chunks_pages_are_stored_and_read_back(
+    pool: chunks.Pool, make_user: Any, make_thread: Any
+) -> None:
+    """The answer cites pages, so the first and last page must survive the round trip, including none for a text file."""
+    # Arrange
+    user_id = make_user()
+    thread_id = make_thread(user_id)
+    await put(
+        pool,
+        thread_id=thread_id,
+        user_id=user_id,
+        axes=[0, 1, 2],
+        pages=[(7, 7), (7, 8), (None, None)],
+    )
+
+    # Act
+    rows = await chunks.search_chunks(
+        pool, thread_id=thread_id, user_id=user_id, embedding=unit_vector(0), limit=3
+    )
+
+    # Assert
+    pages = {row["chunk_index"]: (row["page_start"], row["page_end"]) for row in rows}
+    assert pages == {1: (7, 7), 2: (7, 8), 3: (None, None)}
 
 
 @pytest.mark.anyio
@@ -484,3 +514,35 @@ async def test_one_document_counts_once_however_many_chunks(
 
     # Assert
     assert count == 1
+
+
+@pytest.mark.anyio
+async def test_two_concurrent_replaces_of_one_thread_leave_only_one_document(
+    pool: chunks.Pool,
+    admin: psycopg.Connection[DictRow],
+    make_user: Any,
+    make_thread: Any,
+) -> None:
+    """Without the lock both deletes run first and both inserts land, mixing two files in one thread."""
+    # Arrange
+    user_id = make_user()
+    thread_id = make_thread(user_id)
+
+    # Act
+    await asyncio.gather(
+        put(
+            pool, thread_id=thread_id, user_id=user_id, axes=[0, 1, 2], filename="a.pdf"
+        ),
+        put(pool, thread_id=thread_id, user_id=user_id, axes=[3, 4], filename="b.pdf"),
+    )
+
+    # Assert
+    rows = admin.execute(
+        "SELECT filename, chunk_index FROM document_chunks WHERE thread_id = %s"
+        " ORDER BY chunk_index",
+        (thread_id,),
+    ).fetchall()
+    names = {row["filename"] for row in rows}
+    indexes = [row["chunk_index"] for row in rows]
+    assert len(names) == 1
+    assert indexes == list(range(1, len(rows) + 1))

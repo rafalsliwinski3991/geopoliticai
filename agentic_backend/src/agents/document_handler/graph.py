@@ -6,8 +6,8 @@ from typing import Any
 
 from langgraph.graph import END, START, StateGraph
 
-from agents.document.nodes import answer, retrieve
-from agents.document.state import (
+from agents.document_handler.nodes import answer, retrieve
+from agents.document_handler.state import (
     DocumentContext,
     DocumentSearch,
     DocumentState,

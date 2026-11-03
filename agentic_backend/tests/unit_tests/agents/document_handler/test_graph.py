@@ -3,16 +3,22 @@ from typing import Any, AsyncIterator
 
 import pytest
 
-from agents.document import DocumentContext, ask_document, build_graph
-from agents.document.nodes.retrieve import RewrittenQuery
-from agents.document.state import Chunk, build_initial_document_state
+from agents.document_handler import DocumentContext, ask_document, build_graph
+from agents.document_handler.nodes.retrieve import RewrittenQuery
+from agents.document_handler.state import Chunk, build_initial_document_state
 
-retrieve_module = importlib.import_module("agents.document.nodes.retrieve")
-answer_module = importlib.import_module("agents.document.nodes.answer")
+retrieve_module = importlib.import_module("agents.document_handler.nodes.retrieve")
+answer_module = importlib.import_module("agents.document_handler.nodes.answer")
 
 QUESTION = "What does it say about fees?"
 EMBEDDING = [0.25, 0.5]
-CHUNK: Chunk = {"filename": "terms.txt", "index": 3, "text": "Fees are 5 percent."}
+CHUNK: Chunk = {
+    "filename": "terms.txt",
+    "index": 3,
+    "page_start": None,
+    "page_end": None,
+    "text": "Fees are 5 percent.",
+}
 
 
 class RecordingSearch:
@@ -22,7 +28,7 @@ class RecordingSearch:
         self.chunks = chunks
         self.embeddings: list[list[float]] = []
 
-    async def __call__(self, embedding: list[float]) -> list[Chunk]:
+    async def __call__(self, embedding: list[float], limit: int) -> list[Chunk]:
         self.embeddings.append(embedding)
         return self.chunks
 
@@ -32,7 +38,9 @@ def scripted_models(monkeypatch: pytest.MonkeyPatch) -> None:
     """Every model and the embedder are replaced; nothing here calls a provider."""
 
     async def rewrite(*args: Any, **kwargs: Any) -> RewrittenQuery:
-        return RewrittenQuery(search_query="fee schedule")
+        return RewrittenQuery(
+            search_query="fee schedule", language="en", scope="passages"
+        )
 
     async def embed(text: str) -> list[float]:
         return EMBEDDING

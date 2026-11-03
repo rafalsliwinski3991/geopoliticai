@@ -584,3 +584,207 @@ function versionGreater(actual: string, floor: string): boolean {
   if ((b ?? 0) !== (y ?? 0)) return (b ?? 0) > (y ?? 0);
   return (c ?? 0) > (z ?? 0);
 }
+
+describe("the attached document", () => {
+  const REPORT = new File(["Q3 revenue was 41 million"], "report.txt", { type: "text/plain" });
+  type DocumentProbe = {
+    document: string | null;
+    uploading: boolean;
+    messages: { role: string; text: string }[];
+    attachDocument: (file: File) => Promise<void>;
+    detachDocument: () => Promise<void>;
+    restore: (id: string, messages: [], document: string | null) => void;
+    reset: () => void;
+  };
+
+  function probe(getLatest: () => unknown): DocumentProbe {
+    return getLatest() as DocumentProbe;
+  }
+
+  function stubDocumentApi(upload: { ok: boolean; status: number; body: object }) {
+    const calls: { url: string; method?: string }[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: string, init?: { method?: string }) => {
+        calls.push({ url, method: init?.method });
+        const body = url === "/accounts/token/" ? { access: "tok", expires_in: 900 } : upload.body;
+        const ok = url === "/accounts/token/" ? true : upload.ok;
+        const status = url === "/accounts/token/" ? 200 : upload.status;
+        return Promise.resolve({ ok, status, json: async () => body } as unknown as Response);
+      }),
+    );
+    return calls;
+  }
+
+  it("attaching a file uploads it for the current thread and remembers its name", async () => {
+    // Arrange
+    storeThreadId("t-doc");
+    const calls = stubDocumentApi({ ok: true, status: 200, body: { filename: "report.txt", chunks: 1 } });
+    const getLatest = await renderHookProbe();
+    // Act
+    await act(async () => {
+      await probe(getLatest).attachDocument(REPORT);
+    });
+    // Assert
+    expect(probe(getLatest).document).toBe("report.txt");
+    expect(probe(getLatest).uploading).toBe(false);
+    expect(calls.map((c) => `${c.method} ${c.url}`)).toContain(
+      "POST /api/threads/t-doc/document?filename=report.txt",
+    );
+  });
+
+  it("a rejected upload shows the backend's text as an error message and attaches nothing", async () => {
+    // Arrange
+    storeThreadId("t-doc");
+    stubDocumentApi({ ok: false, status: 422, body: { detail: "That file has no readable text." } });
+    const getLatest = await renderHookProbe();
+    // Act
+    await act(async () => {
+      await probe(getLatest).attachDocument(REPORT);
+    });
+    // Assert
+    const state = probe(getLatest);
+    expect(state.document).toBeNull();
+    expect(state.uploading).toBe(false);
+    expect(state.messages).toEqual([{ role: "error", text: "That file has no readable text." }]);
+  });
+
+  it("detaching deletes the document and clears the name", async () => {
+    // Arrange
+    storeThreadId("t-doc");
+    const calls = stubDocumentApi({ ok: true, status: 200, body: { filename: "report.txt", chunks: 1 } });
+    const getLatest = await renderHookProbe();
+    await act(async () => {
+      await probe(getLatest).attachDocument(REPORT);
+    });
+    // Act
+    await act(async () => {
+      await probe(getLatest).detachDocument();
+    });
+    // Assert
+    expect(probe(getLatest).document).toBeNull();
+    expect(calls.map((c) => `${c.method} ${c.url}`)).toContain("DELETE /api/threads/t-doc/document");
+  });
+
+  it("restore sets the document of a reopened conversation", async () => {
+    // Arrange
+    const getLatest = await renderHookProbe();
+    // Act
+    await act(async () => {
+      probe(getLatest).restore("t-old", [], "old.pdf");
+    });
+    // Assert
+    expect(probe(getLatest).document).toBe("old.pdf");
+  });
+
+  it("reset clears the document of the conversation before", async () => {
+    // Arrange
+    const getLatest = await renderHookProbe();
+    await act(async () => {
+      probe(getLatest).restore("t-old", [], "old.pdf");
+    });
+    // Act
+    await act(async () => {
+      probe(getLatest).reset();
+    });
+    // Assert
+    expect(probe(getLatest).document).toBeNull();
+  });
+
+  // The user can leave a conversation while its upload or removal is in
+  // flight. The late result belongs to the thread they left; showing it on the
+  // thread they are in would attach the wrong file or print a stray error.
+  function stubSlowDocumentApi() {
+    let finish: (response: Response) => void = () => {};
+    const pending = new Promise<Response>((resolve) => {
+      finish = resolve;
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: string) =>
+        url === "/accounts/token/"
+          ? Promise.resolve({
+              ok: true,
+              status: 200,
+              json: async () => ({ access: "tok", expires_in: 900 }),
+            } as unknown as Response)
+          : pending,
+      ),
+    );
+    return finish;
+  }
+
+  const UPLOADED = {
+    ok: true,
+    status: 200,
+    json: async () => ({ filename: "report.txt", chunks: 1 }),
+  } as unknown as Response;
+  const REJECTED = {
+    ok: false,
+    status: 422,
+    json: async () => ({ detail: "That file has no readable text." }),
+  } as unknown as Response;
+
+  it("an upload that finishes after the user opened another conversation attaches nothing", async () => {
+    // Arrange
+    storeThreadId("t-first");
+    const finish = stubSlowDocumentApi();
+    const getLatest = await renderHookProbe();
+    let upload: Promise<void> = Promise.resolve();
+    await act(async () => {
+      upload = probe(getLatest).attachDocument(REPORT);
+    });
+    await act(async () => {
+      probe(getLatest).restore("t-second", [], null);
+    });
+    // Act
+    await act(async () => {
+      finish(UPLOADED);
+      await upload;
+    });
+    // Assert
+    expect(probe(getLatest).document).toBeNull();
+  });
+
+  it("a failed upload that finishes after the user left shows no error on the new conversation", async () => {
+    // Arrange
+    storeThreadId("t-first");
+    const finish = stubSlowDocumentApi();
+    const getLatest = await renderHookProbe();
+    let upload: Promise<void> = Promise.resolve();
+    await act(async () => {
+      upload = probe(getLatest).attachDocument(REPORT);
+    });
+    await act(async () => {
+      probe(getLatest).restore("t-second", [], null);
+    });
+    // Act
+    await act(async () => {
+      finish(REJECTED);
+      await upload;
+    });
+    // Assert
+    expect(probe(getLatest).messages).toEqual([]);
+  });
+
+  it("a removal that finishes after the user opened another conversation keeps that conversation's document", async () => {
+    // Arrange
+    storeThreadId("t-first");
+    const finish = stubSlowDocumentApi();
+    const getLatest = await renderHookProbe();
+    let removal: Promise<void> = Promise.resolve();
+    await act(async () => {
+      removal = probe(getLatest).detachDocument();
+    });
+    await act(async () => {
+      probe(getLatest).restore("t-second", [], "second.pdf");
+    });
+    // Act
+    await act(async () => {
+      finish({ ok: true, status: 204, json: async () => ({}) } as unknown as Response);
+      await removal;
+    });
+    // Assert
+    expect(probe(getLatest).document).toBe("second.pdf");
+  });
+});

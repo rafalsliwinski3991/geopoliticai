@@ -40,6 +40,7 @@ function stubFetch(tokenResponse: Response) {
             { role: "user", text: "earlier question" },
             { role: "assistant", text: "earlier answer" },
           ],
+          document: "earlier.pdf",
         }),
       } as unknown as Response);
     }
@@ -467,5 +468,31 @@ describe("the app shell", () => {
       expect(main.hasAttribute("inert")).toBe(false);
       expect(document.activeElement).toBe(toggle);
     });
+  });
+
+  it("reopening a conversation shows its attached document", async () => {
+    // Arrange
+    stubFetch(tokenOk);
+    const App = await importApp();
+    render(<App />);
+    await screen.findByRole("link", { name: /Baltic energy/ });
+    // Act
+    fireEvent.click(screen.getByRole("link", { name: /Baltic energy/ }));
+    // Assert
+    expect(await screen.findByText("earlier.pdf")).toBeTruthy();
+  });
+
+  it("a new conversation hides the document of the one before", async () => {
+    // Arrange
+    stubFetch(tokenOk);
+    const App = await importApp();
+    render(<App />);
+    await screen.findByRole("link", { name: /Baltic energy/ });
+    fireEvent.click(screen.getByRole("link", { name: /Baltic energy/ }));
+    await screen.findByText("earlier.pdf");
+    // Act
+    fireEvent.click(screen.getAllByRole("button", { name: /New conversation/ })[0]!);
+    // Assert
+    expect(screen.queryByText("earlier.pdf")).toBeNull();
   });
 });

@@ -1,6 +1,6 @@
 import pytest
 
-from agents.document.state import build_initial_document_state
+from agents.document_handler.state import build_initial_document_state
 from api.app import CHECKPOINT_SERDE
 
 
@@ -33,7 +33,15 @@ def test_a_document_state_survives_the_checkpoint_serde() -> None:
     """No new type may enter a checkpoint: a chunk is a dict of primitives, so it needs no allow-list entry."""
     # Arrange
     state = build_initial_document_state("What are fees?", ["earlier"])
-    state["chunks"] = [{"filename": "a.txt", "index": 1, "text": "Fees."}]
+    state["chunks"] = [
+        {
+            "filename": "a.txt",
+            "index": 1,
+            "page_start": None,
+            "page_end": None,
+            "text": "Fees.",
+        }
+    ]
 
     # Act
     restored = CHECKPOINT_SERDE.loads_typed(CHECKPOINT_SERDE.dumps_typed(state))

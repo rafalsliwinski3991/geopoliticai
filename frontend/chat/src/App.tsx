@@ -20,8 +20,20 @@ type AuthState = "checking" | "ready" | "sign-in" | "error";
 export default function App() {
   const [auth, setAuth] = useState<AuthState>("checking");
   const [attempt, setAttempt] = useState(0);
-  const { messages, paused, outline, progress, isLoading, send, reset, restore } =
-    useConversation();
+  const {
+    messages,
+    paused,
+    outline,
+    progress,
+    isLoading,
+    document: attachedDocument,
+    uploading,
+    send,
+    reset,
+    restore,
+    attachDocument,
+    detachDocument,
+  } = useConversation();
   // The thread list loads alongside authentication; it fails soft — a sidebar
   // that cannot load must never block an ongoing conversation.
   const [threads, setThreads] = useState<ThreadSummary[]>([]);
@@ -130,7 +142,7 @@ export default function App() {
                 // fresh id for an intentionally empty conversation, and
                 // replaying the old transcript would undo the reset.
                 if (loadThreadId() !== storedId) return;
-                restore(storedId, stored.messages);
+                restore(storedId, stored.messages, stored.document);
               })
               .catch(() => {
                 // The listing advertised the thread but the read failed (a
@@ -172,7 +184,7 @@ export default function App() {
       readThread(threadId)
         .then((stored) => {
           if (requested !== openRequestRef.current) return;
-          restore(threadId, stored.messages);
+          restore(threadId, stored.messages, stored.document);
           const summary = threads.find((thread) => thread.id === threadId) ?? null;
           setActiveThread(summary);
         })
@@ -311,7 +323,15 @@ export default function App() {
             {paused && <OutlineCard outline={outline} />}
           </section>
         </div>
-        <Composer busy={isLoading} onSend={handleSend} />
+        <Composer
+          busy={isLoading}
+          uploading={uploading}
+          paused={paused}
+          document={attachedDocument}
+          onSend={handleSend}
+          onAttach={(file) => void attachDocument(file)}
+          onDetach={() => void detachDocument()}
+        />
       </main>
     </div>
   );

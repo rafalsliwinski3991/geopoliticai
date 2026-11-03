@@ -94,3 +94,29 @@ def test_the_document_prompt_passes_the_message_unchanged() -> None:
 
     # Assert
     assert kept is True
+
+
+def test_the_document_prompt_sends_a_greeting_with_a_question_to_the_document() -> None:
+    """The message "hej, o czym jest ten dokument" got the canned greeting because it began with "hej"."""
+    # Arrange
+    rule = "even when it starts with a greeting"
+
+    # Act
+    kept = rule in SUPERVISOR_DOCUMENT_PROMPT
+
+    # Assert
+    assert kept is True
+
+
+def test_the_document_prompt_answers_directly_only_to_a_message_with_no_question() -> (
+    None
+):
+    """The direct answer is for a bare greeting or thanks, never for a message that also asks about the document."""
+    # Arrange
+    rule = "holds no question about the document"
+
+    # Act
+    kept = rule in SUPERVISOR_DOCUMENT_PROMPT
+
+    # Assert
+    assert kept is True

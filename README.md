@@ -8,12 +8,12 @@ and one forecaster's public YouTube videos.
 
 ## What it is
 
-The API runs an orchestrator that routes each turn to one of five branches:
+The API runs an orchestrator that routes each turn to one of six branches:
 
 ```text
 START -> supervisor -> END                     (a chat answer)
                     \-> tools -> supervisor -> END (run_expert, run_deep_expert, run_deep_forecaster)
-                    \-> tools -> END               (run_reporter)
+                    \-> tools -> END               (run_reporter, run_document)
 ```
 
 Geopolitical turns are delegated to the nested expert. Other turns are answered
@@ -117,7 +117,7 @@ incidental:
 The deploy that first ships the document mode rebuilds and restarts the `postgres`
 container once, because the image now adds pgvector (`postgres/Dockerfile`). It is
 the same Alpine base, so the data directory is unchanged. `make migrate-agentic`
-then runs Alembic `0004`, which needs a role allowed to `CREATE EXTENSION vector`;
+then runs Alembic `0004` and `0005`, of which `0004` needs a role allowed to `CREATE EXTENSION vector`;
 Compose's `POSTGRES_USER` is the cluster superuser. Deploy at a quiet time: the
 old app containers see a brief database restart before the snapshot is taken.
 

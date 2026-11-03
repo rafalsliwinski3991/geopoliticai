@@ -13,15 +13,21 @@ from shared.text import squash_whitespace
 
 
 class Chunk(TypedDict):
-    """One retrieved excerpt. `index` counts from 1 within the document."""
+    """One retrieved excerpt. `index` counts from 1 within the document.
+
+    `page_start` and `page_end` are the first and last page of the excerpt, or
+    `None` for a text file and for chunks stored before pages were recorded.
+    """
 
     filename: str
     index: int
+    page_start: int | None
+    page_end: int | None
     text: str
 
 
-# Embedding in, nearest chunks out. `api` builds it over `db`; agents never import `db`.
-DocumentSearch = Callable[[list[float]], Awaitable[list[Chunk]]]
+# Embedding and chunk limit in, nearest chunks out. `api` builds it over `db`; agents never import `db`.
+DocumentSearch = Callable[[list[float], int], Awaitable[list[Chunk]]]
 
 
 @dataclass(frozen=True)
@@ -37,6 +43,7 @@ class DocumentState(TypedDict):
     query: str
     history: list[str]
     search_query: str
+    language: str
     chunks: list[Chunk]
     answer: str
 
@@ -50,6 +57,7 @@ def build_initial_document_state(query: str, history: list[str]) -> DocumentStat
         "query": normalized,
         "history": history,
         "search_query": "",
+        "language": "",
         "chunks": [],
         "answer": "",
     }

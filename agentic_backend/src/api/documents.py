@@ -14,8 +14,7 @@ from psycopg.rows import DictRow
 from psycopg_pool import AsyncConnectionPool
 from pydantic import BaseModel
 
-from agents.document import Chunk
-from agents.document.config import RETRIEVAL
+from agents.document_handler import Chunk
 from agents.orchestrator.state import OrchestratorContext
 from api.auth import Identity, require_identity
 from api.rate_limit import enforce_rate_limit, enforce_upload_limit
@@ -39,6 +38,7 @@ from shared.config import (
 from shared.errors import (
     DocumentLimitError,
     DocumentTooLargeError,
+    DocumentUnreadableError,
     ResearchLimitError,
 )
 from shared.tracing import bind_trace_user, start_span
@@ -115,15 +115,22 @@ async def ingest_document(
                 f"You can keep {MAX_DOCUMENTS_PER_USER} documents. "
                 "Remove one from an older conversation first."
             )
-        text = await read_document(body, filename)
-        chunks = await asyncio.to_thread(split_into_chunks, text)
+        try:
+            pages = await read_document(body, filename)
+        except DocumentUnreadableError:
+            span.set_attribute("document.outcome", "unreadable")
+            raise
+        except DocumentTooLargeError:
+            span.set_attribute("document.outcome", "too_large")
+            raise
+        chunks = await asyncio.to_thread(split_into_chunks, pages)
         span.set_attribute("document.chunks", len(chunks))
         if len(chunks) > MAX_DOCUMENT_CHUNKS:
             span.set_attribute("document.outcome", "too_large")
             raise DocumentTooLargeError("That file is too long to read.")
         try:
             async with asyncio.timeout(EMBED_WALL_SECONDS):
-                embeddings = await embed_texts(chunks)
+                embeddings = await embed_texts([chunk.text for chunk in chunks])
         except TimeoutError as exc:
             span.set_attribute("document.outcome", "timeout")
             raise ResearchLimitError("Reading the document took too long.") from exc
@@ -139,7 +146,8 @@ async def ingest_document(
             thread_id=thread_id,
             user_id=user_id,
             filename=filename,
-            texts=chunks,
+            texts=[chunk.text for chunk in chunks],
+            pages=[(chunk.page_start, chunk.page_end) for chunk in chunks],
             embeddings=embeddings,
         )
         span.set_attribute("document.outcome", "stored")
@@ -147,19 +155,21 @@ async def ingest_document(
 
 
 async def _search_chunks(
-    pool: Pool, thread_id: str, user_id: int, embedding: list[float]
+    pool: Pool, thread_id: str, user_id: int, embedding: list[float], limit: int
 ) -> list[Chunk]:
     rows = await search_chunks(
         pool,
         thread_id=thread_id,
         user_id=user_id,
         embedding=embedding,
-        limit=RETRIEVAL.top_chunks,
+        limit=limit,
     )
     return [
         {
             "filename": row["filename"],
             "index": row["chunk_index"],
+            "page_start": row["page_start"],
+            "page_end": row["page_end"],
             "text": row["content"],
         }
         for row in rows

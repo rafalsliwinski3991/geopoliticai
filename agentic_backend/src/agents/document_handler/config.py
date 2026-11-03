@@ -19,6 +19,8 @@ class RetrievalSettings:
     """How much each question reads."""
 
     top_chunks: int = 6
+    # A question about the whole document (what it is about, a summary) reads this many.
+    whole_chunks: int = 20
     history_messages: int = 6
 
 

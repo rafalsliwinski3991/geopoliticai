@@ -2,6 +2,16 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, cleanup } from "@testing-library/react";
 import { Composer } from "./Composer";
 
+const IDLE = {
+  busy: false,
+  uploading: false,
+  paused: false,
+  document: null,
+  onAttach: () => {},
+  onDetach: () => {},
+};
+const REPORT = new File(["Q3 revenue was 41 million"], "report.txt", { type: "text/plain" });
+
 describe("the composer", () => {
   afterEach(() => {
     cleanup();
@@ -12,7 +22,7 @@ describe("the composer", () => {
     // Arrange
     const onSend = vi.fn();
     // Act
-    render(<Composer busy={false} onSend={onSend} />);
+    render(<Composer {...IDLE} onSend={onSend} />);
     const area = screen.getByLabelText("Ask a question") as HTMLTextAreaElement;
     fireEvent.change(area, { target: { value: "hello" } });
     fireEvent.keyDown(area, { key: "Enter", shiftKey: true });
@@ -27,7 +37,7 @@ describe("the composer", () => {
     // Arrange
     const onSend = vi.fn();
     // Act
-    render(<Composer busy={false} onSend={onSend} />);
+    render(<Composer {...IDLE} onSend={onSend} />);
     const area = screen.getByLabelText("Ask a question") as HTMLTextAreaElement;
     fireEvent.change(area, { target: { value: "こんにちは" } });
     // fireEvent cannot set isComposing (it silently drops unknown init), so a
@@ -50,12 +60,104 @@ describe("the composer", () => {
     // Arrange
     const onSend = vi.fn();
     // Act
-    render(<Composer busy={true} onSend={onSend} />);
+    render(<Composer {...IDLE} busy={true} onSend={onSend} />);
     const area = screen.getByLabelText("Ask a question") as HTMLTextAreaElement;
     fireEvent.change(area, { target: { value: "hello" } });
     fireEvent.keyDown(area, { key: "Enter" });
     // Assert
     expect(onSend).not.toHaveBeenCalled();
     expect(area.value).toBe("hello");
+  });
+
+  it("choosing a file hands it to onAttach", () => {
+    // Arrange
+    const onAttach = vi.fn();
+    render(<Composer {...IDLE} onSend={vi.fn()} onAttach={onAttach} />);
+    const input = screen.getByLabelText("Attach a document") as HTMLInputElement;
+    // Act
+    fireEvent.change(input, { target: { files: [REPORT] } });
+    // Assert
+    expect(onAttach).toHaveBeenCalledWith(REPORT);
+  });
+
+  it("the file picker offers only PDF and text files", () => {
+    // Arrange
+    render(<Composer {...IDLE} onSend={vi.fn()} />);
+    // Act
+    const input = screen.getByLabelText("Attach a document") as HTMLInputElement;
+    // Assert
+    expect(input.getAttribute("accept")).toBe(".pdf,.txt,application/pdf,text/plain");
+  });
+
+  it("an upload in progress changes the placeholder and disables Send", () => {
+    // Arrange
+    render(<Composer {...IDLE} uploading={true} onSend={vi.fn()} />);
+    // Act
+    const placeholder = screen.queryByPlaceholderText("Reading your document…");
+    const send = screen.getByRole("button", { name: "Send" }) as HTMLButtonElement;
+    // Assert
+    expect(placeholder).toBeTruthy();
+    expect(send.disabled).toBe(true);
+  });
+
+  it("an upload in progress ignores the submit key", () => {
+    // Arrange
+    const onSend = vi.fn();
+    render(<Composer {...IDLE} uploading={true} onSend={onSend} />);
+    const area = screen.getByLabelText("Ask a question") as HTMLTextAreaElement;
+    fireEvent.change(area, { target: { value: "hello" } });
+    // Act
+    fireEvent.keyDown(area, { key: "Enter" });
+    // Assert
+    expect(onSend).not.toHaveBeenCalled();
+  });
+
+  it("an attached document shows its chip, and Remove calls onDetach", () => {
+    // Arrange
+    const onDetach = vi.fn();
+    render(<Composer {...IDLE} document="report.txt" onSend={vi.fn()} onDetach={onDetach} />);
+    // Act
+    fireEvent.click(screen.getByRole("button", { name: "Remove document" }));
+    // Assert
+    expect(screen.getByText("report.txt")).toBeTruthy();
+    expect(onDetach).toHaveBeenCalledTimes(1);
+  });
+
+  it("with no document attached there is no chip", () => {
+    // Arrange
+    render(<Composer {...IDLE} onSend={vi.fn()} />);
+    // Act
+    const chip = screen.queryByRole("button", { name: "Remove document" });
+    // Assert
+    expect(chip).toBeNull();
+  });
+
+  it("the footer says answers come from the document while one is attached", () => {
+    // Arrange
+    render(<Composer {...IDLE} document="report.txt" onSend={vi.fn()} />);
+    // Act
+    const footer = screen.queryByText(/Answers come from your document while one is attached\./);
+    // Assert
+    expect(footer).toBeTruthy();
+  });
+
+  // A paused report resumes with the next reply, and the backend refuses a
+  // document there; offering Attach would only end in an error.
+  it("a paused report disables Attach", () => {
+    // Arrange
+    render(<Composer {...IDLE} paused={true} onSend={vi.fn()} />);
+    // Act
+    const attach = screen.getByRole("button", { name: "Attach" }) as HTMLButtonElement;
+    // Assert
+    expect(attach.disabled).toBe(true);
+  });
+
+  it("Attach is enabled when nothing is running or paused", () => {
+    // Arrange
+    render(<Composer {...IDLE} onSend={vi.fn()} />);
+    // Act
+    const attach = screen.getByRole("button", { name: "Attach" }) as HTMLButtonElement;
+    // Assert
+    expect(attach.disabled).toBe(false);
   });
 });

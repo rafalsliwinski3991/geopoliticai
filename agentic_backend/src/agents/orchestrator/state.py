@@ -10,7 +10,7 @@ from langgraph.graph.message import add_messages
 from pydantic.json_schema import SkipJsonSchema
 from typing_extensions import NotRequired, TypedDict
 
-from agents.document import DocumentSearch
+from agents.document_handler import DocumentSearch
 from shared.text import squash_whitespace
 
 Destination = Literal["geopolitical", "deep", "forecast", "other", "report", "document"]

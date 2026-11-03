@@ -9,6 +9,7 @@ from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanE
 
 from api import documents, rate_limit
 from api.app import answer_pipeline_error, app
+from services.document_reader import Page, TextChunk
 from shared.config import MAX_DOCUMENTS_PER_USER
 from shared.errors import DocumentLimitError, LLMInvocationError
 
@@ -18,6 +19,7 @@ TEXT_FILE = b"The ceasefire talks resumed in Geneva on Monday."
 USER_ID = 1
 OTHER_USER_ID = 2
 VECTOR = [0.25, -0.5]
+SEARCH_LIMIT = 3
 
 
 @dataclass
@@ -108,6 +110,7 @@ async def test_an_upload_stores_the_file_and_reports_its_chunk_count(
             "user_id": USER_ID,
             "filename": "report.txt",
             "texts": [TEXT_FILE.decode()],
+            "pages": [(None, None)],
             "embeddings": [VECTOR],
         }
     ]
@@ -267,13 +270,37 @@ async def test_a_declared_length_over_the_cap_is_refused_before_reading(
 
 
 @pytest.mark.anyio
+async def test_an_upload_stores_the_pages_of_each_chunk(
+    client: httpx.AsyncClient, store: FakeChunkStore, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The page numbers the user is shown later must be written with the chunks."""
+
+    # Arrange
+    async def read_pages(body: bytes, filename: str) -> list[Page]:
+        return [Page(3, "Fees are paid monthly."), Page(4, "Refunds take 30 days.")]
+
+    monkeypatch.setattr(documents, "read_document", read_pages)
+
+    # Act
+    response = await client.post(UPLOAD_URL, content=TEXT_FILE)
+
+    # Assert
+    assert response.status_code == 200
+    assert store.replacements[0]["pages"] == [(3, 4)]
+
+
+@pytest.mark.anyio
 async def test_a_file_with_too_many_chunks_is_refused_before_embedding(
     client: httpx.AsyncClient, store: FakeChunkStore, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """The chunk cap is what bounds the embedding bill of one upload."""
     # Arrange
     monkeypatch.setattr(documents, "MAX_DOCUMENT_CHUNKS", 2)
-    monkeypatch.setattr(documents, "split_into_chunks", lambda text: ["a", "b", "c"])
+    monkeypatch.setattr(
+        documents,
+        "split_into_chunks",
+        lambda pages: [TextChunk(text, None, None) for text in ("a", "b", "c")],
+    )
 
     # Act
     response = await client.post(UPLOAD_URL, content=TEXT_FILE)
@@ -530,7 +557,13 @@ async def test_a_thread_with_a_document_gets_a_search_that_returns_chunks(
     # Arrange
     store.document_name = "report.txt"
     store.search_rows = [
-        {"filename": "report.txt", "chunk_index": 4, "content": "Geneva talks."}
+        {
+            "filename": "report.txt",
+            "chunk_index": 4,
+            "content": "Geneva talks.",
+            "page_start": 7,
+            "page_end": 8,
+        }
     ]
 
     # Act
@@ -540,13 +573,22 @@ async def test_a_thread_with_a_document_gets_a_search_that_returns_chunks(
         user_id=OTHER_USER_ID,
     )
     assert context.search_document is not None
-    found = await context.search_document(VECTOR)
+    found = await context.search_document(VECTOR, SEARCH_LIMIT)
 
     # Assert
     assert context.filename == "report.txt"
-    assert found == [{"filename": "report.txt", "index": 4, "text": "Geneva talks."}]
+    assert found == [
+        {
+            "filename": "report.txt",
+            "index": 4,
+            "page_start": 7,
+            "page_end": 8,
+            "text": "Geneva talks.",
+        }
+    ]
     assert store.searches[0]["user_id"] == OTHER_USER_ID
     assert store.searches[0]["embedding"] == VECTOR
+    assert store.searches[0]["limit"] == SEARCH_LIMIT
 
 
 def test_a_pipeline_error_raised_in_a_route_is_answered_with_its_status() -> None:
@@ -561,3 +603,53 @@ def test_a_pipeline_error_raised_in_a_route_is_answered_with_its_status() -> Non
     # Assert
     assert response.status_code == 409
     assert json.loads(bytes(response.body)) == {"detail": "You can keep 5 documents."}
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    ("body", "status", "outcome"),
+    [(b"a\x00b", 422, "unreadable"), (b"   ", 422, "unreadable")],
+    ids=["a NUL byte", "no readable text"],
+)
+async def test_an_unreadable_file_is_recorded_on_the_ingest_span(
+    client: httpx.AsyncClient,
+    captured_spans: InMemorySpanExporter,
+    body: bytes,
+    status: int,
+    outcome: str,
+) -> None:
+    """Every ingest branch names its outcome, so a trace explains a 422 too."""
+    # Arrange: the parameters hold the file and what the trace must say.
+
+    # Act
+    response = await client.post(UPLOAD_URL, content=body)
+
+    # Assert
+    (span,) = [
+        s for s in captured_spans.get_finished_spans() if s.name == "document_ingest"
+    ]
+    assert response.status_code == status
+    assert (span.attributes or {})["document.outcome"] == outcome
+
+
+@pytest.mark.anyio
+async def test_text_over_the_character_cap_is_recorded_as_too_large(
+    client: httpx.AsyncClient,
+    captured_spans: InMemorySpanExporter,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The character and page caps fire inside the reader, and the trace must still say why."""
+    # Arrange
+    monkeypatch.setattr(
+        "services.document_reader.MAX_DOCUMENT_CHARS", len(TEXT_FILE) - 1
+    )
+
+    # Act
+    response = await client.post(UPLOAD_URL, content=TEXT_FILE)
+
+    # Assert
+    (span,) = [
+        s for s in captured_spans.get_finished_spans() if s.name == "document_ingest"
+    ]
+    assert response.status_code == 413
+    assert (span.attributes or {})["document.outcome"] == "too_large"

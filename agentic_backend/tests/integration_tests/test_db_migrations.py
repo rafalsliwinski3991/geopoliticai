@@ -74,6 +74,8 @@ def test_the_head_revision_creates_the_chunks_table_and_the_vector_extension() -
         "chunk_index",
         "content",
         "embedding",
+        "page_start",
+        "page_end",
         "created_at",
     }
 
