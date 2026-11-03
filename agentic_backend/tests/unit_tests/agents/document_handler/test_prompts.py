@@ -55,3 +55,19 @@ def test_the_rewrite_prompt_turns_a_format_request_into_the_previous_question() 
     # Assert
     assert rule in prompt
     assert target in prompt
+
+
+def test_the_answer_prompt_puts_each_citation_after_its_sentence_with_no_separate_list() -> (
+    None
+):
+    """The answer once ended with a list of bare references tied to no claim, so the reader could not tell what each one supported."""
+    # Arrange
+    placement = "at the end of the sentence it supports"
+    ban = "Write no separate list of citations or sources"
+
+    # Act
+    prompt = ANSWER_SYSTEM_PROMPT
+
+    # Assert
+    assert placement in prompt
+    assert ban in prompt
