@@ -1,4 +1,4 @@
-// spec-sha256: 5e06071047ec5fbadff1df96d697a9de5bc49652e0913d3d7c20eddf32cda98f
+// spec-sha256: 5c101dadc6ae4c0f4283aa1ee20ef2672a04853a4d7a25ff657a37e2aa226ff9
 // Generated from test_specs/agent-document-answers-from-upload.md by /e2e. Never hand-edit: run /e2e update agent-document-answers-from-upload.
 import { test, expect } from '../fixtures';
 import { readFileSync } from 'node:fs';
@@ -30,7 +30,7 @@ test('answer a question from an uploaded document', { annotation: { type: 'spec'
 
   // Shape checks from the spec's expected results.
   await expect(answer).toContainText('7');
-  await expect(answer).toContainText(`[${FILE_NAME}, chunk 1]`);
+  await expect(answer).toContainText('[excerpt 1]');
   await expect(conversation.locator('.who', { hasText: /^Error$/ })).toHaveCount(0);
 
   // Step 5: remove the document so the test user keeps no file behind.

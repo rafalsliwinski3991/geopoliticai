@@ -13,6 +13,6 @@
 ## Expected results
 - After step 3 the chip shows `harbor-notes.txt` and the footer says "Answers come from your document while one is attached."
 - The answer contains "7".
-- The answer contains a citation in the form `[harbor-notes.txt, chunk 1]`.
+- The answer contains a citation in the form `[excerpt 1]`: a text file has no pages, so the citation is the excerpt number, without the file name.
 - No error message is shown.
 - After step 5 the chip is gone and the footer no longer mentions the document.
