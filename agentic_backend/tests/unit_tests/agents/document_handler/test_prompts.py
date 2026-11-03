@@ -1,4 +1,4 @@
-from agents.document_handler.prompts import ANSWER_SYSTEM_PROMPT
+from agents.document_handler.prompts import ANSWER_SYSTEM_PROMPT, REWRITE_SYSTEM_PROMPT
 
 
 def test_the_answer_prompt_asks_for_filename_and_chunk_citations() -> None:
@@ -41,3 +41,17 @@ def test_the_answer_prompt_calls_excerpts_untrusted_and_forbids_images() -> None
     # Assert
     assert untrusted_rule in prompt
     assert image_rule in prompt
+
+
+def test_the_rewrite_prompt_turns_a_format_request_into_the_previous_question() -> None:
+    """The request "napisz mi po polsku" was searched word for word, found page footers, and the document seemed not to cover the topic."""
+    # Arrange
+    rule = "only asks for a language or a format"
+    target = "the previous question"
+
+    # Act
+    prompt = REWRITE_SYSTEM_PROMPT
+
+    # Assert
+    assert rule in prompt
+    assert target in prompt
