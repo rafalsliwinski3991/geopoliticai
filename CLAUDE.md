@@ -78,10 +78,11 @@ deep_forecaster  START -> research -> draft_claims -> council_round_1 -> council
 - `agentic.document_chunks` belongs to Alembic (`0004`). It holds a thread's uploaded document as
   text chunks with a pgvector `vector(1536)` embedding; the `vector` type lives in `public`, and the
   compose Postgres image (`postgres/Dockerfile`) is Alpine plus pgvector. Every read and delete
-  scopes by `thread_id` and `user_id`, since thread ids are client-chosen. Nothing yet deletes the
-  chunks of a deleted thread or user (the web backend's thread and account deletion does not reach
-  this table); `COUNT_LIVE_DOCUMENTS` joins `chat_threads` so such orphans do not count against the
-  limit.
+  scopes by `thread_id` and `user_id`, since thread ids are client-chosen. The web backend's
+  `chat.signals.THREAD_TABLES` lists it with the checkpointer's tables, so deleting a thread or a user
+  deletes its chunks, and the integration suite fails when a `thread_id`-keyed table in the schema is
+  missing from that list. `COUNT_LIVE_DOCUMENTS` still joins `chat_threads`, which keeps chunks
+  stored before that cleanup from counting against the limit.
 - The checkpointer's and the store's tables live in the `agentic` schema. Alembic
   (`make migrate-agentic`) creates the schema and moves tables into it; each library's `setup()`
   creates its tables at startup through the pool's `search_path` (`agentic,public`). Run

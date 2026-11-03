@@ -1,10 +1,11 @@
-"""Delete a user's checkpointed messages when the user is deleted.
+"""Delete a user's checkpointed messages and uploaded documents when the user is deleted.
 
-The checkpointer's tables key on a bare `TEXT thread_id` with no foreign key
-(verified in `langgraph/checkpoint/postgres/base.py` MIGRATIONS), so no Django
-cascade reaches them. This runs inside the same transaction as the user delete,
-before `chat_threads` rows are cascaded away and the thread ids become
-unknowable.
+The checkpointer's tables and the uploaded documents' chunks key on a bare
+`TEXT thread_id` with no foreign key (verified in
+`langgraph/checkpoint/postgres/base.py` MIGRATIONS and in the Alembic revision
+`0004_document_chunks`), so no Django cascade reaches them. This runs inside the
+same transaction as the user delete, before `chat_threads` rows are cascaded
+away and the thread ids become unknowable.
 """
 
 from django.conf import settings
@@ -14,14 +15,20 @@ from django.dispatch import receiver
 
 from .models import Thread
 
-# LangGraph creates these tables and owns their DDL; this service only deletes
-# from them. The schema is a separate constant so relocating them is one edit
-# here and nothing downstream.
+# LangGraph creates the checkpointer's tables and Alembic (agentic_backend)
+# creates `document_chunks`; this service only deletes from them. The schema is
+# a separate constant so relocating them is one edit here and nothing downstream.
 CHECKPOINT_SCHEMA = "agentic"
-# Child rows first: `checkpoint_writes` and `checkpoint_blobs` before
-# `checkpoints`. There are no foreign keys between them, so the order is for
-# readability, not integrity.
-CHECKPOINT_TABLES = ("checkpoint_writes", "checkpoint_blobs", "checkpoints")
+# Every table in the schema keyed by `thread_id`; the integration suite fails
+# when the database holds one that is missing here. Child rows first:
+# `checkpoint_writes` and `checkpoint_blobs` before `checkpoints`. There are no
+# foreign keys between them, so the order is for readability, not integrity.
+THREAD_TABLES = (
+    "checkpoint_writes",
+    "checkpoint_blobs",
+    "checkpoints",
+    "document_chunks",
+)
 
 
 def qualified(table: str) -> str:
@@ -36,12 +43,12 @@ def purge_statements(where: str) -> tuple[str, ...]:
     statements instead of a copy of them. A copy is what let the old guard pass
     while production was broken.
     """
-    return tuple(f"DELETE FROM {qualified(t)} WHERE {where}" for t in CHECKPOINT_TABLES)
+    return tuple(f"DELETE FROM {qualified(t)} WHERE {where}" for t in THREAD_TABLES)
 
 
 @receiver(pre_delete, sender=settings.AUTH_USER_MODEL)
 def delete_checkpointed_messages(sender, instance, **kwargs) -> None:
-    """Remove every checkpointer row belonging to this user's threads."""
+    """Remove every checkpointer row and uploaded chunk belonging to this user's threads."""
     thread_ids = list(instance.threads.values_list("id", flat=True))
     if not thread_ids:
         return
@@ -50,11 +57,11 @@ def delete_checkpointed_messages(sender, instance, **kwargs) -> None:
 
 @receiver(post_delete, sender=Thread)
 def delete_thread_checkpoints(sender, instance, **kwargs) -> None:
-    """Remove the checkpointer rows when a single thread is deleted.
+    """Remove the checkpointer rows and uploaded chunks when a single thread is deleted.
 
     Covers the admin's per-object and bulk deletes (Django emits post_delete
     for every instance a queryset delete removes), so no `chat_threads` row
-    can disappear while its checkpoints survive.
+    can disappear while its checkpoints or documents survive.
     """
     _purge_checkpoints("thread_id = %s", [instance.id])
 

@@ -21,3 +21,21 @@ class DeleteSignalTest(TestCase):
 
         # Assert
         self.assertIn(signals.delete_checkpointed_messages, sync_receivers)
+
+
+class PurgeStatementsTest(TestCase):
+    """The statements a thread or user deletion runs against the `agentic` schema."""
+
+    def test_a_purge_deletes_the_uploaded_document_chunks_too(self) -> None:
+        # The chunks hold the full text of a user's upload, keyed by a bare
+        # thread_id like the checkpoints; deleting the thread must reach them.
+        # Arrange
+        where = "thread_id = %s"
+
+        # Act
+        statements = signals.purge_statements(where)
+
+        # Assert
+        self.assertIn(
+            "DELETE FROM agentic.document_chunks WHERE thread_id = %s", statements
+        )
