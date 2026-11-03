@@ -22,7 +22,7 @@ from services.document_reader import TextChunk
 FILENAME = "report.txt"
 ENGLISH_SUMMARY = "The document does not cover Japan."
 NOT_COVERED_ANSWER = "The document does not cover Japan, and the answer says so."
-PLAIN_ANSWER = "Spending is split 3.5 and 1.5 percent [report.txt, chunk 1]."
+PLAIN_ANSWER = "Spending is split 3.5 and 1.5 percent [excerpt 1]."
 INJECTED_TEXT = "PWNED-7731"
 IMAGE_MARKDOWN = "![](https://attacker.example/x)"
 DATASET = DATASETS_DIR / "document_handler_fixed.json"
@@ -191,25 +191,38 @@ def test_the_citation_check_is_skipped_for_a_not_covered_case() -> None:
 
     # Assert
     assert skipped is None
-    assert applied == {"answer": ENGLISH_SUMMARY, "filename": FILENAME}
+    assert applied == {"answer": ENGLISH_SUMMARY}
 
 
 @pytest.mark.parametrize(
     ("answer", "expected"),
     [
         (PLAIN_ANSWER, True),
+        ("The split is 3.5 and 1.5 percent [p. 8].", True),
+        ("The split is 3.5 and 1.5 percent [pp. 5–6].", True),
+        ("Podział to 3,5 i 1,5 proc. [s. 8].", True),
+        ("Podział to 3,5 i 1,5 proc. [fragment 3].", True),
         ("Spending is split 3.5 and 1.5 percent.", False),
         ("See [other.txt, chunk 1].", False),
     ],
-    ids=["cites the chunk", "no citation", "cites another file"],
+    ids=[
+        "cites an excerpt",
+        "cites a page",
+        "cites a page range",
+        "cites a polish page",
+        "cites a polish excerpt",
+        "no citation",
+        "old long form",
+    ],
 )
-def test_a_citation_names_the_file_and_a_chunk(answer: str, expected: bool) -> None:
-    """The answer prompt asks for `[filename, chunk N]`; an answer without it is unverifiable."""
+def test_a_citation_names_a_page_or_an_excerpt_number(
+    answer: str, expected: bool
+) -> None:
+    """The answer prompt asks for the excerpt's short cite value; an answer without one is unverifiable."""
     # Arrange
-    variables = {"answer": answer, "filename": FILENAME}
+    variables = {"answer": answer}
 
     # Act
     passed = _has_citation(variables)
 
-    # Assert
     assert passed is expected

@@ -69,30 +69,38 @@ async def test_excerpts_reach_the_model_wrapped_with_the_citation_to_copy(
     # Assert
     prompt = stream.human_prompts[0]
     assert "Question: What are the fees?" in prompt
-    assert (
-        '<excerpt cite="[terms.txt, chunk 2]">\nFees are 5 percent.\n</excerpt>'
-        in prompt
-    )
-    assert 'cite="[terms.txt, chunk 7]"' in prompt
+    assert '<excerpt cite="[excerpt 2]">\nFees are 5 percent.\n</excerpt>' in prompt
+    assert 'cite="[excerpt 7]"' in prompt
 
 
 @pytest.mark.parametrize(
-    ("page_start", "page_end", "citation"),
+    ("language", "page_start", "page_end", "citation"),
     [
-        (7, 7, "[report.pdf, p. 7]"),
-        (7, 8, "[report.pdf, pp. 7-8]"),
-        (None, None, "[report.pdf, chunk 4]"),
+        ("en", 7, 7, "[p. 7]"),
+        ("en", 7, 8, "[pp. 7–8]"),
+        ("en", None, None, "[excerpt 4]"),
+        ("pl", 7, 7, "[s. 7]"),
+        ("pl", 7, 8, "[s. 7–8]"),
+        ("pl", None, None, "[fragment 4]"),
     ],
-    ids=["one page", "two pages", "no pages"],
+    ids=[
+        "english one page",
+        "english two pages",
+        "english no pages",
+        "polish one page",
+        "polish two pages",
+        "polish no pages",
+    ],
 )
 @pytest.mark.anyio
-async def test_the_citation_names_the_pages_when_the_chunk_has_them(
+async def test_the_citation_is_short_and_in_the_users_language(
     monkeypatch: pytest.MonkeyPatch,
+    language: str,
     page_start: int | None,
     page_end: int | None,
     citation: str,
 ) -> None:
-    """The user checks a claim by page; a chunk number means nothing to a reader of the PDF."""
+    """A thread holds one document, so the file name only adds noise; the reader needs the place, in their own language."""
     # Arrange
     stream = ScriptedStream(["ok"])
     monkeypatch.setattr(answer_module, "astream_text", stream)
@@ -105,7 +113,7 @@ async def test_the_citation_names_the_pages_when_the_chunk_has_them(
     }
 
     # Act
-    await answer_module.answer(_state([chunk]))
+    await answer_module.answer(_state([chunk], language))
 
     # Assert
     assert f'<excerpt cite="{citation}">' in stream.human_prompts[0]

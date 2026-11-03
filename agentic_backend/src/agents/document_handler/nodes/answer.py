@@ -16,27 +16,32 @@ from services.llm import astream_text, collect_text
 CLOSING_TAG = re.compile(r"</\s*excerpt", re.IGNORECASE)
 ESCAPED_CLOSING_TAG = "<\\/excerpt"
 LANGUAGE_NAMES = {"pl": "Polish", "en": "English"}
+# Per language: the word for one page, for a page range, and for a text-file excerpt.
+CITATION_WORDS = {"pl": ("s.", "s.", "fragment"), "en": ("p.", "pp.", "excerpt")}
 
 
-def _citation(chunk: Chunk) -> str:
-    """Return the citation the model copies: pages when the chunk has them, else its number."""
+def _citation(chunk: Chunk, language: str) -> str:
+    """Return the citation the model copies: the pages when the chunk has them, else its number.
+
+    The thread holds one document and the chip shows its name, so the file name
+    is left out.
+    """
+    page_word, range_word, excerpt_word = CITATION_WORDS[language]
     start, end = chunk["page_start"], chunk["page_end"]
     if start is None or end is None:
-        place = f"chunk {chunk['index']}"
-    elif start == end:
-        place = f"p. {start}"
-    else:
-        place = f"pp. {start}-{end}"
-    return f"[{chunk['filename']}, {place}]"
+        return f"[{excerpt_word} {chunk['index']}]"
+    if start == end:
+        return f"[{page_word} {start}]"
+    return f"[{range_word} {start}–{end}]"
 
 
-def _excerpt(chunk: Chunk) -> str:
+def _excerpt(chunk: Chunk, language: str) -> str:
     text = CLOSING_TAG.sub(ESCAPED_CLOSING_TAG, chunk["text"])
-    return f'<excerpt cite="{_citation(chunk)}">\n{text}\n</excerpt>'
+    return f'<excerpt cite="{_citation(chunk, language)}">\n{text}\n</excerpt>'
 
 
-def _excerpts_block(chunks: list[Chunk]) -> str:
-    return "\n\n".join(_excerpt(chunk) for chunk in chunks)
+def _excerpts_block(chunks: list[Chunk], language: str) -> str:
+    return "\n\n".join(_excerpt(chunk, language) for chunk in chunks)
 
 
 async def answer(
@@ -45,7 +50,7 @@ async def answer(
     """Write the cited answer from the excerpts in one streamed call."""
     human_prompt = (
         f"Answer in {LANGUAGE_NAMES[state['language']]}.\n\n"
-        f"Question: {state['query']}\n\nExcerpts:\n\n{_excerpts_block(state['chunks'])}"
+        f"Question: {state['query']}\n\nExcerpts:\n\n{_excerpts_block(state['chunks'], state['language'])}"
     )
     text = await collect_text(
         astream_text(

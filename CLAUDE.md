@@ -155,7 +155,7 @@ deep_forecaster  START -> research -> draft_claims -> council_round_1 -> council
   `run_document` (`DOCUMENT_TOOLS`, with `SUPERVISOR_DOCUMENT_PROMPT`) instead of the research tools,
   so every question goes to `agents/document_handler` (`retrieve` rewrites the question from recent history,
   embeds it, and takes the nearest `RETRIEVAL.top_chunks` chunks; `answer` streams a reply that copies each excerpt's ready-made citation,
-  `[file.pdf, p. 7]` or `[file.pdf, pp. 7-8]`, or `[file.txt, chunk N]` when there are no pages). The graph never touches the database: `api/documents.py` hands it a search
+  short and in the user's language, without the file name: `[p. 7]` or `[pp. 7–8]` (`[s. 7]` in Polish), or `[excerpt N]` (`[fragment N]`) when there are no pages). The graph never touches the database: `api/documents.py` hands it a search
   function through `OrchestratorContext.search_document`, as LangGraph's per-run `context=`. The turn
   ends after the tool (`_route_after_tools`), so there is no next-steps footer. A turn reads the
   thread's document name once, and a paused report cannot be resumed inside a document thread.
