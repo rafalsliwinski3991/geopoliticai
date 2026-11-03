@@ -20,10 +20,11 @@ from shared.tracing import start_span
 
 
 class RewrittenQuery(BaseModel):
-    """The model's reply: the search query and the language of the latest message."""
+    """The model's reply: the search query, the language of the latest message, and how much to read."""
 
     search_query: str
     language: Literal["pl", "en"]
+    scope: Literal["passages", "whole"]
 
 
 def _rewrite_input(state: DocumentState) -> str:
@@ -52,7 +53,15 @@ async def retrieve(
         span.set_attribute("document.language", rewritten.language)
         if not search_query:
             raise LLMInvocationError("The rewrite returned an empty search query.")
-        chunks = await runtime.context.search(await embed_query(search_query))
+        span.set_attribute("document.scope", rewritten.scope)
+        limit = (
+            RETRIEVAL.whole_chunks
+            if rewritten.scope == "whole"
+            else RETRIEVAL.top_chunks
+        )
+        chunks = await runtime.context.search(await embed_query(search_query), limit)
+        if rewritten.scope == "whole":
+            chunks = sorted(chunks, key=lambda chunk: chunk["index"])
         span.set_attribute("document.chunks", len(chunks))
         if not chunks:
             raise NoDocumentError("This conversation has no document to search.")

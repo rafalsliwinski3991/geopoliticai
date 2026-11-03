@@ -19,6 +19,7 @@ TEXT_FILE = b"The ceasefire talks resumed in Geneva on Monday."
 USER_ID = 1
 OTHER_USER_ID = 2
 VECTOR = [0.25, -0.5]
+SEARCH_LIMIT = 3
 
 
 @dataclass
@@ -572,7 +573,7 @@ async def test_a_thread_with_a_document_gets_a_search_that_returns_chunks(
         user_id=OTHER_USER_ID,
     )
     assert context.search_document is not None
-    found = await context.search_document(VECTOR)
+    found = await context.search_document(VECTOR, SEARCH_LIMIT)
 
     # Assert
     assert context.filename == "report.txt"
@@ -587,6 +588,7 @@ async def test_a_thread_with_a_document_gets_a_search_that_returns_chunks(
     ]
     assert store.searches[0]["user_id"] == OTHER_USER_ID
     assert store.searches[0]["embedding"] == VECTOR
+    assert store.searches[0]["limit"] == SEARCH_LIMIT
 
 
 def test_a_pipeline_error_raised_in_a_route_is_answered_with_its_status() -> None:

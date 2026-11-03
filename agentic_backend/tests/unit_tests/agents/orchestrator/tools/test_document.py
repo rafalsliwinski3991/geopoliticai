@@ -37,7 +37,7 @@ CHUNKS = [
 ]
 
 
-async def no_search(embedding: list[float]) -> list[Any]:
+async def no_search(embedding: list[float], limit: int) -> list[Any]:
     return []
 
 

@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 from typing import Any
 
-from agents.document_handler.config import RETRIEVAL
 from agents.document_handler.state import Chunk
 from evals.helpers.graph import load_document, load_messages, rank_by_cosine
 from evals.helpers.run import run
@@ -23,8 +22,8 @@ async def run_document_handler_fixed(input: dict[str, Any]) -> dict[str, Any]:
     texts = [chunk.text for chunk in chunks]
     vectors = await embed_texts(texts)
 
-    async def search(embedding: list[float]) -> list[Chunk]:
-        nearest = rank_by_cosine(embedding, vectors, RETRIEVAL.top_chunks)
+    async def search(embedding: list[float], limit: int) -> list[Chunk]:
+        nearest = rank_by_cosine(embedding, vectors, limit)
         return [
             Chunk(
                 filename=filename,

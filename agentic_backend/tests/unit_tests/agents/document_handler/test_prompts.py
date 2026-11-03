@@ -95,3 +95,17 @@ def test_the_answer_prompt_no_longer_offers_to_continue_after_a_removal() -> Non
 
     # Assert
     assert old_offer not in prompt
+
+
+def test_the_rewrite_prompt_defines_a_whole_document_question() -> None:
+    """The model can only choose the wide read if the prompt says which questions are about the whole file."""
+    # Arrange
+    whole = '"whole"'
+    cases = "what the document is about"
+
+    # Act
+    prompt = REWRITE_SYSTEM_PROMPT
+
+    # Assert
+    assert whole in prompt
+    assert cases in prompt

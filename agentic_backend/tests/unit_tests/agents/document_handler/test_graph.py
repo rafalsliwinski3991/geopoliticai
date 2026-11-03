@@ -28,7 +28,7 @@ class RecordingSearch:
         self.chunks = chunks
         self.embeddings: list[list[float]] = []
 
-    async def __call__(self, embedding: list[float]) -> list[Chunk]:
+    async def __call__(self, embedding: list[float], limit: int) -> list[Chunk]:
         self.embeddings.append(embedding)
         return self.chunks
 
@@ -38,7 +38,9 @@ def scripted_models(monkeypatch: pytest.MonkeyPatch) -> None:
     """Every model and the embedder are replaced; nothing here calls a provider."""
 
     async def rewrite(*args: Any, **kwargs: Any) -> RewrittenQuery:
-        return RewrittenQuery(search_query="fee schedule", language="en")
+        return RewrittenQuery(
+            search_query="fee schedule", language="en", scope="passages"
+        )
 
     async def embed(text: str) -> list[float]:
         return EMBEDDING

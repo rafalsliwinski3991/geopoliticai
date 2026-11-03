@@ -15,7 +15,6 @@ from psycopg_pool import AsyncConnectionPool
 from pydantic import BaseModel
 
 from agents.document_handler import Chunk
-from agents.document_handler.config import RETRIEVAL
 from agents.orchestrator.state import OrchestratorContext
 from api.auth import Identity, require_identity
 from api.rate_limit import enforce_rate_limit, enforce_upload_limit
@@ -156,14 +155,14 @@ async def ingest_document(
 
 
 async def _search_chunks(
-    pool: Pool, thread_id: str, user_id: int, embedding: list[float]
+    pool: Pool, thread_id: str, user_id: int, embedding: list[float], limit: int
 ) -> list[Chunk]:
     rows = await search_chunks(
         pool,
         thread_id=thread_id,
         user_id=user_id,
         embedding=embedding,
-        limit=RETRIEVAL.top_chunks,
+        limit=limit,
     )
     return [
         {

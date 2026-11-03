@@ -6,6 +6,7 @@ from langchain_core.messages import HumanMessage
 from langgraph.graph import END, START, StateGraph
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
+from agents.document_handler.config import RETRIEVAL
 from agents.document_handler.state import Chunk, DocumentContext, DocumentState
 from shared.errors import LLMInvocationError, NoDocumentError
 
@@ -26,20 +27,28 @@ class Runtime:
 
     def __init__(self, chunks: list[Chunk]) -> None:
         self.searched: list[list[float]] = []
+        self.limits: list[int] = []
         self.chunks = chunks
         self.context = DocumentContext(search=self._search)
 
-    async def _search(self, embedding: list[float]) -> list[Chunk]:
+    async def _search(self, embedding: list[float], limit: int) -> list[Chunk]:
         self.searched.append(embedding)
+        self.limits.append(limit)
         return self.chunks
 
 
 class ScriptedRewrite:
     """Returns one scripted rewrite and records the messages it was given."""
 
-    def __init__(self, search_query: str | Exception, language: str = "en") -> None:
+    def __init__(
+        self,
+        search_query: str | Exception,
+        language: str = "en",
+        scope: str = "passages",
+    ) -> None:
         self.search_query = search_query
         self.language = language
+        self.scope = scope
         self.calls: list[list[Any]] = []
         self.configs: list[Any] = []
 
@@ -56,7 +65,9 @@ class ScriptedRewrite:
         self.configs.append(config)
         if isinstance(self.search_query, Exception):
             raise self.search_query
-        return schema(search_query=self.search_query, language=self.language)
+        return schema(
+            search_query=self.search_query, language=self.language, scope=self.scope
+        )
 
 
 class RecordingEmbed:
@@ -123,6 +134,74 @@ async def test_the_language_of_the_message_is_returned_for_the_answer(
 
     # Assert
     assert result["language"] == "pl"
+
+
+@pytest.mark.anyio
+async def test_a_question_about_passages_reads_the_nearest_few_chunks(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A narrow question needs a few excerpts; more would only add cost and noise."""
+    # Arrange
+    _install(monkeypatch, ScriptedRewrite("fees", scope="passages"))
+    runtime = Runtime([CHUNK])
+
+    # Act
+    await retrieve_module.retrieve(_state(), runtime)
+
+    # Assert
+    assert runtime.limits == [RETRIEVAL.top_chunks]
+
+
+@pytest.mark.anyio
+async def test_a_question_about_the_whole_document_reads_many_chunks(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """ "What is it about?" read 6 of 16 chunks and summarised a third of the file."""
+    # Arrange
+    _install(monkeypatch, ScriptedRewrite("what is it about", scope="whole"))
+    runtime = Runtime([CHUNK])
+
+    # Act
+    await retrieve_module.retrieve(_state(), runtime)
+
+    # Assert
+    assert runtime.limits == [RETRIEVAL.whole_chunks]
+
+
+@pytest.mark.anyio
+async def test_a_whole_document_read_comes_back_in_reading_order(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A summary written from excerpts in similarity order reads as a jumble."""
+    # Arrange
+    _install(monkeypatch, ScriptedRewrite("summary", scope="whole"))
+    found: list[Chunk] = [
+        {**CHUNK, "index": 3},
+        {**CHUNK, "index": 1},
+        {**CHUNK, "index": 2},
+    ]
+
+    # Act
+    result = await retrieve_module.retrieve(_state(), Runtime(found))
+
+    # Assert
+    assert [chunk["index"] for chunk in result["chunks"]] == [1, 2, 3]
+
+
+@pytest.mark.anyio
+async def test_a_passage_read_keeps_the_order_of_similarity(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """For a narrow question the nearest excerpt comes first, which is the one the answer leans on."""
+    # Arrange
+    _install(monkeypatch, ScriptedRewrite("fees", scope="passages"))
+    found: list[Chunk] = [{**CHUNK, "index": 3}, {**CHUNK, "index": 1}]
+
+    # Act
+    result = await retrieve_module.retrieve(_state(), Runtime(found))
+
+    # Assert
+    assert [chunk["index"] for chunk in result["chunks"]] == [3, 1]
 
 
 @pytest.mark.anyio

@@ -100,7 +100,7 @@ async def test_the_eval_asks_with_production_history_and_searches_the_documents_
         patch("agents.document_handler.graph.ask_document", ask),
     ):
         output = await run_document_handler_fixed(input)
-        found: list[Chunk] = await ask.calls[0][2](query_vector)
+        found: list[Chunk] = await ask.calls[0][2](query_vector, 2)
 
     # Assert
     assert output == {"answer": "A", "search_query": "S"}

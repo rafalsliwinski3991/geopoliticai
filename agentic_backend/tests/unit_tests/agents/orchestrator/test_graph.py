@@ -437,7 +437,7 @@ async def test_a_document_turn_ends_after_the_tool_with_no_footer(
         "agents.orchestrator.tools.document.ask_document", fake_ask_document
     )
 
-    async def search(embedding: list[float]) -> list[Any]:
+    async def search(embedding: list[float], limit: int) -> list[Any]:
         return []
 
     compiled = build_graph(checkpointer=InMemorySaver())

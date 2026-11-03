@@ -28,7 +28,7 @@ A user can attach one PDF or UTF-8 text file to a thread with
 into chunks of at most 800 tokens, embedded with `text-embedding-3-small`, and stored in
 `agentic.document_chunks` (pgvector, so integration tests need a Postgres built from
 `postgres/Dockerfile`). While a thread has a file, the supervisor offers only the `run_document`
-tool: it rewrites the question, takes the six nearest chunks, and streams an answer cited by page, `[p. 7]` (`[s. 7]` in Polish), or
+tool: it rewrites the question, takes the six nearest chunks (twenty, in reading order, for a question about the whole document), and streams an answer cited by page, `[p. 7]` (`[s. 7]` in Polish), or
 `[excerpt N]` for a text file or a document stored before pages were recorded. A document question costs one quota unit and uploading is free, limited
 to 10 uploads an hour per user and 5 documents per user. The `document_handler_fixed` eval covers it.
 

@@ -776,7 +776,7 @@ async def test_supervisor_hands_the_model_the_deep_history_and_maps_a_deep_call_
 DOCUMENT_QUESTION = "What does the contract say about fees?"
 DOCUMENT_CONTEXT = OrchestratorContext(
     filename="contract.pdf",
-    search_document=lambda embedding: None,  # type: ignore[arg-type,return-value]
+    search_document=lambda embedding, limit: None,  # type: ignore[arg-type,return-value]
 )
 DOCUMENT_CALL = {
     "name": "run_document",

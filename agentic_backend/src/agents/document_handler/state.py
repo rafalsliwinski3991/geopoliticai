@@ -26,8 +26,8 @@ class Chunk(TypedDict):
     text: str
 
 
-# Embedding in, nearest chunks out. `api` builds it over `db`; agents never import `db`.
-DocumentSearch = Callable[[list[float]], Awaitable[list[Chunk]]]
+# Embedding and chunk limit in, nearest chunks out. `api` builds it over `db`; agents never import `db`.
+DocumentSearch = Callable[[list[float], int], Awaitable[list[Chunk]]]
 
 
 @dataclass(frozen=True)
