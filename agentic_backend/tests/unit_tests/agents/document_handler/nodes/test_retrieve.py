@@ -306,3 +306,23 @@ async def test_the_search_span_records_both_queries_and_the_chunk_count(
     assert attributes["document.search_query"] == "fees 2022"
     assert attributes["document.chunks"] == 2
     assert attributes["document.rewrite_model"] == "gpt-4o-mini"
+
+
+@pytest.mark.anyio
+async def test_the_search_span_records_the_language_and_the_scope(
+    monkeypatch: pytest.MonkeyPatch, captured_spans: InMemorySpanExporter
+) -> None:
+    """A trace must explain why a question read many chunks and why the answer came in Polish."""
+    # Arrange
+    _install(monkeypatch, ScriptedRewrite("summary", language="pl", scope="whole"))
+
+    # Act
+    await retrieve_module.retrieve(_state(), Runtime([CHUNK]))
+
+    # Assert
+    span = next(
+        s for s in captured_spans.get_finished_spans() if s.name == "document_search"
+    )
+    attributes = dict(span.attributes or {})
+    assert attributes["document.language"] == "pl"
+    assert attributes["document.scope"] == "whole"

@@ -225,4 +225,5 @@ def test_a_citation_names_a_page_or_an_excerpt_number(
     # Act
     passed = _has_citation(variables)
 
+    # Assert
     assert passed is expected
