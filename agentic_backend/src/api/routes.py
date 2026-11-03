@@ -18,6 +18,7 @@ from agents.orchestrator import (
 )
 from api.auth import Identity, require_identity
 from api.rate_limit import enforce_rate_limit
+from db.agentic.chunks import read_document_name
 from db.web.sql import (
     MAX_THREAD_ID_LENGTH,
     THREAD_ID_PATTERN,
@@ -84,6 +85,7 @@ class ThreadMessages(BaseModel):
 
     thread_id: str
     messages: list[ChatMessage]
+    document: str | None = None
 
 
 async def _thread_messages(graph: Any, thread_id: str) -> list[ChatMessage]:
@@ -153,6 +155,9 @@ async def read_thread_endpoint(
     return ThreadMessages(
         thread_id=thread_id,
         messages=await _thread_messages(request.app.state.graph, thread_id),
+        document=await read_document_name(
+            pool, thread_id=thread_id, user_id=identity.user_id
+        ),
     )
 
 

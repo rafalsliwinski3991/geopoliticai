@@ -68,7 +68,7 @@ spell_fix:
 # going after a failure, and exit non-zero when any failed. Keys and the Phoenix collector endpoint come from the root .env
 # (loaded by `shared.config.init_environment`); point a run at local Phoenix with
 # `docker compose up -d phoenix`.
-FIXED_EVALS = orchestrator_fixed reporter_fixed expert_fixed deep_expert_fixed
+FIXED_EVALS = orchestrator_fixed reporter_fixed expert_fixed deep_expert_fixed document_fixed
 LIVE_EVALS = expert_live deep_expert_live deep_forecaster_live
 
 define run_evals

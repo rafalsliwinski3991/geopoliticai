@@ -60,3 +60,27 @@ class QuotaExceededError(PipelineError):
     """A research turn the user's or the site's daily quota cannot pay for."""
 
     status: ClassVar[int] = 429
+
+
+class DocumentUnreadableError(PipelineError):
+    """The uploaded file is not a PDF or UTF-8 text file, or holds no readable text."""
+
+    status: ClassVar[int] = 422
+
+
+class DocumentTooLargeError(PipelineError):
+    """The uploaded file is over the byte, page, or chunk cap."""
+
+    status: ClassVar[int] = 413
+
+
+class DocumentLimitError(PipelineError):
+    """The user already holds the most documents a user may keep."""
+
+    status: ClassVar[int] = 409
+
+
+class NoDocumentError(PipelineError):
+    """A document question reached a thread that has no document."""
+
+    status: ClassVar[int] = 409

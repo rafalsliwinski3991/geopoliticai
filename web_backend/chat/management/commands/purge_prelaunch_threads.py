@@ -12,7 +12,7 @@ only *automatic* claiming was the vulnerability.
 from django.core.management.base import BaseCommand
 from django.db import connection
 
-from chat.signals import CHECKPOINT_TABLES, qualified
+from chat.signals import THREAD_TABLES, qualified
 
 ORPHAN_IDS_SQL = f"""
 SELECT DISTINCT thread_id
@@ -53,7 +53,7 @@ def purge_orphans(orphans: list[str]) -> None:
     not execute.
     """
     with connection.cursor() as cursor:
-        for table in CHECKPOINT_TABLES:
+        for table in THREAD_TABLES:
             if not _table_exists(cursor, qualified(table)):
                 continue
             cursor.execute(f"DELETE FROM {qualified(table)} WHERE thread_id = ANY(%s)", [orphans])

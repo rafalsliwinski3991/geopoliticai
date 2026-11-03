@@ -41,7 +41,7 @@ from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.store.memory import InMemoryStore
 
 from agents.orchestrator import build_graph
-from api import quota, rate_limit, routes, stream
+from api import documents, quota, rate_limit, routes, stream
 from api.app import app
 from db.web.sql import ThreadRow, quota_day
 from loadtests.turns import RESEARCH_KEYWORD
@@ -216,6 +216,12 @@ class InMemoryWebDb:
         self.owners.setdefault(thread_id, (user_id, title, datetime.now(UTC)))
         return self.owners[thread_id][0] == user_id
 
+    async def read_document_name(
+        self, pool: Any, *, thread_id: str, user_id: int
+    ) -> None:
+        """No thread has a document: the load test never uploads one."""
+        return None
+
     async def owns_thread(self, pool: Any, *, thread_id: str, user_id: int) -> bool:
         """Report whether this thread exists and belongs to this user."""
         await asyncio.sleep(self.delay)
@@ -331,6 +337,12 @@ def fake_backend(profile: LatencyProfile) -> Iterator[InMemoryWebDb]:
             (routes, "quota_used"),
         ):
             stack.enter_context(patch.object(module, name, getattr(db, name)))
+        stack.enter_context(
+            patch.object(routes, "read_document_name", db.read_document_name)
+        )
+        stack.enter_context(
+            patch.object(documents, "read_document_name", db.read_document_name)
+        )
         for name in (
             "quota_used",
             "increment_quota",

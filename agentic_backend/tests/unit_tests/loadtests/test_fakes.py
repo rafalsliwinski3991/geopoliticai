@@ -227,3 +227,20 @@ async def test_each_research_turn_charges_its_own_user_one_unit() -> None:
     # Assert
     assert sorted(db.used.values()) == [ROUNDS] * USERS
     assert sum(db.site_used.values()) == USERS * ROUNDS
+
+
+@pytest.mark.anyio
+async def test_a_thread_read_on_the_fakes_has_no_document() -> None:
+    """The fake backend has no chunk table; the thread read must not reach the real pool."""
+    # Arrange
+    token = mint_token(1, os.environ["JWT_SIGNING_KEY"])
+    headers = {"Authorization": f"Bearer {token}"}
+
+    # Act
+    with fake_backend(LatencyProfile()) as db:
+        await db.claim_thread(POOL, thread_id="load-1", user_id=1, title="first")
+        async with _asgi_client() as client:
+            response = await client.get(f"{THREADS_PATH}/load-1", headers=headers)
+
+    # Assert
+    assert response.json()["document"] is None

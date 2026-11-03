@@ -61,6 +61,7 @@ dependencies = [
     # still runs it from the host (`make migrate-agentic`).
     "alembic>=1.14,<2.0",
     "pypdf>=6.21.2,<7.0",
+    "tiktoken>=0.12,<1.0",
 ]
 
 

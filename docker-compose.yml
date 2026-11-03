@@ -5,7 +5,8 @@ name: geopoliticai
 
 services:
   postgres:
-    image: postgres:16-alpine
+    build: ./postgres
+    image: ghcr.io/rafalsliwinski3991/geopoliticai-postgres:${IMAGE_TAG:-latest}
     environment:
       POSTGRES_DB: geopoliticai
       POSTGRES_USER: geopoliticai

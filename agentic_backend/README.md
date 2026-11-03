@@ -22,6 +22,16 @@ allow-listed pages, and extracts article text with trafilatura. `answer` sends
 the retrieved text to one streamed OpenAI plain-text call. Search, extraction,
 and model failures are surfaced to clients; the expert has no degraded answer.
 
+A user can attach one PDF or UTF-8 text file to a thread with
+`POST /api/threads/{thread_id}/document?filename=` (the raw file as the body; at most 25 MB,
+500 PDF pages and 1,500 chunks) and remove it with `DELETE` on the same path. The file is split
+into chunks of at most 800 tokens, embedded with `text-embedding-3-small`, and stored in
+`agentic.document_chunks` (pgvector, so integration tests need a Postgres built from
+`postgres/Dockerfile`). While a thread has a file, the supervisor offers only the `run_document`
+tool: it rewrites the question, takes the six nearest chunks, and streams an answer cited as
+`[filename, chunk N]`. A document question costs one quota unit and uploading is free, limited
+to 10 uploads an hour per user and 5 documents per user. The `document_fixed` eval covers it.
+
 Agent-specific code lives under `src/agents/`; shared retrieval and LLM
 boundaries are in `src/services/web_search.py`, `src/services/page_reader.py` and `src/services/llm.py`. The API accepts exactly
 one of `{query, thread_id}` or `{resume, thread_id}`, the resume carrying the

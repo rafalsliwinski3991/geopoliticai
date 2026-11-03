@@ -25,9 +25,11 @@ from agents.orchestrator import (
     build_initial_orchestrator_state,
     build_runtime_config,
 )
+from agents.orchestrator.state import OrchestratorContext
 from agents.reporter import classify_resume_intent
 from agents.reporter.state import GateReply
 from api.auth import Identity, require_identity
+from api.documents import build_orchestrator_context
 from api.quota import Charge, charge_turn, refund_turn
 from api.rate_limit import enforce_rate_limit
 from db.web.sql import (
@@ -90,7 +92,9 @@ ANSWER_NODES = frozenset({"answer", "supervisor", "write"})
 # reporter's own revision cap bounds the rounds.
 # `deep` spends DEEP_RESEARCH_TURN_COST units instead of one (brainstorm Q3),
 # and `charge_turn` looks up what each destination costs.
-RESEARCH_DESTINATIONS = frozenset({"geopolitical", "deep", "forecast", "report"})
+RESEARCH_DESTINATIONS = frozenset(
+    {"geopolitical", "deep", "forecast", "report", "document"}
+)
 
 
 @dataclass(frozen=True)
@@ -202,7 +206,7 @@ async def _turn_input(graph: Any, payload: RunPipelineRequest) -> Any:
     if payload.resume is None:
         return build_initial_orchestrator_state(payload.query or "")
     # Only the resume path reads the checkpoint, so an ordinary chat or expert
-    # turn does no extra database work and gains no new failure mode.
+    # turn reads no checkpoint (it does read the thread's document name once).
     pause = await _pending_pause(graph, payload.thread_id)
     if pause is None:
         raise ReportNotPendingError(
@@ -219,7 +223,10 @@ async def _turn_input(graph: Any, payload: RunPipelineRequest) -> Any:
 
 
 async def _astream_answer(
-    graph: Any, graph_input: Any, thread_id: str
+    graph: Any,
+    graph_input: Any,
+    thread_id: str,
+    context: OrchestratorContext | None = None,
 ) -> AsyncGenerator[StreamEvent, None]:
     """Run the orchestrator graph, yielding typed stream events.
 
@@ -254,6 +261,7 @@ async def _astream_answer(
     async for namespace, mode, data in graph.astream(
         graph_input,
         config=config,
+        context=context,
         stream_mode=["custom", "updates", "messages"],
         subgraphs=True,
     ):
@@ -375,11 +383,22 @@ async def run_pipeline_stream_endpoint(
             # The checkpoint read and the intent call happen here, not in the
             # endpoint, so their failures arrive as SSE `error` frames like
             # every other pipeline failure.
+            context = await build_orchestrator_context(
+                pool, thread_id=payload.thread_id, user_id=identity.user_id
+            )
+            if payload.resume is not None and context.filename:
+                # A report that was paused before the upload would resume through
+                # `tools` and write a web-sourced report inside a document thread.
+                raise ReportNotPendingError(
+                    "Remove the document to continue the report."
+                )
             graph_input = await _turn_input(graph, payload)
             # Nothing here inspects `payload.resume`. The nodes emit their own
             # progress, so a revise resume is announced by `outline` and an
             # approve resume by `write`, on the same code path as a first turn.
-            async for event in _astream_answer(graph, graph_input, payload.thread_id):
+            async for event in _astream_answer(
+                graph, graph_input, payload.thread_id, context=context
+            ):
                 match event:
                     case ProgressFrame():
                         # Forwarded as the node wrote it: a literal from an

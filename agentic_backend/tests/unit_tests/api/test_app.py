@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from typing import Any
 from unittest.mock import patch
 
+import httpx
 import ormsgpack
 import pytest
 from langgraph.checkpoint.serde.jsonplus import EXT_CONSTRUCTOR_KW_ARGS
@@ -347,3 +348,20 @@ async def test_the_lifespan_serves_the_checkpointer_graph_and_restores_the_defau
     assert graph_before is default_graph
     assert graph_inside is checkpointer_graph
     assert graph_after is default_graph
+
+
+@pytest.mark.anyio
+async def test_cors_allows_delete() -> None:
+    """The chat page removes a document with DELETE; a browser asks first, and a
+    preflight that omits DELETE blocks the call."""
+    # Arrange
+    origin = "http://localhost"
+    transport = httpx.ASGITransport(app=app)
+    headers = {"Origin": origin, "Access-Control-Request-Method": "DELETE"}
+
+    # Act
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.options("/api/threads/t-1/document", headers=headers)
+
+    # Assert
+    assert "DELETE" in response.headers["access-control-allow-methods"]

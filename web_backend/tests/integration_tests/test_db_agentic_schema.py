@@ -27,7 +27,7 @@ import uuid
 import psycopg
 from django.test import TestCase, tag
 
-from chat.signals import CHECKPOINT_SCHEMA, CHECKPOINT_TABLES, purge_statements
+from chat.signals import CHECKPOINT_SCHEMA, THREAD_TABLES, purge_statements
 from chat.management.commands.purge_prelaunch_threads import ORPHAN_IDS_SQL
 
 # Unique per run: this suite writes to the shared development database, and
@@ -50,6 +50,10 @@ INSERTS = {
     "checkpoint_writes": (
         "INSERT INTO {t} (thread_id, checkpoint_ns, checkpoint_id, task_id, idx,"
         " channel, blob) VALUES (%s, '', 'probe', 'task', 0, 'probe', ''::bytea)"
+    ),
+    "document_chunks": (
+        "INSERT INTO {t} (thread_id, user_id, filename, chunk_index, content, embedding)"
+        " VALUES (%s, 1, 'probe.pdf', 1, 'probe', array_fill(0, ARRAY[1536])::vector)"
     ),
 }
 
@@ -110,7 +114,7 @@ class CheckpointerDeleteTest(TestCase):
     def _counts(self) -> dict[str, int]:
         counts = {}
         with self.conn.cursor() as cursor:
-            for table in CHECKPOINT_TABLES:
+            for table in THREAD_TABLES:
                 cursor.execute(
                     f"SELECT COUNT(*) FROM {CHECKPOINT_SCHEMA}.{table}"
                     " WHERE thread_id = %s",
@@ -127,7 +131,7 @@ class CheckpointerDeleteTest(TestCase):
         # Act
         self._purge()
         # Assert
-        self.assertEqual(self._counts(), dict.fromkeys(CHECKPOINT_TABLES, 0))
+        self.assertEqual(self._counts(), dict.fromkeys(THREAD_TABLES, 0))
 
     def test_orphan_query_executes_against_the_real_schema(self) -> None:
         """The purge command's safety net must parse and run."""
@@ -155,4 +159,4 @@ class CheckpointerDeleteTest(TestCase):
             )
             found = {row[0] for row in cursor.fetchall()}
         # Assert
-        self.assertEqual(found, set(CHECKPOINT_TABLES))
+        self.assertEqual(found, set(THREAD_TABLES))

@@ -14,6 +14,9 @@ from langchain_core.messages import (
     ToolMessage,
 )
 from langgraph.constants import TAG_NOSTREAM
+from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
+    InMemorySpanExporter,
+)
 
 from agents.orchestrator.config import (
     FOOTER_LLM_SETTINGS,
@@ -24,9 +27,12 @@ from agents.orchestrator.consts.menu import (
     DYNAMIC_FOOTER_SYSTEM_PROMPT,
     STATIC_NEXT_STEPS_MENU,
 )
-from agents.orchestrator.prompts import SUPERVISOR_SYSTEM_PROMPT
-from agents.orchestrator.state import OrchestratorState
-from agents.orchestrator.tools import ALL_TOOLS
+from agents.orchestrator.prompts import (
+    SUPERVISOR_DOCUMENT_PROMPT,
+    SUPERVISOR_SYSTEM_PROMPT,
+)
+from agents.orchestrator.state import OrchestratorContext, OrchestratorState
+from agents.orchestrator.tools import ALL_TOOLS, DOCUMENT_TOOLS, RESEARCH_TOOLS
 from shared.config import FOOTER_PREFIX
 from shared.errors import LLMInvocationError
 from unit_tests.agents.orchestrator.conftest import ScriptedChatModel
@@ -663,7 +669,7 @@ def test_supervisor_client_binds_every_tool_one_at_a_time_and_is_not_streamed(
     node_module._build_supervisor_client()
 
     # Assert
-    assert recorder.bound_tools == ALL_TOOLS
+    assert recorder.bound_tools == RESEARCH_TOOLS
     assert recorder.bind_kwargs == {"parallel_tool_calls": False}
     assert recorder.config_kwargs == {"tags": [TAG_NOSTREAM]}
 
@@ -765,3 +771,198 @@ async def test_supervisor_hands_the_model_the_deep_history_and_maps_a_deep_call_
     )
     assert payload[-1] == HumanMessage("and Poland?")
     assert result["destination"] == "deep"
+
+
+DOCUMENT_QUESTION = "What does the contract say about fees?"
+DOCUMENT_CONTEXT = OrchestratorContext(
+    filename="contract.pdf",
+    search_document=lambda embedding: None,  # type: ignore[arg-type,return-value]
+)
+DOCUMENT_CALL = {
+    "name": "run_document",
+    "args": {"query": DOCUMENT_QUESTION},
+    "id": "call_document_1",
+    "type": "tool_call",
+}
+
+
+class RuntimeWithContext:
+    """The one part of LangGraph's runtime the supervisor reads."""
+
+    def __init__(self, context: OrchestratorContext) -> None:
+        self.context = context
+
+
+def _record_bound_tools(
+    monkeypatch: pytest.MonkeyPatch, fake: ScriptedChatModel
+) -> list[Any]:
+    """Patch the client builder; the list fills with the tools each build asked for."""
+    asked: list[Any] = []
+
+    def build(tools: Any = RESEARCH_TOOLS) -> ScriptedChatModel:
+        asked.append(tools)
+        return fake
+
+    monkeypatch.setattr(node_module, "_build_supervisor_client", build)
+    return asked
+
+
+@pytest.mark.anyio
+async def test_a_thread_with_a_document_binds_only_the_document_tool(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """In a document thread the model must not be able to start a web search or a forecast."""
+    # Arrange
+    fake = ScriptedChatModel([AIMessage(content="", tool_calls=[DOCUMENT_CALL])])
+    asked = _record_bound_tools(monkeypatch, fake)
+
+    # Act
+    await supervisor(
+        {"messages": [HumanMessage(DOCUMENT_QUESTION)]},
+        writer=lambda _: None,
+        runtime=RuntimeWithContext(DOCUMENT_CONTEXT),
+    )
+
+    # Assert
+    assert asked == [DOCUMENT_TOOLS]
+
+
+@pytest.mark.anyio
+async def test_a_thread_without_a_document_binds_the_research_tools(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """With no document the supervisor is exactly what it was before document mode."""
+    # Arrange
+    fake = ScriptedChatModel([AIMessage("Hello!")])
+    asked = _record_bound_tools(monkeypatch, fake)
+
+    # Act
+    await supervisor(
+        {"messages": [HumanMessage("Hi")]},
+        writer=lambda _: None,
+        runtime=RuntimeWithContext(OrchestratorContext()),
+    )
+
+    # Assert
+    assert asked == [RESEARCH_TOOLS]
+
+
+@pytest.mark.anyio
+async def test_a_document_thread_uses_the_document_prompt(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The research prompt promises tools a document thread does not have."""
+    # Arrange
+    fake = ScriptedChatModel([AIMessage(content="", tool_calls=[DOCUMENT_CALL])])
+    _record_bound_tools(monkeypatch, fake)
+
+    # Act
+    await supervisor(
+        {"messages": [HumanMessage(DOCUMENT_QUESTION)]},
+        writer=lambda _: None,
+        runtime=RuntimeWithContext(DOCUMENT_CONTEXT),
+    )
+
+    # Assert
+    assert fake.invocations == [
+        [SystemMessage(SUPERVISOR_DOCUMENT_PROMPT), HumanMessage(DOCUMENT_QUESTION)]
+    ]
+
+
+@pytest.mark.anyio
+async def test_a_document_tool_call_routes_to_the_document_destination(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The destination is what the stream uses to count the turn and end it without a footer."""
+    # Arrange
+    fake = ScriptedChatModel([AIMessage(content="", tool_calls=[DOCUMENT_CALL])])
+    _record_bound_tools(monkeypatch, fake)
+
+    # Act
+    result = await supervisor(
+        {"messages": [HumanMessage(DOCUMENT_QUESTION)]},
+        writer=lambda _: None,
+        runtime=RuntimeWithContext(DOCUMENT_CONTEXT),
+    )
+
+    # Assert
+    assert result == {
+        "messages": [AIMessage(content="", tool_calls=[DOCUMENT_CALL])],
+        "destination": "document",
+    }
+
+
+@pytest.mark.anyio
+async def test_a_tool_that_was_not_bound_this_turn_is_refused(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The history window can hold `run_expert` calls from before the upload; replaying one must not run it."""
+    # Arrange
+    expert_call = {
+        "name": "run_expert",
+        "args": {"query": "NATO"},
+        "id": "call_old",
+        "type": "tool_call",
+    }
+    fake = ScriptedChatModel([AIMessage(content="", tool_calls=[expert_call])])
+    _record_bound_tools(monkeypatch, fake)
+
+    # Act + Assert
+    with pytest.raises(LLMInvocationError, match="not available"):
+        await supervisor(
+            {"messages": [HumanMessage("NATO?")]},
+            writer=lambda _: None,
+            runtime=RuntimeWithContext(DOCUMENT_CONTEXT),
+        )
+
+
+@pytest.mark.anyio
+async def test_a_document_thread_still_answers_a_greeting_directly(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Small talk needs no excerpt, so it costs no lookup in a document thread."""
+    # Arrange
+    greeting_reply = "Hello! Ask me about your document."
+    fake = ScriptedChatModel([AIMessage(greeting_reply)])
+    _record_bound_tools(monkeypatch, fake)
+
+    # Act
+    result = await supervisor(
+        {"messages": [HumanMessage("Hi")]},
+        writer=lambda _: None,
+        runtime=RuntimeWithContext(DOCUMENT_CONTEXT),
+    )
+
+    # Assert
+    assert result == {"messages": [AIMessage(greeting_reply)], "destination": "other"}
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    ("context", "expected"),
+    [(DOCUMENT_CONTEXT, True), (OrchestratorContext(), False)],
+    ids=["document thread", "plain thread"],
+)
+async def test_the_span_records_document_mode(
+    monkeypatch: pytest.MonkeyPatch,
+    captured_spans: InMemorySpanExporter,
+    context: OrchestratorContext,
+    expected: bool,
+) -> None:
+    """A Phoenix trace alone must show which tool set the supervisor chose from."""
+    # Arrange
+    fake = ScriptedChatModel([AIMessage("Hello.")])
+    _record_bound_tools(monkeypatch, fake)
+
+    # Act
+    await supervisor(
+        {"messages": [HumanMessage("Hi")]},
+        writer=lambda _: None,
+        runtime=RuntimeWithContext(context),
+    )
+
+    # Assert
+    span = next(
+        s for s in captured_spans.get_finished_spans() if s.name == "supervisor"
+    )
+    assert dict(span.attributes or {})["supervisor.document_mode"] is expected

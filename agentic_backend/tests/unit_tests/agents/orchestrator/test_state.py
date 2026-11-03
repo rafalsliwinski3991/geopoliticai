@@ -3,7 +3,10 @@
 import pytest
 from langchain_core.messages import HumanMessage
 
-from agents.orchestrator.state import build_initial_orchestrator_state
+from agents.orchestrator.state import (
+    OrchestratorContext,
+    build_initial_orchestrator_state,
+)
 
 
 def test_build_initial_state_normalizes_one_human_message() -> None:
@@ -31,3 +34,16 @@ def test_build_initial_orchestrator_state_omits_workspace_channels() -> None:
 
     # Assert
     assert state == {"messages": [HumanMessage("Summarize the current situation")]}
+
+
+def test_the_default_context_has_no_document() -> None:
+    """A thread without an upload must run exactly as before: no filename, no search."""
+    # Arrange
+    context_type = OrchestratorContext
+
+    # Act
+    context = context_type()
+
+    # Assert
+    assert context.filename is None
+    assert context.search_document is None

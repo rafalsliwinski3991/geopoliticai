@@ -24,7 +24,7 @@ this file, so OpenCode, Copilot, and Antigravity read it too: name no tool or pa
 
 - From `agentic_backend/`: `uv sync --locked --dev`, `make test`, `make lint` (ruff and
   `mypy --strict`; CI does not run it), `make format`, `langgraph dev`, `make test-integration`
-  (needs a Postgres migrated by `make migrate-web` and `make migrate-agentic`), and `make loadtest`
+  (needs a Postgres with pgvector, migrated by `make migrate-web` and `make migrate-agentic`), and `make loadtest`
   (the API against faked providers; README, "Load tests").
 - From the root: `make test-web-backend` (needs the dev Postgres), `make test-web-integration`,
   `make migrate-web`, `make migrate-agentic`, `make e2e-user`, `make logs-SERVICE`; `make help`
@@ -47,6 +47,7 @@ this file, so OpenCode, Copilot, and Antigravity read it too: name no tool or pa
 orchestrator     START -> supervisor -> tools | END (a chat answer);  tools -> supervisor -> END
                  tools -> END (on run_reporter)
 expert           START -> search_and_fetch -> answer -> END
+document         START -> retrieve -> answer -> END
 reporter         START -> outline -> gate | END;  gate -> outline | write | END;  write -> END
 deep_forecaster  START -> research -> draft_claims -> council_round_1 -> council_round_2
                       -> tally -> write_analysis -> verify -> END
@@ -70,10 +71,18 @@ deep_forecaster  START -> research -> draft_claims -> council_round_1 -> council
 
 ## agentic_backend
 
-- `src/` has three layers. `shared/` (`config`, `tracing`, `frames`, `errors`, `text`) needs no provider key and makes no call to a provider; `tracing` only exports spans to Phoenix in the background. `services/` (`llm`, `web_search`, `page_reader`) talks to a provider and bounds each call with a timeout; a provider failure becomes a `PipelineError` subclass, or, where the caller can still answer, the failed item is dropped and counted on a span. `api/` (`app`, `routes`, `stream`, `rate_limit`, `auth`, `quota`) serves HTTP, and only `api/` imports an agent from outside `agents/` (the orchestrator's graph and builders, and the reporter's resume classifier). Imports run `api` -> `agents` -> `services` -> `shared`. `models.py` imports nothing from the project, every layer may import it, and `db/` imports only `shared`. Nothing outside `api/` imports `api`.
+- `src/` has three layers. `shared/` (`config`, `tracing`, `frames`, `errors`, `text`) needs no provider key and makes no call to a provider; `tracing` only exports spans to Phoenix in the background. `services/` (`llm`, `web_search`, `page_reader`, `document_reader`, `embeddings`) talks to a provider and bounds each call with a timeout; a provider failure becomes a `PipelineError` subclass, or, where the caller can still answer, the failed item is dropped and counted on a span. `api/` (`app`, `routes`, `documents`, `stream`, `rate_limit`, `auth`, `quota`) serves HTTP, and only `api/` imports an agent from outside `agents/` (the orchestrator's graph, state, and builders, the document agent's types and retrieval settings, and the reporter's resume classifier). Imports run `api` -> `agents` -> `services` -> `shared`. `models.py` imports nothing from the project, every layer may import it, and `db/` imports only `shared`. Nothing outside `api/` imports `api`.
 - Besides the LangGraph checkpointer and store, the only Postgres access is the raw SQL in
-  `db/web/sql.py` against Django-owned tables, whose schema only `web_backend`'s migrations change;
-  the integration tests guard it.
+  `db/web/sql.py` against Django-owned tables, whose schema only `web_backend`'s migrations change,
+  and in `db/agentic/chunks.py`; the integration tests guard both.
+- `agentic.document_chunks` belongs to Alembic (`0004`). It holds a thread's uploaded document as
+  text chunks with a pgvector `vector(1536)` embedding; the `vector` type lives in `public`, and the
+  compose Postgres image (`postgres/Dockerfile`) is Alpine plus pgvector. Every read and delete
+  scopes by `thread_id` and `user_id`, since thread ids are client-chosen. The web backend's
+  `chat.signals.THREAD_TABLES` lists it with the checkpointer's tables, so deleting a thread or a user
+  deletes its chunks, and the integration suite fails when a `thread_id`-keyed table in the schema is
+  missing from that list. `COUNT_LIVE_DOCUMENTS` still joins `chat_threads`, which keeps chunks
+  stored before that cleanup from counting against the limit.
 - The checkpointer's and the store's tables live in the `agentic` schema. Alembic
   (`make migrate-agentic`) creates the schema and moves tables into it; each library's `setup()`
   creates its tables at startup through the pool's `search_path` (`agentic,public`). Run
@@ -140,11 +149,26 @@ deep_forecaster  START -> research -> draft_claims -> council_round_1 -> council
   `general-purpose` helper off for gpt-5-mini, process-wide; another agent on that model that
   wants the helper passes its own `general-purpose` spec, as the deep expert does.
 
+- Document mode: a thread with an uploaded file is locked to it. The supervisor is given only
+  `run_document` (`DOCUMENT_TOOLS`, with `SUPERVISOR_DOCUMENT_PROMPT`) instead of the research tools,
+  so every question goes to `agents/document` (`retrieve` rewrites the question from recent history,
+  embeds it, and takes the nearest `RETRIEVAL.top_chunks` chunks; `answer` streams a reply cited as
+  `[filename, chunk N]`). The graph never touches the database: `api/documents.py` hands it a search
+  function through `OrchestratorContext.search_document`, as LangGraph's per-run `context=`. The turn
+  ends after the tool (`_route_after_tools`), so there is no next-steps footer. A turn reads the
+  thread's document name once, and a paused report cannot be resumed inside a document thread.
+
 ## API and streaming
 
 - A request carries exactly one of `{query, thread_id}` or `{resume, thread_id}`. Every `/api/*`
   route except `GET /api/health` needs a bearer token minted at Django's `GET /accounts/token/`
   (`accounts_api`); `api/auth.py` answers a failed check with 401 and a foreign thread with 403.
+- `POST /api/threads/{thread_id}/document?filename=` takes the file as the raw request body (no
+  multipart: FastAPI would parse it before auth and the rate limit run), reads a PDF or UTF-8 text
+  (`MAX_DOCUMENT_BYTES`, `MAX_DOCUMENT_PAGES`, `MAX_DOCUMENT_CHUNKS`), embeds it, claims the thread,
+  and replaces any earlier document in one transaction; a user holds at most `MAX_DOCUMENTS_PER_USER`
+  and may upload `UPLOAD_LIMIT_REQUESTS` files an hour. `DELETE` on the same path removes it and ends
+  the mode. `GET` on a thread returns the document's name in `document`.
 - Stream `custom`, `updates`, and `messages` with `subgraphs=True`; nodes emit `shared.frames.ProgressFrame`
   and `shared.frames.NoticeEvent` through a `StreamWriter`. Read custom events from every namespace (a subgraph's arrive under the child's)
   and `updates` from the root only.
@@ -160,7 +184,7 @@ deep_forecaster  START -> research -> draft_claims -> council_round_1 -> council
 - `DAILY_RESEARCH_TURNS` caps one user's day and `DAILY_RESEARCH_TURNS_ALL_USERS` the site's
   (`shared/config.py`), counted in the Django-owned `quota` and `site_quota` tables per UTC day. Chat turns
   are free, a deep turn spends `DEEP_RESEARCH_TURN_COST`, a forecast `FORECAST_TURN_COST`, and any
-  other research turn one unit. A costly turn refused before the site's charge
+  other research turn, a document question included, one unit; uploading is free. A costly turn refused before the site's charge
   touches neither counter; when the site's charge commits and the user's upsert
   then loses the race, the site's units stay spent and the user's counter is
   untouched. A turn that ends in an error frame gives the user's units back to
