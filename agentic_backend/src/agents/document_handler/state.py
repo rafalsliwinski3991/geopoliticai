@@ -37,6 +37,7 @@ class DocumentState(TypedDict):
     query: str
     history: list[str]
     search_query: str
+    language: str
     chunks: list[Chunk]
     answer: str
 
@@ -50,6 +51,7 @@ def build_initial_document_state(query: str, history: list[str]) -> DocumentStat
         "query": normalized,
         "history": history,
         "search_query": "",
+        "language": "",
         "chunks": [],
         "answer": "",
     }

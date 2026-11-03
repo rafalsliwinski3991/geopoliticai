@@ -15,6 +15,7 @@ from services.llm import astream_text, collect_text
 # A chunk that contains the closing tag would end its own wrapper early.
 CLOSING_TAG = re.compile(r"</\s*excerpt", re.IGNORECASE)
 ESCAPED_CLOSING_TAG = "<\\/excerpt"
+LANGUAGE_NAMES = {"pl": "Polish", "en": "English"}
 
 
 def _excerpt(chunk: Chunk) -> str:
@@ -34,6 +35,7 @@ async def answer(
 ) -> dict[str, Any]:
     """Write the cited answer from the excerpts in one streamed call."""
     human_prompt = (
+        f"Answer in {LANGUAGE_NAMES[state['language']]}.\n\n"
         f"Question: {state['query']}\n\nExcerpts:\n\n{_excerpts_block(state['chunks'])}"
     )
     text = await collect_text(

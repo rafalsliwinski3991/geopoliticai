@@ -14,11 +14,12 @@ CHUNKS: list[Chunk] = [
 ]
 
 
-def _state(chunks: list[Chunk]) -> DocumentState:
+def _state(chunks: list[Chunk], language: str = "en") -> DocumentState:
     return {
         "query": "What are the fees?",
         "history": [],
         "search_query": "fees",
+        "language": language,
         "chunks": chunks,
         "answer": "",
     }
@@ -61,6 +62,27 @@ async def test_excerpts_reach_the_model_wrapped_and_numbered(
         in prompt
     )
     assert 'chunk="7"' in prompt
+
+
+@pytest.mark.parametrize(
+    ("language", "instruction"),
+    [("pl", "Answer in Polish."), ("en", "Answer in English.")],
+    ids=["polish question", "english question"],
+)
+@pytest.mark.anyio
+async def test_the_answer_is_told_which_language_to_use(
+    monkeypatch: pytest.MonkeyPatch, language: str, instruction: str
+) -> None:
+    """A short Polish question over a Polish document was answered in English; the model needs the language stated."""
+    # Arrange
+    stream = ScriptedStream(["ok"])
+    monkeypatch.setattr(answer_module, "astream_text", stream)
+
+    # Act
+    await answer_module.answer(_state(CHUNKS, language))
+
+    # Assert
+    assert instruction in stream.human_prompts[0]
 
 
 @pytest.mark.anyio

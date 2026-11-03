@@ -32,7 +32,7 @@ def scripted_models(monkeypatch: pytest.MonkeyPatch) -> None:
     """Every model and the embedder are replaced; nothing here calls a provider."""
 
     async def rewrite(*args: Any, **kwargs: Any) -> RewrittenQuery:
-        return RewrittenQuery(search_query="fee schedule")
+        return RewrittenQuery(search_query="fee schedule", language="en")
 
     async def embed(text: str) -> list[float]:
         return EMBEDDING

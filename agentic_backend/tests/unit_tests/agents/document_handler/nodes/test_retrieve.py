@@ -31,8 +31,9 @@ class Runtime:
 class ScriptedRewrite:
     """Returns one scripted rewrite and records the messages it was given."""
 
-    def __init__(self, search_query: str | Exception) -> None:
+    def __init__(self, search_query: str | Exception, language: str = "en") -> None:
         self.search_query = search_query
+        self.language = language
         self.calls: list[list[Any]] = []
         self.configs: list[Any] = []
 
@@ -49,7 +50,7 @@ class ScriptedRewrite:
         self.configs.append(config)
         if isinstance(self.search_query, Exception):
             raise self.search_query
-        return schema(search_query=self.search_query)
+        return schema(search_query=self.search_query, language=self.language)
 
 
 class RecordingEmbed:
@@ -66,6 +67,7 @@ def _state(history: list[str] | None = None) -> DocumentState:
         "query": "and in 2022?",
         "history": history or [],
         "search_query": "",
+        "language": "",
         "chunks": [],
         "answer": "",
     }
@@ -95,7 +97,26 @@ async def test_the_question_is_searched_by_its_rewrite(
     # Assert
     assert embed.texts == ["fees in 2022"]
     assert runtime.searched == [EMBEDDING]
-    assert result == {"search_query": "fees in 2022", "chunks": [CHUNK]}
+    assert result == {
+        "search_query": "fees in 2022",
+        "language": "en",
+        "chunks": [CHUNK],
+    }
+
+
+@pytest.mark.anyio
+async def test_the_language_of_the_message_is_returned_for_the_answer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The answer model replied in English to a Polish question; the rewrite call now says which language to use."""
+    # Arrange
+    _install(monkeypatch, ScriptedRewrite("opłaty", language="pl"))
+
+    # Act
+    result = await retrieve_module.retrieve(_state(), Runtime([CHUNK]))
+
+    # Assert
+    assert result["language"] == "pl"
 
 
 @pytest.mark.anyio
