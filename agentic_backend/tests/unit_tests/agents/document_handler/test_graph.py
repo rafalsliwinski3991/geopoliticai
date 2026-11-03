@@ -3,12 +3,12 @@ from typing import Any, AsyncIterator
 
 import pytest
 
-from agents.document import DocumentContext, ask_document, build_graph
-from agents.document.nodes.retrieve import RewrittenQuery
-from agents.document.state import Chunk, build_initial_document_state
+from agents.document_handler import DocumentContext, ask_document, build_graph
+from agents.document_handler.nodes.retrieve import RewrittenQuery
+from agents.document_handler.state import Chunk, build_initial_document_state
 
-retrieve_module = importlib.import_module("agents.document.nodes.retrieve")
-answer_module = importlib.import_module("agents.document.nodes.answer")
+retrieve_module = importlib.import_module("agents.document_handler.nodes.retrieve")
+answer_module = importlib.import_module("agents.document_handler.nodes.answer")
 
 QUESTION = "What does it say about fees?"
 EMBEDDING = [0.25, 0.5]

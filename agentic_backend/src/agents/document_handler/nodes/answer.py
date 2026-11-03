@@ -7,9 +7,9 @@ from typing import Any, Optional
 
 from langchain_core.runnables import RunnableConfig
 
-from agents.document.config import ANSWER_LLM_SETTINGS
-from agents.document.prompts import ANSWER_SYSTEM_PROMPT
-from agents.document.state import Chunk, DocumentState
+from agents.document_handler.config import ANSWER_LLM_SETTINGS
+from agents.document_handler.prompts import ANSWER_SYSTEM_PROMPT
+from agents.document_handler.state import Chunk, DocumentState
 from services.llm import astream_text, collect_text
 
 # A chunk that contains the closing tag would end its own wrapper early.

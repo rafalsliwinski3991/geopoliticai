@@ -3,10 +3,10 @@ from typing import Any, AsyncIterator
 
 import pytest
 
-from agents.document.state import Chunk, DocumentState
+from agents.document_handler.state import Chunk, DocumentState
 from shared.errors import LLMInvocationError
 
-answer_module = importlib.import_module("agents.document.nodes.answer")
+answer_module = importlib.import_module("agents.document_handler.nodes.answer")
 
 CHUNKS: list[Chunk] = [
     {"filename": "terms.txt", "index": 2, "text": "Fees are 5 percent."},

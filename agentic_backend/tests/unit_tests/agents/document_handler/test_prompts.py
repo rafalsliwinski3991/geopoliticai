@@ -1,4 +1,4 @@
-from agents.document.prompts import ANSWER_SYSTEM_PROMPT
+from agents.document_handler.prompts import ANSWER_SYSTEM_PROMPT
 
 
 def test_the_answer_prompt_asks_for_filename_and_chunk_citations() -> None:

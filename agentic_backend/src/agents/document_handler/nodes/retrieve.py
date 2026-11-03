@@ -9,9 +9,9 @@ from langchain_core.runnables import RunnableConfig
 from langgraph.runtime import Runtime
 from pydantic import BaseModel
 
-from agents.document.config import RETRIEVAL, REWRITE_LLM_SETTINGS
-from agents.document.prompts import REWRITE_SYSTEM_PROMPT
-from agents.document.state import DocumentContext, DocumentState
+from agents.document_handler.config import RETRIEVAL, REWRITE_LLM_SETTINGS
+from agents.document_handler.prompts import REWRITE_SYSTEM_PROMPT
+from agents.document_handler.state import DocumentContext, DocumentState
 from services.embeddings import embed_query
 from services.llm import ainvoke_structured
 from shared.errors import LLMInvocationError, NoDocumentError

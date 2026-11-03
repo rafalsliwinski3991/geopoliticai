@@ -30,7 +30,7 @@ into chunks of at most 800 tokens, embedded with `text-embedding-3-small`, and s
 `postgres/Dockerfile`). While a thread has a file, the supervisor offers only the `run_document`
 tool: it rewrites the question, takes the six nearest chunks, and streams an answer cited as
 `[filename, chunk N]`. A document question costs one quota unit and uploading is free, limited
-to 10 uploads an hour per user and 5 documents per user. The `document_fixed` eval covers it.
+to 10 uploads an hour per user and 5 documents per user. The `document_handler_fixed` eval covers it.
 
 Agent-specific code lives under `src/agents/`; shared retrieval and LLM
 boundaries are in `src/services/web_search.py`, `src/services/page_reader.py` and `src/services/llm.py`. The API accepts exactly

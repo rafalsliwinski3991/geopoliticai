@@ -1,6 +1,6 @@
 import pytest
 
-from agents.document.state import build_initial_document_state
+from agents.document_handler.state import build_initial_document_state
 from api.app import CHECKPOINT_SERDE
 
 

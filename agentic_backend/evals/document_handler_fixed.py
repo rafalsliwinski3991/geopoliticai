@@ -1,22 +1,22 @@
-"""document_fixed eval: the document agent answers from one synthetic report."""
+"""document_handler_fixed eval: the document agent answers from one synthetic report."""
 
 from __future__ import annotations
 
 import asyncio
 from typing import Any
 
-from agents.document.config import RETRIEVAL
-from agents.document.state import Chunk
+from agents.document_handler.config import RETRIEVAL
+from agents.document_handler.state import Chunk
 from evals.helpers.graph import load_document, load_messages, rank_by_cosine
 from evals.helpers.run import run
-from evals.judges.document_fixed import judges
+from evals.judges.document_handler_fixed import judges
 from services.document_reader import split_into_chunks
 from services.embeddings import embed_texts
 
 
-async def run_document_fixed(input: dict[str, Any]) -> dict[str, Any]:
+async def run_document_handler_fixed(input: dict[str, Any]) -> dict[str, Any]:
     """Answer one question from the case's document, searched in memory with real embeddings."""
-    from agents.document.graph import ask_document
+    from agents.document_handler.graph import ask_document
 
     filename, text = load_document(input["document"])
     texts = split_into_chunks(text)
@@ -41,8 +41,8 @@ async def run_document_fixed(input: dict[str, Any]) -> dict[str, Any]:
 if __name__ == "__main__":
     asyncio.run(
         run(
-            eval_name="document_fixed",
-            task=run_document_fixed,
+            eval_name="document_handler_fixed",
+            task=run_document_handler_fixed,
             judges=judges(),
         )
     )

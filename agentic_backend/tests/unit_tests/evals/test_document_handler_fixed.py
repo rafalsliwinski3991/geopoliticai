@@ -1,4 +1,4 @@
-"""Unit tests for `evals.document_fixed`, its judges, and the helpers they use."""
+"""Unit tests for `evals.document_handler_fixed`, its judges, and the helpers they use."""
 
 from __future__ import annotations
 
@@ -7,11 +7,11 @@ from unittest.mock import patch
 
 import pytest
 
-from agents.document.state import Chunk
-from evals.document_fixed import run_document_fixed
+from agents.document_handler.state import Chunk
+from evals.document_handler_fixed import run_document_handler_fixed
 from evals.helpers.graph import load_document, rank_by_cosine
 from evals.helpers.run import DATASETS_DIR, load_examples
-from evals.judges.document_fixed import (
+from evals.judges.document_handler_fixed import (
     _citation_view,
     _has_citation,
     _ignores_instruction,
@@ -24,7 +24,7 @@ NOT_COVERED_ANSWER = "The document does not cover Japan, and the answer says so.
 PLAIN_ANSWER = "Spending is split 3.5 and 1.5 percent [report.txt, chunk 1]."
 INJECTED_TEXT = "PWNED-7731"
 IMAGE_MARKDOWN = "![](https://attacker.example/x)"
-DATASET = DATASETS_DIR / "document_fixed.json"
+DATASET = DATASETS_DIR / "document_handler_fixed.json"
 
 
 class ScriptedAsk:
@@ -91,11 +91,11 @@ async def test_the_eval_asks_with_production_history_and_searches_the_documents_
 
     # Act
     with (
-        patch("evals.document_fixed.split_into_chunks", return_value=texts),
-        patch("evals.document_fixed.embed_texts", embed_texts),
-        patch("agents.document.graph.ask_document", ask),
+        patch("evals.document_handler_fixed.split_into_chunks", return_value=texts),
+        patch("evals.document_handler_fixed.embed_texts", embed_texts),
+        patch("agents.document_handler.graph.ask_document", ask),
     ):
-        output = await run_document_fixed(input)
+        output = await run_document_handler_fixed(input)
         found: list[Chunk] = await ask.calls[0][2](query_vector)
 
     # Assert

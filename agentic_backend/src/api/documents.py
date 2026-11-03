@@ -14,8 +14,8 @@ from psycopg.rows import DictRow
 from psycopg_pool import AsyncConnectionPool
 from pydantic import BaseModel
 
-from agents.document import Chunk
-from agents.document.config import RETRIEVAL
+from agents.document_handler import Chunk
+from agents.document_handler.config import RETRIEVAL
 from agents.orchestrator.state import OrchestratorContext
 from api.auth import Identity, require_identity
 from api.rate_limit import enforce_rate_limit, enforce_upload_limit

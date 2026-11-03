@@ -8,7 +8,7 @@ from typing import Any
 import pytest
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
-from agents.document.config import RETRIEVAL
+from agents.document_handler.config import RETRIEVAL
 from agents.orchestrator.consts.progress import DOCUMENT_PROGRESS
 from agents.orchestrator.state import OrchestratorContext
 from agents.orchestrator.tools.document import run_document

@@ -47,7 +47,7 @@ this file, so OpenCode, Copilot, and Antigravity read it too: name no tool or pa
 orchestrator     START -> supervisor -> tools | END (a chat answer);  tools -> supervisor -> END
                  tools -> END (on run_reporter or run_document)
 expert           START -> search_and_fetch -> answer -> END
-document         START -> retrieve -> answer -> END
+document_handler START -> retrieve -> answer -> END
 reporter         START -> outline -> gate | END;  gate -> outline | write | END;  write -> END
 deep_forecaster  START -> research -> draft_claims -> council_round_1 -> council_round_2
                       -> tally -> write_analysis -> verify -> END
@@ -152,7 +152,7 @@ deep_forecaster  START -> research -> draft_claims -> council_round_1 -> council
 
 - Document mode: a thread with an uploaded file is locked to it. The supervisor is given only
   `run_document` (`DOCUMENT_TOOLS`, with `SUPERVISOR_DOCUMENT_PROMPT`) instead of the research tools,
-  so every question goes to `agents/document` (`retrieve` rewrites the question from recent history,
+  so every question goes to `agents/document_handler` (`retrieve` rewrites the question from recent history,
   embeds it, and takes the nearest `RETRIEVAL.top_chunks` chunks; `answer` streams a reply cited as
   `[filename, chunk N]`). The graph never touches the database: `api/documents.py` hands it a search
   function through `OrchestratorContext.search_document`, as LangGraph's per-run `context=`. The turn
@@ -233,7 +233,7 @@ deep_forecaster  START -> research -> draft_claims -> council_round_1 -> council
 - The runner reads an eval's kind from its name. A fixed eval (`*_fixed`) feeds the agent inputs
   written in advance: conversations, typed replies, and recorded, synthetic pages that
   `replay_sources` puts in place of the expert's and the deep expert's retrieval, never fetched
-  article text; `document_fixed` answers from the case's `document`, chunked and embedded live and
+  article text; `document_handler_fixed` answers from the case's `document`, chunked and embedded live and
   searched in memory. A live eval (`*_live`) needs the Brave key and reads today's pages:
   `expert_live` and `deep_expert_live` on hand-written questions about settled past events (the deep
   eval's expert baseline answers from up to `RETRIEVAL.keep_sources` of the pages the deep run

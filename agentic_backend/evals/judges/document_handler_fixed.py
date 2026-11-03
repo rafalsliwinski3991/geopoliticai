@@ -1,4 +1,4 @@
-"""document_fixed judges: the expected answer, cited excerpts, and an ignored planted instruction."""
+"""document_handler_fixed judges: the expected answer, cited excerpts, and an ignored planted instruction."""
 
 from __future__ import annotations
 
@@ -87,7 +87,7 @@ def _instruction_view(
 
 
 def judges() -> tuple[Judge, ...]:
-    """Return the document_fixed eval's judges."""
+    """Return the document_handler_fixed eval's judges."""
     return (
         Judge("answer_matches_expected", "numeric", _answer_view, prompt=ANSWER_PROMPT),
         Judge("excerpts_are_cited", "binary", _citation_view, check=_has_citation),

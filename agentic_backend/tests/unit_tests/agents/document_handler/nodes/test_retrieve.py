@@ -6,10 +6,10 @@ from langchain_core.messages import HumanMessage
 from langgraph.graph import END, START, StateGraph
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
-from agents.document.state import Chunk, DocumentContext, DocumentState
+from agents.document_handler.state import Chunk, DocumentContext, DocumentState
 from shared.errors import LLMInvocationError, NoDocumentError
 
-retrieve_module = importlib.import_module("agents.document.nodes.retrieve")
+retrieve_module = importlib.import_module("agents.document_handler.nodes.retrieve")
 
 EMBEDDING = [0.1, 0.2]
 CHUNK: Chunk = {"filename": "a.txt", "index": 1, "text": "Fees are 5 percent."}
