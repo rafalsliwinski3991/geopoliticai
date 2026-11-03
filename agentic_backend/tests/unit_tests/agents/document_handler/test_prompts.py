@@ -1,16 +1,16 @@
 from agents.document_handler.prompts import ANSWER_SYSTEM_PROMPT, REWRITE_SYSTEM_PROMPT
 
 
-def test_the_answer_prompt_asks_for_filename_and_chunk_citations() -> None:
-    """The reader checks a claim by its chunk number; without the format there is nothing to check."""
+def test_the_answer_prompt_tells_the_model_to_copy_each_excerpts_citation() -> None:
+    """The model once wrote the placeholder "[filename, chunk 1]" literally; copying a ready-made citation leaves nothing to invent."""
     # Arrange
-    citation_format = "[filename, chunk N]"
+    citation_rule = "copying the cite value"
 
     # Act
     prompt = ANSWER_SYSTEM_PROMPT
 
     # Assert
-    assert citation_format in prompt
+    assert citation_rule in prompt
 
 
 def test_the_answer_prompt_tells_the_model_to_say_when_the_document_does_not_cover_it() -> (

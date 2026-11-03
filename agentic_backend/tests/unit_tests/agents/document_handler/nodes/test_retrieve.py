@@ -12,7 +12,13 @@ from shared.errors import LLMInvocationError, NoDocumentError
 retrieve_module = importlib.import_module("agents.document_handler.nodes.retrieve")
 
 EMBEDDING = [0.1, 0.2]
-CHUNK: Chunk = {"filename": "a.txt", "index": 1, "text": "Fees are 5 percent."}
+CHUNK: Chunk = {
+    "filename": "a.txt",
+    "index": 1,
+    "page_start": None,
+    "page_end": None,
+    "text": "Fees are 5 percent.",
+}
 
 
 class Runtime:

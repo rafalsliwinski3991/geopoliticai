@@ -8,6 +8,7 @@ from db.agentic.chunks import (
     DELETE_THREAD_CHUNKS,
     INSERT_CHUNK,
     LOCK_THREAD,
+    SELECT_NEAREST_CHUNKS,
     format_vector,
     replace_chunks,
 )
@@ -84,6 +85,7 @@ async def test_replacing_chunks_locks_the_thread_before_it_deletes_or_inserts() 
         user_id=1,
         filename="a.txt",
         texts=["x"],
+        pages=[(None, None)],
         embeddings=[[0.5]],
     )
 
@@ -103,3 +105,27 @@ def test_the_thread_lock_is_a_transaction_scoped_advisory_lock_on_the_thread_id(
 
     # Assert
     assert statement == expected
+
+
+def test_a_stored_chunk_carries_its_first_and_last_page() -> None:
+    """Without the two columns in the insert, the pages never reach the table the citation reads."""
+    # Arrange
+    columns = ("page_start", "page_end")
+
+    # Act
+    statement = INSERT_CHUNK
+
+    # Assert
+    assert all(column in statement for column in columns)
+
+
+def test_a_search_returns_the_pages_of_each_chunk() -> None:
+    """The answer cites pages, so the search must read them back."""
+    # Arrange
+    columns = ("page_start", "page_end")
+
+    # Act
+    statement = SELECT_NEAREST_CHUNKS
+
+    # Assert
+    assert all(column in statement for column in columns)

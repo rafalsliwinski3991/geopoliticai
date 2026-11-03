@@ -18,12 +18,21 @@ ESCAPED_CLOSING_TAG = "<\\/excerpt"
 LANGUAGE_NAMES = {"pl": "Polish", "en": "English"}
 
 
+def _citation(chunk: Chunk) -> str:
+    """Return the citation the model copies: pages when the chunk has them, else its number."""
+    start, end = chunk["page_start"], chunk["page_end"]
+    if start is None or end is None:
+        place = f"chunk {chunk['index']}"
+    elif start == end:
+        place = f"p. {start}"
+    else:
+        place = f"pp. {start}-{end}"
+    return f"[{chunk['filename']}, {place}]"
+
+
 def _excerpt(chunk: Chunk) -> str:
     text = CLOSING_TAG.sub(ESCAPED_CLOSING_TAG, chunk["text"])
-    return (
-        f'<excerpt filename="{chunk["filename"]}" chunk="{chunk["index"]}">\n'
-        f"{text}\n</excerpt>"
-    )
+    return f'<excerpt cite="{_citation(chunk)}">\n{text}\n</excerpt>'
 
 
 def _excerpts_block(chunks: list[Chunk]) -> str:

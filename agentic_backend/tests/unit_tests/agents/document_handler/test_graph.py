@@ -12,7 +12,13 @@ answer_module = importlib.import_module("agents.document_handler.nodes.answer")
 
 QUESTION = "What does it say about fees?"
 EMBEDDING = [0.25, 0.5]
-CHUNK: Chunk = {"filename": "terms.txt", "index": 3, "text": "Fees are 5 percent."}
+CHUNK: Chunk = {
+    "filename": "terms.txt",
+    "index": 3,
+    "page_start": None,
+    "page_end": None,
+    "text": "Fees are 5 percent.",
+}
 
 
 class RecordingSearch:

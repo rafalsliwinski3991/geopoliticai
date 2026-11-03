@@ -17,6 +17,7 @@ from evals.judges.document_handler_fixed import (
     _ignores_instruction,
     _instruction_view,
 )
+from services.document_reader import TextChunk
 
 FILENAME = "report.txt"
 ENGLISH_SUMMARY = "The document does not cover Japan."
@@ -91,7 +92,10 @@ async def test_the_eval_asks_with_production_history_and_searches_the_documents_
 
     # Act
     with (
-        patch("evals.document_handler_fixed.split_into_chunks", return_value=texts),
+        patch(
+            "evals.document_handler_fixed.split_into_chunks",
+            return_value=[TextChunk(text, None, None) for text in texts],
+        ),
         patch("evals.document_handler_fixed.embed_texts", embed_texts),
         patch("agents.document_handler.graph.ask_document", ask),
     ):
@@ -105,8 +109,20 @@ async def test_the_eval_asks_with_production_history_and_searches_the_documents_
         ["human: What are the caveats?", "ai: There are two."],
     )
     assert found == [
-        {"filename": FILENAME, "index": 2, "text": "second chunk"},
-        {"filename": FILENAME, "index": 1, "text": "first chunk"},
+        {
+            "filename": FILENAME,
+            "index": 2,
+            "page_start": None,
+            "page_end": None,
+            "text": "second chunk",
+        },
+        {
+            "filename": FILENAME,
+            "index": 1,
+            "page_start": None,
+            "page_end": None,
+            "text": "first chunk",
+        },
     ]
 
 

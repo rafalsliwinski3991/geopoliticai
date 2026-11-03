@@ -117,21 +117,21 @@ async def ingest_document(
                 "Remove one from an older conversation first."
             )
         try:
-            text = await read_document(body, filename)
+            pages = await read_document(body, filename)
         except DocumentUnreadableError:
             span.set_attribute("document.outcome", "unreadable")
             raise
         except DocumentTooLargeError:
             span.set_attribute("document.outcome", "too_large")
             raise
-        chunks = await asyncio.to_thread(split_into_chunks, text)
+        chunks = await asyncio.to_thread(split_into_chunks, pages)
         span.set_attribute("document.chunks", len(chunks))
         if len(chunks) > MAX_DOCUMENT_CHUNKS:
             span.set_attribute("document.outcome", "too_large")
             raise DocumentTooLargeError("That file is too long to read.")
         try:
             async with asyncio.timeout(EMBED_WALL_SECONDS):
-                embeddings = await embed_texts(chunks)
+                embeddings = await embed_texts([chunk.text for chunk in chunks])
         except TimeoutError as exc:
             span.set_attribute("document.outcome", "timeout")
             raise ResearchLimitError("Reading the document took too long.") from exc
@@ -147,7 +147,8 @@ async def ingest_document(
             thread_id=thread_id,
             user_id=user_id,
             filename=filename,
-            texts=chunks,
+            texts=[chunk.text for chunk in chunks],
+            pages=[(chunk.page_start, chunk.page_end) for chunk in chunks],
             embeddings=embeddings,
         )
         span.set_attribute("document.outcome", "stored")
@@ -168,6 +169,8 @@ async def _search_chunks(
         {
             "filename": row["filename"],
             "index": row["chunk_index"],
+            "page_start": row["page_start"],
+            "page_end": row["page_end"],
             "text": row["content"],
         }
         for row in rows

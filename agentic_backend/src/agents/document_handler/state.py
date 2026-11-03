@@ -13,10 +13,16 @@ from shared.text import squash_whitespace
 
 
 class Chunk(TypedDict):
-    """One retrieved excerpt. `index` counts from 1 within the document."""
+    """One retrieved excerpt. `index` counts from 1 within the document.
+
+    `page_start` and `page_end` are the first and last page of the excerpt, or
+    `None` for a text file and for chunks stored before pages were recorded.
+    """
 
     filename: str
     index: int
+    page_start: int | None
+    page_end: int | None
     text: str
 
 

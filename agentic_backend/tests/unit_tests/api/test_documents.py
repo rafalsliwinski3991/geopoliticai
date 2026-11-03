@@ -9,6 +9,7 @@ from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanE
 
 from api import documents, rate_limit
 from api.app import answer_pipeline_error, app
+from services.document_reader import Page, TextChunk
 from shared.config import MAX_DOCUMENTS_PER_USER
 from shared.errors import DocumentLimitError, LLMInvocationError
 
@@ -108,6 +109,7 @@ async def test_an_upload_stores_the_file_and_reports_its_chunk_count(
             "user_id": USER_ID,
             "filename": "report.txt",
             "texts": [TEXT_FILE.decode()],
+            "pages": [(None, None)],
             "embeddings": [VECTOR],
         }
     ]
@@ -267,13 +269,37 @@ async def test_a_declared_length_over_the_cap_is_refused_before_reading(
 
 
 @pytest.mark.anyio
+async def test_an_upload_stores_the_pages_of_each_chunk(
+    client: httpx.AsyncClient, store: FakeChunkStore, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The page numbers the user is shown later must be written with the chunks."""
+
+    # Arrange
+    async def read_pages(body: bytes, filename: str) -> list[Page]:
+        return [Page(3, "Fees are paid monthly."), Page(4, "Refunds take 30 days.")]
+
+    monkeypatch.setattr(documents, "read_document", read_pages)
+
+    # Act
+    response = await client.post(UPLOAD_URL, content=TEXT_FILE)
+
+    # Assert
+    assert response.status_code == 200
+    assert store.replacements[0]["pages"] == [(3, 4)]
+
+
+@pytest.mark.anyio
 async def test_a_file_with_too_many_chunks_is_refused_before_embedding(
     client: httpx.AsyncClient, store: FakeChunkStore, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """The chunk cap is what bounds the embedding bill of one upload."""
     # Arrange
     monkeypatch.setattr(documents, "MAX_DOCUMENT_CHUNKS", 2)
-    monkeypatch.setattr(documents, "split_into_chunks", lambda text: ["a", "b", "c"])
+    monkeypatch.setattr(
+        documents,
+        "split_into_chunks",
+        lambda pages: [TextChunk(text, None, None) for text in ("a", "b", "c")],
+    )
 
     # Act
     response = await client.post(UPLOAD_URL, content=TEXT_FILE)
@@ -530,7 +556,13 @@ async def test_a_thread_with_a_document_gets_a_search_that_returns_chunks(
     # Arrange
     store.document_name = "report.txt"
     store.search_rows = [
-        {"filename": "report.txt", "chunk_index": 4, "content": "Geneva talks."}
+        {
+            "filename": "report.txt",
+            "chunk_index": 4,
+            "content": "Geneva talks.",
+            "page_start": 7,
+            "page_end": 8,
+        }
     ]
 
     # Act
@@ -544,7 +576,15 @@ async def test_a_thread_with_a_document_gets_a_search_that_returns_chunks(
 
     # Assert
     assert context.filename == "report.txt"
-    assert found == [{"filename": "report.txt", "index": 4, "text": "Geneva talks."}]
+    assert found == [
+        {
+            "filename": "report.txt",
+            "index": 4,
+            "page_start": 7,
+            "page_end": 8,
+            "text": "Geneva talks.",
+        }
+    ]
     assert store.searches[0]["user_id"] == OTHER_USER_ID
     assert store.searches[0]["embedding"] == VECTOR
 

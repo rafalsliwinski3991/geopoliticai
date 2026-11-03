@@ -75,8 +75,9 @@ deep_forecaster  START -> research -> draft_claims -> council_round_1 -> council
 - Besides the LangGraph checkpointer and store, the only Postgres access is the raw SQL in
   `db/web/sql.py` against Django-owned tables, whose schema only `web_backend`'s migrations change,
   and in `db/agentic/chunks.py`; the integration tests guard both.
-- `agentic.document_chunks` belongs to Alembic (`0004`). It holds a thread's uploaded document as
-  text chunks with a pgvector `vector(1536)` embedding; the `vector` type lives in `public`, and the
+- `agentic.document_chunks` belongs to Alembic (`0004`, `0005`). It holds a thread's uploaded document as
+  text chunks with a pgvector `vector(1536)` embedding and the first and last PDF page of each chunk
+  (`page_start`, `page_end`; NULL for a text file and for chunks stored before `0005`); the `vector` type lives in `public`, and the
   compose Postgres image (`postgres/Dockerfile`) is Alpine plus pgvector. Every read and the user's own
   delete are scoped by `thread_id` and `user_id`, since thread ids are client-chosen; a replace
   clears the thread's rows whoever wrote them, under an advisory lock on the thread id. The web backend's
@@ -153,8 +154,8 @@ deep_forecaster  START -> research -> draft_claims -> council_round_1 -> council
 - Document mode: a thread with an uploaded file is locked to it. The supervisor is given only
   `run_document` (`DOCUMENT_TOOLS`, with `SUPERVISOR_DOCUMENT_PROMPT`) instead of the research tools,
   so every question goes to `agents/document_handler` (`retrieve` rewrites the question from recent history,
-  embeds it, and takes the nearest `RETRIEVAL.top_chunks` chunks; `answer` streams a reply cited as
-  `[filename, chunk N]`). The graph never touches the database: `api/documents.py` hands it a search
+  embeds it, and takes the nearest `RETRIEVAL.top_chunks` chunks; `answer` streams a reply that copies each excerpt's ready-made citation,
+  `[file.pdf, p. 7]` or `[file.pdf, pp. 7-8]`, or `[file.txt, chunk N]` when there are no pages). The graph never touches the database: `api/documents.py` hands it a search
   function through `OrchestratorContext.search_document`, as LangGraph's per-run `context=`. The turn
   ends after the tool (`_route_after_tools`), so there is no next-steps footer. A turn reads the
   thread's document name once, and a paused report cannot be resumed inside a document thread.

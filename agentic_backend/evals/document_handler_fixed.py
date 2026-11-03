@@ -10,7 +10,7 @@ from agents.document_handler.state import Chunk
 from evals.helpers.graph import load_document, load_messages, rank_by_cosine
 from evals.helpers.run import run
 from evals.judges.document_handler_fixed import judges
-from services.document_reader import split_into_chunks
+from services.document_reader import Page, split_into_chunks
 from services.embeddings import embed_texts
 
 
@@ -19,13 +19,20 @@ async def run_document_handler_fixed(input: dict[str, Any]) -> dict[str, Any]:
     from agents.document_handler.graph import ask_document
 
     filename, text = load_document(input["document"])
-    texts = split_into_chunks(text)
+    chunks = split_into_chunks([Page(None, text)])
+    texts = [chunk.text for chunk in chunks]
     vectors = await embed_texts(texts)
 
     async def search(embedding: list[float]) -> list[Chunk]:
         nearest = rank_by_cosine(embedding, vectors, RETRIEVAL.top_chunks)
         return [
-            Chunk(filename=filename, index=position + 1, text=texts[position])
+            Chunk(
+                filename=filename,
+                index=position + 1,
+                page_start=chunks[position].page_start,
+                page_end=chunks[position].page_end,
+                text=texts[position],
+            )
             for position in nearest
         ]
 

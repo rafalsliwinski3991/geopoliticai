@@ -117,7 +117,7 @@ incidental:
 The deploy that first ships the document mode rebuilds and restarts the `postgres`
 container once, because the image now adds pgvector (`postgres/Dockerfile`). It is
 the same Alpine base, so the data directory is unchanged. `make migrate-agentic`
-then runs Alembic `0004`, which needs a role allowed to `CREATE EXTENSION vector`;
+then runs Alembic `0004` and `0005`, of which `0004` needs a role allowed to `CREATE EXTENSION vector`;
 Compose's `POSTGRES_USER` is the cluster superuser. Deploy at a quiet time: the
 old app containers see a brief database restart before the snapshot is taken.
 

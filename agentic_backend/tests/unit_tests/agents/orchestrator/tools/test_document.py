@@ -20,8 +20,20 @@ document_tool_module = importlib.import_module("agents.orchestrator.tools.docume
 QUESTION = "What are the fees?"
 ANSWER = "Fees are 5 percent [terms.txt, chunk 3]."
 CHUNKS = [
-    {"filename": "terms.txt", "index": 3, "text": "Fees are 5 percent."},
-    {"filename": "terms.txt", "index": 4, "text": "Fees are paid monthly."},
+    {
+        "filename": "terms.txt",
+        "index": 3,
+        "page_start": None,
+        "page_end": None,
+        "text": "Fees are 5 percent.",
+    },
+    {
+        "filename": "terms.txt",
+        "index": 4,
+        "page_start": None,
+        "page_end": None,
+        "text": "Fees are paid monthly.",
+    },
 ]
 
 
