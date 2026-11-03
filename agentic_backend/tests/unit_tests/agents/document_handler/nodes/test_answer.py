@@ -55,10 +55,10 @@ class ScriptedStream:
 
 
 @pytest.mark.anyio
-async def test_excerpts_reach_the_model_wrapped_with_the_citation_to_copy(
+async def test_excerpts_reach_the_model_wrapped_with_a_cite_as_line(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The model copies the citation from the wrapper; written out in full it cannot invent or shorten it."""
+    """The model copies the bracketed citation; a plain line gives it nothing to copy but the brackets (an attribute made it copy the whole tag)."""
     # Arrange
     stream = ScriptedStream(["ok"])
     monkeypatch.setattr(answer_module, "astream_text", stream)
@@ -69,8 +69,8 @@ async def test_excerpts_reach_the_model_wrapped_with_the_citation_to_copy(
     # Assert
     prompt = stream.human_prompts[0]
     assert "Question: What are the fees?" in prompt
-    assert '<excerpt cite="[excerpt 2]">\nFees are 5 percent.\n</excerpt>' in prompt
-    assert 'cite="[excerpt 7]"' in prompt
+    assert "<excerpt>\nCite as: [excerpt 2]\nFees are 5 percent.\n</excerpt>" in prompt
+    assert "Cite as: [excerpt 7]" in prompt
 
 
 @pytest.mark.parametrize(
@@ -116,7 +116,7 @@ async def test_the_citation_is_short_and_in_the_users_language(
     await answer_module.answer(_state([chunk], language))
 
     # Assert
-    assert f'<excerpt cite="{citation}">' in stream.human_prompts[0]
+    assert f"<excerpt>\nCite as: {citation}\n" in stream.human_prompts[0]
 
 
 @pytest.mark.parametrize(

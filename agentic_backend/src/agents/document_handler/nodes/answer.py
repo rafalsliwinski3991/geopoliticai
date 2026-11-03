@@ -37,7 +37,7 @@ def _citation(chunk: Chunk, language: str) -> str:
 
 def _excerpt(chunk: Chunk, language: str) -> str:
     text = CLOSING_TAG.sub(ESCAPED_CLOSING_TAG, chunk["text"])
-    return f'<excerpt cite="{_citation(chunk, language)}">\n{text}\n</excerpt>'
+    return f"<excerpt>\nCite as: {_citation(chunk, language)}\n{text}\n</excerpt>"
 
 
 def _excerpts_block(chunks: list[Chunk], language: str) -> str:

@@ -4,7 +4,7 @@ from agents.document_handler.prompts import ANSWER_SYSTEM_PROMPT, REWRITE_SYSTEM
 def test_the_answer_prompt_tells_the_model_to_copy_each_excerpts_citation() -> None:
     """The model once wrote the placeholder "[filename, chunk 1]" literally; copying a ready-made citation leaves nothing to invent."""
     # Arrange
-    citation_rule = "copying the cite value"
+    citation_rule = "starts with a line `Cite as:`"
 
     # Act
     prompt = ANSWER_SYSTEM_PROMPT
@@ -109,3 +109,15 @@ def test_the_rewrite_prompt_defines_a_whole_document_question() -> None:
     # Assert
     assert whole in prompt
     assert cases in prompt
+
+
+def test_the_answer_prompt_forbids_writing_the_excerpt_tag() -> None:
+    """The model once copied the whole <excerpt cite="..."> tag into its answer; the page then dropped the tag and the citation with it."""
+    # Arrange
+    ban = "Never write the <excerpt> tag"
+
+    # Act
+    prompt = ANSWER_SYSTEM_PROMPT
+
+    # Assert
+    assert ban in prompt
