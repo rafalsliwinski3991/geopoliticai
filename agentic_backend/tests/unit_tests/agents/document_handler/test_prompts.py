@@ -60,9 +60,9 @@ def test_the_rewrite_prompt_turns_a_format_request_into_the_previous_question() 
 def test_the_answer_prompt_puts_each_citation_after_its_sentence_with_no_separate_list() -> (
     None
 ):
-    """The answer once ended with a list of bare references tied to no claim, so the reader could not tell what each one supported."""
+    """Told only to cite "every claim", the model cited in half of its answers and sometimes in a list tied to no claim; naming the sentence ending made it cite every time."""
     # Arrange
-    placement = "at the end of the sentence it supports"
+    placement = "End every sentence that states something from the document"
     ban = "Write no separate list of citations or sources"
 
     # Act
