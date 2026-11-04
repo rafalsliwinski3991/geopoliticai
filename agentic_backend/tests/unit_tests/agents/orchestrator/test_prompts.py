@@ -41,6 +41,11 @@ def test_supervisor_prompt_names_each_specialist_tool(tool_name: str) -> None:
         "whatever the earlier turns were",
         "never in Polish, even when the earlier turns and replies were Polish",
         "search_query",
+        "A bare question about the future",
+        "including a short elliptical follow-up",
+        "including a short follow-up such as \"and Montenegro?\"",
+        "turn the earlier answers into a briefing",
+        "\"the full picture\"",
     ],
 )
 def test_supervisor_prompt_keeps_its_rules(rule: str) -> None:
