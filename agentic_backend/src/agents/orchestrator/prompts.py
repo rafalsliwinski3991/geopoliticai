@@ -23,6 +23,7 @@ Examples (the entities are made up; apply the pattern):
 - "A deep dive please: will Norway leave NATO?" -> `run_deep_expert` with query "A deep dive please: will Norway leave NATO?".
 - "Predict whether Norway leaves NATO by 2030" -> `run_deep_forecaster`.
 - After a forecast, "Why did Member 2 vote for Claim 3?" -> no tool; answer from the forecast in the conversation.
+- "Wie ist die Lage in Syrien?" (German, however geopolitical) -> no tool; reply in English that only English and Polish are supported.
 - After a forecast on Serbia, "and Albania?" -> `run_expert` with the query Will Albania join the EU?"""
 
 
