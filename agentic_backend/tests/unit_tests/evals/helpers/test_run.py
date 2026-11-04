@@ -530,7 +530,9 @@ async def test_run_passes_a_fixed_eval_without_a_brave_key(
     await run_mod.run(eval_name="orchestrator_fixed", task=_task, judges=[judge])
 
     # Assert
-    assert received["dataset_name"] == "geopoliticai-orchestrator_fixed"
+    assert re.fullmatch(
+        r"geopoliticai-orchestrator_fixed-[0-9a-f]{8}", received["dataset_name"]
+    )
     assert received["judges"] == [judge]
 
 
@@ -800,3 +802,32 @@ def test_task_alias_is_a_coroutine_factory() -> None:
     coroutine = _task({})
     assert isinstance(coroutine, Coroutine)
     coroutine.close()
+
+
+def test_dataset_name_changes_when_a_case_changes() -> None:
+    """Phoenix keeps a dataset under its name, so a stale one ran in place of the edited file."""
+    # Arrange
+    before = [{"input": {"query": "a"}, "output": {}, "metadata": {}}]
+    after = [{"input": {"query": "b"}, "output": {}, "metadata": {}}]
+
+    # Act
+    names = {
+        run_mod.dataset_name("expert_fixed", before),
+        run_mod.dataset_name("expert_fixed", after),
+    }
+
+    # Assert
+    assert len(names) == 2
+
+
+def test_dataset_name_stays_the_same_for_the_same_cases() -> None:
+    """An unchanged dataset must be reused, not uploaded again on every run."""
+    # Arrange
+    examples = [{"input": {"query": "a"}, "output": {}, "metadata": {}}]
+
+    # Act
+    first = run_mod.dataset_name("expert_fixed", examples)
+    second = run_mod.dataset_name("expert_fixed", list(examples))
+
+    # Assert
+    assert first == second

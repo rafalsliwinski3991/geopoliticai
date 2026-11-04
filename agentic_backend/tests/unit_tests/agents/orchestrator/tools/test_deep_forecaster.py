@@ -58,7 +58,11 @@ async def test_run_deep_forecaster_passes_store_emits_notice_and_updates_forecas
 
     # Act
     command = await run_deep_forecaster.ainvoke(
-        {"question": "Will country join alliance?", "runtime": runtime}
+        {
+            "question": "Will country join alliance?",
+            "asked_with": "forecast",
+            "runtime": runtime,
+        }
     )
 
     # Assert
@@ -102,7 +106,7 @@ async def test_run_deep_forecaster_handles_empty_initial_state(
 
     # Act
     command = await run_deep_forecaster.ainvoke(
-        {"question": "Will event happen?", "runtime": runtime}
+        {"question": "Will event happen?", "asked_with": "forecast", "runtime": runtime}
     )
 
     # Assert
@@ -128,4 +132,6 @@ async def test_run_deep_forecaster_lets_a_pipeline_error_propagate(
 
     # Act + Assert
     with pytest.raises(LLMInvocationError):
-        await run_deep_forecaster.ainvoke({"question": "Any?", "runtime": runtime})
+        await run_deep_forecaster.ainvoke(
+            {"question": "Any?", "asked_with": "forecast", "runtime": runtime}
+        )
