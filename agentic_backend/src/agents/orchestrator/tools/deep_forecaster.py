@@ -17,7 +17,11 @@ from agents.orchestrator.state import OrchestratorState
 async def run_deep_forecaster(
     question: str, runtime: ToolRuntime[Any, OrchestratorState]
 ) -> Command[Any]:
-    """Generate a probabilistic Delphi forecast and analysis on a future event question."""
+    """Generate a Delphi forecast, only when the user explicitly asks for a forecast or prediction; a bare question about the future is not such a request.
+
+    Args:
+        question: The user's question, with elided references resolved and nothing added.
+    """
     answer = await forecast(question, runtime.store)
     runtime.stream_writer({"type": "notice", "text": answer})
 
