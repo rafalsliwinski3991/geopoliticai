@@ -20,7 +20,7 @@ SUPERVISOR_LLM_SETTINGS: LLMSettings = LLMSettings(
     model="gpt-5-mini",
     temperature=1.0,
     max_output_tokens=4_096,
-    reasoning_effort="medium",
+    reasoning_effort="low",
 )
 
 FOOTER_LLM_SETTINGS: LLMSettings = LLMSettings(

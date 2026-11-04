@@ -42,6 +42,7 @@ def test_supervisor_prompt_names_each_specialist_tool(tool_name: str) -> None:
         "never in Polish, even when the earlier turns and replies were Polish",
         "search_query",
         "merely asks about the future",
+        "Examples (the entities are made up",
         "Only rules 1 and 8 override this",
         "adds nothing to the query",
         "never `run_deep_forecaster`",
