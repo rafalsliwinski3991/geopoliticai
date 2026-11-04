@@ -15,12 +15,13 @@ from agents.orchestrator.state import OrchestratorState
 
 @tool
 async def run_deep_forecaster(
-    question: str, runtime: ToolRuntime[Any, OrchestratorState]
+    question: str, asked_with: str, runtime: ToolRuntime[Any, OrchestratorState]
 ) -> Command[Any]:
     """Generate a Delphi forecast, only when the user explicitly asks for a forecast or prediction; a bare question about the future is not such a request.
 
     Args:
         question: The user's question, with elided references resolved and nothing added.
+        asked_with: The words copied from the user's latest message that ask for a forecast or prediction. Without such words, call run_expert instead.
     """
     answer = await forecast(question, runtime.store)
     runtime.stream_writer({"type": "notice", "text": answer})

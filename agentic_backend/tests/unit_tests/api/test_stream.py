@@ -1697,7 +1697,7 @@ async def test_a_forecast_reaches_the_browser_once(
                 tool_calls=[
                     {
                         "name": "run_deep_forecaster",
-                        "args": {"question": "q"},
+                        "args": {"question": "q", "asked_with": "forecast"},
                         "id": "call-forecast",
                     }
                 ],
