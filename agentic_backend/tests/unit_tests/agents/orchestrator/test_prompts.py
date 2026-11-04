@@ -41,7 +41,7 @@ def test_supervisor_prompt_names_each_specialist_tool(tool_name: str) -> None:
         "whatever the earlier turns were",
         "never in Polish, even when the earlier turns and replies were Polish",
         "search_query",
-        "A bare question about the future",
+        "merely asks about the future",
         "adds nothing to the query",
         "never `run_deep_forecaster`",
         "not by the question's tense",
