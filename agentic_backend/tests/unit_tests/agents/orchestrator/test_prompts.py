@@ -46,9 +46,9 @@ def test_supervisor_prompt_names_each_specialist_tool(tool_name: str) -> None:
         "never `run_deep_forecaster`",
         "not by the question's tense",
         "including a short elliptical follow-up",
-        "including a short follow-up such as \"and Montenegro?\"",
+        'including a short follow-up such as "and Montenegro?"',
         "turn the earlier answers into a briefing",
-        "\"the full picture\"",
+        '"the full picture"',
     ],
 )
 def test_supervisor_prompt_keeps_its_rules(rule: str) -> None:
