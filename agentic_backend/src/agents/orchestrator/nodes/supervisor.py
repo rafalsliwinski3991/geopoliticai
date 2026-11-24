@@ -44,6 +44,9 @@ from shared.tracing import start_span
 
 logger = logging.getLogger(__name__)
 
+# The argument that carries each tool's query; the other arguments never count as one.
+QUERY_ARGS = ("query", "question", "topic")
+
 TOOL_DESTINATION_MAP: dict[str, Destination] = {
     "run_expert": "geopolitical",
     "run_deep_expert": "deep",
@@ -190,7 +193,7 @@ async def supervisor(
 
         if res.tool_calls:
             tc = res.tool_calls[0]
-            if not any(str(value).strip() for value in tc["args"].values()):
+            if not any(str(tc["args"].get(name, "")).strip() for name in QUERY_ARGS):
                 raise LLMInvocationError("Model returned a tool call with no query.")
             try:
                 destination = TOOL_DESTINATION_MAP[tc["name"]]
