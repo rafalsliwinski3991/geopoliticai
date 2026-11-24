@@ -8,6 +8,7 @@ dataset is `datasets/<name>.json`.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import subprocess
@@ -150,6 +151,17 @@ def load_examples(path: Path) -> list[dict[str, Any]]:
     ]
 
 
+def dataset_name(eval_name: str, examples: list[dict[str, Any]]) -> str:
+    """Name the Phoenix dataset after its content, so an edited dataset is uploaded afresh.
+
+    Phoenix reuses a dataset it already holds under the same name, and an old
+    one would run in place of the file's cases.
+    """
+    content = json.dumps(examples, sort_keys=True, ensure_ascii=False)
+    digest = hashlib.sha256(content.encode("utf-8")).hexdigest()[:8]
+    return f"geopoliticai-{eval_name}-{digest}"
+
+
 def _read_git(*args: str) -> str:
     """Return one git command's output, or "nogit" when git is unavailable."""
     try:
@@ -246,7 +258,7 @@ async def run(
         raise RuntimeError("Phoenix tracing could not be initialized")
     commit = git_commit()
     results = await phoenix.run(
-        dataset_name=f"geopoliticai-{eval_name}",
+        dataset_name=dataset_name(eval_name, examples),
         experiment_name=experiment_name(eval_name, commit=commit),
         git_commit=commit,
         git_branch=git_branch(),

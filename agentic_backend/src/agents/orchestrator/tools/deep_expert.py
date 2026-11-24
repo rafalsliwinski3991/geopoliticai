@@ -17,7 +17,11 @@ from agents.orchestrator.state import OrchestratorState
 async def run_deep_expert(
     query: str, runtime: ToolRuntime[Any, OrchestratorState]
 ) -> Command[Any]:
-    """Execute deep research and synthesis on an explicitly requested complex topic."""
+    """Execute deep research and synthesis on an explicitly requested complex topic.
+
+    Args:
+        query: The user's request, with elided references resolved and no sub-topics, sections, or source requirements added.
+    """
     deep_answer = await research(query, runtime.stream_writer)
     runtime.stream_writer({"type": "notice", "text": deep_answer})
 

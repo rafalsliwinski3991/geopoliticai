@@ -572,6 +572,26 @@ async def test_supervisor_rejects_a_tool_call_with_a_blank_query(
 
 
 @pytest.mark.anyio
+async def test_supervisor_rejects_a_forecast_call_with_a_blank_question_and_a_keyword(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The required asked_with keyword is never blank, so it must not count as the query."""
+    # Arrange
+    call = {
+        "name": "run_deep_forecaster",
+        "args": {"question": "  ", "asked_with": "forecast"},
+        "id": "c1",
+        "type": "tool_call",
+    }
+    fake = ScriptedChatModel([AIMessage(content="", tool_calls=[call])])
+    monkeypatch.setattr(node_module, "_build_supervisor_client", lambda: fake)
+
+    # Act + Assert
+    with pytest.raises(LLMInvocationError, match="no query"):
+        await supervisor({"messages": [HumanMessage("Q")]}, writer=lambda _: None)
+
+
+@pytest.mark.anyio
 async def test_supervisor_rejects_a_tool_call_the_model_could_not_parse(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

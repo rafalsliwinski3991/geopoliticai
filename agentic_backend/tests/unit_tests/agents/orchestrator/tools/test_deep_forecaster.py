@@ -7,6 +7,7 @@ from typing import Any
 
 import pytest
 from langchain_core.messages import ToolMessage
+from pydantic import ValidationError
 
 from agents.orchestrator.tools.deep_forecaster import run_deep_forecaster
 from shared.errors import LLMInvocationError
@@ -58,7 +59,11 @@ async def test_run_deep_forecaster_passes_store_emits_notice_and_updates_forecas
 
     # Act
     command = await run_deep_forecaster.ainvoke(
-        {"question": "Will country join alliance?", "runtime": runtime}
+        {
+            "question": "Will country join alliance?",
+            "asked_with": "forecast",
+            "runtime": runtime,
+        }
     )
 
     # Assert
@@ -102,7 +107,7 @@ async def test_run_deep_forecaster_handles_empty_initial_state(
 
     # Act
     command = await run_deep_forecaster.ainvoke(
-        {"question": "Will event happen?", "runtime": runtime}
+        {"question": "Will event happen?", "asked_with": "forecast", "runtime": runtime}
     )
 
     # Assert
@@ -128,4 +133,29 @@ async def test_run_deep_forecaster_lets_a_pipeline_error_propagate(
 
     # Act + Assert
     with pytest.raises(LLMInvocationError):
-        await run_deep_forecaster.ainvoke({"question": "Any?", "runtime": runtime})
+        await run_deep_forecaster.ainvoke(
+            {"question": "Any?", "asked_with": "forecast", "runtime": runtime}
+        )
+
+
+@pytest.mark.anyio
+async def test_run_deep_forecaster_refuses_an_asked_with_that_is_not_a_forecast_keyword(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """asked_with only accepts forecast keywords, so a plain question word cannot start a forecast."""
+    # Arrange
+    forecast_calls: list[str] = []
+
+    async def fake_forecast(question: str, store: Any) -> str:
+        forecast_calls.append(question)
+        return "unused"
+
+    monkeypatch.setattr(deep_forecaster_tool_module, "forecast", fake_forecast)
+    runtime = make_tool_runtime(state={"messages": []})
+
+    # Act + Assert
+    with pytest.raises(ValidationError):
+        await run_deep_forecaster.ainvoke(
+            {"question": "Will event happen?", "asked_with": "will", "runtime": runtime}
+        )
+    assert forecast_calls == []
