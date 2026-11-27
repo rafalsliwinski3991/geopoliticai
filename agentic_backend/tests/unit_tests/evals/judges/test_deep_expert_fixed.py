@@ -6,6 +6,7 @@ from typing import Any
 
 import pytest
 
+from evals.helpers.judge import async_score
 from evals.judges.deep_expert_fixed import (
     DEPTH_PROMPT,
     _depth_view,
@@ -29,6 +30,7 @@ def test_judges_names_are_the_experts_three_plus_depth() -> None:
         "answer_without_preamble",
         "answer_without_closing_offer",
         "deeper_than_expert",
+        "used_the_sandbox",
     ]
 
 
@@ -181,3 +183,41 @@ def test_an_answer_that_closes_with_analysis_passes() -> None:
 
     # Assert
     assert passed is True
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    ("progress", "expected", "label"),
+    [
+        (
+            [
+                "Planning the research...",
+                "Computing (1 of 3)...",
+                "Computing (2 of 3)...",
+            ],
+            {"min_computations": 2},
+            "pass",
+        ),
+        (
+            ["Planning the research...", "Computing (1 of 3)..."],
+            {"min_computations": 2},
+            "fail",
+        ),
+        (["Planning the research..."], {"answer": "E"}, "not_applicable"),
+    ],
+    ids=["at minimum", "below", "no key"],
+)
+async def test_used_the_sandbox_counts_compute_labels(
+    progress: list[str], expected: dict[str, Any], label: str
+) -> None:
+    """A guessed figure can match the expected answer; only a compute label proves the run."""
+    # Arrange
+    judge = next(judge for judge in judges() if judge.name == "used_the_sandbox")
+
+    # Act
+    verdict = await async_score(
+        judge, None, {"query": "q"}, {"progress": progress}, expected
+    )
+
+    # Assert
+    assert verdict.label == label

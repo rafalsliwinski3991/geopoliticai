@@ -26,6 +26,7 @@ class ResearchRun:
 
     writer: StreamWriter
     searches: int = 0
+    computations: int = 0
     candidates: dict[str, Candidate] = field(default_factory=dict)
     sources: dict[str, Source] = field(default_factory=dict)
     verdicts: list[str] = field(default_factory=list)

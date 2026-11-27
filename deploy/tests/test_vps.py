@@ -11,6 +11,9 @@ import pytest
 VPS = Path(__file__).resolve().parent.parent / "vps.py"
 STALE_IMAGE = f"ghcr.io/rafalsliwinski3991/geopoliticai-frontend:{0:040d}"
 RESTORED = "RENAME TO geopoliticai_failed"
+VERSION_QUERY = "version --format {{.Server.Version}}"
+SUPPORTED_ENGINE = "29.7.2"
+OLD_ENGINE = "27.5.1"
 # Logs every call, fails any call containing $FAIL_ON, and answers the few
 # calls whose output vps.py reads.
 STUB_DOCKER = f"""#!{sys.executable}
@@ -23,6 +26,8 @@ if "psql" in args and " -c " not in args:
     sys.stdin.buffer.read()
 if os.environ.get("FAIL_ON") and os.environ["FAIL_ON"] in args:
     sys.exit(1)
+if sys.argv[1] == "version":
+    print(os.environ["ENGINE_VERSION"])
 if "pg_dump" in args:
     print("-- dump")
 if "pg_sequences" in args:
@@ -60,10 +65,12 @@ class Vps:
             "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}",
         }
 
-    def run(self, *args: str, fail_on: str = "") -> subprocess.CompletedProcess:
+    def run(
+        self, *args: str, fail_on: str = "", engine: str = SUPPORTED_ENGINE
+    ) -> subprocess.CompletedProcess:
         return subprocess.run(
             [sys.executable, str(VPS), *args],
-            env={**self.env, "FAIL_ON": fail_on},
+            env={**self.env, "FAIL_ON": fail_on, "ENGINE_VERSION": engine},
             capture_output=True,
             check=False,
             text=True,
@@ -178,6 +185,89 @@ def test_unhealthy_start_prints_the_sandbox_logs(vps: Vps) -> None:
     # Assert
     log_dumps = [line for line in vps.docker_calls().splitlines() if " logs " in line]
     assert any("mcp-server" in line.split() for line in log_dumps)
+
+
+@pytest.mark.parametrize(
+    "engine", ["26.1.4", OLD_ENGINE], ids=["silently ignores it", "newest too old"]
+)
+def test_deploy_refuses_a_docker_engine_older_than_28(vps: Vps, engine: str) -> None:
+    """26.x ignores the sandbox network's `isolated` gateway, leaving it a host
+    address; 27.x rejects it only after agentic-backend has been stopped."""
+    # Arrange
+    vps.release(1)
+    vps.ship(2)
+    vps.clear_docker_log()
+
+    # Act
+    deployed = vps.run("deploy", sha(2), engine=engine)
+
+    # Assert
+    assert deployed.returncode == 2
+    assert f"28.0 or newer is required, found '{engine}'" in deployed.stderr
+    (query,) = vps.docker_calls().splitlines()
+    assert query.endswith(VERSION_QUERY)
+    assert len(vps.snapshots()) == 1
+    assert vps.recorded() == [sha(1)]
+    assert vps.current() == vps.root / "releases" / sha(1)
+
+
+@pytest.mark.parametrize(
+    ("engine", "fail_on"),
+    [(SUPPORTED_ENGINE, VERSION_QUERY), ("", ""), ("dev", "")],
+    ids=["the query fails", "nothing printed", "not a version number"],
+)
+def test_deploy_refuses_an_unreadable_docker_version(
+    vps: Vps, engine: str, fail_on: str
+) -> None:
+    """An engine nobody can name may be one that leaves the sandbox open."""
+    # Arrange
+    vps.ship(1)
+
+    # Act
+    deployed = vps.run("deploy", sha(1), engine=engine, fail_on=fail_on)
+
+    # Assert
+    assert deployed.returncode == 2
+    assert "28.0 or newer is required" in deployed.stderr
+    (query,) = vps.docker_calls().splitlines()
+    assert query.endswith(VERSION_QUERY)
+
+
+def test_deploy_accepts_the_oldest_supported_engine(vps: Vps) -> None:
+    """28.0 is the first engine with the `isolated` gateway mode."""
+    # Arrange
+    vps.ship(1)
+
+    # Act
+    deployed = vps.run("deploy", sha(1), engine="28.0.0")
+
+    # Assert
+    assert deployed.returncode == 0
+    assert VERSION_QUERY in vps.docker_calls()
+    assert len(vps.snapshots()) == 1
+
+
+def test_discard_after_a_refused_retry_leaves_the_database_alone(vps: Vps) -> None:
+    """The workflow discards every failed deploy, and a retried release still holds
+    the first attempt's snapshot: restoring it would delete everything written
+    since. Discard itself runs on any engine."""
+    # Arrange
+    vps.release(1)
+    vps.ship(2)
+    assert vps.run("deploy", sha(2), fail_on="alembic upgrade").returncode != 0
+    assert vps.run("discard", sha(2)).returncode == 0
+    assert vps.run("deploy", sha(2), engine=OLD_ENGINE).returncode == 2
+    vps.clear_docker_log()
+
+    # Act
+    discarded = vps.run("discard", sha(2), engine=OLD_ENGINE)
+
+    # Assert
+    assert discarded.returncode == 0
+    calls = vps.docker_calls()
+    assert RESTORED not in calls
+    assert " stop " not in calls
+    assert f"IMAGE_TAG={sha(1)} compose" in calls
 
 
 def test_discard_after_failed_migration_restores_and_restarts_previous(

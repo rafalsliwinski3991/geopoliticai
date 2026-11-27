@@ -11,4 +11,5 @@ PROGRESS_NODE = "deep_expert"
 PLANNING_PROGRESS = ProgressFrame(node=PROGRESS_NODE, label="Planning the research...")
 SEARCH_PROGRESS_LABEL = "Searching sources ({used} of {cap})..."
 READ_PROGRESS_LABEL = "Reading sources ({count} so far)..."
+COMPUTE_PROGRESS_LABEL = "Computing ({used} of {cap})..."
 REVISION_PROGRESS_LABEL = "Revising the analysis ({round} of {cap})..."

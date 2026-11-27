@@ -192,10 +192,14 @@ the registry, and `rollback.yml` restarts the last good one.**
 Deploys are manual: Actions → **Deploy** → Run workflow on `main`. The workflow runs
 every test job, pushes `ghcr.io/rafalsliwinski3991/geopoliticai-<service>:<sha>` and
 `:latest`, copies the compose files and `deploy/vps.py` into
-`/srv/geopoliticai/releases/<sha>/`, and runs `deploy/vps.py deploy`: `pg_dump` to
-`/srv/backups/pre-<sha>-<UTC>.sql.gz`, Django `migrate` + `createcachetable`, Alembic,
-`up --wait`; then it curls `https://politicalagent.eu/api/health` and records the
-release (`releases.log`, `current`). The last five releases and their snapshots are kept.
+`/srv/geopoliticai/releases/<sha>/`, and runs `deploy/vps.py deploy`. That first checks
+the Docker **server** version and refuses to deploy, before it pulls, dumps, migrates, or
+stops anything, when the version is older than 28.0 (see "Code sandbox") or cannot be
+read; the running release keeps serving, and `rollback` and `discard` are not checked.
+Then: `pg_dump` to `/srv/backups/pre-<sha>-<UTC>.sql.gz`, Django `migrate` +
+`createcachetable`, Alembic, `up --wait`; then it curls
+`https://politicalagent.eu/api/health` and records the release (`releases.log`,
+`current`). The last five releases and their snapshots are kept.
 
 ### One-time VPS bootstrap (manual, in this order)
 
@@ -339,6 +343,12 @@ login is also the outer gate of `/admin/`, a risk we accept: a leaked secret ope
 after a deploy that carries nginx's 50 MB limit on `/phoenix/`: before that, large trace uploads fail
 with 413. Locally, run `make evals-fixed`, `make evals-live`, or `make evals` from `agentic_backend/`;
 it reads `PHOENIX_COLLECTOR_ENDPOINT` (and `PHOENIX_CLIENT_HEADERS`, for the VPS) from the root `.env`.
+
+The deep expert computes in the [code sandbox](#code-sandbox), so a local run of a `deep_expert_*`
+eval, `make evals-fixed`, `make evals-live` and `make evals` included, needs `mcp-server` running and
+`SANDBOX_MCP_URL` exported: from the root, `docker compose up -d --build --wait mcp-server`, then
+`export SANDBOX_MCP_URL=http://127.0.0.1:8100/mcp` (your own port if `SANDBOX_PORT` is set). A case
+that computes without it fails. The `Evals` workflow starts the service itself.
 
 ### Load tests
 

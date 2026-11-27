@@ -24,7 +24,7 @@ const PIPELINE_ERROR_COPY: Record<number, string> = {
   409: "That report is no longer waiting for a decision. Ask again to start a new one.",
   422: "I couldn't find enough usable sources for that question. Try rephrasing it.",
   502: "Something went wrong while writing the answer. Please try again.",
-  503: "The news search is temporarily unavailable. Please try again in a few minutes.",
+  503: "A research service is temporarily unavailable. Please try again in a few minutes.",
 };
 const GENERIC_ERROR = "Something went wrong. Please try again.";
 

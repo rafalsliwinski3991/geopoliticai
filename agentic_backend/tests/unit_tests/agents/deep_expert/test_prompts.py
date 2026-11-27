@@ -90,3 +90,32 @@ def test_the_deep_prompts_search_in_english_and_answer_in_the_questions_language
 
     # Assert
     assert stated is True
+
+
+def test_the_system_prompt_states_the_computation_budget() -> None:
+    """The model must know what computing costs, and that the sandbox is its only shell."""
+    # Arrange
+    template = prompts_module.DEEP_SYSTEM_PROMPT
+
+    # Act
+    prompt = template.format(max_searches=5, max_computations=3)
+
+    # Assert
+    assert "compute it with `run_python`" in prompt
+    assert "at most 3 computations" in prompt
+    assert "never call `execute`" in prompt
+
+
+def test_the_subagent_prompt_names_run_python_without_a_format_field() -> None:
+    """The subagent prompt is never formatted, so a placeholder would reach the model raw."""
+    # Arrange
+    prompt = prompts_module.DEEP_SUBAGENT_PROMPT
+
+    # Act
+    stated = "compute it with `run_python`" in prompt
+
+    # Assert
+    assert stated is True
+    assert "at most a small number of computations" in prompt
+    assert "{" not in prompt
+    assert "never call `execute`" in prompt

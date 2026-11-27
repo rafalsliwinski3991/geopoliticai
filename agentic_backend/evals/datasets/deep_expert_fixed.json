@@ -71,6 +71,24 @@
    "expected": {
     "answer": "Na szczycie w Aldport przywódcy Sojuszu Północnego uzgodnili, że każdy członek będzie dążył do wydatków na obronę i działania z nią związane w wysokości 5 procent produktu krajowego do 2035 roku, z czego 3,5 procent na obronę podstawową, a 1,5 procent na wydatki powiązane, takie jak odporność, cyberobrona i produkcja amunicji [Sojusz Północny przyjmuje cel 5% wydatków](https://news.example/2026/06/alliance-summit-spending-target). Członkowie zobowiązali się publikować roczne plany krajowe, a sekretariat będzie prowadził publiczną tablicę wyników [Sojusz Północny przyjmuje cel 5% wydatków](https://news.example/2026/06/alliance-summit-spending-target).\n\nCel jest polityczny i nie ma mechanizmu egzekwowania: państwo, które go nie osiągnie, podlega tylko przeglądowi swojego planu, bez sankcji [Sojusz Północny przyjmuje cel 5% wydatków](https://news.example/2026/06/alliance-summit-spending-target).\n\nSprzeciwił się Norland. Jego premier nazwała pięcioprocentowe zobowiązanie nierealnym dla gospodarki z cienką nadwyżką, uznała obecne 2,1 procent za wystarczające i powiedziała, że gonienie za celem 2035 oznaczałoby cięcia emerytur zamiast czołgów [Norland: cel 5% jest nierealny](https://news.example/2026/06/norland-rejects-spending-target). Twierdziła, że negocjatorzy uzgodnili prywatnie wyjątek w postaci etapowego harmonogramu, którego nie ma w komunikacie, a urzędnicy sojuszu odmówili jego potwierdzenia [Norland: cel 5% jest nierealny](https://news.example/2026/06/norland-rejects-spending-target).\n\nVestria poparła cel z zastrzeżeniami. Jej minister obrony zakwestionował istnienie wyjątku, bo komunikat jest całym porozumieniem i przewiduje tylko procedurę przeglądu [Vestria popiera cel, prosi o elastyczność](https://news.example/2026/06/vestria-backs-target-with-caveats). Vestria chce szerokiej definicji wydatków powiązanych, aby liczyły się porty, mosty i kolej podwójnego zastosowania, i zapowiada osiągnięcie 3,5 procent na obronę podstawową do 2032 roku, trzy lata przed terminem [Vestria popiera cel, prosi o elastyczność](https://news.example/2026/06/vestria-backs-target-with-caveats).\n\nDla sojuszu oznacza to nierozstrzygnięte spory: podział obciążeń będzie przeglądany co roku, definicja wydatków powiązanych może zostać zaostrzona po pierwszych planach krajowych, a dwóch przywódców opuściło sesję zamykającą wcześniej [Sojusz Północny przyjmuje cel 5% wydatków](https://news.example/2026/06/alliance-summit-spending-target). Vestria proponuje też publikowanie wyników co wiosnę, a nie tylko na szczytach [Vestria popiera cel, prosi o elastyczność](https://news.example/2026/06/vestria-backs-target-with-caveats)."
    }
+  },
+  {
+   "name": "deep-budget-average-and-growth",
+   "description": "Twelve yearly budget figures on one page; the average and the growth must be computed in the code sandbox (brainstorm 2026Nov27).",
+   "input": {
+    "query": "In depth: what was Norland's average annual defence budget over 2014-2025, and by how much did it grow from 2014 to 2025?",
+    "sources": [
+     {
+      "title": "Norland defence budget, 2014-2025",
+      "url": "https://news.example/2026/05/norland-defence-budget-series",
+      "text": "Norland's finance ministry published its defence budget series on Tuesday. In millions of euros the budget was: 2014: 4,312; 2015: 4,587; 2016: 4,401; 2017: 5,029; 2018: 5,318; 2019: 5,166; 2020: 5,874; 2021: 6,203; 2022: 7,451; 2023: 8,096; 2024: 9,382; 2025: 10,117. The ministry attributed the rise after 2021 to the alliance's new spending goal and to munitions purchases. Opposition deputies said the figures include pensions for retired service members, which earlier series did not."
+     }
+    ]
+   },
+   "expected": {
+    "answer": "Norland's defence budget averaged EUR 6,328 million a year over 2014-2025 (EUR 75,936 million over twelve years) [Norland defence budget, 2014-2025](https://news.example/2026/05/norland-defence-budget-series). It grew from EUR 4,312 million in 2014 to EUR 10,117 million in 2025, an increase of about 134.6 percent [Norland defence budget, 2014-2025](https://news.example/2026/05/norland-defence-budget-series). The ministry attributes the rise after 2021 to the alliance spending goal and munitions purchases, while opposition deputies say the series now includes service pensions that earlier series did not [Norland defence budget, 2014-2025](https://news.example/2026/05/norland-defence-budget-series).",
+    "min_computations": 1
+   }
   }
  ]
 }

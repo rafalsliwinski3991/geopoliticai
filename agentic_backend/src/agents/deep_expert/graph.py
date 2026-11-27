@@ -118,7 +118,10 @@ def build_graph(run: ResearchRun) -> Any:
     return create_deep_agent(
         model,
         tools,
-        system_prompt=DEEP_SYSTEM_PROMPT.format(max_searches=LIMITS.max_searches),
+        system_prompt=DEEP_SYSTEM_PROMPT.format(
+            max_searches=LIMITS.max_searches,
+            max_computations=LIMITS.max_computations,
+        ),
         subagents=[
             {
                 "name": GENERAL_PURPOSE_SUBAGENT_NAME,
@@ -137,8 +140,9 @@ def build_graph(run: ResearchRun) -> Any:
 async def research(query: str, writer: StreamWriter) -> str:
     """Research `query` in depth and return the finished, checked answer.
 
-    A `deep_research` span records whether the turn ran out of searches or
-    time (brainstorm 2026Oct13 Q9), including when the wall cap ends it.
+    A `deep_research` span records whether the turn ran out of searches,
+    computations, or time (brainstorm 2026Oct13 Q9), including when the wall cap
+    ends it.
     """
     run = ResearchRun(writer=writer)
     writer(PLANNING_PROGRESS)
@@ -156,6 +160,10 @@ async def research(query: str, writer: StreamWriter) -> str:
                     "research.search_cap": LIMITS.max_searches,
                     "research.sources_read": len(run.sources),
                     "research.search_budget_hit": run.searches >= LIMITS.max_searches,
+                    "research.computations_used": run.computations,
+                    "research.computation_cap": LIMITS.max_computations,
+                    "research.computation_budget_hit": run.computations
+                    >= LIMITS.max_computations,
                     "research.time_limit_hit": time_limit_hit,
                     "research.grader_verdicts": run.verdicts,
                     "research.grader_rounds": len(run.verdicts),

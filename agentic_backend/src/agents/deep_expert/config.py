@@ -49,14 +49,20 @@ class ResearchLimits:
     frames.
     `max_grader_rounds` is RubricMiddleware's `max_iterations`: grader calls,
     so at most `max_grader_rounds - 1` revisions.
+    `max_computations` caps code-sandbox calls; like the search cap, a spent
+    budget is a message, never an error.
 
-    Both caps are smoke-run measurements (2026-09-29): one gpt-5-mini agent
-    turn costs ~40-50 s, so the search cap bounds the turn count — 8 searches
-    left the draft unwritten at 480 s, and 5 is what a full turn actually
-    fits inside against Brave's 1.1 s per search.
+    `max_searches` and `wall_seconds` are smoke-run measurements (2026-09-29):
+    one gpt-5-mini agent turn costs ~40-50 s, so the search cap bounds the turn
+    count — 8 searches left the draft unwritten at 480 s, and 5 is what a full
+    turn actually fits inside against Brave's 1.1 s per search.
     """
 
     max_searches: int = 5
+    # Code-sandbox calls per turn. Each call is another ~40-50 s agent turn, so 3
+    # (post-review decision 1B; the unit 04 smoke run records the wall time). A
+    # spent budget is a message to the model, like the search budget.
+    max_computations: int = 3
     max_grader_rounds: int = 3
     wall_seconds: float = 480.0
 
