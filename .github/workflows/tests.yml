@@ -202,3 +202,37 @@ jobs:
           uvx ruff check deploy/ scripts/
           uvx --with pydantic --with openai pytest deploy/tests scripts/tests
 
+  mcp-server-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@caf0cab7a618c569241d31dcd442f54681755d39 # v3
+        with:
+          cache: true
+
+      - name: Lint and unit-test the MCP server
+        working-directory: mcp_server
+        run: |
+          uv sync --locked --dev
+          uv run ruff check .
+          uv run pytest
+
+      # The isolation rules only hold inside the image (root with three
+      # capabilities, the slot users, a read-only root, no IPC objects, an
+      # internal network).
+      - name: Container tests
+        run: |
+          docker build --target test -t mcp-server-test mcp_server
+          docker network create --internal sandbox-test
+          docker run --rm --read-only --init \
+            --tmpfs /dev/shm:size=1m,mode=0755 \
+            --cap-drop ALL --cap-add SETUID --cap-add SETGID --cap-add KILL \
+            --security-opt no-new-privileges:true \
+            --sysctl fs.mqueue.queues_max=0 --sysctl kernel.shmmni=0 --sysctl kernel.msgmni=0 --sysctl "kernel.sem=0 0 0 0" \
+            --network sandbox-test --memory 384m --cpus 1 --pids-limit 256 \
+            mcp-server-test

@@ -27,11 +27,27 @@ this file, so OpenCode, Copilot, and Antigravity read it too: name no tool or pa
   (needs a Postgres with pgvector, migrated by `make migrate-web` and `make migrate-agentic`), and `make loadtest`
   (the API against faked providers; README, "Load tests").
 - From the root: `make test-web-backend` (needs the dev Postgres), `make test-web-integration`,
-  `make migrate-web`, `make migrate-agentic`, `make e2e-user`, `make logs-SERVICE`; `make help`
-  lists the rest.
+  `make migrate-web`, `make migrate-agentic`, `make e2e-user`, `make logs-SERVICE`,
+  `make test-mcp-server`; `make help` lists the rest.
+- From `mcp_server/`: `uv sync --locked --dev`, `uv run pytest`, `uv run ruff check .`,
+  `uv run ruff format --check .`, and `uv run mypy --strict src` (CI runs neither of the last two).
+  Its container tests (`tests/container_tests/`) run only inside the image, from the root:
+
+  ```bash
+  docker build --target test -t mcp-server-test mcp_server
+  docker network create --internal sandbox-test || true
+  docker run --rm --read-only --init \
+    --tmpfs /dev/shm:size=1m,mode=0755 \
+    --cap-drop ALL --cap-add SETUID --cap-add SETGID --cap-add KILL \
+    --security-opt no-new-privileges:true \
+    --sysctl fs.mqueue.queues_max=0 --sysctl kernel.shmmni=0 --sysctl kernel.msgmni=0 --sysctl "kernel.sem=0 0 0 0" \
+    --network sandbox-test --memory 384m --cpus 1 --pids-limit 256 \
+    mcp-server-test
+  ```
 - CI (`tests.yml`) also runs `uv run python manage.py test --exclude-tag=integration` in
   `web_backend/`, `npm ci && npm test && npm run build` in `frontend/chat/`, and, from the root,
   `uvx ruff check deploy/ scripts/` and `uvx --with pydantic --with openai pytest deploy/tests scripts/tests`.
+  Its `mcp-server-tests` job lints and unit-tests `mcp_server/` and runs the container tests.
 
 ## Layout
 
@@ -39,6 +55,8 @@ this file, so OpenCode, Copilot, and Antigravity read it too: name no tool or pa
   the Django service that owns accounts, admin, the public pages, and every user-keyed table.
   `frontend/chat/` is the chat SPA, served statically by nginx at `/chat`. The two Python services
   never import each other; they share only Postgres and the root `.env`.
+- `mcp_server/` is a separate uv project, the code sandbox's MCP server (FastAPI hosting the MCP
+  SDK); it never imports, and is never imported by, the other services.
 - The root `docker-compose*.yml` files are the live stack (`build:` for dev, `image:` for production,
   which only pulls). The root `Dockerfile` and `requirements.txt` are unused compatibility files;
   re-export `requirements.txt` (command in its header) whenever `agentic_backend/uv.lock` changes.
