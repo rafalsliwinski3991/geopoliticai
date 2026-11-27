@@ -241,3 +241,12 @@ jobs:
           docker run -d --name sandbox-server --network-alias mcp-server "${flags[@]}" mcp-server-runtime
           docker run --rm --network sandbox-test mcp-server-test .venv/bin/pytest tests/peer_tests ||
             { docker logs sandbox-server; exit 1; }
+
+      # The mcp 1.x client (langchain-mcp-adapters) against the mcp 2.x server.
+      - name: Client contract test
+        run: |
+          test -f .env || touch .env
+          docker compose up -d --build --wait mcp-server
+          cd agentic_backend
+          uv sync --locked --dev
+          SANDBOX_MCP_URL=http://127.0.0.1:8100/mcp uv run pytest tests/contract_tests
