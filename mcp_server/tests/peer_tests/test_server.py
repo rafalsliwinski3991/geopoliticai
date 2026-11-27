@@ -105,6 +105,8 @@ async def test_a_run_cannot_call_the_server_back(
     request_settings: dict[str, object],
 ) -> None:
     """A run that queued another run would chain them past the end of its own."""
+    # Arrange: `request_settings` comes from the parametrization above.
+
     # Act
     status = await call_from_a_run(**request_settings)  # type: ignore[arg-type]
 
@@ -129,8 +131,11 @@ async def test_a_run_cannot_call_the_server_back_on_its_network_address() -> Non
 @pytest.mark.anyio
 async def test_a_run_may_still_read_health() -> None:
     """The healthcheck comes from inside the container, as a run's requests do."""
+    # Arrange
+    health_path = "/health"
+
     # Act
-    status = await call_from_a_run(method="GET", path="/health")
+    status = await call_from_a_run(method="GET", path=health_path)
 
     # Assert
     assert status == "200\n"
