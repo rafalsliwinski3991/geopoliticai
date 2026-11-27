@@ -158,7 +158,9 @@ deep_forecaster  START -> research -> draft_claims -> council_round_1 -> council
   sees only the question and the final draft (`graph.grader_view`). A spent search budget is a
   message to the model; the wall cap is a 504 (`capped_run.run_under_time_limits`, the same
   dedicated-task cancel as the forecaster's); an unsatisfied grader ships the last draft; a grader
-  crash, no source read, or no cited source is an error. `capped_run.NO_CHECKPOINTER_CONFIG` sets
+  crash, no source read, or no cited source is an error. It computes with `run_python` in the code
+  sandbox, at most `LIMITS.max_computations` calls a turn (a spent budget is a message); a sandbox
+  outage is an error. `capped_run.NO_CHECKPOINTER_CONFIG` sets
   LangGraph's private `__pregel_checkpointer` key: re-check it on every langgraph upgrade.
 - Deep forecaster: a fixed workflow with one backward edge. Only `research` is autonomous (a
   deepagents lead and scouts over the forecasters' sites, plus `ask_video`), and it returns what
