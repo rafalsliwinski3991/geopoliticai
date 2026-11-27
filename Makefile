@@ -143,7 +143,7 @@ help:
 		'down      Stop and remove the application containers' \
 		'restart   Restart the application containers' \
 		'logs      Follow application logs' \
-		'logs-SERVICE Follow logs for one service (frontend, agentic-backend, web-backend, postgres, phoenix)' \
+		'logs-SERVICE Follow logs for one service (frontend, agentic-backend, web-backend, postgres, phoenix, mcp-server)' \
 		'services  List all Compose services' \
 		'ps        Show container status' \
 		'config    Render the effective Compose configuration' \

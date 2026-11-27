@@ -31,32 +31,40 @@ this file, so OpenCode, Copilot, and Antigravity read it too: name no tool or pa
   `make test-mcp-server`; `make help` lists the rest.
 - From `mcp_server/`: `uv sync --locked --dev`, `uv run pytest`, `uv run ruff check .`,
   `uv run ruff format --check .`, and `uv run mypy --strict src` (CI runs neither of the last two).
-  Its container tests (`tests/container_tests/`) run only inside the image, from the root:
+  Its container tests (`tests/container_tests/`) run only inside the image, and its peer tests
+  (`tests/peer_tests/`) call the started runtime image from a second container, from the root:
 
   ```bash
   docker build --target test -t mcp-server-test mcp_server
+  docker build -t mcp-server-runtime mcp_server
   docker network create --internal sandbox-test || true
-  docker run --rm --read-only --init \
-    --tmpfs /dev/shm:size=1m,mode=0755 \
-    --cap-drop ALL --cap-add SETUID --cap-add SETGID --cap-add KILL \
-    --security-opt no-new-privileges:true \
-    --sysctl fs.mqueue.queues_max=0 --sysctl kernel.shmmni=0 --sysctl kernel.msgmni=0 --sysctl "kernel.sem=0 0 0 0" \
-    --network sandbox-test --memory 384m --cpus 1 --pids-limit 256 \
-    mcp-server-test
+  flags=(--read-only --init
+    --tmpfs /dev/shm:size=1m,mode=0755
+    --cap-drop ALL --cap-add SETUID --cap-add SETGID --cap-add KILL
+    --security-opt no-new-privileges:true
+    --sysctl fs.mqueue.queues_max=0 --sysctl kernel.shmmni=0 --sysctl kernel.msgmni=0 --sysctl "kernel.sem=0 0 0 0"
+    --network sandbox-test --memory 384m --memory-swap 384m --cpus 1 --pids-limit 256)
+  docker run --rm "${flags[@]}" mcp-server-test
+  docker run -d --name sandbox-server --network-alias mcp-server "${flags[@]}" mcp-server-runtime
+  docker run --rm --network sandbox-test mcp-server-test .venv/bin/pytest tests/peer_tests
+  docker rm -f sandbox-server
   ```
 - CI (`tests.yml`) also runs `uv run python manage.py test --exclude-tag=integration` in
   `web_backend/`, `npm ci && npm test && npm run build` in `frontend/chat/`, and, from the root,
   `uvx ruff check deploy/ scripts/` and `uvx --with pydantic --with openai pytest deploy/tests scripts/tests`.
-  Its `mcp-server-tests` job lints and unit-tests `mcp_server/` and runs the container tests.
+  Its `mcp-server-tests` job lints and unit-tests `mcp_server/` and runs the container and peer tests.
 
 ## Layout
 
 - `agentic_backend/` is the FastAPI app (import root `src/`), serving only the API. `web_backend/` is
   the Django service that owns accounts, admin, the public pages, and every user-keyed table.
   `frontend/chat/` is the chat SPA, served statically by nginx at `/chat`. The two Python services
-  never import each other; they share only Postgres and the root `.env`.
+  never import each other; they share only Postgres and the root `.env`, and agentic-backend reaches
+  the sandbox over the internal `sandbox` network.
 - `mcp_server/` is a separate uv project, the code sandbox's MCP server (FastAPI hosting the MCP
-  SDK); it never imports, and is never imported by, the other services.
+  SDK); it never imports, and is never imported by, the other services. It answers its own container,
+  where model-written code runs, nothing but `GET /health` (`app.LocalPeerGate`), so it must run with
+  uvicorn's `--no-proxy-headers`.
 - The root `docker-compose*.yml` files are the live stack (`build:` for dev, `image:` for production,
   which only pulls). The root `Dockerfile` and `requirements.txt` are unused compatibility files;
   re-export `requirements.txt` (command in its header) whenever `agentic_backend/uv.lock` changes.
@@ -276,5 +284,7 @@ deep_forecaster  START -> research -> draft_claims -> council_round_1 -> council
 - Production deploys only through the dispatch-only `deploy.yml`, from `main` or a tag, and
   `rollback.yml` restores an earlier release with its matching database snapshot. The README's
   "Deploy order" and "Production deploy" sections hold the steps.
+- `deploy.yml` builds and pushes the `postgres`, `agentic-backend`, `web-backend`, `frontend`, and
+  `mcp-server` images.
 - `deploy/vps.py` is tested with `uvx pytest deploy/tests`. `vps.py backup` takes its off-site
   credentials from the VPS's `backup.env`, never from `.env`.

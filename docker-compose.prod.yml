@@ -24,6 +24,9 @@ services:
   web-backend:
     restart: unless-stopped
 
+  mcp-server:
+    restart: unless-stopped
+
   frontend:
     profiles: []
     ports:

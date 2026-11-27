@@ -107,8 +107,8 @@ def confirmation(snapshot: str) -> str:
 
 # Keep the newest $KEEP releases, their directories, the one snapshot each
 # release's .snapshot names, and the :<sha> image tag each recorded release
-# can still restart; everything else goes, or every deploy's three pulled
-# images would fill the disk one release at a time.
+# can still restart; everything else goes, or every deploy's pulled images
+# would fill the disk one release at a time.
 def prune() -> None:
     keep = log_lines()[-KEEP:]
     write_log(keep)
@@ -230,6 +230,7 @@ def deploy(sha: str) -> None:
             "100",
             "agentic-backend",
             "web-backend",
+            "mcp-server",
             check=False,
         )
         raise

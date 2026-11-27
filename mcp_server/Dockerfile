@@ -23,5 +23,7 @@ FROM base AS runtime
 # Runs as root holding only SETUID, SETGID and KILL (Compose drops the rest):
 # Docker gives a non-root process no effective capabilities, and only root with
 # these can start each run as a slot user and kill what it leaves behind.
+# `--no-proxy-headers`: by default uvicorn lets 127.0.0.1 name any peer address in
+# `X-Forwarded-For`, which would get a run past `app.LocalPeerGate`.
 EXPOSE 8000
-CMD [".venv/bin/uvicorn", "app:app", "--app-dir", "src", "--host", "0.0.0.0", "--port", "8000"]
+CMD [".venv/bin/uvicorn", "app:app", "--app-dir", "src", "--host", "0.0.0.0", "--port", "8000", "--no-proxy-headers"]

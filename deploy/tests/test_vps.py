@@ -167,6 +167,19 @@ def test_unhealthy_start_prints_the_app_logs(vps: Vps) -> None:
     )
 
 
+def test_unhealthy_start_prints_the_sandbox_logs(vps: Vps) -> None:
+    """An unhealthy sandbox fails `up --wait` too, and only its own log says why."""
+    # Arrange
+    vps.ship(1)
+
+    # Act
+    vps.run("deploy", sha(1), fail_on="--remove-orphans")
+
+    # Assert
+    log_dumps = [line for line in vps.docker_calls().splitlines() if " logs " in line]
+    assert any("mcp-server" in line.split() for line in log_dumps)
+
+
 def test_discard_after_failed_migration_restores_and_restarts_previous(
     vps: Vps,
 ) -> None:

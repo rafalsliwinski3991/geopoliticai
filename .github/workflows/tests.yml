@@ -224,15 +224,20 @@ jobs:
 
       # The isolation rules only hold inside the image (root with three
       # capabilities, the slot users, a read-only root, no IPC objects, an
-      # internal network).
-      - name: Container tests
+      # internal network). The peer tests call the runtime image, started with
+      # its own `CMD`, from a second container.
+      - name: Container and peer tests
         run: |
           docker build --target test -t mcp-server-test mcp_server
+          docker build -t mcp-server-runtime mcp_server
           docker network create --internal sandbox-test
-          docker run --rm --read-only --init \
-            --tmpfs /dev/shm:size=1m,mode=0755 \
-            --cap-drop ALL --cap-add SETUID --cap-add SETGID --cap-add KILL \
-            --security-opt no-new-privileges:true \
-            --sysctl fs.mqueue.queues_max=0 --sysctl kernel.shmmni=0 --sysctl kernel.msgmni=0 --sysctl "kernel.sem=0 0 0 0" \
-            --network sandbox-test --memory 384m --cpus 1 --pids-limit 256 \
-            mcp-server-test
+          flags=(--read-only --init
+            --tmpfs /dev/shm:size=1m,mode=0755
+            --cap-drop ALL --cap-add SETUID --cap-add SETGID --cap-add KILL
+            --security-opt no-new-privileges:true
+            --sysctl fs.mqueue.queues_max=0 --sysctl kernel.shmmni=0 --sysctl kernel.msgmni=0 --sysctl "kernel.sem=0 0 0 0"
+            --network sandbox-test --memory 384m --memory-swap 384m --cpus 1 --pids-limit 256)
+          docker run --rm "${flags[@]}" mcp-server-test
+          docker run -d --name sandbox-server --network-alias mcp-server "${flags[@]}" mcp-server-runtime
+          docker run --rm --network sandbox-test mcp-server-test .venv/bin/pytest tests/peer_tests ||
+            { docker logs sandbox-server; exit 1; }
