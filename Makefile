@@ -1,5 +1,6 @@
 .PHONY: up down restart logs services ps config help migrate-web migrate-agentic \
-	createsuperuser e2e-user test-web-backend test-web-integration sync-copilot inventory link-skills
+	createsuperuser e2e-user test-web-backend test-web-integration test-mcp-server sync-copilot inventory \
+	link-skills
 
 COMPOSE ?= docker compose
 FRONTEND_PORT ?= 8082
@@ -81,6 +82,10 @@ test-web-backend:
 test-web-integration:
 	$(DJANGO_HOST_ENV) uv run --directory web_backend python manage.py test tests.integration_tests
 
+# Unit tests only; the container tests run inside the image (CLAUDE.md, Commands).
+test-mcp-server:
+	uv run --directory mcp_server pytest
+
 # Skills excluded from all non-Claude harnesses: they need a Claude-only
 # runtime, so neither `sync-copilot` nor `link-skills` propagates them.
 # `e2e` drives Claude-only tools (`AskUserQuestion`) and this repo's Compose
@@ -150,6 +155,7 @@ help:
 		'link-skills Symlink .claude/skills into .opencode/skills and .agents/skills (Claude Code is canonical; harness-only skills stay untouched)' \
 		'test-web-backend Run the Django service test suite (unit tests; integration excluded)' \
 		'test-web-integration Run the Django integration suite against the dev Postgres' \
+		'test-mcp-server Run the MCP server unit tests' \
 		'' \
 		'Ports can be overridden, for example:' \
 		'  make up FRONTEND_PORT=8083 BACKEND_PORT=3002 POSTGRES_PORT=55433'
