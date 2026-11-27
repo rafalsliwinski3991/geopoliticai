@@ -94,15 +94,18 @@ sandbox does not keep the site from starting; an unhealthy one still fails a dep
 
 Every run is treated as hostile:
 
+- **Calls:** the server answers its own container, where the runs are, nothing but `GET /health`
+  (the healthcheck's request). A call from a loopback address or any other address of the container
+  gets a 403, so a run cannot start another run.
 - **Privileges:** the server runs as root holding only `SETUID`, `SETGID`, and `KILL`, with
   `no-new-privileges`. Each run executes as the slot user `sandbox0`, which has no capabilities,
   under resource limits, and every process of that user is killed when the run ends. `init: true`
   reaps what is left.
 - **State:** no `.env`, no volume, a read-only root filesystem, a root-owned 0755 `/dev/shm`, and
   sysctls that refuse System V IPC objects and message queues, which would outlive their run.
-- **Resources:** 384 MB of memory, one CPU, and 256 processes for the whole container.
+- **Resources:** 384 MB of memory with no swap, one CPU, and 256 processes for the whole container.
 - **Network:** only `sandbox`, which it shares with `agentic-backend`. The network is `internal`
-  (no route out, and external DNS names do not resolve) with
+  (no route out, and external DNS names do not resolve) with IPv6 off and
   `gateway_mode_ipv4: isolated` (no host address on it), so a run cannot reach the internet, the
   host, Phoenix, Postgres, or `web-backend`. `internal` alone is not enough: it keeps a host
   address through which code reaches host services listening on `0.0.0.0`. Production needs
@@ -115,12 +118,9 @@ non-internal network that holds nothing else, and publishes it on
 
 Two risks are accepted:
 
-- A run can call the MCP server on `localhost:8000` and start a nested run, which gets around any
-  per-turn call budget counted in `agentic_backend`. It stays bounded by the single slot (a nested
-  run waits for it and is refused as busy) and the wall limit on each run. A run can also reach
-  `agentic-backend:8000` on the `sandbox` network, where every `/api/*` route except
-  `GET /api/health` needs a bearer token (FastAPI's `/docs`, `/redoc`, and `/openapi.json` are
-  open there too).
+- A run can reach `agentic-backend:8000` on the `sandbox` network, where every `/api/*` route
+  except `GET /api/health` needs a bearer token (FastAPI's `/docs`, `/redoc`, and `/openapi.json`
+  are open there too).
 - In development and CI, `sandbox_host` lets a run reach the internet and anything on the host that
   listens on all addresses, the dev web ports included, though not Phoenix or Postgres, which are
   published on `127.0.0.1` only. That includes evals that read today's pages, whose text could

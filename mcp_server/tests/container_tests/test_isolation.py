@@ -6,14 +6,11 @@ queues, and an internal network.
 """
 
 import os
-import subprocess
-from collections.abc import AsyncIterator, Callable
-from contextlib import asynccontextmanager
+from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path
 
 import anyio
-import httpx
 import pytest
 from mcp import Client
 from mcp_types import CallToolResult
@@ -31,21 +28,8 @@ SHORT_WALL_SECONDS = 2.0
 PROMPT_SECONDS = 8.0
 # How long killed processes may take to be reaped by init.
 DEATH_SECONDS = 5.0
-SERVER_START_SECONDS = 20.0
-SERVER_URL = "http://127.0.0.1:8000"
 # A stopped flood left its pipe paused most times, not every time.
 FLOOD_ATTEMPTS = 8
-# The runtime image's `CMD`, bound to loopback.
-SERVER_COMMAND = [
-    ".venv/bin/uvicorn",
-    "app:app",
-    "--app-dir",
-    "src",
-    "--host",
-    "127.0.0.1",
-    "--port",
-    "8000",
-]
 # Starts `DETACHED` in its own session with none of the run's pipes, and waits
 # until it is running.
 START_DETACHED_CHILD = """
@@ -141,40 +125,6 @@ async def wait_until(condition: Callable[[], bool], seconds: float) -> bool:
             await anyio.sleep(0.02)
         return True
     return False
-
-
-@asynccontextmanager
-async def start_server() -> AsyncIterator[str]:
-    """The real server as its own process, answering `/health`."""
-    server = subprocess.Popen(SERVER_COMMAND, cwd="/app")
-
-    def is_ready() -> bool:
-        try:
-            return httpx.get(f"{SERVER_URL}/health", trust_env=False).is_success
-        except httpx.TransportError:
-            return False
-
-    try:
-        assert await wait_until(is_ready, SERVER_START_SECONDS)
-        yield f"{SERVER_URL}/mcp"
-    finally:
-        server.terminate()
-        server.wait(timeout=SERVER_START_SECONDS)
-
-
-@pytest.mark.anyio
-async def test_the_started_server_runs_code_as_the_slot_user() -> None:
-    """uvloop, which `uvicorn[standard]` brings, cannot start a process as another user."""
-    # Arrange
-    async with start_server() as url, Client(url) as client:
-        # Act
-        result = await run_python(client, "import os; print(os.getuid())")
-
-    # Assert
-    assert result.is_error is False, result.content
-    assert result.structured_content is not None
-    assert result.structured_content["outcome"] == "ok"
-    assert result.structured_content["stdout"] == f"{SLOT_UID}\n"
 
 
 @pytest.mark.anyio

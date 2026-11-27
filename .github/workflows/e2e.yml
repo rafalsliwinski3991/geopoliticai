@@ -105,4 +105,4 @@ jobs:
 
       - name: Print the app logs
         if: ${{ failure() }}
-        run: docker compose logs --tail=100 agentic-backend web-backend
+        run: docker compose logs --tail=100 agentic-backend web-backend mcp-server

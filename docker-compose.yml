@@ -62,6 +62,8 @@ services:
       kernel.msgmni: "0"
       kernel.sem: "0 0 0 0"
     mem_limit: 384m
+    # Equal to `mem_limit`: no swap.
+    memswap_limit: 384m
     cpus: 1
     pids_limit: 256
     healthcheck:
@@ -108,6 +110,7 @@ networks:
   # services listening on 0.0.0.0.
   sandbox:
     internal: true
+    enable_ipv6: false
     driver_opts:
       com.docker.network.bridge.gateway_mode_ipv4: isolated
 

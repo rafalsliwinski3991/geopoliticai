@@ -1,6 +1,8 @@
+import errno
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import replace
+from ipaddress import IPv4Address, IPv6Address
 from pathlib import Path
 from typing import Any
 
@@ -28,6 +30,9 @@ RESULT_FIELDS = {
     "truncated",
     "duration_ms",
 }
+# Documentation-only addresses (RFC 5737, RFC 3849): no machine owns them.
+REMOTE_PEER = "192.0.2.10"
+PEER_PORT = 50000
 MCP_HEADERS = {"Accept": "application/json, text/event-stream"}
 INITIALIZE_REQUEST = {
     "jsonrpc": "2.0",
@@ -72,6 +77,17 @@ class FailingRun:
         raise PermissionError("cannot switch user")
 
 
+class FailingBind:
+    """A `bind_to` that fails for a reason that says nothing about the address."""
+
+    def __init__(self) -> None:
+        self.addresses: list[str] = []
+
+    def __call__(self, address: IPv4Address | IPv6Address) -> None:
+        self.addresses.append(str(address))
+        raise OSError(errno.EPERM, "cannot bind")
+
+
 async def run_python(client: Client, code: str) -> CallToolResult:
     return await client.call_tool("run_python", {"code": code})
 
@@ -88,11 +104,14 @@ def pad_to(code: str, total_bytes: int, filler: str) -> str:
 
 
 @asynccontextmanager
-async def serve(base_url: str) -> AsyncIterator[httpx.AsyncClient]:
-    """An HTTP client on a fresh app whose lifespan is running."""
+async def serve(
+    base_url: str, peer: str | None = REMOTE_PEER
+) -> AsyncIterator[httpx.AsyncClient]:
+    """An HTTP client at `peer`'s address on a fresh app whose lifespan is running."""
     app = create_app()
+    client = None if peer is None else (peer, PEER_PORT)
     async with app.router.lifespan_context(app):
-        transport = httpx.ASGITransport(app=app)
+        transport = httpx.ASGITransport(app=app, client=client)
         async with httpx.AsyncClient(transport=transport, base_url=base_url) as http:
             yield http
 
@@ -291,3 +310,118 @@ async def test_a_request_for_an_unlisted_host_is_rejected() -> None:
 
     # Assert
     assert response.status_code == 421
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    "peer",
+    [
+        "127.0.0.1",
+        "127.0.0.2",
+        "::1",
+        "::ffff:127.0.0.1",
+        "0.0.0.0",
+        "::ffff:0.0.0.0",
+        None,
+        "not-an-address",
+    ],
+    ids=[
+        "loopback",
+        "another loopback address",
+        "IPv6 loopback",
+        "IPv4-mapped loopback",
+        "another address the machine can bind",
+        "its IPv4-mapped form",
+        "no client address",
+        "an address that cannot be read",
+    ],
+)
+async def test_a_peer_that_may_be_the_servers_own_machine_is_refused_on_mcp(
+    peer: str | None,
+) -> None:
+    """A run that could call the server would chain runs past every per-run limit."""
+    # Arrange
+    async with serve("http://localhost:8000", peer) as http:
+        # Act
+        response = await http.post("/mcp", json=INITIALIZE_REQUEST, headers=MCP_HEADERS)
+
+    # Assert
+    assert response.status_code == 403
+
+
+@pytest.mark.anyio
+async def test_a_peer_whose_address_cannot_be_checked_is_refused(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The check fails closed: an unanswered "is this mine?" counts as yes."""
+    # Arrange
+    failing = FailingBind()
+    monkeypatch.setattr(app_module, "bind_to", failing)
+
+    async with serve("http://mcp-server:8000", REMOTE_PEER) as http:
+        # Act
+        response = await http.post("/mcp", json=INITIALIZE_REQUEST, headers=MCP_HEADERS)
+
+    # Assert
+    assert failing.addresses == [REMOTE_PEER]
+    assert response.status_code == 403
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    ("method", "path"),
+    [
+        ("DELETE", "/mcp"),
+        ("GET", "/docs"),
+        ("GET", "/openapi.json"),
+        ("GET", "/health/"),
+        ("POST", "/health"),
+    ],
+    ids=[
+        "ending an MCP session",
+        "the docs",
+        "the schema",
+        "health with a trailing slash",
+        "posting to health",
+    ],
+)
+async def test_a_local_peer_is_refused_everything_but_reading_health(
+    method: str, path: str
+) -> None:
+    """An allow-list, so a route added later is closed to runs without anyone's help."""
+    # Arrange
+    async with serve("http://localhost:8000", "127.0.0.1") as http:
+        # Act
+        response = await http.request(method, path)
+
+    # Assert
+    assert response.status_code == 403
+
+
+@pytest.mark.anyio
+async def test_a_local_peer_may_read_health() -> None:
+    """The container's healthcheck calls from its own loopback."""
+    # Arrange
+    async with serve("http://localhost:8000", "127.0.0.1") as http:
+        # Act
+        response = await http.get("/health")
+
+    # Assert
+    assert (response.status_code, response.json()) == (200, {"status": "ok"})
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    "peer",
+    [REMOTE_PEER, f"::ffff:{REMOTE_PEER}", "2001:db8::10"],
+    ids=["IPv4", "IPv4-mapped", "IPv6"],
+)
+async def test_a_peer_on_another_machine_may_call_mcp(peer: str) -> None:
+    """The backend and the developer's host are the server's whole audience."""
+    # Arrange
+    async with serve("http://mcp-server:8000", peer) as http:
+        # Act
+        response = await http.post("/mcp", json=INITIALIZE_REQUEST, headers=MCP_HEADERS)
+
+    # Assert
+    assert response.status_code == 200
