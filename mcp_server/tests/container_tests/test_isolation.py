@@ -33,6 +33,8 @@ PROMPT_SECONDS = 8.0
 DEATH_SECONDS = 5.0
 SERVER_START_SECONDS = 20.0
 SERVER_URL = "http://127.0.0.1:8000"
+# A stopped flood left its pipe paused most times, not every time.
+FLOOD_ATTEMPTS = 8
 # The runtime image's `CMD`, bound to loopback.
 SERVER_COMMAND = [
     ".venv/bin/uvicorn",
@@ -299,6 +301,27 @@ async def test_a_timed_out_run_is_killed_across_users(
     # Assert
     assert result.outcome == "timeout"
     assert await wait_until(is_slot_user_idle, DEATH_SECONDS)
+
+
+@pytest.mark.anyio
+async def test_a_run_flooding_output_past_the_wall_limit_is_reported_as_a_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A server fault here would make the client fail the whole deep turn."""
+    # Arrange
+    shorten_wall_limit(monkeypatch)
+    code = "while True: print('x' * 100000)"
+    app = create_app()
+
+    async with Client(app.state.mcp) as client:
+        # Act
+        results = [await run_python(client, code) for _ in range(FLOOD_ATTEMPTS)]
+
+    # Assert
+    assert [
+        result.structured_content and result.structured_content["outcome"]
+        for result in results
+    ] == ["timeout"] * FLOOD_ATTEMPTS
 
 
 @pytest.mark.anyio

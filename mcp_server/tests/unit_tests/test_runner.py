@@ -1,4 +1,5 @@
 import asyncio
+import gc
 import os
 import signal
 import subprocess
@@ -17,6 +18,11 @@ SHORT_WALL_SECONDS = 0.5
 SHORT_REAP_SECONDS = 0.5
 OUTPUT_CAP_BYTES = 10_000
 PAST_MEMORY_CAP_BYTES = 512 * 1024 * 1024
+# Writes to `sys.{stream}` without end, faster than the server reads it.
+FLOOD = "import sys\nwhile True: sys.{stream}.write('x' * 100_000)"
+# A stopped flood left its pipe paused most times, not every time.
+FLOOD_ATTEMPTS = 8
+FLOOD_REAP_SECONDS = 2.0
 # How long a process may take to die after SIGKILL before a test calls it alive.
 DEATH_SECONDS = 2.0
 # Starts a long sleeper in the run's own process group, holding none of its pipes.
@@ -60,6 +66,10 @@ def is_running(pid: int) -> bool:
     except (FileNotFoundError, ProcessLookupError):
         return False
     return stat.rpartition(")")[2].split()[0] not in ("Z", "X")
+
+
+def count_open_descriptors() -> int:
+    return len(os.listdir("/proc/self/fd"))
 
 
 async def wait_until(condition: Callable[[], bool]) -> bool:
@@ -127,6 +137,29 @@ async def test_a_sleeping_run_is_stopped_by_the_wall_limit(
 
     # Assert
     assert result.outcome == "timeout"
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("stream", ["stdout", "stderr"])
+async def test_a_run_flooding_output_past_the_wall_limit_is_reported_as_a_timeout(
+    monkeypatch: pytest.MonkeyPatch, stream: str
+) -> None:
+    """An undrained pipe hides the child's end and turns the run into a server fault."""
+    # Arrange
+    shorten_limits(
+        monkeypatch,
+        wall_seconds=SHORT_WALL_SECONDS,
+        reap_seconds=FLOOD_REAP_SECONDS,
+    )
+    code = FLOOD.format(stream=stream)
+
+    # Act
+    results = [await run_code(code, run_as=None) for _ in range(FLOOD_ATTEMPTS)]
+
+    # Assert
+    assert [(result.outcome, result.exit_code) for result in results] == [
+        ("timeout", None)
+    ] * FLOOD_ATTEMPTS
 
 
 @pytest.mark.anyio
@@ -283,6 +316,30 @@ async def test_a_cancelled_run_leaves_no_process_in_its_group(tmp_path: Path) ->
     assert started
     child_pid = int(pid_file.read_text())
     assert await wait_until(lambda: not is_running(child_pid))
+
+
+@pytest.mark.anyio
+async def test_a_cancelled_flooding_run_leaves_no_pipe_open() -> None:
+    """Every client that gave up on a flood would leave the server a descriptor."""
+    # Arrange
+    code = FLOOD.format(stream="stdout")
+    gc.collect()
+    open_before = count_open_descriptors()
+    # A collection would close an abandoned pipe at a random moment and hide it.
+    gc.disable()
+
+    try:
+        # Act
+        for _ in range(FLOOD_ATTEMPTS):
+            async with anyio.create_task_group() as tasks:
+                tasks.start_soon(lambda: run_code(code, run_as=None))
+                await anyio.sleep(SHORT_WALL_SECONDS)
+                tasks.cancel_scope.cancel()
+
+        # Assert
+        assert await wait_until(lambda: count_open_descriptors() <= open_before)
+    finally:
+        gc.enable()
 
 
 @pytest.mark.anyio

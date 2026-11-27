@@ -60,11 +60,14 @@ async def run_code(code: str, *, run_as: str | None) -> RunResult:
     process = await start_child(run_as)
     timed_out = False
     stdout, out_cut, stderr, err_cut = b"", False, b"", False
+    # Shielded below, so neither the wall limit nor a cancel stops the readers. A
+    # reader stopped mid-flood leaves its pipe paused: its end is never seen, the
+    # reap times out and the descriptor stays open.
+    output = asyncio.gather(read_capped(process.stdout), read_capped(process.stderr))
     try:
         async with asyncio.timeout(LIMITS.wall_seconds):
-            (stdout, out_cut), (stderr, err_cut), _ = await asyncio.gather(
-                read_capped(process.stdout),
-                read_capped(process.stderr),
+            ((stdout, out_cut), (stderr, err_cut)), _ = await asyncio.gather(
+                asyncio.shield(output),
                 feed_stdin(process, code),
             )
             await process.wait()
