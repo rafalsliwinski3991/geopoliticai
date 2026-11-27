@@ -54,7 +54,8 @@ this file, so OpenCode, Copilot, and Antigravity read it too: name no tool or pa
 - `agentic_backend/` is the FastAPI app (import root `src/`), serving only the API. `web_backend/` is
   the Django service that owns accounts, admin, the public pages, and every user-keyed table.
   `frontend/chat/` is the chat SPA, served statically by nginx at `/chat`. The two Python services
-  never import each other; they share only Postgres and the root `.env`.
+  never import each other; they share only Postgres and the root `.env`, and agentic-backend reaches
+  the sandbox over the internal `sandbox` network.
 - `mcp_server/` is a separate uv project, the code sandbox's MCP server (FastAPI hosting the MCP
   SDK); it never imports, and is never imported by, the other services.
 - The root `docker-compose*.yml` files are the live stack (`build:` for dev, `image:` for production,
@@ -276,5 +277,7 @@ deep_forecaster  START -> research -> draft_claims -> council_round_1 -> council
 - Production deploys only through the dispatch-only `deploy.yml`, from `main` or a tag, and
   `rollback.yml` restores an earlier release with its matching database snapshot. The README's
   "Deploy order" and "Production deploy" sections hold the steps.
+- `deploy.yml` builds and pushes the `postgres`, `agentic-backend`, `web-backend`, `frontend`, and
+  `mcp-server` images.
 - `deploy/vps.py` is tested with `uvx pytest deploy/tests`. `vps.py backup` takes its off-site
   credentials from the VPS's `backup.env`, never from `.env`.

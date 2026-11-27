@@ -230,6 +230,7 @@ def deploy(sha: str) -> None:
             "100",
             "agentic-backend",
             "web-backend",
+            "mcp-server",
             check=False,
         )
         raise

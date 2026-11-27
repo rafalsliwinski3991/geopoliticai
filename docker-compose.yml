@@ -29,11 +29,50 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       DATABASE_URL: postgresql://geopoliticai:${POSTGRES_PASSWORD}@postgres:5432/geopoliticai
       PHOENIX_COLLECTOR_ENDPOINT: http://phoenix:6006/v1/traces
+      SANDBOX_MCP_URL: http://mcp-server:8000/mcp
+    networks: [default, sandbox]
     depends_on:
       postgres:
         condition: service_healthy
       phoenix:
         condition: service_started
+
+  # Runs model-written Python (README, "Code sandbox"). No env_file: it holds no
+  # secret. Only on `sandbox`, so its code cannot reach Phoenix, Postgres,
+  # web-backend, the host, or the internet. agentic-backend does not wait for it:
+  # a broken sandbox fails deep turns that compute, never the site; `up --wait`
+  # still fails a deploy when it is unhealthy.
+  mcp-server:
+    build: ./mcp_server
+    image: ghcr.io/rafalsliwinski3991/geopoliticai-mcp-server:${IMAGE_TAG:-latest}
+    networks: [sandbox]
+    init: true
+    read_only: true
+    # Root-owned and not world-writable, so a run cannot leave a file there.
+    tmpfs:
+      - /dev/shm:size=1m,mode=0755
+    cap_drop: [ALL]
+    cap_add: [SETUID, SETGID, KILL]
+    security_opt: ["no-new-privileges:true"]
+    # No System V IPC or message queues: such objects outlive their process and
+    # would carry state from one run to the next.
+    sysctls:
+      fs.mqueue.queues_max: "0"
+      kernel.shmmni: "0"
+      kernel.msgmni: "0"
+      kernel.sem: "0 0 0 0"
+    mem_limit: 384m
+    cpus: 1
+    pids_limit: 256
+    healthcheck:
+      test:
+        - "CMD"
+        - ".venv/bin/python"
+        - "-c"
+        - "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"
+      interval: 10s
+      timeout: 5s
+      retries: 6
 
   web-backend:
     build: ./web_backend
@@ -62,6 +101,15 @@ services:
       PHOENIX_WORKING_DIR: /mnt/data
     volumes:
       - phoenix_data:/mnt/data
+
+networks:
+  # No route out (`internal`) and no host address on the bridge (`isolated`,
+  # Docker Engine 28.0+): with `internal` alone, sandbox code still reaches host
+  # services listening on 0.0.0.0.
+  sandbox:
+    internal: true
+    driver_opts:
+      com.docker.network.bridge.gateway_mode_ipv4: isolated
 
 volumes:
   postgres_data:

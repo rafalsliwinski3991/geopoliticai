@@ -55,8 +55,22 @@ services:
 
   postgres:
     ports:
-      - "${POSTGRES_PORT:-55432}:5432"
+      # Loopback only: on all addresses, dev sandbox code reaches it through the
+      # host (see mcp-server below).
+      - "127.0.0.1:${POSTGRES_PORT:-55432}:5432"
 
   phoenix:
     ports:
       - "127.0.0.1:${PHOENIX_PORT:-6006}:6006"
+
+  # Dev and CI reach the sandbox from the host. `sandbox_host` holds only this
+  # service, but it is not internal: dev sandbox code can reach the internet and
+  # the host ports published on all addresses (the dev web ports), though not
+  # Phoenix or Postgres. Production has no such network.
+  mcp-server:
+    networks: [sandbox, sandbox_host]
+    ports:
+      - "127.0.0.1:${SANDBOX_PORT:-8100}:8000"
+
+networks:
+  sandbox_host: {}

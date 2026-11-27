@@ -82,6 +82,50 @@ admin user, and `make test-web-backend` runs its suite against the dev
 Postgres. The two services share the database and the root `.env` but never
 each other's code.
 
+## Code sandbox
+
+The `mcp-server` Compose service (source in `mcp_server/`) runs Python that a model writes. It is an
+MCP server (`/mcp`, plus `GET /health`) whose one tool, `run_python(code)`, executes the code in a
+fresh Python 3.12 process with numpy and pandas and returns what it printed; nothing is kept between
+calls. It runs one program at a time, with the time, memory, code-size, and output caps in `LIMITS`
+(`mcp_server/src/config.py`). Compose gives `agentic-backend` its address in `SANDBOX_MCP_URL`
+(set in `docker-compose.yml`, never in `.env`). `agentic-backend` does not wait for it, so a broken
+sandbox does not keep the site from starting; an unhealthy one still fails a deploy at `up --wait`.
+
+Every run is treated as hostile:
+
+- **Privileges:** the server runs as root holding only `SETUID`, `SETGID`, and `KILL`, with
+  `no-new-privileges`. Each run executes as the slot user `sandbox0`, which has no capabilities,
+  under resource limits, and every process of that user is killed when the run ends. `init: true`
+  reaps what is left.
+- **State:** no `.env`, no volume, a read-only root filesystem, a root-owned 0755 `/dev/shm`, and
+  sysctls that refuse System V IPC objects and message queues, which would outlive their run.
+- **Resources:** 384 MB of memory, one CPU, and 256 processes for the whole container.
+- **Network:** only `sandbox`, which it shares with `agentic-backend`. The network is `internal`
+  (no route out, and external DNS names do not resolve) with
+  `gateway_mode_ipv4: isolated` (no host address on it), so a run cannot reach the internet, the
+  host, Phoenix, Postgres, or `web-backend`. `internal` alone is not enough: it keeps a host
+  address through which code reaches host services listening on `0.0.0.0`. Production needs
+  **Docker Engine 28.0 or newer** for the `isolated` mode.
+
+**Development only:** `docker-compose.override.yml` also attaches the service to `sandbox_host`, a
+non-internal network that holds nothing else, and publishes it on
+`127.0.0.1:${SANDBOX_PORT:-8100}`. A host run (an eval, `langgraph dev`) exports
+`SANDBOX_MCP_URL=http://127.0.0.1:8100/mcp` itself, with its own port if `SANDBOX_PORT` is set.
+
+Two risks are accepted:
+
+- A run can call the MCP server on `localhost:8000` and start a nested run, which gets around any
+  per-turn call budget counted in `agentic_backend`. It stays bounded by the single slot (a nested
+  run waits for it and is refused as busy) and the wall limit on each run. A run can also reach
+  `agentic-backend:8000` on the `sandbox` network, where every `/api/*` route except
+  `GET /api/health` needs a bearer token (FastAPI's `/docs`, `/redoc`, and `/openapi.json` are
+  open there too).
+- In development and CI, `sandbox_host` lets a run reach the internet and anything on the host that
+  listens on all addresses, the dev web ports included, though not Phoenix or Postgres, which are
+  published on `127.0.0.1` only. That includes evals that read today's pages, whose text could
+  steer the code a model writes. Production has no `sandbox_host`.
+
 ## Deploy order (three migration systems share one database)
 
 Production runs these steps automatically, in this order, in `deploy/vps.py deploy`
@@ -155,7 +199,7 @@ release (`releases.log`, `current`). The last five releases and their snapshots 
 
 ### One-time VPS bootstrap (manual, in this order)
 
-1. Install Docker Engine and the Compose plugin
+1. Install Docker Engine (28.0 or newer, see "Code sandbox") and the Compose plugin
    (https://docs.docker.com/engine/install/ubuntu/); the deploy script runs on
    the VPS's preinstalled `python3` — 3.9 or newer (the script uses
    `list[str]` annotations and `str.removesuffix`).
@@ -180,7 +224,7 @@ release (`releases.log`, `current`). The last five releases and their snapshots 
 7. Run the first deploy. Then switch renewals to the nginx webroot, with no downtime:
    `sudo certbot reconfigure --cert-name politicalagent.eu --webroot -w /var/www/certbot --deploy-hook "docker exec geopoliticai-frontend-1 nginx -s reload"`,
    and confirm with `sudo certbot renew --dry-run`.
-8. After the first deploy, open github.com → your profile → Packages and confirm the three
+8. After the first deploy, open github.com → your profile → Packages and confirm the five
    `geopoliticai-*` packages are **private** and linked to this repository.
 
 Phoenix is at `https://politicalagent.eu/phoenix/`, behind the same
