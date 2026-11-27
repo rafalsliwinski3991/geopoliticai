@@ -1,8 +1,9 @@
-"""deep_expert_fixed judges: the expert's three on the deep answer, plus depth.
+"""deep_expert_fixed judges: the expert's three on the deep answer, plus depth and shape checks.
 
 With one key vocabulary the deep eval's answer is `answer`, so the expert_fixed
-judges read it unchanged. The fourth, `deeper_than_expert`, compares it with
+judges read it unchanged. `deeper_than_expert` compares it with
 `baseline_answer`, which the expert writes live from the same recorded pages.
+`used_the_sandbox` applies only to a case that requires computations.
 """
 
 from __future__ import annotations
@@ -13,7 +14,10 @@ from typing import Any
 from evals.helpers.judge import Judge
 from evals.judges.expert_fixed import judges as expert_judges
 
-EXPECTED_KEYS = frozenset({"answer"})
+EXPECTED_KEYS = frozenset({"answer", "min_computations"})
+# Same text as agents.deep_expert.consts.progress.COMPUTE_PROGRESS_LABEL's start;
+# evals read the progress labels the task returns rather than importing src internals.
+COMPUTE_LABEL_PREFIX = "Computing ("
 PREAMBLE_OPENING = re.compile(r"^[#*\s]*(plan and scope|scope(,| and) )", re.IGNORECASE)
 INSTRUCTION_LEAK = re.compile(
     r"\b(the assignment|assignment's|my instructions|the rules (above|require|i was given))\b",
@@ -75,6 +79,20 @@ def _answer_view(
     return {"answer": output.get("answer") or ""}
 
 
+def _computation_view(
+    input: dict[str, Any], output: dict[str, Any], expected: dict[str, Any]
+) -> dict[str, Any] | None:
+    if "min_computations" not in expected:
+        return None
+    labels = output.get("progress") or []
+    return {
+        "computations": sum(
+            1 for label in labels if label.startswith(COMPUTE_LABEL_PREFIX)
+        ),
+        "minimum": expected["min_computations"],
+    }
+
+
 def answer_without_preamble(variables: dict[str, Any]) -> bool:
     """Pass when the answer opens with substance and never quotes its own rules."""
     answer = variables["answer"].strip()
@@ -90,6 +108,11 @@ def answer_without_closing_offer(variables: dict[str, Any]) -> bool:
     """Pass when the answer's last paragraph is analysis, not an offer or a question."""
     paragraphs = [p for p in variables["answer"].split("\n\n") if p.strip()]
     return bool(paragraphs) and not CLOSING_OFFER.search(paragraphs[-1])
+
+
+def used_the_sandbox(variables: dict[str, Any]) -> bool:
+    """Pass when the deep expert computed at least as often as the case requires."""
+    return bool(variables["computations"] >= variables["minimum"])
 
 
 def judges() -> tuple[Judge, ...]:
@@ -109,4 +132,5 @@ def judges() -> tuple[Judge, ...]:
             check=answer_without_closing_offer,
         ),
         Judge("deeper_than_expert", "numeric", _depth_view, prompt=DEPTH_PROMPT),
+        Judge("used_the_sandbox", "binary", _computation_view, check=used_the_sandbox),
     )

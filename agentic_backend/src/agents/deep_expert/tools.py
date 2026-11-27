@@ -1,7 +1,7 @@
-"""The deep expert's two research tools, over the shared `services/web_search.py` and `services/page_reader.py` boundary.
+"""The deep expert's three tools, over the `services/` web search, page reader, and code sandbox.
 
-Two tools, not one: a search returns only titles and URLs, and the model reads
-the pages it chooses. One combined tool would put up to eight 20,000-character
+Search and read are two tools, not one: a search returns only titles and URLs,
+and the model reads the pages it chooses. One combined tool would put up to eight 20,000-character
 articles into the transcript per search. `read_source` accepts only URLs a
 search in this turn returned. The allow-list is therefore enforced twice: by
 `search_allowlisted` and by `fetch_sources`' own domain check. The model can
@@ -10,6 +10,9 @@ never make the service fetch an arbitrary URL.
 One `search_sources` call is one `search_allowlisted` call, which makes one
 Brave request per `EXPERT_SOURCES` batch (three). A turn at the cap makes 45
 Brave requests.
+
+`run_python` runs the model's code in the offline sandbox
+(`services/code_sandbox.py`), so figures are computed rather than guessed.
 """
 
 from __future__ import annotations
@@ -20,13 +23,17 @@ from langchain_core.tools import BaseTool, tool
 
 from agents.deep_expert.config import LIMITS
 from agents.deep_expert.consts.progress import (
+    COMPUTE_PROGRESS_LABEL,
     READ_PROGRESS_LABEL,
     SEARCH_PROGRESS_LABEL,
 )
 from agents.deep_expert.state import ResearchRun
 from agents.expert.consts.sources import EXPERT_SOURCES
+from services.code_sandbox import CodeRun, run_code
 from services.page_reader import fetch_sources
 from services.web_search import search_allowlisted
+from shared.errors import SandboxUnavailableError
+from shared.tracing import start_span
 
 EMPTY_QUERY_MESSAGE = "The query was empty. Search again with a focused query."
 UNKNOWN_URL_MESSAGE = (
@@ -36,11 +43,34 @@ UNREADABLE_MESSAGE = "That page could not be fetched or had no usable article te
 NO_SEARCHES_LEFT_MESSAGE = (
     "No searches left. Do not search again; write the answer from what you have read."
 )
+EMPTY_CODE_MESSAGE = "The code was empty. Send the Python to run."
+NO_COMPUTATIONS_LEFT_MESSAGE = "No computations left. Do not call run_python again; write the answer from what you have."
+NO_OUTPUT_MESSAGE = "(The code printed nothing. `print` every result you need.)"
+TRUNCATED_NOTE = "\n[Output cut at 10 KB.]"
+TIMEOUT_MESSAGE = "The code ran past 10 seconds and was stopped. Simplify it."
+OOM_MESSAGE = "The code ran out of memory (256 MB). Use less data."
 logger = logging.getLogger(__name__)
 
 
+def describe_run(result: CodeRun, remaining: int) -> str:
+    """Turn one sandbox run into the text the model reads."""
+    if result.outcome == "ok":
+        body = result.stdout.strip() or NO_OUTPUT_MESSAGE
+    elif result.outcome == "timeout":
+        body = TIMEOUT_MESSAGE
+    elif result.outcome == "oom":
+        body = OOM_MESSAGE
+    elif result.outcome == "refused":
+        body = result.stderr
+    else:
+        body = f"The code failed (exit {result.exit_code}):\n{result.stderr.strip()}"
+    if result.truncated:
+        body += TRUNCATED_NOTE
+    return f"{body}\n\nComputations left: {remaining}."
+
+
 def build_tools(run: ResearchRun) -> list[BaseTool]:
-    """Return this turn's `search_sources` and `read_source`, bound to `run`."""
+    """Return this turn's `search_sources`, `read_source`, and `run_python`, bound to `run`."""
 
     @tool
     async def search_sources(query: str) -> str:
@@ -102,4 +132,60 @@ def build_tools(run: ResearchRun) -> list[BaseTool]:
                 run.progress(READ_PROGRESS_LABEL.format(count=len(run.sources)))
         return f"--- SOURCE ---\nTitle: {source.title}\nURL: {url}\n\n{source.text}"
 
-    return [search_sources, read_source]
+    @tool
+    async def run_python(code: str) -> str:
+        """Run Python 3 with numpy and pandas in an offline sandbox; returns what it printed.
+
+        Use it when the answer combines several figures from sources you read
+        (growth, shares, averages, differences). It cannot read files or the
+        internet: paste the numbers into the code and `print` each result.
+        Nothing is kept between calls. Each call spends one computation from a
+        small fixed budget.
+        """
+        with start_span("run_python") as span:
+            span.set_attributes(
+                {
+                    "turn.run_index": run.computations + 1,
+                    "code.chars": len(code),
+                    "code.lines": code.count("\n") + 1,
+                }
+            )
+            if not code.strip():
+                span.set_attribute("sandbox.outcome", "empty")
+                return EMPTY_CODE_MESSAGE
+            if run.computations >= LIMITS.max_computations:
+                span.set_attribute("sandbox.outcome", "budget_spent")
+                return NO_COMPUTATIONS_LEFT_MESSAGE
+            run.computations += 1
+            run.progress(
+                COMPUTE_PROGRESS_LABEL.format(
+                    used=run.computations, cap=LIMITS.max_computations
+                )
+            )
+            try:
+                result = await run_code(code)
+            except SandboxUnavailableError as exc:
+                # A sandbox outage is a hard error, like a search outage.
+                span.set_attributes(
+                    {
+                        "sandbox.outcome": "unreachable",
+                        "error.type": type(exc).__name__,
+                    }
+                )
+                raise
+            span.set_attributes(
+                {
+                    "sandbox.outcome": result.outcome,
+                    "sandbox.duration_ms": result.duration_ms,
+                    "sandbox.exit_code": -1
+                    if result.exit_code is None
+                    else result.exit_code,
+                    "output.chars": len(result.stdout),
+                    "output.truncated": result.truncated,
+                }
+            )
+            if result.outcome != "ok":
+                span.set_attribute("error.type", result.outcome)
+        return describe_run(result, LIMITS.max_computations - run.computations)
+
+    return [search_sources, read_source, run_python]

@@ -340,6 +340,12 @@ after a deploy that carries nginx's 50 MB limit on `/phoenix/`: before that, lar
 with 413. Locally, run `make evals-fixed`, `make evals-live`, or `make evals` from `agentic_backend/`;
 it reads `PHOENIX_COLLECTOR_ENDPOINT` (and `PHOENIX_CLIENT_HEADERS`, for the VPS) from the root `.env`.
 
+The deep expert computes in the [code sandbox](#code-sandbox), so a local run of a `deep_expert_*`
+eval, `make evals-fixed`, `make evals-live` and `make evals` included, needs `mcp-server` running and
+`SANDBOX_MCP_URL` exported: from the root, `docker compose up -d --build --wait mcp-server`, then
+`export SANDBOX_MCP_URL=http://127.0.0.1:8100/mcp` (your own port if `SANDBOX_PORT` is set). A case
+that computes without it fails. The `Evals` workflow starts the service itself.
+
 ### Load tests
 
 `agentic_backend/loadtests/` load-tests the API over real HTTP with [Locust](https://locust.io), without

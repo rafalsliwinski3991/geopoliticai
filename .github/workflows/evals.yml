@@ -75,6 +75,7 @@ jobs:
       BRAVE_SEARCH_KEY: ${{ secrets.BRAVE_SEARCH_KEY }}
       # The VPS Phoenix: https://politicalagent.eu/phoenix/v1/traces
       PHOENIX_COLLECTOR_ENDPOINT: ${{ secrets.PHOENIX_COLLECTOR_ENDPOINT }}
+      SANDBOX_MCP_URL: http://127.0.0.1:8100/mcp
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -94,6 +95,14 @@ jobs:
       - name: Install dependencies
         working-directory: agentic_backend
         run: uv sync --locked --dev
+
+      # The deep expert computes in the code sandbox: start the same Compose
+      # service the stack runs (the dev override publishes it on 127.0.0.1:8100).
+      - name: Start the code sandbox
+        if: startsWith(matrix.eval, 'deep_expert_')
+        run: |
+          test -f .env || touch .env
+          docker compose up -d --build --wait mcp-server
 
       - name: Run ${{ matrix.eval }}
         working-directory: agentic_backend

@@ -25,6 +25,7 @@ from shared.errors import (
     LLMInvocationError,
     NoSourcesError,
     ResearchLimitError,
+    SandboxUnavailableError,
     SearchUnavailableError,
 )
 from shared.frames import ProgressFrame
@@ -180,7 +181,7 @@ async def test_build_graph_wires_the_recorded_shape(
 
     # Assert
     tool_names = [tool.name for tool in recorded_deep["tools"]]
-    assert sorted(tool_names) == ["read_source", "search_sources"]
+    assert sorted(tool_names) == ["read_source", "run_python", "search_sources"]
     # The subagent shares this turn's tool objects, so both agents spend from
     # the same budget (`ResearchRun`).
     assert recorded_deep["subagents"][0]["tools"] is recorded_deep["tools"]
@@ -257,6 +258,99 @@ async def test_the_whole_loop_propagates_a_tool_error(
         await parent.ainvoke(
             {"marker": ""}, config={"configurable": {"thread_id": "t"}}
         )
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    "calls_before_the_computation",
+    [
+        [],
+        [
+            AIMessage(
+                "",
+                tool_calls=[
+                    {
+                        "name": "task",
+                        "args": {
+                            "description": "compute",
+                            "subagent_type": graph_module.GENERAL_PURPOSE_SUBAGENT_NAME,
+                        },
+                        "id": "k1",
+                    }
+                ],
+            )
+        ],
+    ],
+    ids=["the agent's own call", "a subagent's call"],
+)
+async def test_a_sandbox_outage_ends_the_whole_deep_run(
+    monkeypatch: pytest.MonkeyPatch, calls_before_the_computation: list[Any]
+) -> None:
+    """The outage must reach the API as a 503, not reach the model as a tool message.
+
+    A model told that the sandbox failed would go on and answer with figures it
+    never computed.
+    """
+    # Arrange
+    monkeypatch.setenv("OPENAI_API_KEY", "test")
+
+    from langchain_core.language_models.fake_chat_models import (
+        FakeMessagesListChatModel,
+    )
+    from langchain_core.outputs import ChatGeneration, ChatResult
+    from langgraph.checkpoint.memory import InMemorySaver
+    from langgraph.graph import END, START, StateGraph
+    from langgraph.types import StreamWriter
+    from typing_extensions import TypedDict
+
+    tools_module: Any = importlib.import_module("agents.deep_expert.tools")
+
+    class _ScriptedModel(FakeMessagesListChatModel):
+        """Plays `responses` once, then refuses: a swallowed outage fails loudly."""
+
+        calls: int = 0
+
+        def bind_tools(self, tools: Any, **kwargs: Any) -> Any:
+            return self
+
+        async def _agenerate(self, *args: Any, **kwargs: Any) -> ChatResult:
+            self.calls += 1
+            if self.calls > len(self.responses):
+                raise AssertionError("the scripted model has no call left")
+            message = self.responses[self.calls - 1]
+            return ChatResult(generations=[ChatGeneration(message=message)])
+
+    computation = AIMessage(
+        "",
+        tool_calls=[{"name": "run_python", "args": {"code": "print(1)"}, "id": "c1"}],
+    )
+    model = _ScriptedModel(responses=[*calls_before_the_computation, computation])
+    monkeypatch.setattr(graph_module, "build_chat_model", lambda settings: model)
+
+    async def _unreachable(code: str) -> Any:
+        raise SandboxUnavailableError("sandbox down")
+
+    monkeypatch.setattr(tools_module, "run_code", _unreachable)
+
+    class ParentState(TypedDict):
+        marker: str
+
+    async def parent_node(state: ParentState, writer: StreamWriter) -> dict[str, Any]:
+        await graph_module.research("q", writer)
+        return {"marker": "unreached"}
+
+    builder: "StateGraph[ParentState]" = StateGraph(ParentState)
+    builder.add_node("deep", parent_node)
+    builder.add_edge(START, "deep")
+    builder.add_edge("deep", END)
+    parent: Any = builder.compile(checkpointer=InMemorySaver())
+
+    # Act + Assert
+    with pytest.raises(SandboxUnavailableError):
+        await parent.ainvoke(
+            {"marker": ""}, config={"configurable": {"thread_id": "t"}}
+        )
+    assert model.calls == len(calls_before_the_computation) + 1
 
 
 @pytest.mark.anyio
@@ -987,6 +1081,39 @@ async def test_research_span_records_a_spent_budget(
     assert attributes["research.searches_used"] == 5
     assert attributes["research.search_budget_hit"] is True
     assert attributes["research.time_limit_hit"] is False
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    ("computations", "budget_hit"),
+    [(2, False), (3, True)],
+    ids=["one left", "at the cap"],
+)
+async def test_the_research_span_records_the_computation_budget(
+    monkeypatch: pytest.MonkeyPatch,
+    captured_spans: InMemorySpanExporter,
+    computations: int,
+    budget_hit: bool,
+) -> None:
+    """A trace alone must show whether a turn ran out of sandbox calls."""
+
+    # Arrange
+    def compute(run: ResearchRun) -> None:
+        cited_run()(run)
+        run.computations = computations
+
+    spy = _GraphSpy([AIMessage(CITED_DEEP_ANSWER)], compute)
+    monkeypatch.setattr(graph_module, "build_graph", lambda run: spy.bind_run(run))
+
+    # Act
+    await graph_module.research("q", lambda e: None)
+
+    # Assert
+    attributes = _span_by_name(captured_spans, "deep_research").attributes
+    assert attributes is not None
+    assert attributes["research.computations_used"] == computations
+    assert attributes["research.computation_cap"] == 3
+    assert attributes["research.computation_budget_hit"] is budget_hit
 
 
 @pytest.mark.anyio
