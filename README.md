@@ -192,10 +192,14 @@ the registry, and `rollback.yml` restarts the last good one.**
 Deploys are manual: Actions → **Deploy** → Run workflow on `main`. The workflow runs
 every test job, pushes `ghcr.io/rafalsliwinski3991/geopoliticai-<service>:<sha>` and
 `:latest`, copies the compose files and `deploy/vps.py` into
-`/srv/geopoliticai/releases/<sha>/`, and runs `deploy/vps.py deploy`: `pg_dump` to
-`/srv/backups/pre-<sha>-<UTC>.sql.gz`, Django `migrate` + `createcachetable`, Alembic,
-`up --wait`; then it curls `https://politicalagent.eu/api/health` and records the
-release (`releases.log`, `current`). The last five releases and their snapshots are kept.
+`/srv/geopoliticai/releases/<sha>/`, and runs `deploy/vps.py deploy`. That first checks
+the Docker **server** version and refuses to deploy, before it pulls, dumps, migrates, or
+stops anything, when the version is older than 28.0 (see "Code sandbox") or cannot be
+read; the running release keeps serving, and `rollback` and `discard` are not checked.
+Then: `pg_dump` to `/srv/backups/pre-<sha>-<UTC>.sql.gz`, Django `migrate` +
+`createcachetable`, Alembic, `up --wait`; then it curls
+`https://politicalagent.eu/api/health` and records the release (`releases.log`,
+`current`). The last five releases and their snapshots are kept.
 
 ### One-time VPS bootstrap (manual, in this order)
 

@@ -22,6 +22,10 @@ BACKUPS = Path(os.environ.get("VPS_BACKUPS", "/srv/backups"))
 LOG = ROOT / "releases.log"
 KEEP = 5
 SHA_RE = re.compile(r"^[0-9a-f]{40}$")
+# The sandbox network's `gateway_mode_ipv4: isolated` (docker-compose.yml):
+# Engine 26.x silently ignores it, leaving a host address on that network, and
+# 27.x rejects it only at `up`, after agentic-backend has been stopped.
+MIN_ENGINE_MAJOR = 28
 # The nightly off-site copy. The bucket's 14-day lifecycle rule (README
 # runbook) deletes old copies; backup() only uploads. aws-cli is pinned by
 # digest to 2.22.35, the newest version OVH lists as compatible: later
@@ -171,6 +175,26 @@ def dump(path: Path) -> None:
         raise subprocess.CalledProcessError(proc.returncode, proc.args)
 
 
+def require_engine() -> None:
+    """Exit 2 unless the Docker server is readably MIN_ENGINE_MAJOR or newer."""
+    query = subprocess.run(
+        ["docker", "version", "--format", "{{.Server.Version}}"],
+        stdout=subprocess.PIPE,
+        text=True,
+        check=False,
+    )
+    version = query.stdout.strip()
+    major = re.match(r"(\d+)\.", version)
+    if query.returncode == 0 and major and int(major[1]) >= MIN_ENGINE_MAJOR:
+        return
+    print(
+        f"Docker Engine {MIN_ENGINE_MAJOR}.0 or newer is required, found "
+        f"{version!r} (docker version exited {query.returncode}); nothing was deployed",
+        file=sys.stderr,
+    )
+    raise SystemExit(2)
+
+
 # Snapshot, migrate in README order, start. The old app containers keep
 # serving until the final `up` (`run agentic-backend` does start the new
 # phoenix early, through depends_on); a failure leaves them running for
@@ -191,7 +215,10 @@ def deploy(sha: str) -> None:
         raise SystemExit(2)
     enter(sha)
     release = _state["cwd"]
+    # Before anything can fail: discard restores whatever .snapshot names, and a
+    # retried release still holds the earlier attempt's.
     (release / ".snapshot").unlink(missing_ok=True)
+    require_engine()
     compose("pull")
     compose("up", "-d", "--no-build", "--wait", "postgres")
     BACKUPS.mkdir(parents=True, exist_ok=True)
