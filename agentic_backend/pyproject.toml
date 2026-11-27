@@ -62,6 +62,9 @@ dependencies = [
     "alembic>=1.14,<2.0",
     "pypdf>=6.21.2,<7.0",
     "tiktoken>=0.12,<1.0",
+    # The code sandbox's MCP client (services/code_sandbox.py). It pulls `mcp`
+    # 1.x while `mcp_server/` runs 2.x; `tests/contract_tests/` guards the pair.
+    "langchain-mcp-adapters>=0.3.2,<0.4",
 ]
 
 

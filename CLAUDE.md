@@ -97,7 +97,7 @@ deep_forecaster  START -> research -> draft_claims -> council_round_1 -> council
 
 ## agentic_backend
 
-- `src/` has three layers. `shared/` (`config`, `tracing`, `frames`, `errors`, `text`) needs no provider key and makes no call to a provider; `tracing` only exports spans to Phoenix in the background. `services/` (`llm`, `web_search`, `page_reader`, `embeddings`) talks to a provider and bounds each call with a timeout, while `document_reader` only reads an uploaded file and calls no provider; a provider failure becomes a `PipelineError` subclass, or, where the caller can still answer, the failed item is dropped and counted on a span. `api/` (`app`, `routes`, `documents`, `stream`, `rate_limit`, `auth`, `quota`) serves HTTP, and only `api/` imports an agent from outside `agents/` (the orchestrator's graph, state, and builders, the document agent's types and retrieval settings, and the reporter's resume classifier). Imports run `api` -> `agents` -> `services` -> `shared`. `models.py` imports nothing from the project, every layer may import it, and `db/` imports only `shared`. Nothing outside `api/` imports `api`.
+- `src/` has three layers. `shared/` (`config`, `tracing`, `frames`, `errors`, `text`) needs no provider key and makes no call to a provider; `tracing` only exports spans to Phoenix in the background. `services/` (`llm`, `web_search`, `page_reader`, `embeddings`, `code_sandbox`) talks to a provider or the sandbox and bounds each call with a timeout (`code_sandbox` runs code in `mcp_server/` over MCP; an unreachable or faulting sandbox is `SandboxUnavailableError`), while `document_reader` only reads an uploaded file and calls no provider; a provider failure becomes a `PipelineError` subclass, or, where the caller can still answer, the failed item is dropped and counted on a span. `api/` (`app`, `routes`, `documents`, `stream`, `rate_limit`, `auth`, `quota`) serves HTTP, and only `api/` imports an agent from outside `agents/` (the orchestrator's graph, state, and builders, the document agent's types and retrieval settings, and the reporter's resume classifier). Imports run `api` -> `agents` -> `services` -> `shared`. `models.py` imports nothing from the project, every layer may import it, and `db/` imports only `shared`. Nothing outside `api/` imports `api`.
 - Besides the LangGraph checkpointer and store, the only Postgres access is the raw SQL in
   `db/web/sql.py` against Django-owned tables, whose schema only `web_backend`'s migrations change,
   and in `db/agentic/chunks.py`; the integration tests guard both.
@@ -244,6 +244,9 @@ deep_forecaster  START -> research -> draft_claims -> council_round_1 -> council
   agent's compiled graph has its own `test_graph.py`. Frontend unit tests are Vitest in
   `frontend/chat/`. Every test follows the `unit-tests` skill, including its review-blocking
   `# Arrange`, `# Act`, and `# Assert` sections.
+- `agentic_backend/tests/contract_tests/` needs a running `mcp-server`, so a bare `pytest` and
+  `make test` leave it out: `docker compose up -d --build --wait mcp-server`, then from
+  `agentic_backend/` `SANDBOX_MCP_URL=http://127.0.0.1:8100/mcp uv run pytest tests/contract_tests`.
 - End-to-end tests are a Playwright project in `e2e/`; run its commands from there. People edit only
   the plain-English specs in `e2e/test_specs/`. The `e2e/tests/*.spec.ts` files are generated from
   them by a command only the user runs (README, "End-to-end tests"), so an agent edits the spec

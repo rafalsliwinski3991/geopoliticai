@@ -84,3 +84,9 @@ class NoDocumentError(PipelineError):
     """A document question reached a thread that has no document."""
 
     status: ClassVar[int] = 409
+
+
+class SandboxUnavailableError(PipelineError):
+    """The code sandbox could not be reached, failed internally, or answered nothing usable."""
+
+    status: ClassVar[int] = 503
