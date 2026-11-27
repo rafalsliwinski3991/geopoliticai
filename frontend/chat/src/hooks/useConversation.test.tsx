@@ -231,6 +231,7 @@ describe("streaming token display", () => {
 
 describe("turn boundaries", () => {
   it("an error frame after tokens drops the streaming draft and its status copy is friendly", async () => {
+    // Arrange
     stubStreaming([
       [
         { type: "token", content: "Partial" },
@@ -242,21 +243,24 @@ describe("turn boundaries", () => {
       ],
     ]);
     const getLatest = await renderHookProbe();
+    // Act
     await act(async () => {
       await (getLatest() as { send: (t: string) => Promise<void> }).send("one");
     });
     await act(async () => {
       await (getLatest() as { send: (t: string) => Promise<void> }).send("two");
     });
+    // Assert
     const { messages } = getLatest() as {
       messages: { role: string; text: string }[];
     };
     const errors = messages.filter((message) => message.role === "error");
     const assistants = messages.filter((message) => message.role === "assistant");
-    // Known statuses get the translated copy, not the raw message.
+    // Known statuses get the translated copy, not the raw message. A 503 comes
+    // from the news search or the code sandbox, so the copy names neither.
     expect(errors).toHaveLength(1);
     expect(errors[0]!.text).toBe(
-      "The news search is temporarily unavailable. Please try again in a few minutes.",
+      "A research service is temporarily unavailable. Please try again in a few minutes.",
     );
     // The interrupted turn's partial answer is gone and the next turn's
     // answer is its own bubble in the right place.
